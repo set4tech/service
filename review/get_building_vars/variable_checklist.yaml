@@ -1,0 +1,136 @@
+
+project_identity:
+  full_address:
+    description: "Street address including state, city/town, and county. Needed to determine jurisdiction and state-specific accessibility laws."
+  authority_having_jurisdiction:
+    description: "The building department or code authority issuing permits/inspections. Determines which code editions are enforced."
+  state_specific_code:
+    description: "Some states replace IBC/A117.1 with their own accessibility codes (e.g., California CBC Ch. 11B, Texas TAS, Florida FBC–Accessibility)."
+
+ownership_control:
+  owner_type:
+    description: "Whether the facility is private, nonprofit, state/local government, federal, or tribal. Determines which ADA/ABA titles apply."
+  private_entity_exemption:
+    description: "Check if the owner is a religious organization or private club, which may exempt them from ADA Title III."
+  government_entity_type:
+    description: "Identify the government level and agency responsible for the facility or program."
+  federal_agency:
+    description: "If federally owned/leased/altered, identify the agency (e.g., GSA, DoD, USPS, HUD) to apply the correct ABA standard."
+
+funding_sources:
+  federal_assistance:
+    description: "Any federal financial assistance (grants, loans, leases, subsidies). Triggers Section 504 standards."
+  hud_assistance:
+    description: "For HUD-funded housing, confirm if Section 504 applies and whether HUD permits use of ADA 2010 instead of UFAS."
+  other_agency_504:
+    description: "Other federally assisted facilities may apply UFAS, ADA 2010, or ABA standards depending on agency rules."
+
+facility_category:
+  ada_title_iii:
+    description: "Public accommodations or commercial facilities. Covered by ADA Title III."
+  ada_title_ii:
+    description: "State or local government facilities/programs. Covered by ADA Title II."
+  transportation_facility:
+    description: "Transit stations/stops subject to DOT ADA regulations. Includes pedestrian facilities tied to transit."
+  federal_facility:
+    description: "Federally constructed, leased, or altered facilities. Covered by ABA Standards."
+  housing_category:
+    fha_multifamily:
+      description: "Covered multifamily dwellings under FHA (4+ units; all units if elevator building; otherwise ground-floor). First occupancy date matters."
+    other_residential:
+      description: "Single-family or townhomes (generally not FHA-covered unless within elevator buildings)."
+
+project_timeline:
+  project_scope:
+    description: "Define if work is new construction, addition, alteration/renovation, change of occupancy, site/civil, or maintenance only."
+  key_dates:
+    description: "Permit application date, permit issuance, construction start, substantial completion/CO, and phase dates."
+  ada_compliance_date:
+    description: "For ADA II/III: whether work commenced on/after March 15, 2012, when 2010 ADA Standards became mandatory."
+  dot_prowag_date:
+    description: "For DOT transit stops: whether work is on/after Jan 17, 2025, when PROWAG takes effect."
+  aba_effective_date:
+    description: "Effective date of agency-specific ABA standards (e.g., GSA ABAAS effective 2006)."
+  fha_first_occupancy:
+    description: "For FHA: whether first occupancy was after March 13, 1991."
+
+building_code_lineage:
+  adopted_code_editions:
+    description: "IBC, IEBC, and ICC A117.1 editions in force at permit date."
+  local_amendments:
+    description: "Any state/local amendments that alter accessibility requirements."
+  special_state_codes:
+    description: "Exact edition of CBC Ch. 11B, TAS, or Florida FBC–Accessibility in effect on permit date."
+
+building_characteristics:
+  occupancy_classification:
+    description: "IBC occupancy group(s) and mixed-use status."
+  building_size:
+    description: "Gross floor area per story, number of stories, mezzanines."
+  elevator_exemption:
+    description: "Confirm if ADA elevator exemption applies (≤3 stories or ≤3,000 sf per story, with exceptions)."
+  site_components:
+    description: "Parking, exterior routes, site arrival points, curb ramps, exterior amenities, transit stops, ROW elements."
+
+alteration_triggers:
+  primary_function_area:
+    description: "If alteration affects a primary function area, path of travel upgrades may be required (up to 20% disproportionality)."
+  title_ii_program_access:
+    description: "For state/local facilities: whether program access is achieved across facilities and transition plan status."
+  technical_infeasibility:
+    description: "Documented structural or technical constraints affecting compliance."
+
+historic_status:
+  designation:
+    description: "Whether building is listed/eligible for National Register or designated historic locally."
+  historic_exceptions:
+    description: "Determine if ADA ‘maximum extent feasible’ or historic exceptions apply (routes, entrances, toilet rooms)."
+
+public_right_of_way:
+  row_owner:
+    description: "Whether ROW work is city, state DOT, or federal jurisdiction."
+  transit_stops:
+    description: "If transit stops are included, apply PROWAG effective Jan 17, 2025."
+  other_prowag:
+    description: "For other PROW facilities, PROWAG guidelines (2023) may apply if adopted by state/local or via grant conditions."
+
+regimes_mapping:
+  private_or_local:
+    description: "Apply 2010 ADA Standards + adopted IBC/IEBC/A117.1 + state accessibility code."
+  federal_facility:
+    description: "Apply ABA Standards by agency instead of ADA."
+  transportation:
+    description: "Apply DOT ADA rules (49 CFR Part 37) and PROWAG for transit stops after 1/17/2025."
+  multifamily_housing:
+    description: "Apply FHA design/construction + HUD safe harbors, plus ADA/504 if applicable."
+  hud_section_504:
+    description: "Apply UFAS or 2010 ADA Standards (if permitted by HUD)."
+
+state_specific_programs:
+  texas_tas:
+    description: "If construction cost ≥ $50k, TDLR registration and RAS review/inspection required."
+  california_cbc:
+    description: "CBC Ch. 11B mandatory; CASp review may apply."
+  florida_fbc:
+    description: "Statewide FBC–Accessibility edition enforced."
+
+documentation:
+  permit_set:
+    description: "Cover sheet/code summary from permit drawings."
+  code_adoption_record:
+    description: "AHJ/state record of adopted code editions."
+  contracts_awards:
+    description: "Contracts/NTPS fix ADA/DOT/ABA applicability dates."
+  certificates_occupancy:
+    description: "CO and prior alteration permits."
+  funding_documents:
+    description: "Federal assistance or lease records."
+  shpo_correspondence:
+    description: "Historic review/consultation documents."
+
+cautions:
+  ada_vs_building_codes:
+    description: "ADA and building codes are separate; CO does not prove ADA compliance."
+  alteration_obligations:
+    description: "Alterations must meet ADA path of travel and Title II program access duties, even if IEBC compliance is achieved."
+```

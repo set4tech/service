@@ -11,6 +11,13 @@ Get an aws account.
 aws sso login
 ```
 
+Create a venv
+
+```
+python -m venv venv 
+source venv/bin/activate
+```
+
 Install requirements
 
 ```
@@ -23,3 +30,8 @@ The SAAIA drawing is found here:
 https://set4-data.s3.us-east-1.amazonaws.com/drawings/SAAIA/2024_0925_636386+-++255+California+St_5TH+FLOOR_IFC+set+Delta+2.pdf
 
 To make some of the code run, it could be helpful to keep the pdf in `/data` in this repo. It is gitignored.
+
+## Structure
+
+Files pertaining to executing the review process are in `/review`. 
+The viewer app is in `/app`, surprisingly enough.
