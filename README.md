@@ -1,35 +1,24 @@
-# Service - Human-in-the-Loop Code Consulting Platform
+# set 4 service - e2e plan review 
+✍️🏗️
 
-This repository contains all the software infrastructure to facilitate human-in-the-loop code consulting services.
+This is the place where we will manage all notebooks, files, for executing a code review for 255 California Street. In doing this we will learn about executing a full accessibility code review and then understand how we can build systems which automate it.
 
-## Overview
+## Setup
 
-This platform provides a comprehensive solution for delivering code consulting services with human expertise integrated into the workflow. It enables seamless collaboration between automated tools and human consultants to deliver high-quality code solutions.
+Get an aws account.
 
-## Key Features
+```
+aws sso login
+```
 
-- **Human-in-the-Loop Architecture**: Combines automated processes with human expertise for optimal results
-- **Code Review & Consultation**: Expert code review and consultation services
-- **Quality Assurance**: Human validation ensures high-quality deliverables
-- **Scalable Infrastructure**: Built to handle multiple concurrent consulting sessions
+Install requirements
 
-## Components
+```
+pip install -r requirements.txt
+```
 
-The service includes the following components:
-- API endpoints for service interaction
-- Workflow management system
-- Human consultant interface
-- Client communication tools
-- Quality control mechanisms
+## Data
 
-## Getting Started
+The SAAIA drawing is found here:
+https://set4-data.s3.us-east-1.amazonaws.com/drawings/SAAIA/2024_0925_636386+-++255+California+St_5TH+FLOOR_IFC+set+Delta+2.pdf
 
-Documentation for setting up and running the service will be provided as the platform develops.
-
-## License
-
-To be determined.
-
-## Contact
-
-For more information about these consulting services, please reach out through the appropriate channels.
