@@ -110,3 +110,7 @@ temp/
 *.p12
 secrets/
 credentials/
+
+/data/*
+
+node_modules/
