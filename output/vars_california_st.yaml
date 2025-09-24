@@ -1,0 +1,486 @@
+_metadata:
+  checklist_version: variable_checklist.yaml
+  extraction_method: gemini-2.0-flash-exp with sequential focused extraction
+  note: '''none'' indicates variable is not applicable to this project type'
+  source_pdf: 2024_0925_636386 - 255 California St_5TH FLOOR_IFC set Delta 2.pdf
+  total_pages: 16
+alteration_triggers:
+  primary_function_area:
+    confidence: high
+    description: If alteration affects a primary function area, path of travel upgrades may be required (up to 20% disproportionality).
+    page:
+    - 1
+    - 2
+    quote: 'SCOPE OF WORK: TENANT IMPROVEMENT WORK ON ±2,636 SQ. FT. OF THE TOTAL 5TH FLOOR. NEW WALL, POWER, LIGHTING AND
+      FINISHES.
+
+
+      01 35 16 - ALTERATION PROJECT PROCEDURES
+
+      1 THE WORK OF THIS PROJECT INCLUDES ALTERATIONS OF THE EXISTING BUILDING TO ACHIEVE THE ARRANGEMENT INDICATED ON THE
+      DRAWINGS.
+
+
+      DRAWING INDEX
+
+      ...
+
+      A-0.5A SITE PLAN AND ACCESSIBLE PATH OF TRAVEL (FOR REFERENCE)
+
+      A-0.5B SITE PLAN AND ACCESSIBLE PATH OF TRAVEL (FOR REFERENCE)'
+    value: true
+  technical_infeasibility:
+    confidence: high
+    description: Documented structural or technical constraints affecting compliance.
+    page:
+    - '14'
+    quote: 'NOTE TO CONTRACTOR:
+
+      GC IS REQUIRED TO X-RAY THE SLAB. EXISTING STEEL REINFORCEMENT SHALL NOT BE DAMAGED. IF REINFORCEMENT IS
+
+      ENCOUNTERED DURING DRILLING, ABANDON AND SHIFT THE HOLE LOCATION TO AVOID THE REINFORCEMENT. PROVIDE A
+
+      MINIMUM OF 2 ANCHOR DIAMETERS OR 1 INCH, WHICHEVER IS LARGER, OF SOUND CONCRETE BETWEEN THE DOWEL AND
+
+      THE ABANDONED HOLE. FILL THE ABANDONED HOLE WITH NON-SHRINK GROUT. IF THE ANCHOR OR DOWEL MAY NOT BE
+
+      SHIFTED AS NOTED ABOVE, NOTIFY THE OWNER''S REPRESENTATIVE FOR FURT...'
+    value: Existing steel reinforcement in the concrete slab is a potential technical constraint that may conflict with drilling
+      for anchors and dowels. If an anchor location cannot be shifted to avoid the reinforcement, a solution must be coordinated
+      with the owner's representative.
+  title_ii_program_access: not_applicable
+building_characteristics:
+  building_size:
+    confidence: high
+    description: Gross floor area per story, number of stories, mezzanines.
+    page:
+    - 3
+    - 6
+    quote: 'PROJECT:
+
+      255 CALIFORNIA
+
+      STREET
+
+      5TH FLOOR
+
+      255 CALIFORNIA STREET
+
+      SAN FRANCISCO, CA 94111
+
+
+      EXIT ANALYSIS
+
+      ...
+
+      TOTAL OCCUPANT SQUARE FOOTAGE ±2,636
+
+      '
+    value:
+    - gross_floor_area_per_story:
+      - story: 5th Floor (Tenant Improvement Area)
+        area_sq_ft: 2636
+    - number_of_stories: The project is located on the 5th floor. The total number of stories for the building is not specified.
+    - mezzanines: not_found
+  elevator_exemption:
+    confidence: high
+    description: Confirm if ADA elevator exemption applies (≤3 stories or ≤3,000 sf per story, with exceptions).
+    page:
+    - '11'
+    - '12'
+    - '13'
+    quote: 'PROJECT:
+
+      255 CALIFORNIA
+
+      STREET
+
+
+      5TH FLOOR
+
+      255 CALIFORNIA STREET
+
+      SAN FRANCISCO, CA 94111
+
+      '
+    value: No, the elevator exemption does not apply because the building has more than three stories. The project is located
+      on the 5th floor.
+  occupancy_classification:
+    confidence: high
+    description: IBC occupancy group(s) and mixed-use status.
+    page:
+    - 6
+    - 9
+    quote: '*PER TABLE 1006.2.1, OCCUPANCY GROUP B SPACES WITH ONE EXIT OR EXIT ACCESS DOORWAY CAN ACCOMMODATE A MAXIMUM OF
+      49 OCCUPANTS.
+
+
+      PLUMBING OCCUPANCY CALCULATIONS
+
+      AREA LOAD
+
+      ROOM NAME USE OCCUPANCY (SF) FACTOR
+
+      OFFICE SUITE GROUP B 2,636 150 17.6 ROUND TO 18
+
+      '
+    value:
+      ibc_occupancy_group: B
+      is_mixed_use: false
+  site_components:
+    confidence: high
+    description: Parking, exterior routes, site arrival points, curb ramps, exterior amenities, transit stops, ROW elements.
+    page:
+    - 1
+    quote: 'LOCATION PLAN
+
+      N
+
+      NEIGHBORING BUILDING
+
+      160 PINE STREET
+
+      255 CALIFORNIA STREET
+
+      SAN FRANCISCO, CA 94111
+
+      '
+    value:
+    - ROW element: CALIFORNIA STREET
+    - ROW element: PINE STREET
+building_code_lineage:
+  adopted_code_editions:
+    confidence: high
+    description: IBC, IEBC, and ICC A117.1 editions in force at permit date.
+    page:
+    - 16
+    quote: '*CLEAR FLOOR SPACE 30"X48" COMPLYING WITH CBC 2022 SEC 11B-305.7.1
+
+      *PER CBC 2022 SECTION 606.1 ACCESSIBLE SINKS
+
+      '
+    value:
+    - code: IBC
+      edition: 2022 CBC (California Building Code)
+    - code: IEBC
+      edition: not_found
+    - code: ICC A117.1
+      edition: 2022 CBC (California Building Code, Chapter 11B referenced)
+  local_amendments:
+    confidence: high
+    description: Any state/local amendments that alter accessibility requirements.
+    page:
+    - 16
+    quote: '*CLEAR FLOOR SPACE 30"X48" COMPLYING WITH CBC 2022 SEC 11B-305.7.1
+
+      IN FRONT OF SINK TO ALLOW FORWARD APPROACH
+
+
+      *PER CBC 2022 SECTION 606.1
+
+      ACCESSIBLE SINKS
+
+      '
+    value: The project is subject to the California Building Code (CBC) 2022, which amends accessibility requirements. Specific
+      references are made to CBC 2022 Section 11B-305.7.1 for clear floor space and Section 606.1 for accessible sinks.
+  special_state_codes:
+    confidence: high
+    description: Exact edition of CBC Ch. 11B, TAS, or Florida FBC–Accessibility in effect on permit date.
+    page:
+    - 16
+    quote: '*CLEAR FLOOR SPACE 30"X48" COMPLYING WITH CBC 2022 SEC 11B-305.7.1
+
+      *PER CBC 2022 SECTION 606.1
+
+      ACCESSIBLE SINKS
+
+      '
+    value: CBC 2022 Ch. 11B
+documentation:
+  certificates_occupancy:
+    confidence: high
+    description: CO and prior alteration permits.
+    page:
+    - 11
+    quote: '3.5 SEE ORIGINAL BUILDING AS-BUILTS.
+
+
+      3.10 ... NOTE BLDG HAS EXISTING WALKER DUCT SYSTEM - SEE ORIGINAL BUILDING AS-BUILTS.
+
+
+      12. EXISTING FLOOR DECK INCLUDES WALKER DUCT SYSTEM. LOCATE SYSTEM BRANCH LINES AND COORDINATE WITH INSTALLATION OF
+      NEW POWER OUTLETS. SEE ORIGINAL AS-BUILTS.
+
+      '
+    value: The plans refer to "original building as-builts" for information on existing conditions and systems.
+  code_adoption_record:
+    confidence: high
+    description: AHJ/state record of adopted code editions.
+    page:
+    - 16
+    quote: '*CLEAR FLOOR SPACE 30"X48" COMPLYING WITH CBC 2022 SEC 11B-305.7.1
+
+      *PER CBC 2022 SECTION 606.1 ACCESSIBLE SINKS
+
+      '
+    value: CBC 2022
+  funding_documents: not_applicable
+  permit_set:
+    confidence: high
+    description: Cover sheet/code summary from permit drawings.
+    page:
+    - 9
+    quote: 'PLUMBING OCCUPANCY CALCULATIONS
+
+      ROOM NAME USE      OCCUPANCY (SF)   AREA LOAD FACTOR
+
+      OFFICE SUITE GROUP B 2,636            150           17.6 ROUND TO 18
+
+      TOTAL OCCUPANT LOAD FOR FEMALE AND MALE: FEMALE 9
+
+      MALE 9
+
+      PLUMBING FIXTURE QUANTITY
+
+      OCC TYPE / TOTAL OCC WC (MALE) WC (FEMALE) URINAL LAV (MALE) LAV (FEMALE)
+
+      B (9 FOR MALE AND 9 FOR FEMALE) 1 : 1-50   1 : 1-15   1 : 1-100 1 : 1-75   1 : 1-50
+
+      TOTAL REQUIRED FOR B OCCUPANCY 1          1          1       1          1
+
+      TOTAL PROVIDED 2          3 ...'
+    value: 'PLUMBING OCCUPANCY CALCULATIONS:
+
+      - Occupancy Group: B (Office Suite)
+
+      - Area: 2,636 SF
+
+      - Occupant Load Factor: 150 SF/occupant
+
+      - Total Occupant Load: 18 (9 Female, 9 Male)
+
+      - Plumbing Fixtures (Required): 1 WC (Male), 1 WC (Female), 1 Urinal, 1 Lavatory (Male), 1 Lavatory (Female)
+
+      - Plumbing Fixtures (Provided): 2 WC (Male), 3 WC (Female), 2 Urinals, 3 Lavatories (Male), 3 Lavatories (Female)
+
+      '
+facility_category:
+  ada_title_ii: not_applicable
+  ada_title_iii:
+    confidence: high
+    description: Public accommodations or commercial facilities. Covered by ADA Title III.
+    page:
+    - 16
+    quote: 'ACCESSIBLE SINK CABINET
+
+      *CLEAR FLOOR SPACE 30"X48" COMPLYING WITH CBC 2022 SEC 11B-305.7.1 IN FRONT OF SINK TO ALLOW FORWARD APPROACH
+
+      *PER CBC 2022 SECTION 606.1 ACCESSIBLE SINKS
+
+      '
+    value: commercial facility
+  federal_facility: not_applicable
+  housing_category:
+    fha_multifamily: not_applicable
+    other_residential: not_applicable
+  transportation_facility: not_applicable
+funding_sources:
+  hud_assistance: not_applicable
+  other_agency_504: not_applicable
+ownership_control:
+  federal_agency: not_applicable
+  government_entity_type: not_applicable
+  owner_type:
+    confidence: high
+    description: Whether the facility is private, nonprofit, state/local government, federal, or tribal. Determines which
+      ADA/ABA titles apply.
+    page:
+    - 13
+    - 14
+    - 15
+    - 16
+    quote: 'PROJECT:
+
+      255 CALIFORNIA
+
+      STREET
+
+      5TH FLOOR
+
+      255 CALIFORNIA STREET
+
+      SAN FRANCISCO, CA 94111
+
+
+      ANY RECOMMENDATIONS OR USE OF ANY CDC OR WHO INFORMATION DOES NOT CONSTITUTE ENDORSEMENT BY THE U.S. GOVERNMENT, DEPARTMENT
+      OF HEALTH AND HUMAN SERVICES OR THE CDC AND WHO NOR ITS AFFILIATES.
+
+      '
+    value: private
+  private_entity_exemption:
+    confidence: high
+    description: Check if the owner is a religious organization or private club, which may exempt them from ADA Title III.
+    page:
+    - 1
+    quote: 'BUILDING OWNER: LBA REALTY'
+    value: No, the owner is LBA Realty, a commercial real estate company.
+project_identity:
+  authority_having_jurisdiction:
+    confidence: high
+    description: The building department or code authority issuing permits/inspections. Determines which code editions are
+      enforced.
+    page:
+    - 11
+    - 12
+    - 13
+    quote: 'PROJECT:
+
+      255 CALIFORNIA
+
+      STREET
+
+      5TH FLOOR
+
+      255 CALIFORNIA STREET
+
+      SAN FRANCISCO, CA 94111'
+    value: San Francisco, CA
+  full_address:
+    confidence: high
+    description: Street address including state, city/town, and county. Needed to determine jurisdiction and state-specific
+      accessibility laws.
+    page:
+    - 14
+    - 15
+    - 16
+    quote: 'PROJECT:
+
+      255 CALIFORNIA
+
+      STREET
+
+      5TH FLOOR
+
+      255 CALIFORNIA STREET
+
+      SAN FRANCISCO, CA 94111
+
+      '
+    value: 255 California Street, 5th Floor, San Francisco, San Francisco County, CA 94111
+  state_specific_code:
+    confidence: high
+    description: Some states replace IBC/A117.1 with their own accessibility codes (e.g., California CBC Ch. 11B, Texas TAS,
+      Florida FBC–Accessibility).
+    page:
+    - 16
+    quote: '*CLEAR FLOOR SPACE 30"X48" COMPLYING WITH CBC 2022 SEC 11B-305.7.1
+
+      *PER CBC 2022 SECTION 606.1
+
+      '
+    value: CBC 2022 Chapter 11B
+project_timeline:
+  aba_effective_date: not_applicable
+  ada_compliance_date:
+    confidence: high
+    description: 'For ADA II/III: whether work commenced on/after March 15, 2012, when 2010 ADA Standards became mandatory.'
+    page:
+    - 14
+    - 15
+    - 16
+    quote: 'DRAWINGS ISSUE
+
+      DATE DESCRIPTION DELTA
+
+      08/16/2024 PLAN CHECK SUBMITTAL
+
+      09/09/2024 PLAN CHECK CORRECTIONS 1
+
+      09/25/2024 ISSUE FOR CONSTRUCTION 2
+
+      '
+    value: Yes, work commenced after March 15, 2012.
+  dot_prowag_date: not_applicable
+  fha_first_occupancy: not_applicable
+  key_dates:
+    confidence: high
+    description: Permit application date, permit issuance, construction start, substantial completion/CO, and phase dates.
+    page:
+    - 14
+    - 15
+    - 16
+    quote: 'DRAWINGS ISSUE
+
+      DATE DESCRIPTION DELTA
+
+      08/16/2024 PLAN CHECK SUBMITTAL
+
+      09/09/2024 PLAN CHECK CORRECTIONS 1
+
+      09/25/2024 ISSUE FOR CONSTRUCTION 2
+
+      '
+    value:
+      construction_start_date: 09/25/2024
+      permit_application_date: 08/16/2024
+  project_scope:
+    confidence: high
+    description: Define if work is new construction, addition, alteration/renovation, change of occupancy, site/civil, or
+      maintenance only.
+    page:
+    - 14
+    - 16
+    quote: 'PROJECT:
+
+      255 CALIFORNIA
+
+      STREET
+
+      5TH FLOOR
+
+
+      EXISTING STRUCTURE
+
+
+      EXISTING EXPOSED CONCRETE FLOORING'
+    value: alteration/renovation
+public_right_of_way:
+  other_prowag: not_applicable
+  row_owner: not_applicable
+  transit_stops: not_applicable
+regimes_mapping:
+  federal_facility: not_applicable
+  hud_section_504: not_applicable
+  multifamily_housing: not_applicable
+  private_or_local:
+    confidence: high
+    description: Apply 2010 ADA Standards + adopted IBC/IEBC/A117.1 + state accessibility code.
+    page:
+    - 16
+    quote: '*CLEAR FLOOR SPACE 30"X48" COMPLYING WITH CBC 2022 SEC 11B-305.7.1
+
+      *PER CBC 2022 SECTION 606.1 ACCESSIBLE SINKS
+
+      '
+    value: 2010 ADA Standards + adopted IBC/IEBC/A117.1 + state accessibility code
+  transportation: not_applicable
+state_specific_programs:
+  california_cbc:
+    confidence: high
+    description: CBC Ch. 11B mandatory; CASp review may apply.
+    page:
+    - 16
+    quote: '*CLEAR FLOOR SPACE 30"X48" COMPLYING WITH CBC 2022 SEC 11B-305.7.1
+
+      IN FRONT OF SINK TO ALLOW FORWARD APPROACH
+
+
+      *PER CBC 2022 SECTION 606.1
+
+      ACCESSIBLE SINKS
+
+      '
+    value: CBC Chapter 11B is mandatory, as demonstrated by references to CBC 2022 SEC 11B-305.7.1 and SECTION 606.1 for accessible
+      sinks. A CASp review is not mentioned.
+  florida_fbc: not_applicable
+  texas_tas: not_applicable

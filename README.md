@@ -35,3 +35,19 @@ To make some of the code run, it could be helpful to keep the pdf in `/data` in 
 
 Files pertaining to executing the review process are in `/review`. 
 The viewer app is in `/app`, surprisingly enough.
+
+```flowchart LR
+  A[Which code/codes applies to this building?] --> B[Split codes into sections]
+  B --> C[Get full context and scope of each code section]
+  C --> D[Does this code section apply to a building of these parameters?]
+  D --> E[If the code section is correctly scoped, what information is needed to judge if the building is compliant?]
+
+  E -->|Information from drawings| F[What markups and subcrops are needed from the plans for me to be able to assess if the code section applies?]
+  F --> G[Add relevant dimensions and markups to the plan/drawings]
+  G --> I[Single screen with all relevant information on needed to answer the question: 'Is this building in violation of this code?']
+
+  E -->|Extra metadata| H[Retrieve other building metadata; from drawings, specs, internet, request to architect]
+  H --> I
+
+  B -.-> N["for now we can start with the codes we have in the db"]
+```
