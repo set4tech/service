@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { getCodeAssembly } from '@/lib/neo4j';
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
-    const assessmentId = params.id;
+    const assessmentId = id;
     const supabase = supabaseAdmin();
 
     // Check if assessment exists
