@@ -75,18 +75,15 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Compliance Assessment Platform</h1>
-          <p className="text-gray-600 mt-2">Select an existing project or create a new one</p>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 py-8 stack-md">
+        <header className="stack-sm">
+          <h1 className="text-2xl font-bold text-gray-900">Compliance Assessment Platform</h1>
+          <p className="text-gray-600">Select an existing project or create a new one</p>
+        </header>
 
-        <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Your Projects</h2>
-          <Link
-            href="/projects/new"
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-          >
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Your Projects</h2>
+          <Link href="/projects/new" className="btn-primary">
             + Create New Project
           </Link>
         </div>
@@ -96,44 +93,21 @@ export default function Home() {
             <div className="text-gray-500">Loading projects...</div>
           </div>
         ) : projects.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <p className="text-gray-500 mb-4">No projects yet</p>
-            <Link
-              href="/projects/new"
-              className="inline-block bg-blue-600 text-white px-8 py-4 rounded-lg hover:bg-blue-700 transition"
-            >
+          <div className="card text-center stack-sm">
+            <p className="text-gray-500">No projects yet</p>
+            <Link href="/projects/new" className="btn-primary">
               Create Your First Project
             </Link>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
+          <div className="card overflow-hidden">
+            <table className="table-base min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Project Name
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Customer
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Status
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Created
-                  </th>
+                  <th scope="col">Project Name</th>
+                  <th scope="col">Customer</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Created</th>
                   <th scope="col" className="relative px-6 py-3">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -146,33 +120,33 @@ export default function Home() {
                     className="hover:bg-gray-50 cursor-pointer"
                     onClick={() => handleProjectClick(project.id)}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td>
                       <div className="text-sm font-medium text-gray-900">{project.name}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td>
                       <div className="text-sm text-gray-500">{project.customer?.name || '-'}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td>
                       <span
-                        className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        className={
                           project.status === 'completed'
-                            ? 'bg-green-100 text-green-800'
+                            ? 'badge-success'
                             : project.status === 'active'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                        }`}
+                              ? 'badge-active'
+                              : 'badge-pending'
+                        }
                       >
                         {project.status || 'In Progress'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="text-sm text-gray-500">
                       {new Date(project.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <td className="text-right text-sm font-medium">
                       <button
                         onClick={e => handleDeleteProject(e, project.id)}
-                        className="text-red-600 hover:text-red-900 hover:bg-red-50 p-2 rounded transition"
-                        title="Delete project"
+                        className="btn-danger"
+                        aria-label="Delete project"
                       >
                         Delete
                       </button>
