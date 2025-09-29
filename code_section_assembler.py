@@ -58,6 +58,164 @@ class CodeSectionAssembler:
     def close(self):
         """Close the Neo4j driver connection."""
         self.driver.close()
+
+    def debug_code_retrieval(self, code_data: Dict[str, Any]) -> str:
+        """Debug output showing base sections and recursive references.
+
+        Returns the debug output as a string for saving to file.
+        """
+        code_id = code_data['code_id']
+        output_lines = []
+
+        def add_line(line=""):
+            output_lines.append(line)
+            print(line)
+
+        add_line(f"\n{'='*80}")
+        add_line(f"📚 CODE: {code_id}")
+        add_line(f"   Provider: {code_data['provider']}")
+        add_line(f"   Version: {code_data['version']}")
+        add_line(f"   Jurisdiction: {code_data['jurisdiction']}")
+        add_line(f"   Title: {code_data['title']}")
+        add_line("-" * 80)
+
+        with self.driver.session() as session:
+            # Get DIRECT sections (base sections)
+            add_line("\n🔷 BASE SECTIONS (directly attached to code):")
+            direct_query = """
+            MATCH (c:Code {id: $code_id})-[:HAS_SECTION]->(s:Section)
+            RETURN s.key as key, s.number as number, s.title as title,
+                   s.text as text, s.paragraphs as paragraphs, s.item_type as item_type
+            ORDER BY s.number
+            LIMIT 3
+            """
+            result = session.run(direct_query, code_id=code_id)
+            base_sections = [dict(record) for record in result]
+
+            # Count total base sections
+            count_query = """
+            MATCH (c:Code {id: $code_id})-[:HAS_SECTION]->(s:Section)
+            RETURN count(s) as total
+            """
+            total_result = session.run(count_query, code_id=code_id).single()
+            total_base = total_result['total'] if total_result else 0
+
+            add_line(f"Found {total_base} total base sections (showing first {len(base_sections)})")
+
+            for i, section in enumerate(base_sections, 1):
+                add_line(f"\n  [{i}] BASE: {section['number'] or 'unnumbered'}")
+                add_line(f"      Title: {section['title'] or '(no title)'}")
+                add_line(f"      Type: {section['item_type']}")
+
+                # Check content
+                has_text = bool(section['text'] and section['text'].strip())
+                has_paragraphs = bool(section['paragraphs'] and len(section['paragraphs']) > 0)
+
+                if has_paragraphs:
+                    add_line(f"      ✓ Content: {len(section['paragraphs'])} paragraphs")
+                    # Show ALL paragraph content - NO TRUNCATION
+                    for i, para in enumerate(section['paragraphs'], 1):
+                        add_line(f"      📝 Paragraph {i}: {para}")
+                elif has_text:
+                    add_line(f"      ✓ Content: Text field ({len(section['text'])} chars)")
+                    preview = section['text'][:100] + "..." if len(section['text']) > 100 else section['text']
+                    add_line(f"      Preview: {preview}")
+                else:
+                    add_line(f"      ⚠️  No content")
+
+                section_key = section['key']
+
+                # Get actual SUBSECTIONS
+                subsection_query = """
+                MATCH (parent:Section {key: $section_key})<-[:HAS_PARENT*]-(child:Section)
+                RETURN child.key as key, child.number as number, child.title as title,
+                       child.text as text, child.paragraphs as paragraphs
+                ORDER BY child.number
+                """
+                sub_result = session.run(subsection_query, section_key=section_key)
+                subsections = [dict(record) for record in sub_result]
+
+                if subsections:
+                    add_line(f"      📁 SUBSECTIONS ({len(subsections)} via HAS_PARENT):")
+                    for sub in subsections:  # Show ALL subsections
+                        add_line(f"         → {sub['number']}: {sub['title'] or '(no title)'}")
+                        if sub['paragraphs']:
+                            for para in sub['paragraphs']:  # Show ALL paragraphs
+                                add_line(f"            📝 {para}")
+                        else:
+                            add_line(f"            ⚠️ [no content]")
+
+                        # CHECK FOR REFS FROM THIS SUBSECTION TOO!
+                        sub_ref_query = """
+                        MATCH (s:Section {key: $section_key})-[:REFS]->(ref:Section)
+                        RETURN ref.number as number, ref.title as title
+                        ORDER BY ref.number
+                        """
+                        sub_refs = session.run(sub_ref_query, section_key=sub['key'])
+                        sub_ref_list = [dict(r) for r in sub_refs]
+                        if sub_ref_list:
+                            add_line(f"            🔗 REFERENCES: {', '.join([r['number'] for r in sub_ref_list])}")
+
+                # Get ALL REFERENCES from base section AND its subsections
+                all_section_keys = [section_key] + [s['key'] for s in subsections]
+                all_refs = {}
+
+                for key in all_section_keys:
+                    ref_query = """
+                    MATCH (s:Section {key: $section_key})-[:REFS*]->(ref:Section)
+                    RETURN DISTINCT ref.key as key, ref.number as number, ref.title as title,
+                           ref.code as ref_code, ref.paragraphs as paragraphs
+                    """
+                    ref_result = session.run(ref_query, section_key=key)
+                    for ref in ref_result:
+                        ref_dict = dict(ref)
+                        all_refs[ref_dict['key']] = ref_dict  # Use key to dedupe
+
+                if all_refs:
+                    add_line(f"      🔗 ALL REFERENCED SECTIONS ({len(all_refs)} total via REFS from base + subsections):")
+                    for ref in sorted(all_refs.values(), key=lambda x: x['number'] or ''):
+                        code_info = f" [from {ref.get('ref_code', 'same')}]" if ref.get('ref_code') != code_data['code_id'] else ""
+                        add_line(f"         → {ref['number']}: {ref['title'] or '(no title)'}{code_info}")
+                        if ref['paragraphs']:
+                            for para in ref['paragraphs']:  # Show ALL paragraphs
+                                add_line(f"            📝 {para}")
+                        else:
+                            add_line(f"            ⚠️ [no content]")
+
+            # Overall statistics
+            add_line(f"\n{'='*80}")
+            add_line("📊 DATA QUALITY STATISTICS:")
+
+            # Get comprehensive stats
+            stats_query = """
+            MATCH (c:Code {id: $code_id})-[:HAS_SECTION]->(s:Section)
+            WITH s
+            OPTIONAL MATCH (s)<-[:HAS_PARENT*]-(child:Section)
+            WITH s, collect(DISTINCT child) as children
+            OPTIONAL MATCH (s)-[:REFS*]->(ref:Section)
+            WITH s, children, collect(DISTINCT ref) as refs
+            UNWIND ([s] + children + refs) as all_sections
+            WITH DISTINCT all_sections as section
+            RETURN
+                count(section) as total_sections,
+                sum(CASE WHEN section.paragraphs IS NOT NULL AND size(section.paragraphs) > 0 THEN 1 ELSE 0 END) as has_paragraphs,
+                sum(CASE WHEN section.text IS NOT NULL AND section.text <> '' THEN 1 ELSE 0 END) as has_text,
+                sum(CASE WHEN (section.paragraphs IS NULL OR size(section.paragraphs) = 0)
+                         AND (section.text IS NULL OR section.text = '') THEN 1 ELSE 0 END) as no_content
+            """
+
+            stats = session.run(stats_query, code_id=code_id).single()
+
+            if stats:
+                total = stats['total_sections']
+                add_line(f"\n  Total sections (base + subsections + references): {total}")
+                add_line(f"  ✓ Sections with paragraphs: {stats['has_paragraphs']} ({stats['has_paragraphs']*100//total if total else 0}%)")
+                add_line(f"  ✓ Sections with text field: {stats['has_text']} ({stats['has_text']*100//total if total else 0}%)")
+                add_line(f"  ⚠️  Sections with no content: {stats['no_content']} ({stats['no_content']*100//total if total else 0}%)")
+
+            add_line(f"\n{'='*80}\n")
+
+        return "\n".join(output_lines)
     
     def get_all_code_types(self) -> List[Dict[str, Any]]:
         """Get all unique code types from the database."""
@@ -88,18 +246,14 @@ class CodeSectionAssembler:
     
 
     
-    def assemble_code_sections(self, code_info: Dict[str, Any], max_sections: Optional[int] = None) -> CodeAssembly:
+    def assemble_code_sections(self, code_info: Dict[str, Any]) -> CodeAssembly:
         """Assemble all sections for a given code type using efficient graph traversal.
 
         Args:
             code_info: Dictionary with code metadata
-            max_sections: If provided, stop after collecting this many sections (for debugging)
         """
         code_id = code_info['code_id']
         self.logger.info(f"Assembling sections for code: {code_id}")
-
-        if max_sections:
-            self.logger.info(f"Debug mode: Limiting to {max_sections} total sections")
 
         with self.driver.session() as session:
             # Get all direct sections first
@@ -118,11 +272,6 @@ class CodeSectionAssembler:
             # Get all subsections for each section
             section_keys = [s['key'] for s in all_sections_data]
             for section_key in section_keys:
-                # Check if we've hit the limit
-                if max_sections and len(all_sections_data) >= max_sections:
-                    self.logger.info(f"Reached max_sections limit ({max_sections}), stopping collection")
-                    break
-
                 subsection_query = """
                 MATCH (parent:Section {key: $section_key})<-[:HAS_PARENT*]-(child:Section)
                 RETURN child.key as key, child.code as code, child.code_type as code_type,
@@ -134,11 +283,9 @@ class CodeSectionAssembler:
                 result = session.run(subsection_query, section_key=section_key)
                 subsections = [dict(record) for record in result]
 
-                # Add unique subsections (respecting max_sections limit)
+                # Add unique subsections
                 existing_keys = {s['key'] for s in all_sections_data}
                 for subsection in subsections:
-                    if max_sections and len(all_sections_data) >= max_sections:
-                        break
                     if subsection['key'] not in existing_keys:
                         all_sections_data.append(subsection)
                         existing_keys.add(subsection['key'])
@@ -146,11 +293,6 @@ class CodeSectionAssembler:
             # Get all referenced sections
             all_keys = [s['key'] for s in all_sections_data]
             for section_key in all_keys:
-                # Check if we've hit the limit
-                if max_sections and len(all_sections_data) >= max_sections:
-                    self.logger.info(f"Reached max_sections limit ({max_sections}), stopping collection")
-                    break
-
                 ref_query = """
                 MATCH (s:Section {key: $section_key})-[:REFS*]->(ref:Section)
                 RETURN DISTINCT ref.key as key, ref.code as code, ref.code_type as code_type,
@@ -162,11 +304,9 @@ class CodeSectionAssembler:
                 result = session.run(ref_query, section_key=section_key)
                 references = [dict(record) for record in result]
 
-                # Add unique references (respecting max_sections limit)
+                # Add unique references
                 existing_keys = {s['key'] for s in all_sections_data}
                 for reference in references:
-                    if max_sections and len(all_sections_data) >= max_sections:
-                        break
                     if reference['key'] not in existing_keys:
                         all_sections_data.append(reference)
                         existing_keys.add(reference['key'])
@@ -210,332 +350,46 @@ class CodeSectionAssembler:
             referenced_sections=len(code_sections) - direct_count
         )
     
-    def assemble_all_codes(self, batch_size: int = 100) -> Generator[List[CodeAssembly], None, None]:
+    def assemble_all_codes(self, batch_size: int = 100, limit: Optional[int] = None) -> Generator[List[CodeAssembly], None, None]:
         """Generate batches of assembled code sections for all codes in the database.
-        
+
         Args:
             batch_size: Number of code assemblies to yield in each batch
-            
+            limit: Optional limit on total number of codes to process
+
         Yields:
             List[CodeAssembly]: Batches of assembled code sections
         """
         code_types = self.get_all_code_types()
         self.logger.info(f"Found {len(code_types)} code types to process")
-        
+
+        if limit:
+            code_types = code_types[:limit]
+            self.logger.info(f"Limited to processing {limit} codes")
+
         batch = []
-        
+
         for i, code_info in enumerate(code_types, 1):
             try:
                 self.logger.info(f"Processing code {i}/{len(code_types)}: {code_info['code_id']}")
                 assembly = self.assemble_code_sections(code_info)
                 batch.append(assembly)
-                
+
                 # Yield batch when it reaches the specified size
                 if len(batch) >= batch_size:
                     self.logger.info(f"Yielding batch of {len(batch)} assemblies")
                     yield batch
                     batch = []
-                    
+
             except Exception as e:
                 self.logger.error(f"Error processing code {code_info['code_id']}: {str(e)}")
                 continue
-        
+
         # Yield any remaining assemblies in the final batch
         if batch:
             self.logger.info(f"Yielding final batch of {len(batch)} assemblies")
             yield batch
 
-    def save_debug_html(self, assembly: CodeAssembly, output_path: str = "debug_sections.html"):
-        """Save debug output to an HTML file showing base sections and what they unnested."""
-
-        # Create HTML content
-        html_content = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unnested Sections Debug - {assembly.code_id}</title>
-    <style>
-        body {{
-            font-family: 'Courier New', monospace;
-            line-height: 1.4;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f0f0f0;
-        }}
-        .base-section {{
-            background: #2196F3;
-            color: white;
-            padding: 20px;
-            margin: 20px 0;
-            border-radius: 8px;
-        }}
-        .base-section h2 {{
-            margin: 0 0 10px 0;
-            font-size: 24px;
-            color: white;
-        }}
-        .base-section .section-content {{
-            background: #1976D2;
-            color: white;
-        }}
-        .base-section .paragraphs {{
-            background: #1565C0;
-            color: white;
-        }}
-        .base-section .paragraph-item {{
-            background: #1976D2;
-            color: white;
-            border-left: 3px solid white;
-        }}
-        .base-section .label {{
-            color: #B3E5FC;
-        }}
-        .unnested-section {{
-            background: white;
-            padding: 20px;
-            margin: 10px 0 10px 40px;
-            border-left: 4px solid #FF9800;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .section-content {{
-            background: #f8f8f8;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 4px;
-            white-space: pre-wrap;
-            font-size: 14px;
-        }}
-        .paragraphs {{
-            background: #fff3e0;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 4px;
-        }}
-        .paragraph-item {{
-            margin: 5px 0;
-            padding: 5px;
-            background: white;
-            border-left: 3px solid #FF9800;
-        }}
-        h3 {{
-            color: #333;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 5px;
-        }}
-        .section-number {{
-            font-weight: bold;
-            color: #FF5722;
-        }}
-        .label {{
-            font-weight: bold;
-            color: #666;
-            display: inline-block;
-            width: 100px;
-        }}
-    </style>
-</head>
-<body>
-    <h1>📋 Unnested Sections Debug Output</h1>
-    <div style="background: #333; color: white; padding: 15px; border-radius: 8px; margin: 20px 0;">
-        <h2 style="color: white; margin: 0;">Code Information:</h2>
-        <p style="margin: 10px 0;"><strong>Code ID:</strong> {assembly.code_id}</p>
-        <p style="margin: 10px 0;"><strong>Provider:</strong> {assembly.provider}</p>
-        <p style="margin: 10px 0;"><strong>Version:</strong> {assembly.version}</p>
-        <p style="margin: 10px 0;"><strong>Jurisdiction:</strong> {assembly.jurisdiction or 'N/A'}</p>
-        <p style="margin: 10px 0;"><strong>Source ID:</strong> {assembly.source_id}</p>
-        <p style="margin: 10px 0;"><strong>Title:</strong> {assembly.title}</p>
-        <p style="margin: 10px 0;"><strong>Total sections assembled:</strong> {len(assembly.sections)}</p>
-    </div>
-"""
-
-        # First, show sections WITH content to verify the data
-        sections_with_content = [s for s in assembly.sections if s.paragraphs and len(s.paragraphs) > 0]
-
-        if sections_with_content:
-            html_content += f"""
-    <div style="background: #e3f2fd; padding: 20px; margin: 20px; border-radius: 8px;">
-        <h2>📝 Found {len(sections_with_content)} sections WITH paragraph content!</h2>
-        <p>Here are the first 5 sections that actually have legal text in their paragraphs:</p>
-    </div>
-"""
-            for section in sections_with_content[:5]:
-                html_content += f"""
-    <div class="unnested-section" style="border: 2px solid #4CAF50;">
-        <h3 style="color: #4CAF50;">✓ Section {section.number} - HAS CONTENT</h3>
-        <div style="background: #f0f0f0; padding: 10px; margin: 10px 0; font-size: 12px;">
-            <strong>Section Metadata:</strong><br>
-            Code: {section.code} | Provider: {section.code_type} | Edition: {section.edition} |
-            Jurisdiction: {section.jurisdiction} | Source: {section.source_id}<br>
-            Full Key: {section.key}
-        </div>
-        <div><span class="label">Title:</span> {section.title or '(no title)'}</div>
-        <div class="section-content">
-            <strong>TEXT FIELD:</strong>
-{section.text or '(empty text field)'}
-        </div>
-        <div class="paragraphs" style="background: #c8e6c9;">
-            <strong>PARAGRAPHS - ACTUAL LEGAL CONTENT ({len(section.paragraphs)} paragraphs):</strong>
-"""
-                for i, para in enumerate(section.paragraphs, 1):
-                    html_content += f"""            <div class="paragraph-item" style="background: white; margin: 5px 0; padding: 10px;">[Paragraph {i}]: {para}</div>
-"""
-                html_content += """        </div>
-    </div>
-"""
-
-        html_content += """
-    <hr style="margin: 40px 0; border: 2px solid #333;">
-    <h2>🔍 Parent-Child Relationships (Unnesting Verification)</h2>
-"""
-
-        # Find sections that actually have children (i.e., were parents that got unnested)
-        parent_sections = []
-        for section in assembly.sections:
-            # Check if this section has any children in the assembly
-            if section.number:
-                potential_children = [s for s in assembly.sections
-                                    if s.number and s.number.startswith(section.number + ".")]
-                if potential_children:  # This section has children that were unnested
-                    parent_sections.append((section, potential_children))
-
-        # Sort by section number and take first 5 parent sections
-        parent_sections.sort(key=lambda x: x[0].number)
-
-        if not parent_sections:
-            html_content += """
-    <div style="background: #ffebee; padding: 20px; margin: 20px; border-radius: 8px; border-left: 4px solid #f44336;">
-        <h2 style="color: #c62828;">No Parent-Child Relationships Found</h2>
-        <p>The first 20 sections don't appear to have subsections. This could mean:</p>
-        <ul>
-            <li>The sections are all at the same level (no hierarchy)</li>
-            <li>The subsections are beyond the 20-section limit in debug mode</li>
-            <li>The references are cross-references, not parent-child relationships</li>
-        </ul>
-        <p>Here are the first 10 sections in the flattened list:</p>
-    </div>
-"""
-            # Just show the first 10 sections as-is
-            for section in assembly.sections[:10]:
-                html_content += f"""
-    <div class="unnested-section">
-        <h3>Section {section.number}</h3>
-        <div style="background: #f0f0f0; padding: 10px; margin: 10px 0; font-size: 12px;">
-            <strong>From Code:</strong> {section.code} | {section.edition} | {section.jurisdiction}<br>
-            <strong>Source:</strong> {section.source_id} | <strong>Type:</strong> {section.item_type}<br>
-            <strong>Key:</strong> {section.key}
-        </div>
-        <div><span class="label">Title:</span> {section.title or '(no title)'}</div>
-        <div class="section-content">
-            <strong>TEXT FIELD:</strong>
-{section.text or '(empty text field)'}
-        </div>
-        <div class="paragraphs">
-            <strong>PARAGRAPHS FIELD ({len(section.paragraphs or [])} items) - THIS IS THE ACTUAL CONTENT:</strong>
-"""
-                if section.paragraphs:
-                    for i, para in enumerate(section.paragraphs, 1):  # Show ALL paragraphs
-                        html_content += f"""            <div class="paragraph-item">[Paragraph {i}]: {para}</div>
-"""
-                else:
-                    html_content += """            <div class="paragraph-item" style="color: red;">(NO PARAGRAPHS - This section has no content!)</div>
-"""
-                html_content += """        </div>
-    </div>
-"""
-        else:
-            # Show parent sections and their unnested children
-            for parent, children in parent_sections[:5]:  # Show first 5 parent sections
-                html_content += f"""
-    <div class="base-section">
-        <h2>PARENT SECTION: {parent.number}</h2>
-        <div style="background: rgba(255, 255, 255, 0.2); padding: 10px; margin: 10px 0; font-size: 12px;">
-            <strong>From Code:</strong> {parent.code} | {parent.edition} | {parent.jurisdiction}<br>
-            <strong>Key:</strong> {parent.key}
-        </div>
-        <div><span class="label">Title:</span> {parent.title or '(no title)'}</div>
-        <div><span class="label">Type:</span> {parent.item_type}</div>
-        <div class="section-content">
-            <strong>TEXT FIELD (usually just the header):</strong>
-{parent.text or '(empty text field)'}
-        </div>
-        <div class="paragraphs">
-            <strong>PARAGRAPHS FIELD - THE ACTUAL LEGAL TEXT ({len(parent.paragraphs or [])} items):</strong>
-"""
-                if parent.paragraphs:
-                    for i, para in enumerate(parent.paragraphs, 1):  # Show ALL paragraphs to see content
-                        html_content += f"""            <div class="paragraph-item">[Paragraph {i}]: {para}</div>
-"""
-                else:
-                    html_content += """            <div class="paragraph-item" style="color: red; font-weight: bold;">(NO PARAGRAPHS - This section appears to have no content!)</div>
-"""
-                html_content += """        </div>
-    </div>
-
-    <!-- Now show the unnested children that came from this parent section -->
-"""
-
-                html_content += f"""    <div style="margin-left: 20px; color: #666; font-weight: bold;">↓ This parent section unnested into {len(children)} individual sections:</div>
-"""
-                for child in children[:10]:  # Show first 10 children
-                    html_content += f"""
-    <div class="unnested-section">
-        <h3>UNNESTED SECTION: {child.number}</h3>
-        <div style="background: #e0e0e0; padding: 8px; margin: 8px 0; font-size: 11px;">
-            <strong>From Code:</strong> {child.code} | {child.edition} | {child.jurisdiction}<br>
-            <strong>Key:</strong> {child.key}
-        </div>
-        <div><span class="label">Title:</span> {child.title or '(no title)'}</div>
-        <div><span class="label">Type:</span> {child.item_type}</div>
-        <div class="section-content">
-            <strong>TEXT FIELD:</strong>
-{child.text or '(empty text field)'}
-        </div>
-        <div class="paragraphs">
-            <strong>PARAGRAPHS FIELD - THE ACTUAL LEGAL TEXT ({len(child.paragraphs or [])} items):</strong>
-"""
-                    if child.paragraphs:
-                        for i, para in enumerate(child.paragraphs, 1):  # Show ALL paragraphs
-                            html_content += f"""            <div class="paragraph-item">[Paragraph {i}]: {para}</div>
-"""
-                    else:
-                        html_content += """            <div class="paragraph-item" style="color: red; font-weight: bold;">(NO PARAGRAPHS - This child section has no content!)</div>
-"""
-                    html_content += """        </div>
-    </div>
-"""
-                if len(children) > 10:
-                    html_content += f"""    <div style="margin: 20px 40px; padding: 10px; background: #ffe0b2; border-radius: 4px;">
-        ... and {len(children) - 10} more unnested sections from {parent.number}
-    </div>
-"""
-
-                html_content += """    <hr style="margin: 40px 0; border: 1px solid #ddd;">
-"""
-
-        # Add summary
-        html_content += f"""
-    <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin-top: 40px;">
-        <h2>Summary</h2>
-        <p><strong>Total sections after unnesting:</strong> {assembly.total_sections}</p>
-        <p><strong>What happened:</strong> The graph database had nested sections (parent-child relationships).
-        The unnesting process flattened these into individual sections. Each section above (base and unnested)
-        will be processed separately by the analyzer.</p>
-        <p><strong>Key point:</strong> Section 206.2.1 is NOT inside Section 206 anymore - it's its own separate item in the list.</p>
-    </div>
-</body>
-</html>
-"""
-
-        # Write HTML file
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        print(f"\n📄 Debug HTML saved to: {output_path}")
-        print(f"   Open this file in a browser to see base sections and their unnested children")
 
 
 def main():
@@ -545,33 +399,19 @@ def main():
 
     # Set up command line arguments
     parser = argparse.ArgumentParser(description='Assemble code sections from Neo4j database')
-    parser.add_argument('--debug', action='store_true', default=True,
-                        help='Enable debug mode (default: True)')
-    parser.add_argument('--no-debug', dest='debug', action='store_false',
-                        help='Disable debug mode')
-    parser.add_argument('--max-codes', type=int, default=2,
-                        help='Maximum code types to process in debug mode (default: 2)')
-    parser.add_argument('--max-sections-preview', type=int, default=5,
-                        help='Maximum sections to preview in debug mode (default: 5)')
-    parser.add_argument('--max-total-sections', type=int, default=20,
-                        help='Maximum total sections to assemble in debug mode (default: 20)')
+    parser.add_argument('--batch-size', type=int, default=100,
+                        help='Number of code assemblies per batch (default: 100)')
+    parser.add_argument('--limit', type=int, default=None,
+                        help='Limit number of codes to process (for testing)')
+    parser.add_argument('--debug', action='store_true',
+                        help='Show detailed debug output for data quality inspection')
 
     args = parser.parse_args()
-    debug_mode = args.debug
-    max_codes = args.max_codes
-    max_sections_preview = args.max_sections_preview
-    max_total_sections = args.max_total_sections
+    batch_size = args.batch_size
+    limit = args.limit
+    debug = args.debug
 
-    # Keep INFO level logging - debug mode is about data preview, not log verbosity
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-
-    if debug_mode:
-        print("🔍 DEBUG MODE ENABLED")
-        print(f"   - Will process only {max_codes} code types")
-        print(f"   - Will assemble max {max_total_sections} total sections per code")
-        print(f"   - Will show first {max_sections_preview} sections for preview")
-        print(f"   - To disable debug mode, use --no-debug")
-        print()
 
     # Get Neo4j credentials from environment variables
     neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -584,88 +424,49 @@ def main():
     assembler = CodeSectionAssembler(neo4j_uri, username, password)
 
     try:
-        code_types = assembler.get_all_code_types()
+        if debug:
+            # Debug mode - show detailed information
+            code_types = assembler.get_all_code_types()
+            if limit:
+                code_types = code_types[:limit]
 
-        if debug_mode:
-            print(f"\nFound {len(code_types)} code types in database")
-            print(f"Processing first {min(max_codes, len(code_types))} codes...")
-            codes_to_process = code_types[:max_codes]
-        else:
-            codes_to_process = code_types
+            print(f"\n🔍 DEBUG MODE - Analyzing {len(code_types)} code(s)")
 
-        # Process codes individually or in batches
-        if debug_mode:
-            for i, code_info in enumerate(codes_to_process, 1):
-                print(f"\n{'='*60}")
-                print(f"Processing code {i}/{len(codes_to_process)}: {code_info['code_id']}")
-                print(f"  Provider: {code_info['provider']}")
-                print(f"  Version: {code_info['version']}")
-                print(f"  Jurisdiction: {code_info['jurisdiction']}")
+            # Create output filename with timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = f"code_sections_debug_{timestamp}.txt"
 
-                # Pass max_sections limit in debug mode
-                assembly = assembler.assemble_code_sections(
-                    code_info,
-                    max_sections=max_total_sections if debug_mode else None
-                )
+            all_debug_output = []
+            all_debug_output.append(f"Code Sections Debug Report - {timestamp}")
+            all_debug_output.append(f"Analyzing {len(code_types)} code(s)\n")
 
-                print(f"\nAssembly Summary:")
-                print(f"  Total sections: {assembly.total_sections}")
-                print(f"  Direct sections: {assembly.total_sections - assembly.referenced_sections}")
-                print(f"  Referenced/subsections: {assembly.referenced_sections}")
+            for code_info in code_types:
+                # Show debug information and capture output
+                debug_output = assembler.debug_code_retrieval(code_info)
+                all_debug_output.append(debug_output)
 
-                # Show hierarchical structure to verify unnesting
-                print(f"\n🔍 UNNESTING VERIFICATION - Showing parent → children relationships:")
-                print("-" * 60)
+                # Also show what the actual assembly would look like
+                print(f"\n⚙️  Assembling all sections for {code_info['code_id']}...")
+                assembly = assembler.assemble_code_sections(code_info)
 
-                # Group sections by their number prefix to show family relationships
-                section_families = {}
-                for section in assembly.sections:
-                    # Get the main section number (e.g., "206" from "206.2.1")
-                    main_num = section.number.split('.')[0] if section.number else "unknown"
-                    if main_num not in section_families:
-                        section_families[main_num] = []
-                    section_families[main_num].append(section)
+                assembly_summary = f"\n⚙️  Assembly for {code_info['code_id']}:"
+                assembly_summary += f"\n   ✓ Assembly complete: {assembly.total_sections} total sections"
+                assembly_summary += f"\n     - Direct sections: {assembly.total_sections - assembly.referenced_sections}"
+                assembly_summary += f"\n     - Referenced/subsections: {assembly.referenced_sections}"
 
-                # Show first few families to demonstrate unnesting
-                families_to_show = 3
-                shown_families = 0
-                for main_num, family_sections in sorted(section_families.items())[:20]:  # Check first 20
-                    if len(family_sections) > 1:  # Only show families with children
-                        if shown_families >= families_to_show:
-                            break
-                        print(f"\nSection Family {main_num}:")
-                        # Sort by section number to show hierarchy
-                        family_sections_sorted = sorted(family_sections, key=lambda s: s.number if s.number else "")
-                        for section in family_sections_sorted[:8]:  # Show up to 8 members
-                            indent = "  " * (section.number.count('.') if section.number else 0)
-                            print(f"  {indent}→ {section.number}: {section.title[:50] if section.title else '(no title)'}")
-                        if len(family_sections) > 8:
-                            print(f"    ... and {len(family_sections) - 8} more in this family")
-                        shown_families += 1
+                print(assembly_summary)
+                all_debug_output.append(assembly_summary)
 
-                print(f"\n📊 Section Distribution:")
-                print(f"  Total section families: {len(section_families)}")
-                print(f"  Families with multiple sections: {sum(1 for f in section_families.values() if len(f) > 1)}")
-                print(f"  Largest family size: {max(len(f) for f in section_families.values()) if section_families else 0}")
+            # Save to file
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write("\n".join(all_debug_output))
 
-                # Show some individual sections in detail
-                print(f"\n📄 Individual Section Details (showing {min(max_sections_preview, len(assembly.sections))}):")
-                for j, section in enumerate(assembly.sections[:max_sections_preview], 1):
-                    print(f"\n  [{j}] Section {section.number}")
-                    print(f"      Key: {section.key[:50]}...")  # Show the unique key
-                    print(f"      Title: {section.title}")
-                    print(f"      Type: {section.item_type}")
-                    print(f"      Text preview: {section.text[:150]}..." if len(section.text) > 150 else f"      Text: {section.text}")
+            print(f"\n📄 Debug output saved to: {output_file}")
 
-                if len(assembly.sections) > max_sections_preview:
-                    print(f"\n  ... and {len(assembly.sections) - max_sections_preview} more sections")
-
-                # Save debug HTML
-                html_filename = f"debug_sections_{code_info['code_id'].replace(':', '_').replace('+', '_')}.html"
-                assembler.save_debug_html(assembly, html_filename)
         else:
             # Normal batch processing
-            for batch_num, batch in enumerate(assembler.assemble_all_codes(batch_size=100), 1):
+            for batch_num, batch in enumerate(assembler.assemble_all_codes(batch_size=batch_size, limit=limit), 1):
                 print(f"\nProcessing batch {batch_num} with {len(batch)} code assemblies:")
 
                 for assembly in batch:
@@ -673,11 +474,9 @@ def main():
                           f"({assembly.referenced_sections} referenced)")
 
                     # Here you can process each assembly as needed
-                    # For example, run your python code against each section:
-                    for section in assembly.sections:
-                        # Your processing logic here
-                        # process_section(section)
-                        pass
+                    # For example, run your code applicability analyzer against each section:
+                    # for section in assembly.sections:
+                    #     process_section(section)
 
                 print(f"Batch {batch_num} processing complete.")
 

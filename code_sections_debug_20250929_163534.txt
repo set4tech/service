@@ -1,0 +1,215 @@
+Code Sections Debug Report - 20250929_163534
+Analyzing 2 code(s)
+
+
+================================================================================
+📚 CODE: ADA+ADA2010+2010+US
+   Provider: ADA
+   Version: 2010
+   Jurisdiction: US
+   Title: 2010 ADA Standards for Accessible Design
+--------------------------------------------------------------------------------
+
+🔷 BASE SECTIONS (directly attached to code):
+Found 0 total base sections (showing first 0)
+
+================================================================================
+📊 DATA QUALITY STATISTICS:
+
+  Total sections (base + subsections + references): 0
+  ✓ Sections with paragraphs: 0 (0%)
+  ✓ Sections with text field: 0 (0%)
+  ⚠️  Sections with no content: 0 (0%)
+
+================================================================================
+
+
+⚙️  Assembly for ADA+ADA2010+2010+US:
+   ✓ Assembly complete: 0 total sections
+     - Direct sections: 0
+     - Referenced/subsections: 0
+
+================================================================================
+📚 CODE: ICC+CBC_Chapter11A_11B+2025+CA
+   Provider: ICC
+   Version: 2025
+   Jurisdiction: CA
+   Title: California Building Code - Chapters 11A & 11B Accessibility
+--------------------------------------------------------------------------------
+
+🔷 BASE SECTIONS (directly attached to code):
+Found 130 total base sections (showing first 20)
+
+  [1] BASE: 11B-1001
+      Title: Scope.
+      Type: section
+      ✓ Content: Text field (24 chars)
+      Preview: Section 11B-1001: Scope.
+      📁 SUBSECTIONS (1 via HAS_PARENT):
+         → 11B-1001.1: Scope. [1 paragraphs]
+
+  [2] BASE: 11B-1002
+      Title: Transfer height.
+      Type: section
+      ✓ Content: Text field (34 chars)
+      Preview: Section 11B-1002: Transfer height.
+      📁 SUBSECTIONS (6 via HAS_PARENT):
+         → 11B-1002.1: General. [1 paragraphs]
+         → 11B-1002.2: Accessible routes. [4 paragraphs]
+         → 11B-1002.3: Load and unload areas. [1 paragraphs]
+         → 11B-1002.4: Shoulder-to-shoulder seating. [2 paragraphs]
+         → 11B-1002.5: Wheelchair storage space. [1 paragraphs]
+         → 11B-1002.6: Wheelchair storage space. [1 paragraphs]
+
+  [3] BASE: 11B-1003
+      Title: Boarding pier clearances.
+      Type: section
+      ✓ Content: Text field (43 chars)
+      Preview: Section 11B-1003: Boarding pier clearances.
+      📁 SUBSECTIONS (3 via HAS_PARENT):
+         → 11B-1003.1: General. [1 paragraphs]
+         → 11B-1003.2: Boarding piers at boat launch ramps. [5 paragraphs]
+         → 11B-1003.3: Boarding pier clearances. [10 paragraphs]
+
+  [4] BASE: 11B-1004
+      Title: EXERCISE MACHINES AND EQUIPMENT
+      Type: sect 
+      Preview: Section 11B-1007: Golf club reach range area.
+      📁 SUBSECTIONS (3 via HAS_PARENT):
+         → 11B-1007.1: General. [1 paragraphs]
+         → 11B-1007.2: Accessible routes. [9 paragraphs]
+         → 11B-1007.3: Golf club reach range area. [3 paragraphs]
+
+  [8] BASE: 11B-1008
+      Title: Transfer supports.
+      Type: section
+      ✓ Content: Text field (36 chars)
+      Preview: Section 11B-1008: Transfer supports.
+      📁 SUBSECTIONS (4 via HAS_PARENT):
+         → 11B-1008.1: General. [1 paragraphs]
+         → 11B-1008.2: Use zones. [1 paragraphs]
+         → 11B-1008.3: Contrasting stripe. [1 paragraphs]
+         → 11B-1008.4: Transfer supports. [1 paragraphs]
+
+  [9] BASE: 11B-1009
+      Title: Size.
+      Type: section
+      ✓ Content: Text field (23 chars)
+      Preview: Section 11B-1009: Size.
+      📁 SUBSECTIONS (6 via HAS_PARENT):
+         → 11B-1009.1: General. [1 paragraphs]
+         → 11B-1009.2: Lifting capacity. [1 paragraphs]
+         → 11B-1009.3: Handrails. [7 paragraphs]
+         → 11B-1009.4: Grab bars. [4 paragraphs]
+         → 11B-1009.5: Grab bars. [4 paragraphs]
+         → 11B-1009.6: Handrails. [1 paragraphs]
+
+  [10] BASE: 11B-101
+      Title: Reserved.
+      Type: section
+      ✓ Content: Text field (26 chars)
+      Preview: Section 11B-101: Reserved.
+      📁 SUBSECTIONS (2 via HAS_PARENT):
+         → 11B-101.1: General. [1 paragraphs]
+         → 11B-101.2: Reserved. [no content]
+
+  [11] BASE: 11B-1010
+      Title: Turning space.
+      Type: section
+      ✓ Content: Text field (32 chars)
+      Preview: Section 11B-1010: Turning space.
+      📁 SUBSECTIONS (1 via HAS_PARENT):
+         → 11B-1010.1: Turning space. [1 paragraphs]
+
+  [12] BASE: 11B-102
+      Title: Dimensions for adults and children.
+      Type: section
+      ✓ Content: Text field (52 chars)
+      Preview: Section 11B-102: Dimensions for adults and children.
+
+  [13] BASE: 11B-103
+      Title: Equivalent facilitation.
+      Type: section
+      ✓ Content: Text field (41 chars)
+      Preview: Section 11B-103: Equivalent facilitation.
+
+  [14] BASE: 11B-104
+      Title: Figures.
+      Type: section
+      ✓ Content: Text field (25 chars)
+      Preview: Section 11B-104: Figures.
+      📁 SUBSECTIONS (3 via HAS_PARENT):
+         → 11B-104.1: Construction and manufacturing tolerances. [1 paragraphs]
+         → 11B-104.2: Calculation of percentages. [1 paragraphs]
+         → 11B-104.3: Figures. [1 paragraphs]
+
+  [15] BASE: 11B-105
+      Title: General.
+      Type: section
+      ✓ Content: Text field (25 chars)
+      Preview: Section 11B-105: General.
+      📁 SUBSECTIONS (1 via HAS_PARENT):
+         → 11B-105.1: General. [1 paragraphs]
+
+  [16] BASE: 11B-106
+      Title: Defined terms.The following terms are defined in Chapter 2, Section 202.ACCESS AISLEACCESSIBILITYACCESSIBILITY FUNCTION BUTTONACCESSIBLEACCESSIBLE ELEMENTACCESSIBLE MEANS OF EGRESSACCESSIBLE ROUTEACCESSIBLE SPACEADAPTABLEADDITIONADJUSTED CONSTRUCTION COSTADMINISTRATIVE AUTHORITYADULT CHANGING FACILITYAISLEALTERATIONAMUSEMENT ATTRACTIONAMUSEMENT RIDEAMUSEMENT RIDE SEATANSIAPPROVEDAPPROVED TESTING AGENCYAREA OF REFUGEAREA OF SPORT ACTIVITYASSEMBLY AREAASSISTIVE LISTENING SYSTEM (ALS)AUTOMATIC DOORAUTOMATIC TELLER MACHINE (ATM)BATHROOMBLENDED TRANSITIONBOARDING PIERBOAT LAUNCH RAMPBOAT SLIPBOTTLE FILLING STATIONBUILDINGBUILDING OFFICIALCATCH POOLCCRCHARACTERSCHILDREN’S USECIRCULATION PATHCLEARCLEAR FLOOR SPACECLOSED-CIRCUIT TELEPHONECOMMERCIAL FACILITIESCOMMERCIAL PLACE OF PUBLIC AMUSEMENTCOMMON USECOMPLY WITHCROSS SLOPECURB CUTCURB RAMPDESIGNATED PUBLIC TRANSPORTATIONDESIGNATED-ORIENTED ELEVATORDETECTABLE WARNINGDIRECTIONAL SIGNDISABILITYDISTRICT AGRICULTURAL ASSOCIATIONSDORMITORYDRIVE AISLEDRIVE-UP ELECTRIC VEHICLE CHARGING STATIONDRIVEWAYELECTRIC VEHICLE (EV)ELECTRIC VEHICLE (EV) CHARGERELECTRIC VEHICLE CHARGING SPACE (EV SPACE)ELECTRIC VEHICLE CHARGING STATION (EVCS)ELECTRIC VEHICLE (EV) CONNECTORELEMENTELEVATED PLAY COMPONENTELEVATOR, PASSENGEREMPLOYEE WORK AREAENFORCING AGENCYENTRANCEEQUIVALENT FACILITATIONEXISTING BUILDING OR FACILITYEXITFACILITYFUNCTIONAL AREAGANGWAYGOLF CAR PASSAGEGRAB BARGRADE (ADJACENT GROUND ELEVATION)GRADE BREAKGROUND FLOORGROUND LEVEL PLAY COMPONENTGUARDHALL CALL CONSOLEHANDRAILHEALTH CARE PROVIDERHISTORIC BUILDINGSHOUSING AT A PLACE OF EDUCATIONIF, IF . . . THENINTERNATIONAL SYMBOL OF ACCESSIBILITYKEY STATIONKICK PLATEKITCHEN OR KITCHENETTELAVATORYMAIL BOXESMARKED CROSSINGMAYMEZZANINEMULTI-BEDROOM HOUSING UNITNFPANOSINGOCCUPANT LOADOCCUPIABLE SPACEOPEN RISEROPERABLE PARTPASSENGER ELEVATORPATH OF TRAVELPEDESTRIANPEDESTRIAN WAYPERMANENTPERMITPICTOGRAMPLACE OF PUBLIC ACCOMMODATIONPLATFORMPLATFORM (WHEELCHAIR) LIFTPLAY AREAPLAY COMPONENTPOINT-OF-SALE DEVICEPOWDER ROOMPOWER-ASSISTED DOORPRIVATE BUILDING OR FACILITYPROFESSIONAL OFFICE OF A HEALTH CARE PROVIDERPUBLIC BUILDING OR FACILITYPUBLIC ENTITYPUBLIC ENTRANCEPUBLIC HOUSINGPUBLIC USEPUBLIC-USE AREASPUBLIC WAYQUALIFIED HISTORIC BUILDING OR FACILITYRAMPREASONABLE PORTIONRECOMMENDREMODELINGREPAIRRESIDENTIAL DWELLING UNITRESTRICTED ENTRANCERISERRUNNING SLOPESELF-SERVICE STORAGESERVICE ENTRANCESHALLSHOPPING CENTER (OR SHOPPING MALL)SHOULDSIDEWALKSIGNSINKSITESLEEPING ACCOMMODATIONSSOFT CONTAINED PLAY STRUCTURESPACESPECIFIED PUBLIC TRANSPORTATIONSTAGESTAIRSTAIRWAYSTORYSTRUCTURAL FRAMESTRUCTURETACTILETACTILE SIGNTECHNICALLY INFEASIBLETEEING GROUNDTEMPORARYTEXT TELEPHONETRANSFER DEVICETRANSIENT LODGINGTRANSIT BOARDING PLATFORMTRANSITION PLATETTYUNREASONABLE HARDSHIPUSE ZONEVALUATION THRESHOLDVARIABLE MESSAGE SIGN (VMS)VARIABLE MESSAGE SIGN (VMS) CHARACTERSVEHICULAR WAYWALKWET BARWHEELCHAIRWHEELCHAIR SPACEWORKSTATIONWORK AREA EQUIPMENT
+      Type: section
+      ✓ Content: Text field (2972 chars)
+      Preview: Section 11B-106: Defined terms.The following terms are defined in Chapter 2, Section 202.ACCESS AISL...
+      📁 SUBSECTIONS (5 via HAS_PARENT):
+         → 11B-106.1: General. [1 paragraphs]
+         → 11B-106.2: Terms defined in referenced standards. [1 paragraphs]
+         → 11B-106.3: Undefined terms. [1 paragraphs]
+         → 11B-106.4: Interchangeability. [1 paragraphs]
+         → 11B-106.5: Defined terms. [183 paragraphs]
+
+  [17] BASE: 11B-107
+      Title: Special conditions appeals action.
+      Type: section
+      ✓ Content: Text field (51 chars)
+      Preview: Section 11B-107: Special conditions appeals action.
+
+  [18] BASE: 11B-108
+      Title: Maintenance of accessible features.
+      Type: section
+      ✓ Content: Text field (52 chars)
+      Preview: Section 11B-108: Maintenance of accessible features.
+
+  [19] BASE: 11B-201
+      Title: Temporary and permanent structures.
+      Type: section
+      ✓ Content: Text field (52 chars)
+      Preview: Section 11B-201: Temporary and permanent structures.
+      📁 SUBSECTIONS (4 via HAS_PARENT):
+         → 11B-201.1: Scope. [1 paragraphs]
+         → 11B-201.2: Application based on building or facility use. [1 paragraphs]
+         → 11B-201.3: Temporary and permanent structures. [1 paragraphs]
+         → 11B-201.4: Construction support facilities. [2 paragraphs]
+
+  [20] BASE: 11B-202
+      Title: Alterations to qualified historic buildings and facilities.
+      Type: section
+      ✓ Content: Text field (76 chars)
+      Preview: Section 11B-202: Alterations to qualified historic buildings and facilities.
+      📁 SUBSECTIONS (5 via HAS_PARENT):
+         → 11B-202.1: General. [1 paragraphs]
+         → 11B-202.2: Additions. [1 paragraphs]
+         → 11B-202.3: Alteration of single elements. [1 paragraphs]
+         → 11B-202.4: Path of travel requirements in alterations, additions and structural repairs. [64 paragraphs]
+         → 11B-202.5: Alterations to qualified historic buildings and facilities. [2 paragraphs]
+
+================================================================================
+📊 DATA QUALITY STATISTICS:
+
+  Total sections (base + subsections + references): 682
+  ✓ Sections with paragraphs: 550 (80%)
+  ✓ Sections with text field: 682 (100%)
+  ⚠️  Sections with no content: 0 (0%)
+
+================================================================================
+
+
+⚙️  Assembly for ICC+CBC_Chapter11A_11B+2025+CA:
+   ✓ Assembly complete: 682 total sections
+     - Direct sections: 130
+     - Referenced/subsections: 552

@@ -65,8 +65,12 @@ npm run lint
 
 ## Environment Variables Required
 
-See `.env.example` for required environment variables including:
+See `.envrc` for required environment variables including:
 - Supabase credentials
 - AWS S3 configuration
 - AI service API keys (OpenAI/Google)
 - Neo4j database credentials
+
+## Development
+
+Update files in place unless specifically told not to.

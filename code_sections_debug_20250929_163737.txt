@@ -1,0 +1,339 @@
+Code Sections Debug Report - 20250929_163737
+Analyzing 2 code(s)
+
+
+================================================================================
+📚 CODE: ADA+ADA2010+2010+US
+   Provider: ADA
+   Version: 2010
+   Jurisdiction: US
+   Title: 2010 ADA Standards for Accessible Design
+--------------------------------------------------------------------------------
+
+🔷 BASE SECTIONS (directly attached to code):
+Found 0 total base sections (showing first 0)
+
+================================================================================
+📊 DATA QUALITY STATISTICS:
+
+  Total sections (base + subsections + references): 0
+  ✓ Sections with paragraphs: 0 (0%)
+  ✓ Sections with text field: 0 (0%)
+  ⚠️  Sections with no content: 0 (0%)
+
+================================================================================
+
+
+⚙️  Assembly for ADA+ADA2010+2010+US:
+   ✓ Assembly complete: 0 total sections
+     - Direct sections: 0
+     - Referenced/subsections: 0
+
+================================================================================
+📚 CODE: ICC+CBC_Chapter11A_11B+2025+CA
+   Provider: ICC
+   Version: 2025
+   Jurisdiction: CA
+   Title: California Building Code - Chapters 11A & 11B Accessibility
+--------------------------------------------------------------------------------
+
+🔷 BASE SECTIONS (directly attached to code):
+Found 130 total base sections (showing first 20)
+
+  [1] BASE: 11B-1001
+      Title: Scope.
+      Type: section
+      ✓ Content: Text field (24 chars)
+      Preview: Section 11B-1001: Scope.
+      📁 SUBSECTIONS (1 via HAS_PARENT):
+         → 11B-1001.1: Scope.
+            📝 The provisions of Division 10 shall apply where required by Division 2 or where referenced by a requirement in this chapter.
+
+  [2] BASE: 11B-1002
+      Title: Transfer height.
+      Type: section
+      ✓ Content: Text field (34 chars)
+      Preview: Section 11B-1002: Transfer height.
+      📁 SUBSECTIONS (6 via HAS_PARENT):
+         → 11B-1002.1: General.
+            📝 Amusement rides shall comply with Section 11B-1002.
+         → 11B-1002.2: Accessible routes.
+            📝 Accessible routes serving amusement rides shall comply with Division 4.
+            📝 Exceptions:
+            📝 1. In load or unload areas and on amusement rides, where compliance with Section 11B-405.2 is not structurally or operationally feasible, ramp slope shall be permitted to be 1:8 maximum.
+            ... and 1 more paragraphs
+         → 11B-1002.3: Load and unload areas.
+            📝 A turning space complying with Sections 11B-304.2 and 11B-304.3 shall be provided in load and unload areas.
+         → 11B-1002.4: Shoulder-to-shoulder seating.
+            📝 Where an amusement ride provides shoulder-to-shoulder seating, companion seats shall be shoulder-to-shoulder with the adjacent wheelchair space.
+            📝 Exception: Where shoulder-to-shoulder companion seating is not operationally or structurally feasible, compliance with this requirement shall be required to the maximum extent practicable.
+         → 11B-1002.5: Wheelchair storage space.
+            📝 Wheelchair storage spaces complying with Section 11B-305 shall be provided in or adjacent to unload areas for each required amusement ride seat designed for transfer and shall not overlap any required...
+         → 11B-1002.6: Wheelchair storage space.
+            📝 Wheelchair storage spaces complying with Section 11B-305 shall be provided in or adjacent to unload areas for each required transfer device and shall not overlap any required means of egress or access...
+
+  [3] BASE: 11B-1003
+      Title: Boarding pier clearances.
+      Type: section
+      ✓ Content: Text field (43 chars)
+      Preview: Section 11B-1003: Boarding pier clearances.
+      📁 SUBSECTIONS (3 via HAS_PARENT):
+         → 11B-1003.1: General.
+            📝 Recreational boating facilities shall comply with Section 11B-1003.
+         → 11B-1003.2: Boarding piers at boat launch ramps.
+            📝 Accessible routes serving boarding piers at boat launch ramps shall be permitted to use the exceptions in Section 11B-1003.2.2.
+            📝 Exceptions:
+            📝 1. Accessible routes serving floating boarding piers shall be permitted to use Exceptions 1, 2, 5, 6, 7 and 8 in Section 11B-1003.2.1.
+            ... and 2 more paragraphs
+         → 11B-1003.3: Boarding pier clearances.
+            📝 Boarding piers at boat launch ramps shall provide clear pier space 60 inches (1524 mm) wide minimum and shall extend the full length of the boarding pier. Every 10 feet (3048 mm) maximum of linear pie...
+            📝 Exceptions:
+            📝 1. The clear pier space shall be permitted to be 36 inches (914 mm) wide minimum for a length of 24 inches (610 mm) maximum provided that multiple 36 inch (914 mm) wide segments are separated by segme...
+            ... and 7 more paragraphs
+
+  [4] BASE: 11B-1004
+      Title: EXERCISE MACHINES AND EQUIPMENT
+      Type: section
+      ✓ Content: Text field (49 chars)
+      Preview: Section 11B-1004: EXERCISE MACHINES AND EQUIPMENT
+      📁 SUBSECTIONS (1 via HAS_PARENT):
+         → 11B-1004.1: Clear floor space.
+            📝 Exercise machines and equipment shall have a clear floor space complying with Section 11B-305 positioned for transfer or for use by an individual seated in a wheelchair. Clear floor or ground spaces r...
+
+  [5] BASE: 11B-1005
+      Title: Extended ground or deck surface.
+      Type: section
+      ✓ Content: Text field (50 chars)
+      Preview: Section 11B-1005: Extended ground or deck surface.
+      📁 SUBSECTIONS (5 via HAS_PARENT):
+         → 11B-1005.1: Accessible routes.
+            📝 Accessible routes serving fishing piers and platforms, including gangways and floating piers, shall comply with Division 4.
+            📝 Exceptions:
+            📝 1. Accessible routes serving floating fishing piers and platforms shall be permitted to use Exceptions 1, 2, 5, 6, 7 and 8 in Section 11B-1003.2.1.
+            ... and 1 more paragraphs
+         → 11B-1005.2: Dispersion.
+            📝 Railings, guards or handrails required to comply with Section 11B-1005.2.1 shall be dispersed throughout the fishing pier or platform.
+         → 11B-1005.3: Extended ground or deck surface.
+            📝 The ground or deck surface shall extend 12 inches (305 mm) minimum beyond the inside face of the railing. Toe clearance shall be provided and shall be 30 inches (762 mm) wide minimum and 9 inches (229...
+            📝 FIGURE 11B-1005.3.2—
+            📝 EXTENDED GROUND OR DECK SURFACE AT FISHING PIERS AND PLATFORMS
+         → 11B-1005.4: Clear floor or ground space.
+            📝 At each location where there are railings, guards or handrails complying with Section 11B-1005.2.1, a clear floor or ground space complying with Section 11B-305 shall be provided. Where there are no r...
+         → 11B-1005.5: Turning space.
+            📝 At least one turning space complying with Section 11B-304.3 shall be provided on fishing piers and platforms.
+
+  [6] BASE: 11B-1006
+      Title: Weather shelters.
+      Type: section
+      ✓ Content: Text field (35 chars)
+      Preview: Section 11B-1006: Weather shelters.
+      📁 SUBSECTIONS (4 via HAS_PARENT):
+         → 11B-1006.1: General.
+            📝 Golf facilities shall comply with Section 11B-1006.
+         → 11B-1006.2: Accessible routes.
+            📝 Accessible routes serving teeing grounds, practice teeing grounds, putting greens, practice putting greens, teeing stations at driving ranges, course weather shelters, golf car rental areas, bag drop ...
+            📝 Exception: Handrails shall not be required on golf courses. Where handrails are provided on golf courses, the handrails shall not be required to comply with Section 11B-505.
+         → 11B-1006.3: Barriers.
+            📝 Where curbs or other constructed barriers prevent golf cars from entering a fairway, openings 60 inches (1524 mm) wide minimum shall be provided at intervals not to exceed 75 yards (69 m).
+         → 11B-1006.4: Weather shelters.
+            📝 A clear floor or ground space 60 inches (1524 mm) minimum by 96 inches (2438 mm) minimum shall be provided within weather shelters.
+
+  [7] BASE: 11B-1007
+      Title: Golf club reach range area.
+      Type: section
+      ✓ Content: Text field (45 chars)
+      Preview: Section 11B-1007: Golf club reach range area.
+      📁 SUBSECTIONS (3 via HAS_PARENT):
+         → 11B-1007.1: General.
+            📝 Miniature golf facilities shall comply with Section 11B-1007.
+         → 11B-1007.2: Accessible routes.
+            📝 Accessible routes serving holes on miniature golf courses shall comply with Division 4. Accessible routes located on playing surfaces of miniature golf holes shall be permitted to use the exceptions i...
+            📝 Exceptions:
+            📝 1. Playing surfaces shall not be required to comply with Section 11B-302.2.
+            ... and 6 more paragraphs
+         → 11B-1007.3: Golf club reach range area.
+            📝 All areas within holes where golf balls rest shall be within 36 inches (914 mm) maximum of a clear floor or ground space 36 inches (914 mm) wide minimum and 48 inches (1219 mm) long minimum having a r...
+            📝 FIGURE 11B-1007.3.2—
+            📝 GOLF CLUB REACH RANGE AREA
+
+  [8] BASE: 11B-1008
+      Title: Transfer supports.
+      Type: section
+      ✓ Content: Text field (36 chars)
+      Preview: Section 11B-1008: Transfer supports.
+      📁 SUBSECTIONS (4 via HAS_PARENT):
+         → 11B-1008.1: General.
+            📝 Play areas shall comply with Section 11B-1008.
+         → 11B-1008.2: Use zones.
+            📝 Ground surfaces located within use zones shall comply with ASTM F1292 (1999 edition or 2004 edition).
+         → 11B-1008.3: Contrasting stripe.
+            📝 Striping complying with Section 11B-504.4.1 shall be provided at each transfer step.
+         → 11B-1008.4: Transfer supports.
+            📝 Where play components require transfer to entry points or seats, at least one means of support for transferring shall be provided.
+
+  [9] BASE: 11B-1009
+      Title: Size.
+      Type: section
+      ✓ Content: Text field (23 chars)
+      Preview: Section 11B-1009: Size.
+      📁 SUBSECTIONS (6 via HAS_PARENT):
+         → 11B-1009.1: General.
+            📝 Where provided, pool lifts, sloped entries, transfer walls, transfer systems and pool stairs shall comply with Section 11B-1009.
+         → 11B-1009.2: Lifting capacity.
+            📝 Single person pool lifts shall have a weight capacity of 300 pounds (136 kg) minimum and be capable of sustaining a static load of at least one and a half times the rated load.
+         → 11B-1009.3: Handrails.
+            📝 At least two handrails complying with Section 11B-505 shall be provided on the sloped entry. The clear width between required handrails shall be 33 inches (838 mm) minimum and 38 inches (965 mm) maxim...
+            📝 Exceptions:
+            📝 1. Handrail extensions specified by Section 11B-505.10.1 shall not be required at the bottom landing serving a sloped entry.
+            ... and 4 more paragraphs
+         → 11B-1009.4: Grab bars.
+            📝 At least one grab bar complying with Section 11B-609 shall be provided on the transfer wall. Grab bars shall be perpendicular to the pool wall and shall extend the full depth of the transfer wall. The...
+            📝 Exception: Grab bars on transfer walls shall not be required to comply with Section 11B-609.4.
+            📝 FIGURE 11B-1009.4.5—
+            ... and 1 more paragraphs
+         → 11B-1009.5: Grab bars.
+            📝 At least one grab bar on each transfer step and the transfer platform or a continuous grab bar serving each transfer step and the transfer platform shall be provided. Where a grab bar is provided on e...
+            📝 Exception: Grab bars on transfer systems shall not be required to comply with Section 11B-609.4.
+            📝 FIGURE 11B-1009.5.7—
+            ... and 1 more paragraphs
+         → 11B-1009.6: Handrails.
+            📝 The width between handrails shall be 20 inches (508 mm) minimum and 24 inches (610 mm) maximum. Handrail extensions required by Section 11B-505.10.3 shall not be required on pool stairs.
+
+  [10] BASE: 11B-101
+      Title: Reserved.
+      Type: section
+      ✓ Content: Text field (26 chars)
+      Preview: Section 11B-101: Reserved.
+      📁 SUBSECTIONS (2 via HAS_PARENT):
+         → 11B-101.1: General.
+            📝 This chapter contains scoping and technical requirements for accessibility to sites, facilities, buildings and elements by individuals with disabilities. The requirements are to be applied during the ...
+         → 11B-101.2: Reserved.
+            ⚠️ [no content]
+
+  [11] BASE: 11B-1010
+      Title: Turning space.
+      Type: section
+      ✓ Content: Text field (32 chars)
+      Preview: Section 11B-1010: Turning space.
+      📁 SUBSECTIONS (1 via HAS_PARENT):
+         → 11B-1010.1: Turning space.
+            📝 A circular turning space 60 inches (1524 mm) diameter minimum with slopes not steeper than 1:48 shall be provided at shooting facilities with firing positions.
+
+  [12] BASE: 11B-102
+      Title: Dimensions for adults and children.
+      Type: section
+      ✓ Content: Text field (52 chars)
+      Preview: Section 11B-102: Dimensions for adults and children.
+
+  [13] BASE: 11B-103
+      Title: Equivalent facilitation.
+      Type: section
+      ✓ Content: Text field (41 chars)
+      Preview: Section 11B-103: Equivalent facilitation.
+
+  [14] BASE: 11B-104
+      Title: Figures.
+      Type: section
+      ✓ Content: Text field (25 chars)
+      Preview: Section 11B-104: Figures.
+      📁 SUBSECTIONS (3 via HAS_PARENT):
+         → 11B-104.1: Construction and manufacturing tolerances.
+            📝 All dimensions are subject to conventional industry tolerances except where the requirement is stated as a range with specific minimum and maximum end points.
+         → 11B-104.2: Calculation of percentages.
+            📝 Where the required number of elements or facilities to be provided is determined by calculations of ratios or percentages and remainders or fractions result, the next greater whole number of such elem...
+         → 11B-104.3: Figures.
+            📝 Unless specifically stated otherwise, figures are provided for informational purposes only.
+
+  [15] BASE: 11B-105
+      Title: General.
+      Type: section
+      ✓ Content: Text field (25 chars)
+      Preview: Section 11B-105: General.
+      📁 SUBSECTIONS (1 via HAS_PARENT):
+         → 11B-105.1: General.
+            📝 See Chapter 35.
+
+  [16] BASE: 11B-106
+      Title: Defined terms.The following terms are defined in Chapter 2, Section 202.ACCESS AISLEACCESSIBILITYACCESSIBILITY FUNCTION BUTTONACCESSIBLEACCESSIBLE ELEMENTACCESSIBLE MEANS OF EGRESSACCESSIBLE ROUTEACCESSIBLE SPACEADAPTABLEADDITIONADJUSTED CONSTRUCTION COSTADMINISTRATIVE AUTHORITYADULT CHANGING FACILITYAISLEALTERATIONAMUSEMENT ATTRACTIONAMUSEMENT RIDEAMUSEMENT RIDE SEATANSIAPPROVEDAPPROVED TESTING AGENCYAREA OF REFUGEAREA OF SPORT ACTIVITYASSEMBLY AREAASSISTIVE LISTENING SYSTEM (ALS)AUTOMATIC DOORAUTOMATIC TELLER MACHINE (ATM)BATHROOMBLENDED TRANSITIONBOARDING PIERBOAT LAUNCH RAMPBOAT SLIPBOTTLE FILLING STATIONBUILDINGBUILDING OFFICIALCATCH POOLCCRCHARACTERSCHILDREN’S USECIRCULATION PATHCLEARCLEAR FLOOR SPACECLOSED-CIRCUIT TELEPHONECOMMERCIAL FACILITIESCOMMERCIAL PLACE OF PUBLIC AMUSEMENTCOMMON USECOMPLY WITHCROSS SLOPECURB CUTCURB RAMPDESIGNATED PUBLIC TRANSPORTATIONDESIGNATED-ORIENTED ELEVATORDETECTABLE WARNINGDIRECTIONAL SIGNDISABILITYDISTRICT AGRICULTURAL ASSOCIATIONSDORMITORYDRIVE AISLEDRIVE-UP ELECTRIC VEHICLE CHARGING STATIONDRIVEWAYELECTRIC VEHICLE (EV)ELECTRIC VEHICLE (EV) CHARGERELECTRIC VEHICLE CHARGING SPACE (EV SPACE)ELECTRIC VEHICLE CHARGING STATION (EVCS)ELECTRIC VEHICLE (EV) CONNECTORELEMENTELEVATED PLAY COMPONENTELEVATOR, PASSENGEREMPLOYEE WORK AREAENFORCING AGENCYENTRANCEEQUIVALENT FACILITATIONEXISTING BUILDING OR FACILITYEXITFACILITYFUNCTIONAL AREAGANGWAYGOLF CAR PASSAGEGRAB BARGRADE (ADJACENT GROUND ELEVATION)GRADE BREAKGROUND FLOORGROUND LEVEL PLAY COMPONENTGUARDHALL CALL CONSOLEHANDRAILHEALTH CARE PROVIDERHISTORIC BUILDINGSHOUSING AT A PLACE OF EDUCATIONIF, IF . . . THENINTERNATIONAL SYMBOL OF ACCESSIBILITYKEY STATIONKICK PLATEKITCHEN OR KITCHENETTELAVATORYMAIL BOXESMARKED CROSSINGMAYMEZZANINEMULTI-BEDROOM HOUSING UNITNFPANOSINGOCCUPANT LOADOCCUPIABLE SPACEOPEN RISEROPERABLE PARTPASSENGER ELEVATORPATH OF TRAVELPEDESTRIANPEDESTRIAN WAYPERMANENTPERMITPICTOGRAMPLACE OF PUBLIC ACCOMMODATIONPLATFORMPLATFORM (WHEELCHAIR) LIFTPLAY AREAPLAY COMPONENTPOINT-OF-SALE DEVICEPOWDER ROOMPOWER-ASSISTED DOORPRIVATE BUILDING OR FACILITYPROFESSIONAL OFFICE OF A HEALTH CARE PROVIDERPUBLIC BUILDING OR FACILITYPUBLIC ENTITYPUBLIC ENTRANCEPUBLIC HOUSINGPUBLIC USEPUBLIC-USE AREASPUBLIC WAYQUALIFIED HISTORIC BUILDING OR FACILITYRAMPREASONABLE PORTIONRECOMMENDREMODELINGREPAIRRESIDENTIAL DWELLING UNITRESTRICTED ENTRANCERISERRUNNING SLOPESELF-SERVICE STORAGESERVICE ENTRANCESHALLSHOPPING CENTER (OR SHOPPING MALL)SHOULDSIDEWALKSIGNSINKSITESLEEPING ACCOMMODATIONSSOFT CONTAINED PLAY STRUCTURESPACESPECIFIED PUBLIC TRANSPORTATIONSTAGESTAIRSTAIRWAYSTORYSTRUCTURAL FRAMESTRUCTURETACTILETACTILE SIGNTECHNICALLY INFEASIBLETEEING GROUNDTEMPORARYTEXT TELEPHONETRANSFER DEVICETRANSIENT LODGINGTRANSIT BOARDING PLATFORMTRANSITION PLATETTYUNREASONABLE HARDSHIPUSE ZONEVALUATION THRESHOLDVARIABLE MESSAGE SIGN (VMS)VARIABLE MESSAGE SIGN (VMS) CHARACTERSVEHICULAR WAYWALKWET BARWHEELCHAIRWHEELCHAIR SPACEWORKSTATIONWORK AREA EQUIPMENT
+      Type: section
+      ✓ Content: Text field (2972 chars)
+      Preview: Section 11B-106: Defined terms.The following terms are defined in Chapter 2, Section 202.ACCESS AISL...
+      📁 SUBSECTIONS (5 via HAS_PARENT):
+         → 11B-106.1: General.
+            📝 For the purpose of this chapter, the terms listed in Section 11B-106.5 and defined in Chapter 2 have the indicated meaning.
+         → 11B-106.2: Terms defined in referenced standards.
+            📝 Terms not listed in Section 11B-106.5 and not defined in Chapter 2, Section 202, but specifically defined in a referenced standard, shall have the specified meaning from the referenced standard unless...
+         → 11B-106.3: Undefined terms.
+            📝 The meaning of terms not specifically listed in Section 11B-106.5, and not defined in Chapter 2, Section 202 or in referenced standards shall be as defined by collegiate dictionaries in the sense that...
+         → 11B-106.4: Interchangeability.
+            📝 See Chapter 2, Section 201.2.
+         → 11B-106.5: Defined terms.
+            📝 The following terms are defined in Chapter 2, Section 202.
+            📝 ACCESS AISLE
+            📝 ACCESSIBILITY
+            ... and 180 more paragraphs
+
+  [17] BASE: 11B-107
+      Title: Special conditions appeals action.
+      Type: section
+      ✓ Content: Text field (51 chars)
+      Preview: Section 11B-107: Special conditions appeals action.
+
+  [18] BASE: 11B-108
+      Title: Maintenance of accessible features.
+      Type: section
+      ✓ Content: Text field (52 chars)
+      Preview: Section 11B-108: Maintenance of accessible features.
+
+  [19] BASE: 11B-201
+      Title: Temporary and permanent structures.
+      Type: section
+      ✓ Content: Text field (52 chars)
+      Preview: Section 11B-201: Temporary and permanent structures.
+      📁 SUBSECTIONS (4 via HAS_PARENT):
+         → 11B-201.1: Scope.
+            📝 All areas of newly designed and newly constructed buildings and facilities and altered portions of existing buildings and facilities shall comply with these requirements.
+         → 11B-201.2: Application based on building or facility use.
+            📝 Where a site, building, facility, room or space contains more than one use, each portion shall comply with the applicable requirements for that use.
+         → 11B-201.3: Temporary and permanent structures.
+            📝 These requirements shall apply to temporary and permanent buildings and facilities.
+         → 11B-201.4: Construction support facilities.
+            📝 These requirements shall apply to temporary or permanent construction support facilities for uses and activities not directly associated with the actual processes of construction, including but not li...
+            📝 Exception: During construction an accessible route shall not be required between site arrival points or the boundary of the area of construction and the entrance to the construction support facilities...
+
+  [20] BASE: 11B-202
+      Title: Alterations to qualified historic buildings and facilities.
+      Type: section
+      ✓ Content: Text field (76 chars)
+      Preview: Section 11B-202: Alterations to qualified historic buildings and facilities.
+      📁 SUBSECTIONS (5 via HAS_PARENT):
+         → 11B-202.1: General.
+            📝 Additions and alterations to existing buildings or facilities shall comply with Section 11B-202.
+         → 11B-202.2: Additions.
+            📝 Each addition to an existing building or facility shall comply with the requirements for new construction and shall comply with Section 11B-202.4.
+         → 11B-202.3: Alteration of single elements.
+            📝 If alterations of single elements, when considered together, amount to an alteration of a room or space in a building or facility, the entire room or space shall be made accessible.
+         → 11B-202.4: Path of travel requirements in alterations, additions and structural repairs.
+            📝 When alterations or additions are made to existing buildings or facilities, an accessible path of travel to the specific area of alteration or addition shall be provided. The primary accessible path o...
+            📝 1. A primary entrance to the building or facility,
+            📝 2. Toilet and bathing facilities serving the area,
+            ... and 61 more paragraphs
+         → 11B-202.5: Alterations to qualified historic buildings and facilities.
+            📝 Alterations to a qualified historic building or facility shall comply with the State Historical Building Code, Part 8, Title 24, of the California Code of Regulations.
+            📝 Exception:  Reserved.
+
+================================================================================
+📊 DATA QUALITY STATISTICS:
+
+  Total sections (base + subsections + references): 682
+  ✓ Sections with paragraphs: 550 (80%)
+  ✓ Sections with text field: 682 (100%)
+  ⚠️  Sections with no content: 0 (0%)
+
+================================================================================
+
+
+⚙️  Assembly for ICC+CBC_Chapter11A_11B+2025+CA:
+   ✓ Assembly complete: 682 total sections
+     - Direct sections: 130
+     - Referenced/subsections: 552
