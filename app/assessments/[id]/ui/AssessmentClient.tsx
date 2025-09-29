@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { CheckTabs } from '@/components/checks/CheckTabs';
 import { PromptEditor } from '@/components/prompts/PromptEditor';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
@@ -29,7 +30,23 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
     <div className="grid grid-cols-2 h-full">
       <div className="border-r flex flex-col overflow-hidden">
         <div className="p-3 border-b">
-          <div className="text-sm font-medium">Progress</div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">Progress</div>
+            <Link
+              href="/"
+              className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                />
+              </svg>
+              My Projects
+            </Link>
+          </div>
           <div className="h-2 bg-gray-200 rounded mt-2">
             <div className="h-2 bg-blue-600 rounded" style={{ width: `${progress.pct}%` }} />
           </div>
