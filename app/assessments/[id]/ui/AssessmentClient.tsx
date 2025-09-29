@@ -29,8 +29,8 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 h-screen">
       <aside className="h-screen border-r flex flex-col overflow-hidden bg-white min-h-0">
-        <div className="p-4 border-b bg-gray-50">
-          <div className="flex items-center justify-between mb-4">
+        <div className="p-4 border-b bg-gray-50 flex-shrink-0">
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-900">Progress</h2>
             <Link href="/" className="btn-secondary">
               <svg
@@ -52,7 +52,7 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
             </Link>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div>
               <div
                 className="progress"
@@ -60,13 +60,13 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
               >
                 <div className="bar" />
               </div>
-              <div className="text-xs text-gray-600 mt-1.5">
+              <div className="text-xs text-gray-600 mt-1">
                 {progress.completed} of {progress.totalChecks} checks
               </div>
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">Active Checks</h3>
+              <h3 className="text-sm font-medium text-gray-900 mb-1.5">Active Checks</h3>
               <CheckTabs
                 checks={checks}
                 activeCheckId={activeCheckId}
@@ -76,7 +76,7 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
           </div>
         </div>
 
-        <div className="p-4 overflow-auto space-y-6">
+        <div className="p-4 overflow-auto space-y-4 min-h-0 flex-1">
           {activeCheck ? (
             <>
               <section>
@@ -123,7 +123,7 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
         </div>
       </aside>
 
-      <section className="h-screen relative overflow-hidden bg-gray-50 border border-gray-300 min-h-0">
+      <section className="h-screen relative overflow-hidden bg-gray-50 border-2 border-gray-600 min-h-0">
         {pdfUrl ? (
           <PDFViewer
             pdfUrl={pdfUrl}
