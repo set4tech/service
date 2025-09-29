@@ -22,13 +22,14 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Generate unique filename
+    // Generate unique filename with hardcoded bucket and prefix
     const timestamp = Date.now();
-    const filename = `pdfs/${timestamp}-${file.name}`;
+    const filename = `analysis-app-data/pdfs/${timestamp}-${file.name}`;
+    const bucketName = 'set4-data';
 
     // Upload to S3
     const command = new PutObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME!,
+      Bucket: bucketName,
       Key: filename,
       Body: buffer,
       ContentType: 'application/pdf',
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     await s3Client.send(command);
 
     // Construct the public URL
-    const url = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${filename}`;
+    const url = `https://${bucketName}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${filename}`;
 
     return NextResponse.json({ url });
   } catch (error) {

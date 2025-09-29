@@ -1,10 +1,10 @@
 -- supabase/migrations/20250929_compliance.sql
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Enable UUID extension (using pgcrypto for Supabase)
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Customers
 CREATE TABLE IF NOT EXISTS customers (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
   contact_email VARCHAR(255),
   contact_phone VARCHAR(50),
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS customers (
 
 -- Projects
 CREATE TABLE IF NOT EXISTS projects (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   description TEXT,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS projects (
 
 -- Assessments
 CREATE TABLE IF NOT EXISTS assessments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
   started_at TIMESTAMPTZ DEFAULT NOW(),
   completed_at TIMESTAMPTZ,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS assessments (
 
 -- Prompt Templates
 CREATE TABLE IF NOT EXISTS prompt_templates (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
   version INTEGER NOT NULL,
   system_prompt TEXT,
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
 
 -- Checks
 CREATE TABLE IF NOT EXISTS checks (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   assessment_id UUID REFERENCES assessments(id) ON DELETE CASCADE,
   code_section_key VARCHAR(255) NOT NULL,
   code_section_number VARCHAR(100),
@@ -74,7 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_assessment_section ON checks (assessment_id, code
 
 -- Analysis Runs
 CREATE TABLE IF NOT EXISTS analysis_runs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   check_id UUID REFERENCES checks(id) ON DELETE CASCADE,
   run_number INTEGER NOT NULL DEFAULT 1,
   compliance_status VARCHAR(50),
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 
 -- Screenshots
 CREATE TABLE IF NOT EXISTS screenshots (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   check_id UUID REFERENCES checks(id) ON DELETE CASCADE,
   analysis_run_id UUID REFERENCES analysis_runs(id) ON DELETE SET NULL,
   page_number INTEGER NOT NULL,
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS screenshots (
 
 -- Check tags
 CREATE TABLE IF NOT EXISTS check_tags (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   check_id UUID REFERENCES checks(id) ON DELETE CASCADE,
   tag VARCHAR(100) NOT NULL,
   UNIQUE(check_id, tag)

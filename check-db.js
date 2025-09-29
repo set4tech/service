@@ -1,7 +1,8 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = 'https://grosxzvvmhakkxybeuwu.supabase.co';
-const supabaseKey = 'sbp_f291a1105be3508192e6452f6cbb3975b9799f53';
+// Using anon key for checking tables (service role key from environment if needed)
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdyb3N4enZ2bWhha2t4eWJldXd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjczODQ0NjIsImV4cCI6MjA0Mjk2MDQ2Mn0.fO01VfIB_DzRCcB0hPH25QJSzgPQ5ksG0eIQgKDXvVY';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
