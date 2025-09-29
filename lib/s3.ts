@@ -1,6 +1,9 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
+// Hardcoded S3 bucket name
+const S3_BUCKET_NAME = 'service-uploads';
+
 const s3 = new S3Client({
   region: process.env.AWS_REGION!,
   credentials: {
@@ -11,7 +14,7 @@ const s3 = new S3Client({
 
 export async function presignPut(key: string, contentType: string, expiresSeconds = 60) {
   const command = new PutObjectCommand({
-    Bucket: process.env.S3_BUCKET_NAME!,
+    Bucket: S3_BUCKET_NAME,
     Key: key,
     ContentType: contentType,
     ACL: 'private',
@@ -22,7 +25,7 @@ export async function presignPut(key: string, contentType: string, expiresSecond
 
 export async function presignGet(key: string, expiresSeconds = 3600) {
   const command = new GetObjectCommand({
-    Bucket: process.env.S3_BUCKET_NAME!,
+    Bucket: S3_BUCKET_NAME,
     Key: key,
   });
   const url = await getSignedUrl(s3, command, { expiresIn: expiresSeconds });
@@ -43,5 +46,5 @@ export function s3KeyForPdf(projectId: string, filename: string) {
 
 export function s3PublicUrl(key: string) {
   // If you serve via CloudFront, swap this impl.
-  return `s3://${process.env.S3_BUCKET_NAME}/${key}`;
+  return `s3://${S3_BUCKET_NAME}/${key}`;
 }
