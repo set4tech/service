@@ -14,17 +14,55 @@ interface Props {
   progress: { totalChecks: number; completed: number; pct: number };
 }
 
-export default function AssessmentClient({ assessment, checks, progress }: Props) {
+export default function AssessmentClient({
+  assessment,
+  checks: initialChecks,
+  progress: initialProgress,
+}: Props) {
+  const [checks] = useState(initialChecks);
+  const [progress] = useState(initialProgress);
+  const [isSeeding, setIsSeeding] = useState(false);
   const [activeCheckId, setActiveCheckId] = useState<string | null>(checks[0]?.id || null);
+
   const activeCheck = useMemo(
     () => checks.find(c => c.id === activeCheckId) || null,
     [checks, activeCheckId]
   );
 
+  // Auto-seed checks if empty
+  useEffect(() => {
+    if (checks.length === 0 && !isSeeding) {
+      setIsSeeding(true);
+      fetch(`/api/assessments/${assessment.id}/seed`, {
+        method: 'POST',
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.seeded > 0) {
+            // Reload the page to get fresh data
+            window.location.reload();
+          }
+        })
+        .catch(console.error)
+        .finally(() => setIsSeeding(false));
+    }
+  }, [assessment.id, checks.length, isSeeding]);
+
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
   const [screenshotsChanged, setScreenshotsChanged] = useState(0);
 
   useEffect(() => setActiveCheckId(checks[0]?.id || null), [checks]);
+
+  if (checks.length === 0 && isSeeding) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="text-lg font-medium mb-2">Initializing assessment checks...</div>
+          <div className="text-sm text-gray-600">Loading building code sections</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 h-screen">
