@@ -178,7 +178,7 @@ export default function NewProjectPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Building Address *
+                    Building Address (Optional)
                   </label>
                   <input
                     type="text"
@@ -187,11 +187,13 @@ export default function NewProjectPage() {
                       setProjectData({ ...projectData, building_address: e.target.value })
                     }
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="e.g., 255 California Street, San Francisco, CA"
+                    placeholder="e.g., 255 California Street, San Francisco, CA (optional)"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Building Type</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Building Type (Optional)
+                  </label>
                   <select
                     value={projectData.building_type}
                     onChange={e =>
@@ -199,7 +201,7 @@ export default function NewProjectPage() {
                     }
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   >
-                    <option value="">Select...</option>
+                    <option value="">Select... (optional)</option>
                     <option value="commercial">Commercial</option>
                     <option value="residential">Residential</option>
                     <option value="mixed-use">Mixed Use</option>
@@ -211,7 +213,7 @@ export default function NewProjectPage() {
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => setStep(2)}
-                  disabled={!projectData.name || !projectData.building_address}
+                  disabled={!projectData.name}
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                 >
                   Next →
@@ -319,37 +321,7 @@ export default function NewProjectPage() {
                         value={newCustomer.name}
                         onChange={e => setNewCustomer({ ...newCustomer, name: e.target.value })}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Email</label>
-                      <input
-                        type="email"
-                        value={newCustomer.contact_email}
-                        onChange={e =>
-                          setNewCustomer({ ...newCustomer, contact_email: e.target.value })
-                        }
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Phone</label>
-                      <input
-                        type="tel"
-                        value={newCustomer.contact_phone}
-                        onChange={e =>
-                          setNewCustomer({ ...newCustomer, contact_phone: e.target.value })
-                        }
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Address</label>
-                      <input
-                        type="text"
-                        value={newCustomer.address}
-                        onChange={e => setNewCustomer({ ...newCustomer, address: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        placeholder="Enter customer name"
                       />
                     </div>
                   </div>
@@ -385,9 +357,11 @@ export default function NewProjectPage() {
                   <p className="text-sm">
                     <strong>Name:</strong> {projectData.name}
                   </p>
-                  <p className="text-sm">
-                    <strong>Address:</strong> {projectData.building_address}
-                  </p>
+                  {projectData.building_address && (
+                    <p className="text-sm">
+                      <strong>Address:</strong> {projectData.building_address}
+                    </p>
+                  )}
                   {projectData.building_type && (
                     <p className="text-sm">
                       <strong>Type:</strong> {projectData.building_type}
