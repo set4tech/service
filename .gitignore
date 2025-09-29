@@ -1,4 +1,5 @@
 # Environment files
+output/
 .envrc
 .env
 .env.*
