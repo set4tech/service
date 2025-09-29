@@ -101,25 +101,31 @@ export function PDFViewer({
   );
 
   const onMouseDown = (e: React.MouseEvent) => {
+    console.log('onMouseDown - screenshotMode:', screenshotMode, 'button:', e.button);
     if (screenshotMode) {
+      console.log('Screenshot mode - preventing default and setting selection');
       e.preventDefault();
       e.stopPropagation();
       const rect = containerRef.current!.getBoundingClientRect();
-      setSelection({
+      const newSelection = {
         startX: e.clientX - rect.left,
         startY: e.clientY - rect.top,
         endX: e.clientX - rect.left,
         endY: e.clientY - rect.top,
-      });
+      };
+      console.log('Setting selection:', newSelection);
+      setSelection(newSelection);
       return;
     }
     if (e.button !== 0) return;
+    console.log('Setting isDragging to true');
     setIsDragging(true);
     dragStart.current = { x: e.clientX, y: e.clientY, tx: transform.x, ty: transform.y };
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
     if (screenshotMode) {
+      console.log('onMouseMove - screenshotMode active, selection:', selection);
       if (selection) {
         e.preventDefault();
         e.stopPropagation();
@@ -129,6 +135,7 @@ export function PDFViewer({
       return;
     }
     if (!isDragging) return;
+    console.log('onMouseMove - panning');
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
     setTransform(prev => ({ ...prev, x: dragStart.current.tx + dx, y: dragStart.current.ty + dy }));
@@ -354,7 +361,13 @@ export function PDFViewer({
           aria-pressed={screenshotMode}
           aria-label="Toggle screenshot mode (S)"
           className={`btn-icon shadow-md ${screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
-          onClick={() => setScreenshotMode(v => !v)}
+          onClick={() => {
+            console.log('Screenshot button clicked, current mode:', screenshotMode);
+            setScreenshotMode(v => {
+              console.log('Setting screenshot mode to:', !v);
+              return !v;
+            });
+          }}
         >
           📸
         </button>

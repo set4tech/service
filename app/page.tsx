@@ -119,6 +119,8 @@ export default function Home() {
                     key={project.id}
                     className="group hover:bg-blue-50 hover:shadow-sm cursor-pointer transition-all duration-150 active:bg-blue-100 border-l-4 border-l-transparent hover:border-l-blue-500"
                     onClick={() => handleProjectClick(project.id)}
+                    onMouseEnter={() => console.log('Row hover enter')}
+                    style={{ border: '2px solid red' }}
                   >
                     <td>
                       <div className="text-sm font-medium text-gray-900 group-hover:text-blue-700 transition-colors">
