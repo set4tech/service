@@ -48,7 +48,16 @@ export default function NewProjectPage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setPdfFile(e.target.files[0]);
+      const file = e.target.files[0];
+      const MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for Vercel Hobby plan
+
+      if (file.size > MAX_SIZE) {
+        alert('File is too large. Maximum size is 4.5MB. Please compress your PDF or use a smaller file.');
+        e.target.value = ''; // Clear the input
+        return;
+      }
+
+      setPdfFile(file);
     }
   };
 
@@ -64,14 +73,20 @@ export default function NewProjectPage() {
         body: formData,
       });
 
-      if (response.ok) {
-        const { url } = await response.json();
-        return url;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 413) {
+          throw new Error('File is too large. Maximum size is 4.5MB.');
+        }
+        throw new Error(errorData.error || 'Failed to upload PDF');
       }
+
+      const { url } = await response.json();
+      return url;
     } catch (error) {
       console.error('Error uploading PDF:', error);
+      throw error; // Re-throw to handle in handleSubmit
     }
-    return null;
   };
 
   const handleSubmit = async () => {
@@ -94,9 +109,16 @@ export default function NewProjectPage() {
       }
 
       // Upload PDF
-      const pdfUrl = await uploadPdf();
-      if (!pdfUrl) {
-        alert('Failed to upload PDF');
+      let pdfUrl;
+      try {
+        pdfUrl = await uploadPdf();
+        if (!pdfUrl) {
+          alert('Failed to upload PDF');
+          setLoading(false);
+          return;
+        }
+      } catch (uploadError: any) {
+        alert(uploadError.message || 'Failed to upload PDF');
         setLoading(false);
         return;
       }

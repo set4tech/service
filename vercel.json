@@ -3,6 +3,10 @@
     "app/api/*/route.ts": {
       "maxDuration": 60
     },
+    "app/api/upload/route.ts": {
+      "maxDuration": 60,
+      "runtime": "nodejs20.x"
+    },
     "app/api/analysis/run/route.ts": {
       "maxDuration": 300
     },
