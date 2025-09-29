@@ -1,17 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { CheckTabs } from '@/components/checks/CheckTabs';
 import { PromptEditor } from '@/components/prompts/PromptEditor';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
-
-// Dynamically import PDFViewer to avoid server-side canvas issues
-const PDFViewer = dynamic(() => import('@/components/pdf/PDFViewer').then(mod => mod.PDFViewer), {
-  ssr: false,
-  loading: () => <div className="p-6">Loading PDF viewer...</div>
-});
+import { PDFViewerWrapper as PDFViewer } from '@/components/pdf/PDFViewerWrapper';
 
 interface Props {
   assessment: any;
