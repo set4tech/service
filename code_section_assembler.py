@@ -246,49 +246,69 @@ class CodeSectionAssembler:
     
 
     
-    def assemble_code_sections(self, code_info: Dict[str, Any]) -> CodeAssembly:
+    def assemble_code_sections(self, code_info: Dict[str, Any], use_subsections_as_base: bool = True) -> CodeAssembly:
         """Assemble all sections for a given code type using efficient graph traversal.
 
         Args:
             code_info: Dictionary with code metadata
+            use_subsections_as_base: If True, start with subsections instead of top-level sections
         """
         code_id = code_info['code_id']
         self.logger.info(f"Assembling sections for code: {code_id}")
 
         with self.driver.session() as session:
-            # Get all direct sections first
-            direct_query = """
-            MATCH (c:Code {id: $code_id})-[:HAS_SECTION]->(s:Section)
-            RETURN s.key as key, s.code as code, s.code_type as code_type,
-                   s.edition as edition, s.jurisdiction as jurisdiction,
-                   s.source_id as source_id, s.number as number, s.title as title,
-                   s.text as text, s.paragraphs as paragraphs, s.item_type as item_type,
-                   s.source_url as source_url, s.hash as hash
-            ORDER BY s.number
-            """
+            if use_subsections_as_base:
+                # Start with SUBSECTIONS (item_type = 'subsection') as base
+                # We need to match via parent relationships since subsections aren't directly connected to Code
+                direct_query = """
+                MATCH (c:Code {id: $code_id})-[:HAS_SECTION]->(parent:Section)
+                MATCH (parent)<-[:HAS_PARENT*]-(s:Section {item_type: 'subsection'})
+                RETURN DISTINCT s.key as key, s.code as code, s.code_type as code_type,
+                       s.edition as edition, s.jurisdiction as jurisdiction,
+                       s.source_id as source_id, s.number as number, s.title as title,
+                       s.text as text, s.paragraphs as paragraphs, s.item_type as item_type,
+                       s.source_url as source_url, s.hash as hash
+                ORDER BY s.number
+                """
+                self.logger.info(f"Starting with subsections (item_type='subsection') as base sections")
+            else:
+                # Original behavior - get sections directly attached to Code
+                direct_query = """
+                MATCH (c:Code {id: $code_id})-[:HAS_SECTION]->(s:Section)
+                RETURN s.key as key, s.code as code, s.code_type as code_type,
+                       s.edition as edition, s.jurisdiction as jurisdiction,
+                       s.source_id as source_id, s.number as number, s.title as title,
+                       s.text as text, s.paragraphs as paragraphs, s.item_type as item_type,
+                       s.source_url as source_url, s.hash as hash
+                ORDER BY s.number
+                """
+                self.logger.info(f"Starting with top-level sections as base sections")
+
             result = session.run(direct_query, code_id=code_id)
             all_sections_data = [dict(record) for record in result]
             
-            # Get all subsections for each section
-            section_keys = [s['key'] for s in all_sections_data]
-            for section_key in section_keys:
-                subsection_query = """
-                MATCH (parent:Section {key: $section_key})<-[:HAS_PARENT*]-(child:Section)
-                RETURN child.key as key, child.code as code, child.code_type as code_type,
-                       child.edition as edition, child.jurisdiction as jurisdiction,
-                       child.source_id as source_id, child.number as number, child.title as title,
-                       child.text as text, child.paragraphs as paragraphs, child.item_type as item_type,
-                       child.source_url as source_url, child.hash as hash
-                """
-                result = session.run(subsection_query, section_key=section_key)
-                subsections = [dict(record) for record in result]
+            # Get all child sections for each section (only if starting with top-level sections)
+            # When starting with subsections, they typically don't have children
+            if not use_subsections_as_base:
+                section_keys = [s['key'] for s in all_sections_data]
+                for section_key in section_keys:
+                    subsection_query = """
+                    MATCH (parent:Section {key: $section_key})<-[:HAS_PARENT*]-(child:Section)
+                    RETURN child.key as key, child.code as code, child.code_type as code_type,
+                           child.edition as edition, child.jurisdiction as jurisdiction,
+                           child.source_id as source_id, child.number as number, child.title as title,
+                           child.text as text, child.paragraphs as paragraphs, child.item_type as item_type,
+                           child.source_url as source_url, child.hash as hash
+                    """
+                    result = session.run(subsection_query, section_key=section_key)
+                    subsections = [dict(record) for record in result]
 
-                # Add unique subsections
-                existing_keys = {s['key'] for s in all_sections_data}
-                for subsection in subsections:
-                    if subsection['key'] not in existing_keys:
-                        all_sections_data.append(subsection)
-                        existing_keys.add(subsection['key'])
+                    # Add unique subsections
+                    existing_keys = {s['key'] for s in all_sections_data}
+                    for subsection in subsections:
+                        if subsection['key'] not in existing_keys:
+                            all_sections_data.append(subsection)
+                            existing_keys.add(subsection['key'])
             
             # Get all referenced sections
             all_keys = [s['key'] for s in all_sections_data]
@@ -350,12 +370,13 @@ class CodeSectionAssembler:
             referenced_sections=len(code_sections) - direct_count
         )
     
-    def assemble_all_codes(self, batch_size: int = 100, limit: Optional[int] = None) -> Generator[List[CodeAssembly], None, None]:
+    def assemble_all_codes(self, batch_size: int = 100, limit: Optional[int] = None, use_subsections_as_base: bool = True) -> Generator[List[CodeAssembly], None, None]:
         """Generate batches of assembled code sections for all codes in the database.
 
         Args:
             batch_size: Number of code assemblies to yield in each batch
             limit: Optional limit on total number of codes to process
+            use_subsections_as_base: If True, use subsections as base sections
 
         Yields:
             List[CodeAssembly]: Batches of assembled code sections
@@ -372,7 +393,7 @@ class CodeSectionAssembler:
         for i, code_info in enumerate(code_types, 1):
             try:
                 self.logger.info(f"Processing code {i}/{len(code_types)}: {code_info['code_id']}")
-                assembly = self.assemble_code_sections(code_info)
+                assembly = self.assemble_code_sections(code_info, use_subsections_as_base=use_subsections_as_base)
                 batch.append(assembly)
 
                 # Yield batch when it reaches the specified size
@@ -405,11 +426,16 @@ def main():
                         help='Limit number of codes to process (for testing)')
     parser.add_argument('--debug', action='store_true',
                         help='Show detailed debug output for data quality inspection')
+    parser.add_argument('--use-subsections', action='store_true', default=True,
+                        help='Use subsections as base sections (default: True)')
+    parser.add_argument('--use-top-level', dest='use_subsections', action='store_false',
+                        help='Use top-level sections as base sections')
 
     args = parser.parse_args()
     batch_size = args.batch_size
     limit = args.limit
     debug = args.debug
+    use_subsections = args.use_subsections
 
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -448,7 +474,8 @@ def main():
 
                 # Also show what the actual assembly would look like
                 print(f"\n⚙️  Assembling all sections for {code_info['code_id']}...")
-                assembly = assembler.assemble_code_sections(code_info)
+                print(f"   Using {'subsections' if use_subsections else 'top-level sections'} as base")
+                assembly = assembler.assemble_code_sections(code_info, use_subsections_as_base=use_subsections)
 
                 assembly_summary = f"\n⚙️  Assembly for {code_info['code_id']}:"
                 assembly_summary += f"\n   ✓ Assembly complete: {assembly.total_sections} total sections"
@@ -466,7 +493,7 @@ def main():
 
         else:
             # Normal batch processing
-            for batch_num, batch in enumerate(assembler.assemble_all_codes(batch_size=batch_size, limit=limit), 1):
+            for batch_num, batch in enumerate(assembler.assemble_all_codes(batch_size=batch_size, limit=limit, use_subsections_as_base=use_subsections), 1):
                 print(f"\nProcessing batch {batch_num} with {len(batch)} code assemblies:")
 
                 for assembly in batch:
