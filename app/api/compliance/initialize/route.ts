@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Load sections from pre-generated JSON
     // In production, this could be stored in Supabase or fetched from Neo4j
-    const sectionsModule = await import('@/data/cbc_sections.json');
+    const sectionsModule = await import('../../../../data/cbc_sections.json');
     const sectionsData = sectionsModule.default;
 
     // Initialize section checks for each section
@@ -65,9 +65,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error initializing compliance session:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // console.error('Error initializing compliance session:', error);
     return NextResponse.json(
-      { error: 'Failed to initialize compliance session', details: error.message },
+      { error: 'Failed to initialize compliance session', details: errorMessage },
       { status: 500 }
     );
   }
