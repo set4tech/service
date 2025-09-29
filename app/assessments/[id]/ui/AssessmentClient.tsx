@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CheckTabs } from '@/components/checks/CheckTabs';
-import { PromptEditor } from '@/components/prompts/PromptEditor';
-import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
-import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
+import { CheckList } from '@/components/checks/CheckList';
 import { PDFViewerWrapper as PDFViewer } from '@/components/pdf/PDFViewerWrapper';
 
 interface Props {
@@ -60,7 +57,7 @@ export default function AssessmentClient({
   }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
-  const [screenshotsChanged, setScreenshotsChanged] = useState(0);
+  const [_screenshotsChanged, setScreenshotsChanged] = useState(0);
 
   useEffect(() => setActiveCheckId(checks[0]?.id || null), [checks]);
 
@@ -76,20 +73,15 @@ export default function AssessmentClient({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 h-screen">
-      <aside className="h-screen border-r flex flex-col overflow-hidden bg-white min-h-0">
-        <div className="p-4 border-b bg-gray-50 flex-shrink-0">
+    <div className="flex h-screen bg-gray-100">
+      {/* Left Sidebar with Checks */}
+      <aside className="w-96 flex flex-col bg-white border-r shadow-sm">
+        {/* Header */}
+        <div className="p-4 border-b bg-white">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-gray-900">Progress</h2>
-            <Link href="/" className="btn-secondary">
-              <svg
-                width="16"
-                height="16"
-                className="flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+            <h2 className="text-lg font-semibold text-gray-900">Compliance Checks</h2>
+            <Link href="/" className="text-gray-500 hover:text-gray-700">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -97,92 +89,65 @@ export default function AssessmentClient({
                   d="M10 19l-7-7m0 0l7-7m-7 7h18"
                 />
               </svg>
-              <span>My Projects</span>
             </Link>
           </div>
 
-          <div className="space-y-2">
-            <div>
-              <div
-                className="progress"
-                style={{ '--value': `${progress.pct}%` } as React.CSSProperties}
-              >
-                <div className="bar" />
-              </div>
-              <div className="text-xs text-gray-600 mt-1">
-                {progress.completed} of {progress.totalChecks} checks
-              </div>
+          {/* Progress Bar */}
+          <div className="mb-3">
+            <div className="flex justify-between text-sm text-gray-600 mb-1">
+              <span>Progress</span>
+              <span>{Math.round(progress.pct)}%</span>
             </div>
-
-            <div>
-              <h3 className="text-sm font-medium text-gray-900 mb-1.5">Active Checks</h3>
-              <CheckTabs
-                checks={checks}
-                activeCheckId={activeCheckId}
-                onSelect={setActiveCheckId}
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all"
+                style={{ width: `${progress.pct}%` }}
               />
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {progress.completed} of {progress.totalChecks} checks completed
             </div>
           </div>
         </div>
 
-        <div className="p-4 overflow-auto space-y-4 min-h-0 flex-1">
-          {activeCheck ? (
-            <>
-              <section>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  Check Details
-                </h3>
-                <div className="space-y-2">
-                  <div className="text-sm text-gray-600">
-                    Section {activeCheck.code_section_number} — {activeCheck.code_section_title}
-                  </div>
-                  <div className="text-sm">
-                    <span className="font-medium">{activeCheck.check_name}</span>
-                    {activeCheck.check_location && (
-                      <span className="text-gray-600"> — {activeCheck.check_location}</span>
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  Prompt
-                </h3>
-                <PromptEditor check={activeCheck} />
-              </section>
-
-              <section>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  Analysis
-                </h3>
-                <AnalysisPanel check={activeCheck} onRefresh={() => null} />
-              </section>
-
-              <section>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  Screenshots
-                </h3>
-                <ScreenshotGallery check={activeCheck} refreshKey={screenshotsChanged} />
-              </section>
-            </>
-          ) : (
-            <div className="text-sm text-gray-600">No check selected.</div>
-          )}
+        {/* Checks List */}
+        <div className="flex-1 overflow-hidden">
+          <CheckList checks={checks} activeCheckId={activeCheckId} onSelect={setActiveCheckId} />
         </div>
       </aside>
 
-      <section className="h-screen relative overflow-hidden bg-gray-50 border-2 border-gray-600 min-h-0">
-        {pdfUrl ? (
-          <PDFViewer
-            pdfUrl={pdfUrl}
-            activeCheck={activeCheck || undefined}
-            onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
-          />
-        ) : (
-          <div className="p-6">No PDF attached to this assessment.</div>
-        )}
-      </section>
+      {/* Main Content Area with PDF Viewer */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 bg-gray-50">
+          {pdfUrl ? (
+            <PDFViewer
+              pdfUrl={pdfUrl}
+              activeCheck={activeCheck || undefined}
+              onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No document</h3>
+                <p className="mt-1 text-sm text-gray-500">Upload a PDF to begin the assessment.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
