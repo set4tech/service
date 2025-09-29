@@ -481,42 +481,46 @@ export function PDFViewer({
         style={{ clipPath: 'inset(0)', touchAction: 'none' }}
       >
         <div
-          className="absolute inset-0 flex items-center justify-center"
+          className="absolute"
           style={{
             transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
             transformOrigin: '0 0',
             willChange: 'transform',
+            left: 0,
+            top: 0,
           }}
         >
-          <Document
-            file={presignedUrl}
-            onLoadSuccess={onDocLoad}
-            onLoadError={onDocError}
-            loading={<div className="text-sm text-gray-500">Loading PDF…</div>}
-            error={<div className="text-sm text-red-500">Failed to load PDF document</div>}
-          >
-            <Page
-              pageNumber={pageNumber}
-              height={800}
-              renderTextLayer={false}
-              renderAnnotationLayer={false}
-            />
-          </Document>
+          <div className="relative">
+            <Document
+              file={presignedUrl}
+              onLoadSuccess={onDocLoad}
+              onLoadError={onDocError}
+              loading={<div className="text-sm text-gray-500">Loading PDF…</div>}
+              error={<div className="text-sm text-red-500">Failed to load PDF document</div>}
+            >
+              <Page
+                pageNumber={pageNumber}
+                height={800}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+              />
+            </Document>
 
-          {screenshotMode && selection && (
-            <div
-              className="absolute pointer-events-none"
-              style={{
-                left: Math.min(selection.startX, selection.endX),
-                top: Math.min(selection.startY, selection.endY),
-                width: Math.abs(selection.endX - selection.startX),
-                height: Math.abs(selection.endY - selection.startY),
-                border: '2px solid rgba(37, 99, 235, 0.8)',
-                backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                zIndex: 40,
-              }}
-            />
-          )}
+            {screenshotMode && selection && (
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  left: Math.min(selection.startX, selection.endX),
+                  top: Math.min(selection.startY, selection.endY),
+                  width: Math.abs(selection.endX - selection.startX),
+                  height: Math.abs(selection.endY - selection.startY),
+                  border: '2px solid rgba(37, 99, 235, 0.8)',
+                  backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                  zIndex: 40,
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
 
