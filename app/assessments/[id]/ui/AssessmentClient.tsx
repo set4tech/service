@@ -22,6 +22,11 @@ export default function AssessmentClient({
   const [isSeeding, setIsSeeding] = useState(false);
   const [activeCheckId, setActiveCheckId] = useState<string | null>(checks[0]?.id || null);
 
+  const handleCheckSelect = (checkId: string) => {
+    console.log('AssessmentClient: Setting active check to:', checkId);
+    setActiveCheckId(checkId);
+  };
+
   const activeCheck = useMemo(
     () => checks.find(c => c.id === activeCheckId) || null,
     [checks, activeCheckId]
@@ -76,7 +81,7 @@ export default function AssessmentClient({
   return (
     <div className="h-screen flex">
       {/* Left Sidebar with Checks */}
-      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-full overflow-hidden">
+      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-full overflow-hidden relative z-10">
         {/* Header */}
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between mb-3">
@@ -113,7 +118,7 @@ export default function AssessmentClient({
 
         {/* Checks List */}
         <div className="flex-1 overflow-hidden min-h-0">
-          <CheckList checks={checks} activeCheckId={activeCheckId} onSelect={setActiveCheckId} />
+          <CheckList checks={checks} activeCheckId={activeCheckId} onSelect={handleCheckSelect} />
         </div>
 
         {/* Screenshots for Active Check */}
