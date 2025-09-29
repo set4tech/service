@@ -77,8 +77,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       check_name: `${s.number} - ${s.title}`.substring(0, 255),
       check_location: '',
       status: 'pending',
-      // Store full text in notes field if available
-      notes: s.fullText ? s.fullText.substring(0, 5000) : null,
     }));
 
     // Insert all checks

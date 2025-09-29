@@ -13,7 +13,6 @@ export function CheckList({
 }) {
   const [query, setQuery] = useState('');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-  const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set());
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -22,8 +21,7 @@ export function CheckList({
       c =>
         c.check_name?.toLowerCase().includes(q) ||
         c.code_section_number?.toLowerCase().includes(q) ||
-        c.code_section_title?.toLowerCase().includes(q) ||
-        c.notes?.toLowerCase().includes(q)
+        c.code_section_title?.toLowerCase().includes(q)
     );
   }, [query, checks]);
 
@@ -60,17 +58,6 @@ export function CheckList({
       newExpanded.add(section);
     }
     setExpandedSections(newExpanded);
-  };
-
-  const toggleCheck = (checkId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newExpanded = new Set(expandedChecks);
-    if (newExpanded.has(checkId)) {
-      newExpanded.delete(checkId);
-    } else {
-      newExpanded.add(checkId);
-    }
-    setExpandedChecks(newExpanded);
   };
 
   const getStatusIcon = (check: any) => {
@@ -131,7 +118,6 @@ export function CheckList({
               {isExpanded && (
                 <div className="bg-gray-50">
                   {groupChecks.map(check => {
-                    const isCheckExpanded = expandedChecks.has(check.id);
                     return (
                       <div key={check.id} className="border-b border-gray-100 last:border-b-0">
                         {/* Check Header */}
@@ -154,38 +140,8 @@ export function CheckList({
                                 {check.code_section_title}
                               </span>
                             </div>
-                            {/* Show expand button if there's text */}
-                            {check.notes && (
-                              <button
-                                onClick={e => toggleCheck(check.id, e)}
-                                className="mt-1 text-xs text-blue-600 hover:text-blue-800 flex items-center"
-                              >
-                                <svg
-                                  width="8"
-                                  height="8"
-                                  className={clsx(
-                                    'mr-1 transition-transform',
-                                    isCheckExpanded && 'rotate-90'
-                                  )}
-                                  fill="currentColor"
-                                  viewBox="0 0 8 8"
-                                >
-                                  <path d="M2 1l4 3-4 3z" />
-                                </svg>
-                                {isCheckExpanded ? 'Hide' : 'Show'} code text
-                              </button>
-                            )}
                           </div>
                         </div>
-
-                        {/* Expanded Code Text */}
-                        {isCheckExpanded && check.notes && (
-                          <div className="px-4 py-2 bg-white border-t border-gray-100">
-                            <div className="text-xs text-gray-600 whitespace-pre-wrap font-mono max-h-64 overflow-y-auto">
-                              {check.notes}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
