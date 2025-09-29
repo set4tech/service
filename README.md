@@ -1,7 +1,14 @@
-# set 4 service - e2e plan review 
+# set 4 service - e2e plan review
+
 ✍️🏗️
 
-This is the place where we will manage all notebooks, files, for executing a code review for 255 California Street. In doing this we will learn about executing a full accessibility code review and then understand how we can build systems which automate it.
+This is the main service application for building code compliance assessment. It includes:
+
+- **PDF Viewer and Annotator**: A web-based application for viewing architectural plans and drawings with annotation capabilities
+- **Compliance Assessment Tools**: Systems for executing building code reviews and compliance analysis
+- **Data Processing Utilities**: Python scripts and notebooks for code analysis and document processing
+
+Through analyzing projects like 255 California Street, we develop and refine automated systems for accessibility code review and building compliance assessment.
 
 ## Setup
 
@@ -14,7 +21,7 @@ aws sso login
 Create a venv
 
 ```
-python -m venv venv 
+python -m venv venv
 source venv/bin/activate
 ```
 
@@ -33,8 +40,11 @@ To make some of the code run, it could be helpful to keep the pdf in `/data` in 
 
 ## Structure
 
-Files pertaining to executing the review process are in `/review`. 
-The viewer app is in `/app`, surprisingly enough.
+- `/app` - Next.js application with PDF viewer and annotator interface
+- `/review` - Files and notebooks for executing the code review process
+- `/components` - Reusable React components
+- `/lib` - Utility libraries and helpers
+- `/public` - Static assets
 
 ```flowchart LR
   A[Which code/codes applies to this building?] --> B[Split codes into sections]
