@@ -29,24 +29,35 @@ export default function AssessmentClient({
     [checks, activeCheckId]
   );
 
-  // Auto-seed checks if empty
+  // Auto-seed checks if empty (only try once)
+  const [hasSeedAttempted, setHasSeedAttempted] = useState(false);
+
   useEffect(() => {
-    if (checks.length === 0 && !isSeeding) {
+    if (checks.length === 0 && !isSeeding && !hasSeedAttempted) {
       setIsSeeding(true);
+      setHasSeedAttempted(true);
       fetch(`/api/assessments/${assessment.id}/seed`, {
         method: 'POST',
       })
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) {
+            throw new Error(`Seed failed: ${res.status}`);
+          }
+          return res.json();
+        })
         .then(data => {
           if (data.success && data.seeded > 0) {
             // Reload the page to get fresh data
             window.location.reload();
           }
         })
-        .catch(console.error)
+        .catch(error => {
+          console.error('Failed to seed assessment:', error);
+          // Don't reset hasSeedAttempted to prevent retry loop
+        })
         .finally(() => setIsSeeding(false));
     }
-  }, [assessment.id, checks.length, isSeeding]);
+  }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
   const [screenshotsChanged, setScreenshotsChanged] = useState(0);

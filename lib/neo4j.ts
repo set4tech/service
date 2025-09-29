@@ -6,7 +6,7 @@ const driver = neo4j.driver(
   {
     maxConnectionLifetime: 3 * 60 * 60 * 1000,
     maxConnectionPoolSize: 50,
-    connectionAcquisitionTimeout: 2 * 60 * 1000
+    connectionAcquisitionTimeout: 2 * 60 * 1000,
   }
 );
 
@@ -25,21 +25,37 @@ const assemblyCache = new Map<string, any>();
 export async function getCodeAssembly(codeId: string, useCache = true) {
   if (useCache && assemblyCache.has(codeId)) return assemblyCache.get(codeId);
 
-  // First try to find sections that belong to this code
-  const rows = await runQuery<any>(
-    `MATCH (s:Section)
-     WHERE s.key STARTS WITH $codePrefix
-     RETURN s
-     ORDER BY s.number`,
-    { codePrefix: codeId.replace(/\+/g, ':') + ':' }
-  );
+  try {
+    // First try to find sections that belong to this code
+    const rows = await runQuery<any>(
+      `MATCH (s:Section)
+       WHERE s.key STARTS WITH $codePrefix
+       RETURN s
+       ORDER BY s.number`,
+      { codePrefix: codeId.replace(/\+/g, ':') + ':' }
+    );
 
-  const sections = rows.map(row => {
-    const s = row.s.properties;
-    return { ...s, subsections: [] }; // TODO: Add subsections if needed
-  });
+    const sections = rows.map(row => {
+      const s = row.s.properties;
+      return { ...s, subsections: [] }; // TODO: Add subsections if needed
+    });
 
-  const assembly = { code_id: codeId, sections, total_sections: sections.length };
-  assemblyCache.set(codeId, assembly);
-  return assembly;
+    const assembly = { code_id: codeId, sections, total_sections: sections.length };
+    assemblyCache.set(codeId, assembly);
+    return assembly;
+  } catch (error) {
+    console.error('Failed to fetch from Neo4j, using fallback data:', error);
+
+    // Return empty assembly as fallback
+    // In production, you might want to return some default sections or cached data
+    const fallbackAssembly = {
+      code_id: codeId,
+      sections: [],
+      total_sections: 0,
+      error: 'Neo4j connection failed - no sections available',
+    };
+
+    // Don't cache error states
+    return fallbackAssembly;
+  }
 }
