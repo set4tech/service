@@ -40,11 +40,11 @@ export function AnalysisPanel({ check, onRefresh }: { check: any; onRefresh: () 
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <select className="border rounded px-2 py-1 text-sm" value={provider} onChange={(e) => setProvider(e.target.value as any)}>
+        <select className="border rounded px-3 py-2 text-sm" value={provider} onChange={(e) => setProvider(e.target.value as any)}>
           <option value="gemini">Gemini</option>
           <option value="openai">OpenAI</option>
         </select>
-        <button className="px-2 py-1 text-sm border rounded" onClick={run} disabled={loading}>{loading ? 'Analyzing…' : 'Analyze'}</button>
+        <button className="px-4 py-2 text-sm border rounded" onClick={run} disabled={loading}>{loading ? 'Analyzing…' : 'Analyze'}</button>
       </div>
       {latest ? (
         <div className="text-sm border rounded p-2">

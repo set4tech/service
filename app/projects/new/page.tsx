@@ -236,7 +236,7 @@ export default function NewProjectPage() {
                 <div className="flex items-center space-x-4 mb-4">
                   <button
                     onClick={() => setCreateNewCustomer(false)}
-                    className={`px-4 py-2 rounded-lg ${
+                    className={`px-5 py-2.5 rounded-lg ${
                       !createNewCustomer ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
                     }`}
                   >
@@ -244,7 +244,7 @@ export default function NewProjectPage() {
                   </button>
                   <button
                     onClick={() => setCreateNewCustomer(true)}
-                    className={`px-4 py-2 rounded-lg ${
+                    className={`px-5 py-2.5 rounded-lg ${
                       createNewCustomer ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
                     }`}
                   >
@@ -302,7 +302,7 @@ export default function NewProjectPage() {
                     (!createNewCustomer && !projectData.customer_id) ||
                     (createNewCustomer && !newCustomer.name)
                   }
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                 >
                   Next →
                 </button>
@@ -354,7 +354,7 @@ export default function NewProjectPage() {
                 <button
                   onClick={handleSubmit}
                   disabled={loading}
-                  className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                  className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition disabled:opacity-50"
                 >
                   {loading ? 'Creating...' : 'Create Project'}
                 </button>

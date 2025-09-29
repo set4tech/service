@@ -229,20 +229,20 @@ export function PDFViewer({
   return (
     <div className="relative h-full w-full">
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-        <button className="px-2 py-1 border rounded" onClick={() => zoom('out')}>
+        <button className="px-3 py-2 border rounded" onClick={() => zoom('out')}>
           −
         </button>
-        <button className="px-2 py-1 border rounded" onClick={() => zoom('in')}>
+        <button className="px-3 py-2 border rounded" onClick={() => zoom('in')}>
           +
         </button>
         <button
-          className={`px-2 py-1 border rounded ${screenshotMode ? 'bg-blue-600 text-white' : ''}`}
+          className={`px-3 py-2 border rounded ${screenshotMode ? 'bg-blue-600 text-white' : ''}`}
           onClick={() => setScreenshotMode(v => !v)}
         >
           📸 Screenshot
         </button>
         {screenshotMode && selection && (
-          <button className="px-2 py-1 border rounded" onClick={capture}>
+          <button className="px-3 py-2 border rounded" onClick={capture}>
             Save
           </button>
         )}
