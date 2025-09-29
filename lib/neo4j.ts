@@ -24,18 +24,19 @@ const assemblyCache = new Map<string, any>();
 
 export async function getCodeAssembly(codeId: string, useCache = true) {
   if (useCache && assemblyCache.has(codeId)) return assemblyCache.get(codeId);
+
+  // First try to find sections that belong to this code
   const rows = await runQuery<any>(
-    `MATCH (c:Code {id: $codeId})-[:HAS_SECTION]->(s:Section)
-     OPTIONAL MATCH (s)-[:HAS_SUBSECTION]->(sub:Subsection)
-     RETURN s, collect(sub) as subsections
+    `MATCH (s:Section)
+     WHERE s.key STARTS WITH $codePrefix
+     RETURN s
      ORDER BY s.number`,
-    { codeId }
+    { codePrefix: codeId.replace(/\+/g, ':') + ':' }
   );
 
   const sections = rows.map(row => {
     const s = row.s.properties;
-    const subs = (row.subsections as any[]).map(x => x.properties);
-    return { ...s, subsections: subs };
+    return { ...s, subsections: [] }; // TODO: Add subsections if needed
   });
 
   const assembly = { code_id: codeId, sections, total_sections: sections.length };

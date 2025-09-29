@@ -98,6 +98,8 @@ export function PDFViewer({
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (screenshotMode) {
+      e.preventDefault();
+      e.stopPropagation();
       const rect = containerRef.current!.getBoundingClientRect();
       setSelection({
         startX: e.clientX - rect.left,
@@ -114,6 +116,8 @@ export function PDFViewer({
 
   const onMouseMove = (e: React.MouseEvent) => {
     if (screenshotMode && selection) {
+      e.preventDefault();
+      e.stopPropagation();
       const rect = containerRef.current!.getBoundingClientRect();
       setSelection(s => s && { ...s, endX: e.clientX - rect.left, endY: e.clientY - rect.top });
       return;
@@ -124,7 +128,11 @@ export function PDFViewer({
     setTransform(prev => ({ ...prev, x: dragStart.current.tx + dx, y: dragStart.current.ty + dy }));
   };
 
-  const onMouseUp = () => {
+  const onMouseUp = (e: React.MouseEvent) => {
+    if (screenshotMode && selection) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setIsDragging(false);
   };
 
@@ -312,6 +320,14 @@ export function PDFViewer({
       aria-label="PDF viewer"
       className="relative h-full w-full outline-none overscroll-contain"
     >
+      {screenshotMode && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
+            📸 Screenshot Mode: Click and drag to select area
+          </div>
+        </div>
+      )}
+
       <div className="absolute top-3 right-3 z-50 flex items-center gap-2 pointer-events-auto">
         <button
           aria-label="Zoom out"
@@ -344,7 +360,9 @@ export function PDFViewer({
       </div>
 
       <div
-        className={`absolute inset-0 overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`absolute inset-0 overflow-hidden ${
+          screenshotMode ? 'cursor-crosshair' : isDragging ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
         onWheel={handleWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
@@ -375,20 +393,19 @@ export function PDFViewer({
             />
           </Document>
         </div>
-
-        {screenshotMode && selection && (
-          <div
-            className="absolute border-2 border-blue-600/80 bg-blue-600/10"
-            style={{
-              left: Math.min(selection.startX, selection.endX),
-              top: Math.min(selection.startY, selection.endY),
-              width: Math.abs(selection.endX - selection.startX),
-              height: Math.abs(selection.endY - selection.startY),
-              pointerEvents: 'none',
-            }}
-          />
-        )}
       </div>
+
+      {screenshotMode && selection && (
+        <div
+          className="absolute border-2 border-blue-600/80 bg-blue-600/10 pointer-events-none z-40"
+          style={{
+            left: Math.min(selection.startX, selection.endX),
+            top: Math.min(selection.startY, selection.endY),
+            width: Math.abs(selection.endX - selection.startX),
+            height: Math.abs(selection.endY - selection.startY),
+          }}
+        />
+      )}
 
       <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
         <button
