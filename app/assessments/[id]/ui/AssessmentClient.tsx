@@ -80,6 +80,13 @@ export default function AssessmentClient({
 
   return (
     <div className="h-screen flex">
+      {/* Debug Panel */}
+      <div className="absolute top-0 right-0 bg-yellow-100 p-2 z-50 text-xs max-w-xs">
+        <div>Checks: {checks.length}</div>
+        <div>Active: {activeCheckId || 'none'}</div>
+        <div>First check ID: {checks[0]?.id || 'no checks'}</div>
+      </div>
+
       {/* Left Sidebar with Checks */}
       <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-full overflow-hidden relative z-10">
         {/* Header */}

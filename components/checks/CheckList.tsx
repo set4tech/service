@@ -142,14 +142,17 @@ export function CheckList({
                     return (
                       <div key={check.id} className="border-b border-gray-100 last:border-b-0">
                         {/* Check Header */}
-                        <div
-                          onClick={() => {
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
                             console.log('Check clicked:', check.id, check.code_section_number);
                             onSelect(check.id);
                           }}
                           className={clsx(
                             'w-full px-4 py-2 flex items-start text-left hover:bg-gray-100 cursor-pointer transition-colors',
-                            activeCheckId === check.id && 'bg-blue-50 hover:bg-blue-100'
+                            activeCheckId === check.id && 'bg-blue-500 text-white hover:bg-blue-600'
                           )}
                         >
                           <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>
@@ -165,7 +168,7 @@ export function CheckList({
                               </span>
                             </div>
                           </div>
-                        </div>
+                        </button>
                       </div>
                     );
                   })}

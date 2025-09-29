@@ -8,10 +8,10 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const [{ data: assessment }, { data: checks }] = await Promise.all([
     supabase.from('assessments').select('*, projects(pdf_url)').eq('id', id).single(),
     supabase
-      .from('check_summary')
+      .from('checks')
       .select('*')
       .eq('assessment_id', id)
-      .order('created_at', { ascending: true }),
+      .order('code_section_number', { ascending: true }),
   ]);
 
   if (!assessment) {
