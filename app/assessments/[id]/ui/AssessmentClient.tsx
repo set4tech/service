@@ -27,7 +27,7 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
   useEffect(() => setActiveCheckId(checks[0]?.id || null), [checks]);
 
   return (
-    <div className="grid grid-cols-2 h-full">
+    <div className="grid grid-cols-2 h-screen">
       <div className="border-r flex flex-col overflow-hidden">
         <div className="p-3 border-b">
           <div className="flex items-center justify-between mb-3">

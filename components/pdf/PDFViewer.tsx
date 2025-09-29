@@ -39,6 +39,29 @@ export function PDFViewer({
   } | null>(null);
   const [pdfInstance, setPdfInstance] = useState<any>(null);
   const [pageInstance, setPageInstance] = useState<any>(null);
+  const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
+  const [loadingUrl, setLoadingUrl] = useState(true);
+
+  // Fetch presigned URL for private S3 PDFs
+  useEffect(() => {
+    (async () => {
+      setLoadingUrl(true);
+      try {
+        const res = await fetch('/api/pdf/presign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdfUrl }),
+        });
+        const data = await res.json();
+        setPresignedUrl(data.url);
+      } catch (err) {
+        console.error('Failed to get presigned URL:', err);
+        setPresignedUrl(null);
+      } finally {
+        setLoadingUrl(false);
+      }
+    })();
+  }, [pdfUrl]);
 
   const onDocLoad = ({ numPages }: { numPages: number }) => setNumPages(numPages);
 
@@ -100,12 +123,13 @@ export function PDFViewer({
 
   // Advanced: access raw pdf via pdfjs for cropping
   useEffect(() => {
+    if (!presignedUrl) return;
     (async () => {
-      const loadingTask = pdfjs.getDocument(pdfUrl);
+      const loadingTask = pdfjs.getDocument(presignedUrl);
       const pdf = await loadingTask.promise;
       setPdfInstance(pdf);
     })();
-  }, [pdfUrl]);
+  }, [presignedUrl]);
 
   useEffect(() => {
     (async () => {
@@ -227,6 +251,14 @@ export function PDFViewer({
     onScreenshotSaved();
   };
 
+  if (loadingUrl) {
+    return <div className="p-6 text-center">Loading PDF...</div>;
+  }
+
+  if (!presignedUrl) {
+    return <div className="p-6 text-center text-red-600">Failed to load PDF</div>;
+  }
+
   return (
     <div className="relative h-full w-full">
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
@@ -265,7 +297,7 @@ export function PDFViewer({
           }}
         >
           <Document
-            file={pdfUrl}
+            file={presignedUrl}
             onLoadSuccess={onDocLoad}
             loading={<div className="text-sm text-gray-500">Loading PDF…</div>}
           >
