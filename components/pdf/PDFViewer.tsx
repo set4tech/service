@@ -82,7 +82,7 @@ export function PDFViewer({
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     e.stopPropagation(); // Prevent scroll from bubbling to parent
-    const scaleSpeed = 0.007;
+    const scaleSpeed = 0.003; // Reduced from 0.007 for slower, more controlled zooming
     const scaleDelta = -e.deltaY * scaleSpeed;
     setTransform(prev => {
       const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
@@ -312,24 +312,32 @@ export function PDFViewer({
       aria-label="PDF viewer"
       className="relative h-full w-full outline-none overscroll-contain"
     >
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-        <button aria-label="Zoom out" className="btn-icon" onClick={() => zoom('out')}>
+      <div className="absolute top-3 right-3 z-50 flex items-center gap-2 pointer-events-auto">
+        <button
+          aria-label="Zoom out"
+          className="btn-icon bg-white shadow-md"
+          onClick={() => zoom('out')}
+        >
           −
         </button>
-        <div className="px-2 py-2 text-sm bg-white border rounded">{zoomPct}%</div>
-        <button aria-label="Zoom in" className="btn-icon" onClick={() => zoom('in')}>
+        <div className="px-2 py-2 text-sm bg-white border rounded shadow-md">{zoomPct}%</div>
+        <button
+          aria-label="Zoom in"
+          className="btn-icon bg-white shadow-md"
+          onClick={() => zoom('in')}
+        >
           +
         </button>
         <button
           aria-pressed={screenshotMode}
           aria-label="Toggle screenshot mode (S)"
-          className={`btn-icon ${screenshotMode ? 'bg-blue-600 text-white' : ''}`}
+          className={`btn-icon shadow-md ${screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
           onClick={() => setScreenshotMode(v => !v)}
         >
           📸
         </button>
         {screenshotMode && selection && (
-          <button className="btn-secondary" onClick={capture}>
+          <button className="btn-secondary shadow-md" onClick={capture}>
             Save
           </button>
         )}
@@ -342,11 +350,14 @@ export function PDFViewer({
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={() => setIsDragging(false)}
+        style={{ clipPath: 'inset(0)' }}
       >
         <div
-          className="absolute inset-0 flex items-center justify-center"
+          className="flex items-center justify-center"
           style={{
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+            transformOrigin: 'center center',
+            willChange: 'transform',
           }}
         >
           <Document
@@ -379,25 +390,27 @@ export function PDFViewer({
         )}
       </div>
 
-      <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3 bg-white/90 rounded px-2 py-1 border">
+      <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
         <button
-          className="btn-icon"
+          className="btn-icon bg-white"
           onClick={() => setPageNumber(p => Math.max(1, p - 1))}
           aria-label="Previous page"
         >
           ◀
         </button>
-        <div className="text-sm">
+        <div className="text-sm font-medium">
           Page {pageNumber} / {numPages || '…'}
         </div>
         <button
-          className="btn-icon"
+          className="btn-icon bg-white"
           onClick={() => setPageNumber(p => Math.min(numPages || p, p + 1))}
           aria-label="Next page"
         >
           ▶
         </button>
-        <span className="text-xs text-gray-600 ml-2">Shortcuts: ←/→, -/+, 0, S, Esc</span>
+        <span className="text-xs text-gray-600 ml-2 hidden sm:inline">
+          Shortcuts: ←/→, -/+, 0, S, Esc
+        </span>
       </div>
     </div>
   );
