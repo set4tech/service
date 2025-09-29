@@ -8,9 +8,12 @@ export async function POST(req: NextRequest) {
 
     // Validate required parameters
     if (!assessmentId || !codeId) {
-      return NextResponse.json({
-        error: 'assessmentId and codeId are required'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'assessmentId and codeId are required',
+        },
+        { status: 400 }
+      );
     }
 
     const supabase = supabaseAdmin();
@@ -36,13 +39,13 @@ export async function POST(req: NextRequest) {
       code_section_title: s.title,
       check_name: `${s.number} - ${s.title}`,
       check_location: '',
-      status: 'pending'
+      status: 'pending',
     }));
 
     if (rows.length === 0) {
       return NextResponse.json({
         created: 0,
-        message: 'No sections found in code assembly'
+        message: 'No sections found in code assembly',
       });
     }
 
@@ -61,17 +64,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       created: rows.length,
       codeId: codeId,
-      sections: rows.map(r => ({
+      sections: rows.map((r: any) => ({
         key: r.code_section_key,
         number: r.code_section_number,
-        title: r.code_section_title
-      }))
+        title: r.code_section_title,
+      })),
     });
-
   } catch (error: any) {
     console.error('Error seeding assessment from assembly:', error);
-    return NextResponse.json({
-      error: error?.message || 'Failed to seed assessment'
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: error?.message || 'Failed to seed assessment',
+      },
+      { status: 500 }
+    );
   }
 }

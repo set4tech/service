@@ -5,14 +5,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
-interface Transform { x: number; y: number; scale: number }
+interface Transform {
+  x: number;
+  y: number;
+  scale: number;
+}
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 10;
 
 export function PDFViewer({
   pdfUrl,
   activeCheck,
-  onScreenshotSaved
+  onScreenshotSaved,
 }: {
   pdfUrl: string;
   activeCheck?: any;
@@ -26,7 +30,12 @@ export function PDFViewer({
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
   const [screenshotMode, setScreenshotMode] = useState(false);
-  const [selection, setSelection] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+  const [selection, setSelection] = useState<{
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  } | null>(null);
   const [pdfInstance, setPdfInstance] = useState<any>(null);
   const [pageInstance, setPageInstance] = useState<any>(null);
 
@@ -51,7 +60,12 @@ export function PDFViewer({
   const onMouseDown = (e: React.MouseEvent) => {
     if (screenshotMode) {
       const rect = containerRef.current!.getBoundingClientRect();
-      setSelection({ startX: e.clientX - rect.left, startY: e.clientY - rect.top, endX: e.clientX - rect.left, endY: e.clientY - rect.top });
+      setSelection({
+        startX: e.clientX - rect.left,
+        startY: e.clientY - rect.top,
+        endX: e.clientX - rect.left,
+        endY: e.clientY - rect.top,
+      });
       return;
     }
     if (e.button !== 0) return;
@@ -62,7 +76,7 @@ export function PDFViewer({
   const onMouseMove = (e: React.MouseEvent) => {
     if (screenshotMode && selection) {
       const rect = containerRef.current!.getBoundingClientRect();
-      setSelection(s => s && ({ ...s, endX: e.clientX - rect.left, endY: e.clientY - rect.top }));
+      setSelection(s => s && { ...s, endX: e.clientX - rect.left, endY: e.clientY - rect.top });
       return;
     }
     if (!isDragging) return;
@@ -77,7 +91,10 @@ export function PDFViewer({
 
   const zoom = (dir: 'in' | 'out') => {
     const factor = dir === 'in' ? 1.2 : 1 / 1.2;
-    setTransform(prev => ({ ...prev, scale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor)) }));
+    setTransform(prev => ({
+      ...prev,
+      scale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor)),
+    }));
   };
 
   // Advanced: access raw pdf via pdfjs for cropping
@@ -135,7 +152,7 @@ export function PDFViewer({
       x: Math.max(0, Math.round(pdfRect.x * renderScale + viewport.width / 2)),
       y: Math.max(0, Math.round(pdfRect.y * renderScale + viewport.height / 2)),
       w: Math.round(pdfRect.w * renderScale),
-      h: Math.round(pdfRect.h * renderScale)
+      h: Math.round(pdfRect.h * renderScale),
     };
 
     if (crop.w < 5 || crop.h < 5) {
@@ -162,8 +179,8 @@ export function PDFViewer({
     tctx.drawImage(out, 0, 0, tw, th);
 
     const [blob, thumb] = await Promise.all([
-      new Promise<Blob>((resolve) => out.toBlob(b => resolve(b!), 'image/png')),
-      new Promise<Blob>((resolve) => tcanvas.toBlob(b => resolve(b!), 'image/png'))
+      new Promise<Blob>(resolve => out.toBlob(b => resolve(b!), 'image/png')),
+      new Promise<Blob>(resolve => tcanvas.toBlob(b => resolve(b!), 'image/png')),
     ]);
 
     // Get presigned upload targets
@@ -171,14 +188,18 @@ export function PDFViewer({
       method: 'POST',
       body: JSON.stringify({
         projectId: activeCheck.project_id || activeCheck.assessment_id,
-        checkId: activeCheck.id
+        checkId: activeCheck.id,
       }),
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
     });
-    const { screenshotId, uploadUrl, key, thumbUploadUrl, thumbKey } = await res.json();
+    const { _screenshotId, uploadUrl, key, thumbUploadUrl, thumbKey } = await res.json();
 
     await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: blob });
-    await fetch(thumbUploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: thumb });
+    await fetch(thumbUploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/png' },
+      body: thumb,
+    });
 
     // Persist metadata in DB
     await fetch('/api/screenshots', {
@@ -187,11 +208,17 @@ export function PDFViewer({
       body: JSON.stringify({
         check_id: activeCheck.id,
         page_number: pageNumber,
-        crop_coordinates: { x: pdfRect.x, y: pdfRect.y, width: pdfRect.w, height: pdfRect.h, zoom_level: transform.scale },
+        crop_coordinates: {
+          x: pdfRect.x,
+          y: pdfRect.y,
+          width: pdfRect.w,
+          height: pdfRect.h,
+          zoom_level: transform.scale,
+        },
         screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
         thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
-        caption: ''
-      })
+        caption: '',
+      }),
     });
 
     setSelection(null);
@@ -202,10 +229,23 @@ export function PDFViewer({
   return (
     <div className="relative h-full w-full">
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-        <button className="px-2 py-1 border rounded" onClick={() => zoom('out')}>−</button>
-        <button className="px-2 py-1 border rounded" onClick={() => zoom('in')}>+</button>
-        <button className={`px-2 py-1 border rounded ${screenshotMode ? 'bg-blue-600 text-white' : ''}`} onClick={() => setScreenshotMode(v => !v)}>📸 Screenshot</button>
-        {screenshotMode && selection && <button className="px-2 py-1 border rounded" onClick={capture}>Save</button>}
+        <button className="px-2 py-1 border rounded" onClick={() => zoom('out')}>
+          −
+        </button>
+        <button className="px-2 py-1 border rounded" onClick={() => zoom('in')}>
+          +
+        </button>
+        <button
+          className={`px-2 py-1 border rounded ${screenshotMode ? 'bg-blue-600 text-white' : ''}`}
+          onClick={() => setScreenshotMode(v => !v)}
+        >
+          📸 Screenshot
+        </button>
+        {screenshotMode && selection && (
+          <button className="px-2 py-1 border rounded" onClick={capture}>
+            Save
+          </button>
+        )}
       </div>
 
       <div
@@ -219,10 +259,21 @@ export function PDFViewer({
       >
         <div
           className="absolute inset-0 flex items-center justify-center"
-          style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
+          style={{
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+          }}
         >
-          <Document file={pdfUrl} onLoadSuccess={onDocLoad} loading={<div className="text-sm text-gray-500">Loading PDF…</div>}>
-            <Page pageNumber={pageNumber} height={800} renderTextLayer={false} renderAnnotationLayer={false} />
+          <Document
+            file={pdfUrl}
+            onLoadSuccess={onDocLoad}
+            loading={<div className="text-sm text-gray-500">Loading PDF…</div>}
+          >
+            <Page
+              pageNumber={pageNumber}
+              height={800}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
+            />
           </Document>
         </div>
 
@@ -234,16 +285,28 @@ export function PDFViewer({
               top: Math.min(selection.startY, selection.endY),
               width: Math.abs(selection.endX - selection.startX),
               height: Math.abs(selection.endY - selection.startY),
-              pointerEvents: 'none'
+              pointerEvents: 'none',
             }}
           />
         )}
       </div>
 
       <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3 bg-white/90 rounded px-2 py-1 border">
-        <button className="px-2 py-1 border rounded" onClick={() => setPageNumber(p => Math.max(1, p - 1))}>◀</button>
-        <div className="text-sm">Page {pageNumber} / {numPages || '…'}</div>
-        <button className="px-2 py-1 border rounded" onClick={() => setPageNumber(p => Math.min(numPages || p, p + 1))}>▶</button>
+        <button
+          className="px-2 py-1 border rounded"
+          onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+        >
+          ◀
+        </button>
+        <div className="text-sm">
+          Page {pageNumber} / {numPages || '…'}
+        </div>
+        <button
+          className="px-2 py-1 border rounded"
+          onClick={() => setPageNumber(p => Math.min(numPages || p, p + 1))}
+        >
+          ▶
+        </button>
       </div>
     </div>
   );

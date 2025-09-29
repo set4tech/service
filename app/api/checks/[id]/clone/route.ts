@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { newName, newLocation } = await req.json();
   const supabase = supabaseAdmin();
 
-  const { data: original, error: e1 } = await supabase.from('checks').select('*').eq('id', params.id).single();
-  if (e1 || !original) return NextResponse.json({ error: e1?.message || 'Not found' }, { status: 404 });
+  const { data: original, error: e1 } = await supabase
+    .from('checks')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (e1 || !original)
+    return NextResponse.json({ error: e1?.message || 'Not found' }, { status: 404 });
 
   const clone = {
     assessment_id: original.assessment_id,
@@ -17,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     check_location: newLocation,
     parent_check_id: original.id,
     prompt_template_id: original.prompt_template_id,
-    status: 'pending'
+    status: 'pending',
   };
 
   const { data, error } = await supabase.from('checks').insert(clone).select('*').single();

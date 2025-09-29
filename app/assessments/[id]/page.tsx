@@ -1,11 +1,16 @@
 import { supabaseAdmin } from '@/lib/supabase-server';
 import AssessmentClient from './ui/AssessmentClient';
 
-export default async function AssessmentPage({ params }: { params: { id: string } }) {
+export default async function AssessmentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = supabaseAdmin();
   const [{ data: assessment }, { data: checks }] = await Promise.all([
-    supabase.from('assessments').select('*').eq('id', params.id).single(),
-    supabase.from('check_summary').select('*').eq('assessment_id', params.id).order('created_at', { ascending: true })
+    supabase.from('assessments').select('*').eq('id', id).single(),
+    supabase
+      .from('check_summary')
+      .select('*')
+      .eq('assessment_id', id)
+      .order('created_at', { ascending: true }),
   ]);
 
   if (!assessment) {

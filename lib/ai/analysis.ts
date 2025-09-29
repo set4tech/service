@@ -48,12 +48,16 @@ async function withRetry<T>(
   throw lastError;
 }
 
-export async function runAI(req: AnalysisRequest, signal?: AbortSignal): Promise<{ model: string; raw: string; parsed: AIResponse }> {
+export async function runAI(
+  req: AnalysisRequest,
+  signal?: AbortSignal
+): Promise<{ model: string; raw: string; parsed: AIResponse }> {
   if (req.provider === 'gemini') {
     return withRetry(async () => {
       const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // adjust if you need Pro
       const parts: any[] = [{ text: req.prompt }];
-      for (const url of req.screenshots) parts.push({ fileData: { fileUri: url, mimeType: 'image/png' } });
+      for (const url of req.screenshots)
+        parts.push({ fileData: { fileUri: url, mimeType: 'image/png' } });
 
       const res = await model.generateContent({ contents: [{ role: 'user', parts }] });
       const text = res.response.text();
@@ -67,16 +71,16 @@ export async function runAI(req: AnalysisRequest, signal?: AbortSignal): Promise
           role: 'user',
           content: [
             { type: 'text', text: req.prompt },
-            ...req.screenshots.map((u) => ({ type: 'image_url', image_url: { url: u } }))
-          ]
-        }
+            ...req.screenshots.map(u => ({ type: 'image_url' as const, image_url: { url: u } })),
+          ],
+        },
       ];
       const resp = await openai.chat.completions.create(
         {
           model: 'gpt-4-vision-preview',
           messages,
           response_format: { type: 'json_object' },
-          max_tokens: 1800
+          max_tokens: 1800,
         },
         { signal }
       );
@@ -92,6 +96,10 @@ function safeParseJson(text: string): AIResponse {
     const o = JSON.parse(text);
     return o as AIResponse;
   } catch {
-    return { compliance_status: 'unclear', confidence: 'low', reasoning: 'Unable to parse model response as JSON.' };
+    return {
+      compliance_status: 'unclear',
+      confidence: 'low',
+      reasoning: 'Unable to parse model response as JSON.',
+    };
   }
 }
