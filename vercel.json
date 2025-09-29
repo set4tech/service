@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/*/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/analysis/run/route.ts": {
+      "maxDuration": 900
+    }
+  },
+  "crons": [
+    { "path": "/api/queue/process", "schedule": "*/2 * * * *" }
+  ]
+}

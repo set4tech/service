@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run linting
+npm run lint
+
+# Run TypeScript type checking
+npm run typecheck
+
+# Run prettier to check formatting
+npm run format:check
+
+# Run tests if they exist
+if [ -f "package.json" ] && grep -q '"test"' package.json; then
+  npm test -- --passWithNoTests
+fi
