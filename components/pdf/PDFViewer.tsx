@@ -27,7 +27,7 @@ export function PDFViewer({
   const _contentRef = useRef<HTMLDivElement>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const [transform, setTransform] = useState<Transform>({ tx: 200, ty: 100, scale: 1 });
+  const [transform, setTransform] = useState<Transform>({ tx: 0, ty: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
@@ -207,7 +207,7 @@ export function PDFViewer({
       if (e.key === 'ArrowRight') setPageNumber(p => Math.min(numPages || p, p + 1));
       if (e.key === '-' || e.key === '_') zoom('out');
       if (e.key === '=' || e.key === '+') zoom('in');
-      if (e.key === '0') setTransform({ tx: 200, ty: 100, scale: 1 });
+      if (e.key === '0') setTransform({ tx: 0, ty: 0, scale: 1 });
       if (e.key.toLowerCase() === 's') setScreenshotMode(v => !v);
       if (e.key === 'Escape' && screenshotMode) setScreenshotMode(false);
     };
@@ -481,12 +481,10 @@ export function PDFViewer({
         style={{ clipPath: 'inset(0)' }}
       >
         <div
+          className="absolute inset-0 flex items-center justify-center"
           style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
             transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
-            transformOrigin: '0 0',
+            transformOrigin: 'center center',
             willChange: 'transform',
           }}
         >
