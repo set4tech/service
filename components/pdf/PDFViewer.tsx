@@ -82,9 +82,9 @@ export function PDFViewer({
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
-      if (screenshotMode) return; // Disable zoom in screenshot mode
       e.preventDefault();
       e.stopPropagation(); // Prevent scroll from bubbling to parent
+      if (screenshotMode) return; // Disable zoom in screenshot mode
       const scaleSpeed = 0.003; // Reduced from 0.007 for slower, more controlled zooming
       const scaleDelta = -e.deltaY * scaleSpeed;
       setTransform(prev => {

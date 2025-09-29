@@ -25,28 +25,29 @@ export function CheckList({
     );
   }, [query, checks]);
 
-  // Group checks by main section category
+  // Group checks hierarchically
   const groupedChecks = useMemo(() => {
-    const groups = new Map<string, Map<string, any[]>>();
+    const mainGroups = new Map<string, any[]>();
 
     filtered.forEach(check => {
       const sectionNumber = check.code_section_number || '';
-      // Get main category (e.g., "11B-1001" -> "11B-10")
-      const mainCategory = sectionNumber.substring(0, 7); // "11B-10"
-      const subSection = sectionNumber.split('.')[0]; // "11B-1001"
+      // Group by main prefix (e.g., "11B")
+      const mainPrefix = sectionNumber.split('-')[0] || 'Other';
 
-      if (!groups.has(mainCategory)) {
-        groups.set(mainCategory, new Map());
+      if (!mainGroups.has(mainPrefix)) {
+        mainGroups.set(mainPrefix, []);
       }
-
-      const categoryGroups = groups.get(mainCategory)!;
-      if (!categoryGroups.has(subSection)) {
-        categoryGroups.set(subSection, []);
-      }
-      categoryGroups.get(subSection)!.push(check);
+      mainGroups.get(mainPrefix)!.push(check);
     });
 
-    return groups;
+    // Sort each group
+    mainGroups.forEach(group => {
+      group.sort((a, b) =>
+        (a.code_section_number || '').localeCompare(b.code_section_number || '')
+      );
+    });
+
+    return Array.from(mainGroups.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
   const toggleSection = (section: string) => {
@@ -73,26 +74,12 @@ export function CheckList({
     return 'text-gray-400';
   };
 
-  const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
-    <svg
-      className={clsx('w-3 h-3 text-gray-400 transition-transform', expanded && 'rotate-90')}
-      fill="currentColor"
-      viewBox="0 0 20 20"
-    >
-      <path
-        fillRule="evenodd"
-        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
-
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
-      <div className="p-3 border-b bg-gray-50">
+      <div className="p-2 border-b">
         <input
-          className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="Search checks..."
           value={query}
           onChange={e => setQuery(e.target.value)}
@@ -100,90 +87,51 @@ export function CheckList({
       </div>
 
       {/* Check List */}
-      <div className="flex-1 overflow-y-auto">
-        {Array.from(groupedChecks.entries()).map(([mainCategory, subGroups]) => {
-          const isCategoryExpanded = expandedSections.has(mainCategory);
-          const categoryTitle = mainCategory.substring(0, 7) + 'XX';
+      <div className="flex-1 overflow-y-auto text-xs">
+        {groupedChecks.map(([mainPrefix, groupChecks]) => {
+          const isExpanded = expandedSections.has(mainPrefix);
 
           return (
-            <div key={mainCategory} className="border-b">
-              {/* Main Category Header */}
+            <div key={mainPrefix} className="border-b">
+              {/* Main Section Header */}
               <button
-                onClick={() => toggleSection(mainCategory)}
-                className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-gray-50 bg-white"
+                onClick={() => toggleSection(mainPrefix)}
+                className="w-full px-2 py-1.5 flex items-center text-left hover:bg-gray-50"
               >
-                <ChevronIcon expanded={isCategoryExpanded} />
-                <span className="text-sm font-medium text-gray-700">Section {categoryTitle}</span>
-                <span className="text-xs text-gray-500 ml-auto">
-                  {Array.from(subGroups.values()).reduce((acc, arr) => acc + arr.length, 0)} items
-                </span>
+                <svg
+                  width="8"
+                  height="8"
+                  className={clsx('mr-1 transition-transform', isExpanded && 'rotate-90')}
+                  fill="currentColor"
+                  viewBox="0 0 8 8"
+                >
+                  <path d="M2 1l4 3-4 3z" />
+                </svg>
+                <span className="font-medium">Section {mainPrefix}</span>
+                <span className="ml-auto text-gray-500">({groupChecks.length})</span>
               </button>
 
-              {/* Sub-sections */}
-              {isCategoryExpanded && (
+              {/* Individual Checks */}
+              {isExpanded && (
                 <div className="bg-gray-50">
-                  {Array.from(subGroups.entries()).map(([subSection, sectionChecks]) => {
-                    const isSubExpanded = expandedSections.has(subSection);
-                    const mainCheck = sectionChecks[0];
-
-                    return (
-                      <div key={subSection} className="border-t border-gray-200">
-                        {/* Sub-section Header */}
-                        <button
-                          onClick={() => {
-                            if (sectionChecks.length > 1) {
-                              toggleSection(subSection);
-                            } else {
-                              onSelect(sectionChecks[0].id);
-                            }
-                          }}
-                          className={clsx(
-                            'w-full px-6 py-2 flex items-center gap-2 text-left hover:bg-gray-100',
-                            activeCheckId === mainCheck.id && 'bg-blue-50'
-                          )}
-                        >
-                          {sectionChecks.length > 1 && <ChevronIcon expanded={isSubExpanded} />}
-                          {sectionChecks.length === 1 && <div className="w-3" />}
-                          <span className={clsx('text-sm', getStatusColor(mainCheck))}>
-                            {getStatusIcon(mainCheck)}
-                          </span>
-                          <span className="text-sm text-gray-700">{subSection}</span>
-                          <span className="text-sm text-gray-600 truncate flex-1">
-                            {mainCheck.code_section_title}
-                          </span>
-                          {sectionChecks.length > 1 && (
-                            <span className="text-xs text-gray-500">{sectionChecks.length}</span>
-                          )}
-                        </button>
-
-                        {/* Individual Checks */}
-                        {isSubExpanded && sectionChecks.length > 1 && (
-                          <div className="bg-white">
-                            {sectionChecks.map(check => (
-                              <button
-                                key={check.id}
-                                onClick={() => onSelect(check.id)}
-                                className={clsx(
-                                  'w-full px-9 py-1.5 flex items-center gap-2 text-left hover:bg-gray-50',
-                                  activeCheckId === check.id && 'bg-blue-50'
-                                )}
-                              >
-                                <span className={clsx('text-xs', getStatusColor(check))}>
-                                  {getStatusIcon(check)}
-                                </span>
-                                <span className="text-xs text-gray-600">
-                                  {check.code_section_number}
-                                </span>
-                                <span className="text-xs text-gray-700 truncate flex-1">
-                                  {check.code_section_title}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {groupChecks.map(check => (
+                    <button
+                      key={check.id}
+                      onClick={() => onSelect(check.id)}
+                      className={clsx(
+                        'w-full px-4 py-1 flex items-center text-left hover:bg-gray-100',
+                        activeCheckId === check.id && 'bg-blue-100'
+                      )}
+                    >
+                      <span className={clsx('mr-2', getStatusColor(check))}>
+                        {getStatusIcon(check)}
+                      </span>
+                      <span className="font-medium">{check.code_section_number}</span>
+                      <span className="ml-1 text-gray-600 truncate">
+                        {check.code_section_title}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -192,7 +140,7 @@ export function CheckList({
       </div>
 
       {/* Summary */}
-      <div className="p-3 border-t bg-gray-50 text-xs text-gray-600">
+      <div className="p-2 border-t bg-gray-50 text-xs text-gray-600">
         {filtered.length} of {checks.length} checks
       </div>
     </div>
