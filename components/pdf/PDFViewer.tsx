@@ -203,105 +203,140 @@ export function PDFViewer({
   };
 
   const capture = async () => {
-    if (!selection || !pageInstance || !activeCheck) return;
+    try {
+      console.log('capture() called', { selection, pageInstance, activeCheck });
+      if (!selection || !pageInstance || !activeCheck) {
+        console.log('capture() early return - missing:', {
+          hasSelection: !!selection,
+          hasPageInstance: !!pageInstance,
+          hasActiveCheck: !!activeCheck,
+        });
+        return;
+      }
 
-    const sx = Math.min(selection.startX, selection.endX);
-    const sy = Math.min(selection.startY, selection.endY);
-    const ex = Math.max(selection.startX, selection.endX);
-    const ey = Math.max(selection.startY, selection.endY);
+      const sx = Math.min(selection.startX, selection.endX);
+      const sy = Math.min(selection.startY, selection.endY);
+      const ex = Math.max(selection.startX, selection.endX);
+      const ey = Math.max(selection.startY, selection.endY);
 
-    // Convert selection box (screen px) to pdf local coords
-    const { x: ax, y: ay } = screenToPdf(sx - 0, sy - 0);
-    const { x: bx, y: by } = screenToPdf(ex - 0, ey - 0);
+      // Convert selection box (screen px) to pdf local coords
+      const { x: ax, y: ay } = screenToPdf(sx - 0, sy - 0);
+      const { x: bx, y: by } = screenToPdf(ex - 0, ey - 0);
 
-    const pdfRect = { x: ax, y: ay, w: bx - ax, h: by - ay };
+      const pdfRect = { x: ax, y: ay, w: bx - ax, h: by - ay };
 
-    // Render the page to offscreen canvas at high DPI
-    const renderScale = 2.5; // tweak for quality
-    const viewport = pageInstance.getViewport({ scale: renderScale });
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d')!;
-    await pageInstance.render({ canvasContext: ctx, viewport }).promise;
+      // Render the page to offscreen canvas at high DPI
+      const renderScale = 2.5; // tweak for quality
+      const viewport = pageInstance.getViewport({ scale: renderScale });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d')!;
+      await pageInstance.render({ canvasContext: ctx, viewport }).promise;
 
-    // Map pdfRect from "scale=1" coords to renderScale
-    const crop = {
-      x: Math.max(0, Math.round(pdfRect.x * renderScale + viewport.width / 2)),
-      y: Math.max(0, Math.round(pdfRect.y * renderScale + viewport.height / 2)),
-      w: Math.round(pdfRect.w * renderScale),
-      h: Math.round(pdfRect.h * renderScale),
-    };
+      // Map pdfRect from "scale=1" coords to renderScale
+      const crop = {
+        x: Math.max(0, Math.round(pdfRect.x * renderScale + viewport.width / 2)),
+        y: Math.max(0, Math.round(pdfRect.y * renderScale + viewport.height / 2)),
+        w: Math.round(pdfRect.w * renderScale),
+        h: Math.round(pdfRect.h * renderScale),
+      };
 
-    if (crop.w < 5 || crop.h < 5) {
+      if (crop.w < 5 || crop.h < 5) {
+        console.log('capture() crop too small:', crop);
+        setSelection(null);
+        setScreenshotMode(false);
+        return;
+      }
+      console.log('capture() crop:', crop);
+
+      const out = document.createElement('canvas');
+      out.width = crop.w;
+      out.height = crop.h;
+      const octx = out.getContext('2d')!;
+      octx.drawImage(canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+
+      // Thumbnail
+      const thumbMax = 240;
+      const ratio = Math.min(1, thumbMax / Math.max(crop.w, crop.h));
+      const tw = Math.max(1, Math.round(crop.w * ratio));
+      const th = Math.max(1, Math.round(crop.h * ratio));
+      const tcanvas = document.createElement('canvas');
+      tcanvas.width = tw;
+      tcanvas.height = th;
+      const tctx = tcanvas.getContext('2d')!;
+      tctx.drawImage(out, 0, 0, tw, th);
+
+      const [blob, thumb] = await Promise.all([
+        new Promise<Blob>(resolve => out.toBlob(b => resolve(b!), 'image/png')),
+        new Promise<Blob>(resolve => tcanvas.toBlob(b => resolve(b!), 'image/png')),
+      ]);
+
+      // Get presigned upload targets
+      console.log('capture() fetching presigned URLs...');
+      const res = await fetch('/api/screenshots/presign', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: activeCheck.project_id || activeCheck.assessment_id,
+          checkId: activeCheck.id,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        console.error('capture() presign failed:', res.status, await res.text());
+        throw new Error('Failed to get presigned URLs');
+      }
+      const { _screenshotId, uploadUrl, key, thumbUploadUrl, thumbKey } = await res.json();
+      console.log('capture() got presigned URLs');
+
+      console.log('capture() uploading to S3...');
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/png' },
+        body: blob,
+      });
+      await fetch(thumbUploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/png' },
+        body: thumb,
+      });
+      console.log('capture() S3 upload complete');
+
+      // Persist metadata in DB
+      console.log('capture() saving to database...');
+      const dbRes = await fetch('/api/screenshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          check_id: activeCheck.id,
+          page_number: pageNumber,
+          crop_coordinates: {
+            x: pdfRect.x,
+            y: pdfRect.y,
+            width: pdfRect.w,
+            height: pdfRect.h,
+            zoom_level: transform.scale,
+          },
+          screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
+          thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
+          caption: '',
+        }),
+      });
+      if (!dbRes.ok) {
+        console.error('capture() database save failed:', dbRes.status, await dbRes.text());
+        throw new Error('Failed to save screenshot to database');
+      }
+      console.log('capture() complete!');
+
       setSelection(null);
       setScreenshotMode(false);
-      return;
+      onScreenshotSaved();
+    } catch (error) {
+      console.error('capture() failed with error:', error);
+      alert(
+        'Failed to save screenshot: ' + (error instanceof Error ? error.message : 'Unknown error')
+      );
     }
-
-    const out = document.createElement('canvas');
-    out.width = crop.w;
-    out.height = crop.h;
-    const octx = out.getContext('2d')!;
-    octx.drawImage(canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
-
-    // Thumbnail
-    const thumbMax = 240;
-    const ratio = Math.min(1, thumbMax / Math.max(crop.w, crop.h));
-    const tw = Math.max(1, Math.round(crop.w * ratio));
-    const th = Math.max(1, Math.round(crop.h * ratio));
-    const tcanvas = document.createElement('canvas');
-    tcanvas.width = tw;
-    tcanvas.height = th;
-    const tctx = tcanvas.getContext('2d')!;
-    tctx.drawImage(out, 0, 0, tw, th);
-
-    const [blob, thumb] = await Promise.all([
-      new Promise<Blob>(resolve => out.toBlob(b => resolve(b!), 'image/png')),
-      new Promise<Blob>(resolve => tcanvas.toBlob(b => resolve(b!), 'image/png')),
-    ]);
-
-    // Get presigned upload targets
-    const res = await fetch('/api/screenshots/presign', {
-      method: 'POST',
-      body: JSON.stringify({
-        projectId: activeCheck.project_id || activeCheck.assessment_id,
-        checkId: activeCheck.id,
-      }),
-      headers: { 'Content-Type': 'application/json' },
-    });
-    const { _screenshotId, uploadUrl, key, thumbUploadUrl, thumbKey } = await res.json();
-
-    await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: blob });
-    await fetch(thumbUploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/png' },
-      body: thumb,
-    });
-
-    // Persist metadata in DB
-    await fetch('/api/screenshots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        check_id: activeCheck.id,
-        page_number: pageNumber,
-        crop_coordinates: {
-          x: pdfRect.x,
-          y: pdfRect.y,
-          width: pdfRect.w,
-          height: pdfRect.h,
-          zoom_level: transform.scale,
-        },
-        screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
-        thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
-        caption: '',
-      }),
-    });
-
-    setSelection(null);
-    setScreenshotMode(false);
-    onScreenshotSaved();
   };
 
   if (loadingUrl) {
@@ -414,22 +449,22 @@ export function PDFViewer({
             />
           </Document>
         </div>
-      </div>
 
-      {screenshotMode && selection && (
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            left: Math.min(selection.startX, selection.endX),
-            top: Math.min(selection.startY, selection.endY),
-            width: Math.abs(selection.endX - selection.startX),
-            height: Math.abs(selection.endY - selection.startY),
-            border: '2px solid rgba(37, 99, 235, 0.8)',
-            backgroundColor: 'rgba(37, 99, 235, 0.1)',
-            zIndex: 40,
-          }}
-        />
-      )}
+        {screenshotMode && selection && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: Math.min(selection.startX, selection.endX),
+              top: Math.min(selection.startY, selection.endY),
+              width: Math.abs(selection.endX - selection.startX),
+              height: Math.abs(selection.endY - selection.startY),
+              border: '2px solid rgba(37, 99, 235, 0.8)',
+              backgroundColor: 'rgba(37, 99, 235, 0.1)',
+              zIndex: 40,
+            }}
+          />
+        )}
+      </div>
 
       <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
         <button
