@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
+import type { Check, Screenshot } from '@/types/database';
 
-export function ScreenshotGallery({ check, refreshKey }: { check: any; refreshKey: number }) {
-  const [shots, setShots] = useState<any[]>([]);
+export function ScreenshotGallery({ check, refreshKey }: { check: Check; refreshKey: number }) {
+  const [shots, setShots] = useState<Screenshot[]>([]);
   useEffect(() => {
     (async () => {
       const res = await fetch(`/api/screenshots?check_id=${check.id}`);
@@ -20,7 +21,9 @@ export function ScreenshotGallery({ check, refreshKey }: { check: any; refreshKe
             <div className="w-40 h-28 bg-gray-100 border rounded overflow-hidden flex items-center justify-center text-xs">
               <span className="p-2 break-all">{s.thumbnail_url || s.screenshot_url}</span>
             </div>
-            <figcaption className="mt-1 text-xs text-gray-700">{s.caption || 'No caption'}</figcaption>
+            <figcaption className="mt-1 text-xs text-gray-700">
+              {s.caption || 'No caption'}
+            </figcaption>
           </figure>
         ))}
       </div>
