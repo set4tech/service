@@ -3,7 +3,8 @@
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// Use the unpkg CDN which is more reliable for Vercel deployments
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface Transform {
   x: number;

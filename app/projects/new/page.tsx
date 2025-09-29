@@ -49,10 +49,12 @@ export default function NewProjectPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for Vercel Hobby plan
+      const MAX_SIZE = 50 * 1024 * 1024; // 50MB for Vercel Pro plan
 
       if (file.size > MAX_SIZE) {
-        alert('File is too large. Maximum size is 4.5MB. Please compress your PDF or use a smaller file.');
+        alert(
+          'File is too large. Maximum size is 50MB. Please compress your PDF or use a smaller file.'
+        );
         e.target.value = ''; // Clear the input
         return;
       }
@@ -76,7 +78,7 @@ export default function NewProjectPage() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         if (response.status === 413) {
-          throw new Error('File is too large. Maximum size is 4.5MB.');
+          throw new Error('File is too large. Maximum size is 50MB.');
         }
         throw new Error(errorData.error || 'Failed to upload PDF');
       }

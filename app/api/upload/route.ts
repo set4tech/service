@@ -17,13 +17,10 @@ export async function POST(request: NextRequest) {
   try {
     // Check content length header to prevent large uploads early
     const contentLength = request.headers.get('content-length');
-    const MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for Vercel Hobby plan
+    const MAX_SIZE = 50 * 1024 * 1024; // 50MB for Vercel Pro plan
 
     if (contentLength && parseInt(contentLength) > MAX_SIZE) {
-      return NextResponse.json(
-        { error: 'File too large. Maximum size is 4.5MB for Vercel Hobby plan.' },
-        { status: 413 }
-      );
+      return NextResponse.json({ error: 'File too large. Maximum size is 50MB.' }, { status: 413 });
     }
 
     const formData = await request.formData();
@@ -35,10 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Additional size check
     if (file.size > MAX_SIZE) {
-      return NextResponse.json(
-        { error: 'File too large. Maximum size is 4.5MB for Vercel Hobby plan.' },
-        { status: 413 }
-      );
+      return NextResponse.json({ error: 'File too large. Maximum size is 50MB.' }, { status: 413 });
     }
 
     // Convert file to buffer
