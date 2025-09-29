@@ -81,6 +81,7 @@ export function PDFViewer({
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent scroll from bubbling to parent
     const scaleSpeed = 0.007;
     const scaleDelta = -e.deltaY * scaleSpeed;
     setTransform(prev => {
@@ -309,7 +310,7 @@ export function PDFViewer({
       tabIndex={0}
       role="region"
       aria-label="PDF viewer"
-      className="relative h-full w-full outline-none"
+      className="relative h-full w-full outline-none overscroll-contain"
     >
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
         <button aria-label="Zoom out" className="btn-icon" onClick={() => zoom('out')}>

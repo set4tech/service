@@ -28,10 +28,10 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 h-screen">
-      <aside className="border-r flex flex-col overflow-hidden bg-white">
-        <div className="p-3 border-b">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-medium">Progress</div>
+      <aside className="h-screen border-r flex flex-col overflow-hidden bg-white min-h-0">
+        <div className="p-4 border-b bg-gray-50">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-900">Progress</h2>
             <Link href="/" className="btn-secondary">
               <svg
                 width="16"
@@ -51,33 +51,71 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
               <span>My Projects</span>
             </Link>
           </div>
-          <div
-            className="progress mt-2"
-            style={{ '--value': `${progress.pct}%` } as React.CSSProperties}
-          >
-            <div className="bar" />
+
+          <div className="space-y-3">
+            <div>
+              <div
+                className="progress"
+                style={{ '--value': `${progress.pct}%` } as React.CSSProperties}
+              >
+                <div className="bar" />
+              </div>
+              <div className="text-xs text-gray-600 mt-1.5">
+                {progress.completed} of {progress.totalChecks} checks
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-900 mb-2">Active Checks</h3>
+              <CheckTabs
+                checks={checks}
+                activeCheckId={activeCheckId}
+                onSelect={setActiveCheckId}
+              />
+            </div>
           </div>
-          <div className="text-xs text-gray-600 mt-1">
-            {progress.completed} of {progress.totalChecks} checks
-          </div>
-          <div className="mt-2 text-sm">Active Checks:</div>
-          <CheckTabs checks={checks} activeCheckId={activeCheckId} onSelect={setActiveCheckId} />
         </div>
 
-        <div className="p-3 overflow-auto stack-md">
+        <div className="p-4 overflow-auto space-y-6">
           {activeCheck ? (
             <>
-              <div className="text-sm text-gray-600 mb-2">
-                Section {activeCheck.code_section_number} — {activeCheck.code_section_title}
-              </div>
-              <div className="text-sm">
-                Check: <span className="font-medium">{activeCheck.check_name}</span>{' '}
-                {activeCheck.check_location ? `— ${activeCheck.check_location}` : null}
-              </div>
+              <section>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Check Details
+                </h3>
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-600">
+                    Section {activeCheck.code_section_number} — {activeCheck.code_section_title}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">{activeCheck.check_name}</span>
+                    {activeCheck.check_location && (
+                      <span className="text-gray-600"> — {activeCheck.check_location}</span>
+                    )}
+                  </div>
+                </div>
+              </section>
 
-              <PromptEditor check={activeCheck} />
-              <AnalysisPanel check={activeCheck} onRefresh={() => null} />
-              <ScreenshotGallery check={activeCheck} refreshKey={screenshotsChanged} />
+              <section>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Prompt
+                </h3>
+                <PromptEditor check={activeCheck} />
+              </section>
+
+              <section>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Analysis
+                </h3>
+                <AnalysisPanel check={activeCheck} onRefresh={() => null} />
+              </section>
+
+              <section>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Screenshots
+                </h3>
+                <ScreenshotGallery check={activeCheck} refreshKey={screenshotsChanged} />
+              </section>
             </>
           ) : (
             <div className="text-sm text-gray-600">No check selected.</div>
@@ -85,7 +123,7 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
         </div>
       </aside>
 
-      <section className="relative overflow-hidden bg-gray-50 border border-gray-300">
+      <section className="h-screen relative overflow-hidden bg-gray-50 border border-gray-300 min-h-0">
         {pdfUrl ? (
           <PDFViewer
             pdfUrl={pdfUrl}

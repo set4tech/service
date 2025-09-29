@@ -37,4 +37,7 @@
   /* Progress bar using a CSS var to avoid inline width calc */
   .progress { @apply h-2 bg-gray-200 rounded; }
   .progress > .bar { width: var(--value, 0%); @apply h-2 bg-brand-600 rounded; }
+
+  /* Prevent scroll chaining */
+  .overscroll-contain { overscroll-behavior: contain; }
 }
