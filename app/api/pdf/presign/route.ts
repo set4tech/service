@@ -13,7 +13,8 @@ export async function POST(req: NextRequest) {
       key = parts.slice(1).join('/');
     } else if (pdfUrl.includes('.s3.') || pdfUrl.includes('.s3-')) {
       const url = new URL(pdfUrl);
-      key = url.pathname.slice(1); // Remove leading slash
+      // Decode the pathname to handle URL-encoded characters properly
+      key = decodeURIComponent(url.pathname.slice(1)); // Remove leading slash and decode
     } else {
       return NextResponse.json({ error: 'Invalid S3 URL format' }, { status: 400 });
     }
