@@ -25,22 +25,28 @@ export function CheckList({
     );
   }, [query, checks]);
 
-  // Group checks by section number prefix (e.g., "11B-1001" -> "11B-1001")
+  // Group checks by main section category
   const groupedChecks = useMemo(() => {
-    const groups = new Map<string, any[]>();
+    const groups = new Map<string, Map<string, any[]>>();
 
     filtered.forEach(check => {
-      // Get the main section number (before the first dot if it exists)
       const sectionNumber = check.code_section_number || '';
-      const mainSection = sectionNumber.split('.')[0] || sectionNumber;
+      // Get main category (e.g., "11B-1001" -> "11B-10")
+      const mainCategory = sectionNumber.substring(0, 7); // "11B-10"
+      const subSection = sectionNumber.split('.')[0]; // "11B-1001"
 
-      if (!groups.has(mainSection)) {
-        groups.set(mainSection, []);
+      if (!groups.has(mainCategory)) {
+        groups.set(mainCategory, new Map());
       }
-      groups.get(mainSection)!.push(check);
+
+      const categoryGroups = groups.get(mainCategory)!;
+      if (!categoryGroups.has(subSection)) {
+        categoryGroups.set(subSection, []);
+      }
+      categoryGroups.get(subSection)!.push(check);
     });
 
-    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return groups;
   }, [filtered]);
 
   const toggleSection = (section: string) => {
@@ -67,12 +73,26 @@ export function CheckList({
     return 'text-gray-400';
   };
 
+  const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
+    <svg
+      className={clsx('w-3 h-3 text-gray-400 transition-transform', expanded && 'rotate-90')}
+      fill="currentColor"
+      viewBox="0 0 20 20"
+    >
+      <path
+        fillRule="evenodd"
+        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
       <div className="p-3 border-b bg-gray-50">
         <input
-          className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="Search checks..."
           value={query}
           onChange={e => setQuery(e.target.value)}
@@ -81,87 +101,89 @@ export function CheckList({
 
       {/* Check List */}
       <div className="flex-1 overflow-y-auto">
-        {groupedChecks.map(([section, sectionChecks]) => {
-          const isExpanded = expandedSections.has(section) || sectionChecks.length === 1;
-          const mainCheck =
-            sectionChecks.find(c => c.code_section_number === section) || sectionChecks[0];
+        {Array.from(groupedChecks.entries()).map(([mainCategory, subGroups]) => {
+          const isCategoryExpanded = expandedSections.has(mainCategory);
+          const categoryTitle = mainCategory.substring(0, 7) + 'XX';
 
           return (
-            <div key={section} className="border-b">
-              {/* Section Header */}
+            <div key={mainCategory} className="border-b">
+              {/* Main Category Header */}
               <button
-                onClick={() => {
-                  if (sectionChecks.length > 1) {
-                    toggleSection(section);
-                  } else {
-                    onSelect(sectionChecks[0].id);
-                  }
-                }}
-                className={clsx(
-                  'w-full px-3 py-2 flex items-center justify-between text-left hover:bg-gray-50 transition-colors',
-                  activeCheckId === mainCheck.id && 'bg-blue-50'
-                )}
+                onClick={() => toggleSection(mainCategory)}
+                className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-gray-50 bg-white"
               >
-                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  {sectionChecks.length > 1 && (
-                    <svg
-                      className={clsx(
-                        'w-3 h-3 flex-shrink-0 transition-transform text-gray-500',
-                        isExpanded && 'rotate-90'
-                      )}
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  )}
-                  <span className={clsx('text-sm flex-shrink-0', getStatusColor(mainCheck))}>
-                    {getStatusIcon(mainCheck)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-900 truncate">
-                      {section} - {mainCheck.code_section_title}
-                    </div>
-                    {sectionChecks.length > 1 && (
-                      <div className="text-xs text-gray-500">
-                        {sectionChecks.length} subsections
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <ChevronIcon expanded={isCategoryExpanded} />
+                <span className="text-sm font-medium text-gray-700">Section {categoryTitle}</span>
+                <span className="text-xs text-gray-500 ml-auto">
+                  {Array.from(subGroups.values()).reduce((acc, arr) => acc + arr.length, 0)} items
+                </span>
               </button>
 
-              {/* Subsection Items */}
-              {isExpanded && sectionChecks.length > 1 && (
+              {/* Sub-sections */}
+              {isCategoryExpanded && (
                 <div className="bg-gray-50">
-                  {sectionChecks.map(check => (
-                    <button
-                      key={check.id}
-                      onClick={() => onSelect(check.id)}
-                      className={clsx(
-                        'w-full px-3 py-1.5 pl-10 flex items-center gap-2 text-left hover:bg-gray-100 transition-colors',
-                        activeCheckId === check.id && 'bg-blue-100'
-                      )}
-                    >
-                      <span className={clsx('text-sm', getStatusColor(check))}>
-                        {getStatusIcon(check)}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-gray-700 truncate">
-                          {check.code_section_number} - {check.code_section_title}
-                        </div>
-                        {check.check_location && (
-                          <div className="text-xs text-gray-500 truncate">
-                            {check.check_location}
+                  {Array.from(subGroups.entries()).map(([subSection, sectionChecks]) => {
+                    const isSubExpanded = expandedSections.has(subSection);
+                    const mainCheck = sectionChecks[0];
+
+                    return (
+                      <div key={subSection} className="border-t border-gray-200">
+                        {/* Sub-section Header */}
+                        <button
+                          onClick={() => {
+                            if (sectionChecks.length > 1) {
+                              toggleSection(subSection);
+                            } else {
+                              onSelect(sectionChecks[0].id);
+                            }
+                          }}
+                          className={clsx(
+                            'w-full px-6 py-2 flex items-center gap-2 text-left hover:bg-gray-100',
+                            activeCheckId === mainCheck.id && 'bg-blue-50'
+                          )}
+                        >
+                          {sectionChecks.length > 1 && <ChevronIcon expanded={isSubExpanded} />}
+                          {sectionChecks.length === 1 && <div className="w-3" />}
+                          <span className={clsx('text-sm', getStatusColor(mainCheck))}>
+                            {getStatusIcon(mainCheck)}
+                          </span>
+                          <span className="text-sm text-gray-700">{subSection}</span>
+                          <span className="text-sm text-gray-600 truncate flex-1">
+                            {mainCheck.code_section_title}
+                          </span>
+                          {sectionChecks.length > 1 && (
+                            <span className="text-xs text-gray-500">{sectionChecks.length}</span>
+                          )}
+                        </button>
+
+                        {/* Individual Checks */}
+                        {isSubExpanded && sectionChecks.length > 1 && (
+                          <div className="bg-white">
+                            {sectionChecks.map(check => (
+                              <button
+                                key={check.id}
+                                onClick={() => onSelect(check.id)}
+                                className={clsx(
+                                  'w-full px-9 py-1.5 flex items-center gap-2 text-left hover:bg-gray-50',
+                                  activeCheckId === check.id && 'bg-blue-50'
+                                )}
+                              >
+                                <span className={clsx('text-xs', getStatusColor(check))}>
+                                  {getStatusIcon(check)}
+                                </span>
+                                <span className="text-xs text-gray-600">
+                                  {check.code_section_number}
+                                </span>
+                                <span className="text-xs text-gray-700 truncate flex-1">
+                                  {check.code_section_title}
+                                </span>
+                              </button>
+                            ))}
                           </div>
                         )}
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
