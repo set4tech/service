@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-import fs from 'fs/promises';
-
-const execAsync = promisify(exec);
+import { getCodeAssembly, runQuery } from '@/lib/neo4j';
 
 // Cache for section data (in production, use Redis)
 const sectionsCache = new Map<string, unknown>();
@@ -24,43 +19,50 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(sectionsCache.get(codeId));
     }
 
-    // Execute Python script to get sections
-    const scriptPath = path.join(process.cwd(), 'export_sections_for_frontend.py');
-    const outputPath = path.join(process.cwd(), 'temp', `${codeId.replace(/[^a-zA-Z0-9]/g, '_')}_sections.json`);
+    // Get code assembly from Neo4j using TypeScript backend
+    const assembly = await getCodeAssembly(codeId);
 
-    // Ensure temp directory exists
-    await fs.mkdir(path.join(process.cwd(), 'temp'), { recursive: true });
-
-    // Run the Python script
-    const command = `python3 ${scriptPath} --code-id "${codeId}" --output "${outputPath}"`;
-
-    // Execute Python script
-    const { stderr } = await execAsync(command, {
-      env: {
-        ...process.env,
-        PYTHONPATH: process.cwd(),
-      },
-    });
-
-    if (stderr && !stderr.includes('INFO:')) {
-      throw new Error(`Python script error: ${stderr}`);
+    if (!assembly || !assembly.sections) {
+      return NextResponse.json(
+        {
+          error: 'Code not found',
+          details: `No sections found for code ID: ${codeId}`,
+        },
+        { status: 404 }
+      );
     }
 
-    // Read the output file
-    const sectionsData = await fs.readFile(outputPath, 'utf-8');
-    const sections = JSON.parse(sectionsData);
+    // Format sections for frontend consumption
+    const formattedSections = assembly.sections.map((section: any) => ({
+      key: section.key || `${section.id}`,
+      number: section.number,
+      title: section.title,
+      type: section.item_type || 'section',
+      requirements: section.paragraphs || [],
+      text: section.text,
+      references: [], // TODO: Add references if needed
+      source_id: section.source_id,
+      hasContent: !!(section.paragraphs && section.paragraphs.length > 0),
+      subsections: section.subsections || [],
+    }));
+
+    const result = {
+      code_id: codeId,
+      code_title: `Code ${codeId}`, // TODO: Get actual code title
+      total_sections: formattedSections.length,
+      sections: formattedSections,
+    };
 
     // Cache the result
-    sectionsCache.set(codeId, sections);
+    sectionsCache.set(codeId, result);
 
-    // Clean up temp file
-    await fs.unlink(outputPath).catch(() => {}); // Ignore errors
-
-    return NextResponse.json(sections);
-
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: 'Failed to fetch sections', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: 'Failed to fetch sections',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
@@ -74,12 +76,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'sectionKey is required' }, { status: 400 });
   }
 
-  // This endpoint would fetch a single section with all its references
-  // For now, we'll return a placeholder
-  // In production, this would query Neo4j directly for the specific section
+  try {
+    // Query Neo4j for the specific section with its references
+    const sections = await runQuery<any>(
+      `
+      MATCH (s:Section {key: $sectionKey})
+      OPTIONAL MATCH (s)-[:REFS]->(ref:Section)
+      RETURN s, collect(ref) as references
+    `,
+      { sectionKey }
+    );
 
-  return NextResponse.json({
-    message: 'Single section endpoint - to be implemented',
-    sectionKey,
-  });
+    if (!sections.length) {
+      return NextResponse.json({ error: 'Section not found' }, { status: 404 });
+    }
+
+    const section = sections[0];
+    const sectionData = section.s.properties;
+    const references = section.references.map((ref: any) => ref.properties);
+
+    return NextResponse.json({
+      key: sectionData.key,
+      number: sectionData.number,
+      title: sectionData.title,
+      type: sectionData.item_type || 'section',
+      requirements: sectionData.paragraphs || [],
+      text: sectionData.text,
+      references,
+      source_id: sectionData.source_id,
+      hasContent: !!(sectionData.paragraphs && sectionData.paragraphs.length > 0),
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: 'Failed to fetch section',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
 }

@@ -4,14 +4,23 @@ import AssessmentClient from './ui/AssessmentClient';
 export default async function AssessmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = supabaseAdmin();
-  const [{ data: assessment }, { data: checks }] = await Promise.all([
-    supabase.from('assessments').select('*, projects(pdf_url)').eq('id', id).single(),
-    supabase
-      .from('check_summary')
-      .select('*')
-      .eq('assessment_id', id)
-      .order('created_at', { ascending: true }),
-  ]);
+
+  console.log('Assessment ID:', id);
+
+  const [{ data: assessment, error: assessmentError }, { data: checks, error: checksError }] =
+    await Promise.all([
+      supabase.from('assessments').select('*, projects(pdf_url)').eq('id', id).single(),
+      supabase
+        .from('check_summary')
+        .select('*')
+        .eq('assessment_id', id)
+        .order('created_at', { ascending: true }),
+    ]);
+
+  console.log('Assessment found:', !!assessment);
+  console.log('Assessment error:', assessmentError);
+  console.log('Checks count:', checks?.length || 0);
+  console.log('Checks error:', checksError);
 
   if (!assessment) {
     return <div className="p-6">Assessment not found.</div>;
