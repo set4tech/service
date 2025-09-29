@@ -418,12 +418,15 @@ export function PDFViewer({
 
       {screenshotMode && selection && (
         <div
-          className="absolute border-2 border-blue-600/80 bg-blue-600/10 pointer-events-none z-40"
+          className="absolute pointer-events-none"
           style={{
             left: Math.min(selection.startX, selection.endX),
             top: Math.min(selection.startY, selection.endY),
             width: Math.abs(selection.endX - selection.startX),
             height: Math.abs(selection.endY - selection.startY),
+            border: '2px solid rgba(37, 99, 235, 0.8)',
+            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+            zIndex: 40,
           }}
         />
       )}
