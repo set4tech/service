@@ -52,7 +52,9 @@ export default function Home() {
   const handleDeleteProject = async (e: React.MouseEvent, projectId: string) => {
     e.stopPropagation(); // Prevent triggering project click
 
-    const confirmed = window.confirm('Are you sure you want to delete this project? This action cannot be undone.');
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this project? This action cannot be undone.'
+    );
     if (!confirmed) return;
 
     try {
@@ -104,42 +106,81 @@ export default function Home() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map(project => (
-              <div
-                key={project.id}
-                onClick={() => handleProjectClick(project.id)}
-                className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition relative group"
-              >
-                <button
-                  onClick={(e) => handleDeleteProject(e, project.id)}
-                  className="absolute top-4 right-4 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition opacity-0 group-hover:opacity-100"
-                  title="Delete project"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-                <h3 className="font-semibold text-lg mb-2 pr-8">{project.name}</h3>
-                {project.customer && (
-                  <p className="text-sm text-gray-600 mb-2">Customer: {project.customer.name}</p>
-                )}
-                <div className="flex justify-between items-center mt-4">
-                  <span
-                    className={`text-xs px-2 py-1 rounded ${
-                      project.status === 'completed'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
-                    {project.status || 'in_progress'}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {new Date(project.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-            ))}
+                    Project Name
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Customer
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Status
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Created
+                  </th>
+                  <th scope="col" className="relative px-6 py-3">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {projects.map(project => (
+                  <tr
+                    key={project.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => handleProjectClick(project.id)}
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{project.name}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{project.customer?.name || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          project.status === 'completed'
+                            ? 'bg-green-100 text-green-800'
+                            : project.status === 'active'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                        }`}
+                      >
+                        {project.status || 'In Progress'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(project.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={e => handleDeleteProject(e, project.id)}
+                        className="text-red-600 hover:text-red-900 hover:bg-red-50 p-2 rounded transition"
+                        title="Delete project"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
