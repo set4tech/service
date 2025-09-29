@@ -19,17 +19,12 @@ export default function NewProjectPage() {
   const [projectData, setProjectData] = useState({
     name: '',
     description: '',
-    building_address: '',
-    building_type: '',
     customer_id: '',
     pdf_url: '',
   });
 
   const [newCustomer, setNewCustomer] = useState({
     name: '',
-    contact_email: '',
-    contact_phone: '',
-    address: '',
   });
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -175,39 +170,6 @@ export default function NewProjectPage() {
                     rows={3}
                     placeholder="Project description..."
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Building Address (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={projectData.building_address}
-                    onChange={e =>
-                      setProjectData({ ...projectData, building_address: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="e.g., 255 California Street, San Francisco, CA (optional)"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Building Type (Optional)
-                  </label>
-                  <select
-                    value={projectData.building_type}
-                    onChange={e =>
-                      setProjectData({ ...projectData, building_type: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  >
-                    <option value="">Select... (optional)</option>
-                    <option value="commercial">Commercial</option>
-                    <option value="residential">Residential</option>
-                    <option value="mixed-use">Mixed Use</option>
-                    <option value="industrial">Industrial</option>
-                    <option value="institutional">Institutional</option>
-                  </select>
                 </div>
               </div>
               <div className="mt-6 flex justify-end">
@@ -357,14 +319,9 @@ export default function NewProjectPage() {
                   <p className="text-sm">
                     <strong>Name:</strong> {projectData.name}
                   </p>
-                  {projectData.building_address && (
+                  {projectData.description && (
                     <p className="text-sm">
-                      <strong>Address:</strong> {projectData.building_address}
-                    </p>
-                  )}
-                  {projectData.building_type && (
-                    <p className="text-sm">
-                      <strong>Type:</strong> {projectData.building_type}
+                      <strong>Description:</strong> {projectData.description}
                     </p>
                   )}
                 </div>

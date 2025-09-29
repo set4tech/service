@@ -8,7 +8,6 @@ interface Project {
   id: string;
   name: string;
   customer: { name: string } | null;
-  building_address: string;
   status: string;
   created_at: string;
   assessments?: { id: string }[];
@@ -92,10 +91,7 @@ export default function Home() {
               >
                 <h3 className="font-semibold text-lg mb-2">{project.name}</h3>
                 {project.customer && (
-                  <p className="text-sm text-gray-600 mb-1">Customer: {project.customer.name}</p>
-                )}
-                {project.building_address && (
-                  <p className="text-sm text-gray-600 mb-2">{project.building_address}</p>
+                  <p className="text-sm text-gray-600 mb-2">Customer: {project.customer.name}</p>
                 )}
                 <div className="flex justify-between items-center mt-4">
                   <span
