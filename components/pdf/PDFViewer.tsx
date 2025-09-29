@@ -75,6 +75,17 @@ export function PDFViewer({
   const onDocLoad = ({ numPages }: { numPages: number }) => {
     console.log('PDFViewer: Document loaded successfully with', numPages, 'pages');
     setNumPages(numPages);
+    // Center the PDF on initial load
+    if (viewportRef.current && transform.tx === 0 && transform.ty === 0) {
+      const rect = viewportRef.current.getBoundingClientRect();
+      const pageWidth = 800 * 0.75; // approximate width for height=800
+      const pageHeight = 800;
+      setTransform({
+        tx: (rect.width - pageWidth) / 2,
+        ty: (rect.height - pageHeight) / 2,
+        scale: 1,
+      });
+    }
   };
 
   const onDocError = (error: Error) => {
