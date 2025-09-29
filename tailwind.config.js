@@ -5,6 +5,13 @@ module.exports = {
     './components/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
+  safelist: [
+    'hover:bg-blue-50',
+    'hover:shadow-sm',
+    'hover:border-l-blue-500',
+    'group-hover:text-blue-700',
+    'group-hover:opacity-100',
+  ],
   theme: {
     extend: {
       colors: {
