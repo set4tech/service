@@ -29,8 +29,8 @@ export default function Home() {
         const data = await response.json();
         setProjects(data);
       }
-    } catch (error) {
-      console.error('Error fetching projects:', error);
+    } catch {
+      // console.error('Error fetching projects');
     } finally {
       setLoading(false);
     }
@@ -44,8 +44,8 @@ export default function Home() {
         const { assessmentId } = await response.json();
         router.push(`/assessments/${assessmentId}`);
       }
-    } catch (error) {
-      console.error('Error navigating to assessment:', error);
+    } catch {
+      // console.error('Error navigating to assessment');
     }
   };
 
@@ -61,7 +61,7 @@ export default function Home() {
           <h2 className="text-xl font-semibold">Your Projects</h2>
           <Link
             href="/projects/new"
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
           >
             + Create New Project
           </Link>
@@ -76,7 +76,7 @@ export default function Home() {
             <p className="text-gray-500 mb-4">No projects yet</p>
             <Link
               href="/projects/new"
-              className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+              className="inline-block bg-blue-600 text-white px-8 py-4 rounded-lg hover:bg-blue-700 transition"
             >
               Create Your First Project
             </Link>

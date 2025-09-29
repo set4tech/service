@@ -176,7 +176,7 @@ export default function NewProjectPage() {
                 <button
                   onClick={() => setStep(2)}
                   disabled={!projectData.name}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                 >
                   Next →
                 </button>
@@ -214,14 +214,14 @@ export default function NewProjectPage() {
               <div className="mt-6 flex justify-between">
                 <button
                   onClick={() => setStep(1)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
                 >
                   ← Back
                 </button>
                 <button
                   onClick={() => setStep(3)}
                   disabled={!pdfFile}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                 >
                   Next →
                 </button>
@@ -292,7 +292,7 @@ export default function NewProjectPage() {
               <div className="mt-6 flex justify-between">
                 <button
                   onClick={() => setStep(2)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
                 >
                   ← Back
                 </button>
@@ -346,7 +346,7 @@ export default function NewProjectPage() {
               <div className="mt-6 flex justify-between">
                 <button
                   onClick={() => setStep(3)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
                   disabled={loading}
                 >
                   ← Back

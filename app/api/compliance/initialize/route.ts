@@ -10,10 +10,7 @@ export async function POST(request: NextRequest) {
   const { projectId, codeId } = await request.json();
 
   if (!projectId || !codeId) {
-    return NextResponse.json(
-      { error: 'projectId and codeId are required' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'projectId and codeId are required' }, { status: 400 });
   }
 
   try {
@@ -32,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     // Load sections from pre-generated JSON
     // In production, this could be stored in Supabase or fetched from Neo4j
-    const sectionsModule = await import('@/data/cbc_sections.json');
+    const sectionsModule = await import('../../../../data/cbc_sections.json');
     const sectionsData = sectionsModule.default;
 
     // Initialize section checks for each section
@@ -52,9 +49,7 @@ export async function POST(request: NextRequest) {
     }));
 
     // Batch insert section checks
-    const { error: checksError } = await supabase
-      .from('section_checks')
-      .insert(sectionChecks);
+    const { error: checksError } = await supabase.from('section_checks').insert(sectionChecks);
 
     if (checksError) throw checksError;
 
@@ -63,11 +58,11 @@ export async function POST(request: NextRequest) {
       sections: sectionsData.sections,
       totalSections: sectionsData.total_sections,
     });
-
   } catch (error) {
-    console.error('Error initializing compliance session:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // console.error('Error initializing compliance session:', error);
     return NextResponse.json(
-      { error: 'Failed to initialize compliance session', details: error.message },
+      { error: 'Failed to initialize compliance session', details: errorMessage },
       { status: 500 }
     );
   }
