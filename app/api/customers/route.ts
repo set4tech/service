@@ -3,9 +3,12 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET() {
   const supabase = supabaseAdmin();
-  const { data, error } = await supabase.from('customers').select('*').order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .order('created_at', { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ customers: data });
+  return NextResponse.json(data || []);
 }
 
 export async function POST(req: NextRequest) {
@@ -13,5 +16,5 @@ export async function POST(req: NextRequest) {
   const supabase = supabaseAdmin();
   const { data, error } = await supabase.from('customers').insert(body).select('*').single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ customer: data });
+  return NextResponse.json(data);
 }
