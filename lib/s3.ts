@@ -4,13 +4,15 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 // Hardcoded S3 bucket name
 const S3_BUCKET_NAME = 'set4-data';
 
-const s3 = new S3Client({
+export const s3Client = new S3Client({
   region: process.env.AWS_REGION!,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
 });
+
+const s3 = s3Client;
 
 export async function presignPut(key: string, contentType: string, expiresSeconds = 60) {
   const command = new PutObjectCommand({

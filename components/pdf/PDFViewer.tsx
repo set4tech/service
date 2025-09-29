@@ -7,8 +7,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface Transform {
-  x: number;
-  y: number;
+  tx: number;
+  ty: number;
   scale: number;
 }
 const MIN_SCALE = 0.1;
@@ -23,10 +23,11 @@ export function PDFViewer({
   activeCheck?: any;
   onScreenshotSaved: () => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const _contentRef = useRef<HTMLDivElement>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
+  const [transform, setTransform] = useState<Transform>({ tx: 0, ty: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
@@ -37,7 +38,7 @@ export function PDFViewer({
     startY: number;
     endX: number;
     endY: number;
-  } | null>(null);
+  } | null>(null); // Content coordinates, top-left origin
   const [pdfInstance, setPdfInstance] = useState<any>(null);
   const [pageInstance, setPageInstance] = useState<any>(null);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
@@ -83,64 +84,83 @@ export function PDFViewer({
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault();
-      e.stopPropagation(); // Prevent scroll from bubbling to parent
-      if (screenshotMode) return; // Disable zoom in screenshot mode
-      const scaleSpeed = 0.003; // Reduced from 0.007 for slower, more controlled zooming
+      e.stopPropagation();
+      if (screenshotMode) return;
+
+      const scaleSpeed = 0.003;
       const scaleDelta = -e.deltaY * scaleSpeed;
+
       setTransform(prev => {
         const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
-        const ratio = newScale / prev.scale;
-        const rect = containerRef.current!.getBoundingClientRect();
-        const cx = e.clientX - rect.left - rect.width / 2;
-        const cy = e.clientY - rect.top - rect.height / 2;
-        const nx = cx - (cx - prev.x) * ratio;
-        const ny = cy - (cy - prev.y) * ratio;
-        return { x: nx, y: ny, scale: newScale };
+        const _ratio = newScale / prev.scale;
+
+        // Zoom toward cursor position
+        const vp = viewportRef.current!;
+        const rect = vp.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+
+        // Point in content space before zoom
+        const cx = (sx - prev.tx) / prev.scale;
+        const cy = (sy - prev.ty) / prev.scale;
+
+        // New translate to keep that point under cursor
+        const tx = sx - cx * newScale;
+        const ty = sy - cy * newScale;
+
+        return { tx, ty, scale: newScale };
       });
     },
     [screenshotMode]
   );
 
+  const screenToContent = useCallback(
+    (clientX: number, clientY: number) => {
+      const vp = viewportRef.current!;
+      const rect = vp.getBoundingClientRect();
+      const sx = clientX - rect.left;
+      const sy = clientY - rect.top;
+
+      // Invert M = T(tx,ty) · S(scale) with origin (0,0)
+      const x = (sx - transform.tx) / transform.scale;
+      const y = (sy - transform.ty) / transform.scale;
+      return { x, y };
+    },
+    [transform]
+  );
+
   const onMouseDown = (e: React.MouseEvent) => {
-    console.log('onMouseDown - screenshotMode:', screenshotMode, 'button:', e.button);
     if (screenshotMode) {
-      console.log('Screenshot mode - starting new selection');
       e.preventDefault();
       e.stopPropagation();
-      const { x, y } = screenToPdf(e.clientX, e.clientY);
-      const newSelection = {
-        startX: x,
-        startY: y,
-        endX: x,
-        endY: y,
-      };
-      console.log('Setting selection (PDF coords):', newSelection);
-      setSelection(newSelection);
+      const { x, y } = screenToContent(e.clientX, e.clientY);
+      setSelection({ startX: x, startY: y, endX: x, endY: y });
       setIsSelecting(true);
       return;
     }
     if (e.button !== 0) return;
-    console.log('Setting isDragging to true');
     setIsDragging(true);
-    dragStart.current = { x: e.clientX, y: e.clientY, tx: transform.x, ty: transform.y };
+    dragStart.current = { x: e.clientX, y: e.clientY, tx: transform.tx, ty: transform.ty };
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
     if (screenshotMode) {
-      console.log('onMouseMove - screenshotMode active, isSelecting:', isSelecting);
       if (isSelecting && selection) {
         e.preventDefault();
         e.stopPropagation();
-        const { x, y } = screenToPdf(e.clientX, e.clientY);
+        const { x, y } = screenToContent(e.clientX, e.clientY);
         setSelection(s => s && { ...s, endX: x, endY: y });
       }
       return;
     }
     if (!isDragging) return;
-    console.log('onMouseMove - panning');
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
-    setTransform(prev => ({ ...prev, x: dragStart.current.tx + dx, y: dragStart.current.ty + dy }));
+    setTransform(prev => ({
+      ...prev,
+      tx: dragStart.current.tx + dx,
+      ty: dragStart.current.ty + dy,
+    }));
   };
 
   const onMouseUp = (e: React.MouseEvent) => {
@@ -148,35 +168,52 @@ export function PDFViewer({
       e.preventDefault();
       e.stopPropagation();
       setIsSelecting(false);
-      console.log('Selection complete - box locked in place');
     }
     setIsDragging(false);
   };
 
   const zoom = (dir: 'in' | 'out') => {
     const factor = dir === 'in' ? 1.2 : 1 / 1.2;
-    setTransform(prev => ({
-      ...prev,
-      scale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor)),
-    }));
+    setTransform(prev => {
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
+      // Zoom toward center
+      const vp = viewportRef.current;
+      if (!vp) return { ...prev, scale: newScale };
+
+      const rect = vp.getBoundingClientRect();
+      const sx = rect.width / 2;
+      const sy = rect.height / 2;
+      const cx = (sx - prev.tx) / prev.scale;
+      const cy = (sy - prev.ty) / prev.scale;
+      const tx = sx - cx * newScale;
+      const ty = sy - cy * newScale;
+
+      return { tx, ty, scale: newScale };
+    });
   };
 
   // Keyboard shortcuts
   useEffect(() => {
-    const el = containerRef.current;
+    const el = viewportRef.current;
     if (!el) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') setPageNumber(p => Math.max(1, p - 1));
       if (e.key === 'ArrowRight') setPageNumber(p => Math.min(numPages || p, p + 1));
       if (e.key === '-' || e.key === '_') zoom('out');
       if (e.key === '=' || e.key === '+') zoom('in');
-      if (e.key === '0') setTransform({ x: 0, y: 0, scale: 1 });
+      if (e.key === '0') setTransform({ tx: 0, ty: 0, scale: 1 });
       if (e.key.toLowerCase() === 's') setScreenshotMode(v => !v);
       if (e.key === 'Escape' && screenshotMode) setScreenshotMode(false);
     };
     el.addEventListener('keydown', onKey);
     return () => el.removeEventListener('keydown', onKey);
   }, [screenshotMode, numPages]);
+
+  // Clear selection on page change
+  useEffect(() => {
+    setSelection(null);
+    setScreenshotMode(false);
+  }, [pageNumber]);
 
   // Advanced: access raw pdf via pdfjs for cropping
   useEffect(() => {
@@ -196,64 +233,57 @@ export function PDFViewer({
     })();
   }, [pdfInstance, pageNumber]);
 
-  const screenToPdf = (sx: number, sy: number) => {
-    const el = containerRef.current!;
-    const rect = el.getBoundingClientRect();
-    const cx = sx - rect.width / 2;
-    const cy = sy - rect.height / 2;
-    const x = (cx - transform.x) / transform.scale;
-    const y = (cy - transform.y) / transform.scale;
-    return { x, y };
+  const pickRenderScale = (page: any, desired = 2.5) => {
+    const base = page.getViewport({ scale: 1 });
+    const maxSide = 8192;
+    const maxPixels = 140_000_000;
+
+    const bySide = Math.min(maxSide / base.width, maxSide / base.height);
+    const byPixels = Math.sqrt(maxPixels / (base.width * base.height));
+    const cap = Math.max(1, Math.min(bySide, byPixels));
+
+    return Math.min(desired, cap);
   };
 
   const capture = async () => {
     try {
-      console.log('capture() called', { selection, pageInstance, activeCheck });
-      if (!selection || !pageInstance || !activeCheck) {
-        console.log('capture() early return - missing:', {
-          hasSelection: !!selection,
-          hasPageInstance: !!pageInstance,
-          hasActiveCheck: !!activeCheck,
-        });
-        return;
-      }
+      if (!selection || !pageInstance || !activeCheck) return;
 
       const sx = Math.min(selection.startX, selection.endX);
       const sy = Math.min(selection.startY, selection.endY);
-      const ex = Math.max(selection.startX, selection.endX);
-      const ey = Math.max(selection.startY, selection.endY);
+      const sw = Math.abs(selection.endX - selection.startX);
+      const sh = Math.abs(selection.endY - selection.startY);
 
-      // Convert selection box (screen px) to pdf local coords
-      const { x: ax, y: ay } = screenToPdf(sx - 0, sy - 0);
-      const { x: bx, y: by } = screenToPdf(ex - 0, ey - 0);
-
-      const pdfRect = { x: ax, y: ay, w: bx - ax, h: by - ay };
-
-      // Render the page to offscreen canvas at high DPI
-      const renderScale = 2.5; // tweak for quality
+      // Render page offscreen
+      const renderScale = pickRenderScale(pageInstance, 2.5);
       const viewport = pageInstance.getViewport({ scale: renderScale });
+
       const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
       const ctx = canvas.getContext('2d')!;
+
       await pageInstance.render({ canvasContext: ctx, viewport }).promise;
 
-      // Map pdfRect from "scale=1" coords to renderScale
-      const crop = {
-        x: Math.max(0, Math.round(pdfRect.x * renderScale + viewport.width / 2)),
-        y: Math.max(0, Math.round(pdfRect.y * renderScale + viewport.height / 2)),
-        w: Math.round(pdfRect.w * renderScale),
-        h: Math.round(pdfRect.h * renderScale),
-      };
+      // Map content→render (pure scale, no center offsets)
+      const rx = Math.max(0, Math.floor(sx * renderScale));
+      const ry = Math.max(0, Math.floor(sy * renderScale));
+      const rw = Math.max(1, Math.ceil(sw * renderScale));
+      const rh = Math.max(1, Math.ceil(sh * renderScale));
 
-      if (crop.w < 5 || crop.h < 5) {
-        console.log('capture() crop too small:', crop);
+      // Clamp to page bounds
+      const cx = Math.min(rx, canvas.width - 1);
+      const cy = Math.min(ry, canvas.height - 1);
+      const cw = Math.min(rw, canvas.width - cx);
+      const ch = Math.min(rh, canvas.height - cy);
+
+      if (cw < 5 || ch < 5) {
         setSelection(null);
         setScreenshotMode(false);
         return;
       }
-      console.log('capture() crop:', crop);
 
+      const crop = { x: cx, y: cy, w: cw, h: ch };
       const out = document.createElement('canvas');
       out.width = crop.w;
       out.height = crop.h;
@@ -315,10 +345,10 @@ export function PDFViewer({
           check_id: activeCheck.id,
           page_number: pageNumber,
           crop_coordinates: {
-            x: pdfRect.x,
-            y: pdfRect.y,
-            width: pdfRect.w,
-            height: pdfRect.h,
+            x: sx,
+            y: sy,
+            width: sw,
+            height: sh,
             zoom_level: transform.scale,
           },
           screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
@@ -366,7 +396,7 @@ export function PDFViewer({
 
   return (
     <div
-      ref={containerRef}
+      ref={viewportRef}
       tabIndex={0}
       role="region"
       aria-label="PDF viewer"
@@ -445,10 +475,12 @@ export function PDFViewer({
         style={{ clipPath: 'inset(0)' }}
       >
         <div
-          className="flex items-center justify-center"
           style={{
-            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-            transformOrigin: 'center center',
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
+            transformOrigin: '0 0',
             willChange: 'transform',
           }}
         >

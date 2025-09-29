@@ -35,18 +35,25 @@ export async function getCodeAssembly(codeId: string, useCache = true) {
   if (useCache && assemblyCache.has(codeId)) return assemblyCache.get(codeId);
 
   try {
-    // First try to find sections that belong to this code
+    // First try to find sections that belong to this code with their paragraphs
     const rows = await runQuery<any>(
       `MATCH (s:Section)
        WHERE s.key STARTS WITH $codePrefix
-       RETURN s
+       OPTIONAL MATCH (s)-[:HAS_PARAGRAPH]->(p:Paragraph)
+       RETURN s, collect(p) as paragraphs
        ORDER BY s.number`,
       { codePrefix: codeId.replace(/\+/g, ':') + ':' }
     );
 
     const sections = rows.map(row => {
       const s = row.s.properties;
-      return { ...s, subsections: [] }; // TODO: Add subsections if needed
+      const paragraphs = (row.paragraphs || []).map((p: any) => p.properties || {});
+      return {
+        ...s,
+        paragraphs,
+        fullText: paragraphs.map((p: any) => p.text || '').join('\n\n'),
+        subsections: [],
+      };
     });
 
     const assembly = { code_id: codeId, sections, total_sections: sections.length };
