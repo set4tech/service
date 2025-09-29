@@ -117,11 +117,13 @@ export default function Home() {
                 {projects.map(project => (
                   <tr
                     key={project.id}
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className="group hover:bg-blue-50 hover:shadow-sm cursor-pointer transition-all duration-150 active:bg-blue-100 border-l-4 border-l-transparent hover:border-l-blue-500"
                     onClick={() => handleProjectClick(project.id)}
                   >
                     <td>
-                      <div className="text-sm font-medium text-gray-900">{project.name}</div>
+                      <div className="text-sm font-medium text-gray-900 group-hover:text-blue-700 transition-colors">
+                        {project.name}
+                      </div>
                     </td>
                     <td>
                       <div className="text-sm text-gray-500">{project.customer?.name || '-'}</div>
@@ -145,7 +147,7 @@ export default function Home() {
                     <td className="text-right text-sm font-medium">
                       <button
                         onClick={e => handleDeleteProject(e, project.id)}
-                        className="btn-danger"
+                        className="btn-danger opacity-0 group-hover:opacity-100 transition-opacity"
                         aria-label="Delete project"
                       >
                         Delete
