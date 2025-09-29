@@ -79,22 +79,26 @@ export function PDFViewer({
     console.error('PDFViewer: Document loading error:', error);
   };
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    e.stopPropagation(); // Prevent scroll from bubbling to parent
-    const scaleSpeed = 0.003; // Reduced from 0.007 for slower, more controlled zooming
-    const scaleDelta = -e.deltaY * scaleSpeed;
-    setTransform(prev => {
-      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
-      const ratio = newScale / prev.scale;
-      const rect = containerRef.current!.getBoundingClientRect();
-      const cx = e.clientX - rect.left - rect.width / 2;
-      const cy = e.clientY - rect.top - rect.height / 2;
-      const nx = cx - (cx - prev.x) * ratio;
-      const ny = cy - (cy - prev.y) * ratio;
-      return { x: nx, y: ny, scale: newScale };
-    });
-  }, []);
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (screenshotMode) return; // Disable zoom in screenshot mode
+      e.preventDefault();
+      e.stopPropagation(); // Prevent scroll from bubbling to parent
+      const scaleSpeed = 0.003; // Reduced from 0.007 for slower, more controlled zooming
+      const scaleDelta = -e.deltaY * scaleSpeed;
+      setTransform(prev => {
+        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
+        const ratio = newScale / prev.scale;
+        const rect = containerRef.current!.getBoundingClientRect();
+        const cx = e.clientX - rect.left - rect.width / 2;
+        const cy = e.clientY - rect.top - rect.height / 2;
+        const nx = cx - (cx - prev.x) * ratio;
+        const ny = cy - (cy - prev.y) * ratio;
+        return { x: nx, y: ny, scale: newScale };
+      });
+    },
+    [screenshotMode]
+  );
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (screenshotMode) {
@@ -115,11 +119,13 @@ export function PDFViewer({
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    if (screenshotMode && selection) {
-      e.preventDefault();
-      e.stopPropagation();
-      const rect = containerRef.current!.getBoundingClientRect();
-      setSelection(s => s && { ...s, endX: e.clientX - rect.left, endY: e.clientY - rect.top });
+    if (screenshotMode) {
+      if (selection) {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = containerRef.current!.getBoundingClientRect();
+        setSelection(s => s && { ...s, endX: e.clientX - rect.left, endY: e.clientY - rect.top });
+      }
       return;
     }
     if (!isDragging) return;
@@ -367,7 +373,9 @@ export function PDFViewer({
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
-        onMouseLeave={() => setIsDragging(false)}
+        onMouseLeave={() => {
+          if (!screenshotMode) setIsDragging(false);
+        }}
         style={{ clipPath: 'inset(0)' }}
       >
         <div
