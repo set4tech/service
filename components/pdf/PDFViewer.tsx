@@ -407,9 +407,23 @@ export function PDFViewer({
           📸
         </button>
         {screenshotMode && selection && (
-          <button className="btn-secondary shadow-md" onClick={capture}>
-            Save
-          </button>
+          <>
+            {console.log(
+              'Rendering Save button - screenshotMode:',
+              screenshotMode,
+              'selection:',
+              selection
+            )}
+            <button
+              className="btn-secondary shadow-md"
+              onClick={() => {
+                console.log('Save button clicked!');
+                capture();
+              }}
+            >
+              Save
+            </button>
+          </>
         )}
       </div>
 
