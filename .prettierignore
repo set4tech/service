@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+.next
+.vercel
+out
+dist
+build
+
+# Environment files
+.env*
+
+# Logs
+*.log
+
+# Cache
+.cache
+.turbo
+
+# Generated files
+*.generated.*
+tsconfig.tsbuildinfo
+
+# Python files
+*.py
+__pycache__
+
+# YAML outputs
+output/*.yaml
+output/*.yml
