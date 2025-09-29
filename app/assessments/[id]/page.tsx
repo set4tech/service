@@ -5,7 +5,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = supabaseAdmin();
   const [{ data: assessment }, { data: checks }] = await Promise.all([
-    supabase.from('assessments').select('*').eq('id', id).single(),
+    supabase.from('assessments').select('*, projects(pdf_url)').eq('id', id).single(),
     supabase
       .from('check_summary')
       .select('*')
@@ -17,6 +17,12 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     return <div className="p-6">Assessment not found.</div>;
   }
 
+  // Get PDF URL from the related project
+  const assessmentWithPdf = {
+    ...assessment,
+    pdf_url: assessment.projects?.pdf_url || null,
+  };
+
   // Progress: completed checks over total checks
   const totalChecks = checks?.length || 0;
   const completed = (checks || []).filter(c => c.latest_status || c.status === 'completed').length;
@@ -24,7 +30,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   return (
     <AssessmentClient
-      assessment={assessment}
+      assessment={assessmentWithPdf}
       checks={checks || []}
       progress={{ totalChecks, completed, pct }}
     />
