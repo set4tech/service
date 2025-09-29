@@ -71,10 +71,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Create check records for each section
     const checkRows = sections.map((s: any) => ({
       assessment_id: assessmentId,
-      code_section_key: s.key,
-      code_section_number: s.number,
-      code_section_title: s.title,
-      check_name: `${s.number} - ${s.title}`,
+      code_section_key: s.key?.substring(0, 255) || '',
+      code_section_number: s.number?.substring(0, 255) || '',
+      code_section_title: s.title?.substring(0, 255) || '',
+      check_name: `${s.number} - ${s.title}`.substring(0, 255),
       check_location: '',
       status: 'pending',
     }));
