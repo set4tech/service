@@ -98,30 +98,28 @@ export function CheckList({
                   }
                 }}
                 className={clsx(
-                  'w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 transition-colors',
+                  'w-full px-3 py-2 flex items-center justify-between text-left hover:bg-gray-50 transition-colors',
                   activeCheckId === mainCheck.id && 'bg-blue-50'
                 )}
               >
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
                   {sectionChecks.length > 1 && (
                     <svg
                       className={clsx(
-                        'w-4 h-4 flex-shrink-0 transition-transform',
+                        'w-3 h-3 flex-shrink-0 transition-transform text-gray-500',
                         isExpanded && 'rotate-90'
                       )}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
                     >
                       <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
+                        fillRule="evenodd"
+                        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                        clipRule="evenodd"
                       />
                     </svg>
                   )}
-                  <span className={clsx('text-lg flex-shrink-0', getStatusColor(mainCheck))}>
+                  <span className={clsx('text-sm flex-shrink-0', getStatusColor(mainCheck))}>
                     {getStatusIcon(mainCheck)}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -145,7 +143,7 @@ export function CheckList({
                       key={check.id}
                       onClick={() => onSelect(check.id)}
                       className={clsx(
-                        'w-full px-4 py-2 pl-12 flex items-center gap-2 text-left hover:bg-gray-100 transition-colors',
+                        'w-full px-3 py-1.5 pl-10 flex items-center gap-2 text-left hover:bg-gray-100 transition-colors',
                         activeCheckId === check.id && 'bg-blue-100'
                       )}
                     >
