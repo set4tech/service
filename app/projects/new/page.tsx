@@ -49,11 +49,11 @@ export default function NewProjectPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const MAX_SIZE = 50 * 1024 * 1024; // 50MB for Vercel Pro plan
+      const MAX_SIZE = 500 * 1024 * 1024; // 500MB reasonable limit for S3 direct upload
 
       if (file.size > MAX_SIZE) {
         alert(
-          'File is too large. Maximum size is 50MB. Please compress your PDF or use a smaller file.'
+          'File is too large. Maximum size is 500MB. Please use a smaller file.'
         );
         e.target.value = ''; // Clear the input
         return;
@@ -66,25 +66,38 @@ export default function NewProjectPage() {
   const uploadPdf = async () => {
     if (!pdfFile) return null;
 
-    const formData = new FormData();
-    formData.append('file', pdfFile);
-
     try {
-      const response = await fetch('/api/upload', {
+      // Step 1: Get pre-signed URL from our API
+      const presignResponse = await fetch('/api/upload/presign', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: pdfFile.name,
+          contentType: pdfFile.type || 'application/pdf',
+        }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 413) {
-          throw new Error('File is too large. Maximum size is 50MB.');
-        }
-        throw new Error(errorData.error || 'Failed to upload PDF');
+      if (!presignResponse.ok) {
+        throw new Error('Failed to get upload URL');
       }
 
-      const { url } = await response.json();
-      return url;
+      const { uploadUrl, fileUrl } = await presignResponse.json();
+
+      // Step 2: Upload directly to S3 using the pre-signed URL
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: pdfFile,
+        headers: {
+          'Content-Type': pdfFile.type || 'application/pdf',
+        },
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload file to S3');
+      }
+
+      // Return the final file URL
+      return fileUrl;
     } catch (error) {
       console.error('Error uploading PDF:', error);
       throw error; // Re-throw to handle in handleSubmit
