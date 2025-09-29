@@ -27,9 +27,16 @@ export async function POST(request: NextRequest) {
 
     if (sessionError) throw sessionError;
 
-    // Load sections from pre-generated JSON
-    // In production, this could be stored in Supabase or fetched from Neo4j
-    const sectionsData = (await import('../../../../data/cbc_sections.json')).default;
+    // Fetch sections from the API endpoint
+    const baseUrl =
+      process.env.NEXT_PUBLIC_API_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const sectionsResponse = await fetch(`${baseUrl}/api/compliance/sections?codeId=${codeId}`);
+
+    if (!sectionsResponse.ok) {
+      throw new Error('Failed to fetch sections');
+    }
+
+    const sectionsData = await sectionsResponse.json();
 
     // Initialize section checks for each section
     interface SectionData {
