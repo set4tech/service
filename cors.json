@@ -1,0 +1,15 @@
+{
+  "CORSRules": [
+    {
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+      "AllowedOrigins": [
+        "http://localhost:3000",
+        "https://service-set4.vercel.app",
+        "https://*.vercel.app"
+      ],
+      "ExposeHeaders": ["ETag", "Content-Type", "Content-Length"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}
