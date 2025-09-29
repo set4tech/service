@@ -25,6 +25,7 @@ export function PDFViewer({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const _contentRef = useRef<HTMLDivElement>(null);
+  const pageContainerRef = useRef<HTMLDivElement>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [transform, setTransform] = useState<Transform>({ tx: 0, ty: 0, scale: 1 });
@@ -122,17 +123,17 @@ export function PDFViewer({
 
   const screenToContent = useCallback(
     (clientX: number, clientY: number) => {
-      const vp = viewportRef.current!;
-      const rect = vp.getBoundingClientRect();
-      const sx = clientX - rect.left;
-      const sy = clientY - rect.top;
+      if (!pageContainerRef.current) return { x: 0, y: 0 };
 
-      // Invert M = T(tx,ty) · S(scale) with origin (0,0)
-      const x = (sx - transform.tx) / transform.scale;
-      const y = (sy - transform.ty) / transform.scale;
+      const pageRect = pageContainerRef.current.getBoundingClientRect();
+
+      // Get position relative to page element (not viewport)
+      const x = (clientX - pageRect.left) / transform.scale;
+      const y = (clientY - pageRect.top) / transform.scale;
+
       return { x, y };
     },
-    [transform]
+    [transform.scale]
   );
 
   const onMouseDown = (e: React.MouseEvent) => {
@@ -481,46 +482,46 @@ export function PDFViewer({
         style={{ clipPath: 'inset(0)', touchAction: 'none' }}
       >
         <div
-          className="absolute"
           style={{
             transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
             transformOrigin: '0 0',
             willChange: 'transform',
+            position: 'absolute',
             left: 0,
             top: 0,
           }}
         >
-          <div className="relative">
-            <Document
-              file={presignedUrl}
-              onLoadSuccess={onDocLoad}
-              onLoadError={onDocError}
-              loading={<div className="text-sm text-gray-500">Loading PDF…</div>}
-              error={<div className="text-sm text-red-500">Failed to load PDF document</div>}
-            >
+          <Document
+            file={presignedUrl}
+            onLoadSuccess={onDocLoad}
+            onLoadError={onDocError}
+            loading={<div className="text-sm text-gray-500">Loading PDF…</div>}
+            error={<div className="text-sm text-red-500">Failed to load PDF document</div>}
+          >
+            <div ref={pageContainerRef} style={{ position: 'relative' }}>
               <Page
                 pageNumber={pageNumber}
                 height={800}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
               />
-            </Document>
-
-            {screenshotMode && selection && (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  left: Math.min(selection.startX, selection.endX),
-                  top: Math.min(selection.startY, selection.endY),
-                  width: Math.abs(selection.endX - selection.startX),
-                  height: Math.abs(selection.endY - selection.startY),
-                  border: '2px solid rgba(37, 99, 235, 0.8)',
-                  backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                  zIndex: 40,
-                }}
-              />
-            )}
-          </div>
+              {screenshotMode && selection && (
+                <div
+                  className="pointer-events-none"
+                  style={{
+                    position: 'absolute',
+                    left: Math.min(selection.startX, selection.endX),
+                    top: Math.min(selection.startY, selection.endY),
+                    width: Math.abs(selection.endX - selection.startX),
+                    height: Math.abs(selection.endY - selection.startY),
+                    border: '2px solid rgba(37, 99, 235, 0.8)',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    zIndex: 40,
+                  }}
+                />
+              )}
+            </div>
+          </Document>
         </div>
       </div>
 
