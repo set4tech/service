@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 
 export function CheckList({
@@ -12,7 +12,14 @@ export function CheckList({
   onSelect: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
+    // Auto-expand first section by default
+    if (checks.length > 0) {
+      const firstSection = checks[0]?.code_section_number?.split('-')[0] || '';
+      return new Set(firstSection ? [firstSection] : []);
+    }
+    return new Set();
+  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -73,6 +80,16 @@ export function CheckList({
     if (check.status === 'analyzing') return 'text-yellow-600';
     return 'text-gray-400';
   };
+
+  // Auto-expand first section when checks change
+  useEffect(() => {
+    if (checks.length > 0 && expandedSections.size === 0) {
+      const firstSection = groupedChecks[0]?.[0];
+      if (firstSection) {
+        setExpandedSections(new Set([firstSection]));
+      }
+    }
+  }, [checks.length, groupedChecks]);
 
   return (
     <div className="flex flex-col h-full">

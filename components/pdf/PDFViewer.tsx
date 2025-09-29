@@ -75,6 +75,11 @@ export function PDFViewer({
   const onDocLoad = ({ numPages }: { numPages: number }) => {
     console.log('PDFViewer: Document loaded successfully with', numPages, 'pages');
     console.log('Transform state:', transform);
+    console.log('ViewportRef exists:', !!viewportRef.current);
+    if (viewportRef.current) {
+      const rect = viewportRef.current.getBoundingClientRect();
+      console.log('Viewport dimensions:', rect.width, 'x', rect.height);
+    }
     setNumPages(numPages);
   };
 
@@ -484,13 +489,7 @@ export function PDFViewer({
             transformOrigin: '0 0',
             willChange: 'transform',
           }}
-          onLoadCapture={() => console.log('Content div loaded')}
         >
-          <div
-            style={{ background: 'rgba(255,0,0,0.1)', border: '2px solid red', padding: '10px' }}
-          >
-            DEBUG: Transform tx={transform.tx} ty={transform.ty} scale={transform.scale}
-          </div>
           <Document
             file={presignedUrl}
             onLoadSuccess={onDocLoad}
