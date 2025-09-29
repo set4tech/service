@@ -14,7 +14,16 @@ export async function runQuery<T>(cypher: string, params: Record<string, any> = 
   const session = driver.session();
   try {
     const result: QueryResult = await session.run(cypher, params);
-    return result.records.map(r => r.toObject() as T);
+    return result.records.map(r => {
+      const obj = r.toObject();
+      // Convert Neo4j Integer types to JavaScript numbers
+      Object.keys(obj).forEach(key => {
+        if (obj[key] && typeof obj[key] === 'object' && 'low' in obj[key] && 'high' in obj[key]) {
+          obj[key] = neo4j.int(obj[key].low, obj[key].high).toNumber();
+        }
+      });
+      return obj as T;
+    });
   } finally {
     await session.close();
   }
