@@ -27,7 +27,7 @@ export function PDFViewer({
   const _contentRef = useRef<HTMLDivElement>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const [transform, setTransform] = useState<Transform>({ tx: 0, ty: 0, scale: 1 });
+  const [transform, setTransform] = useState<Transform>({ tx: 200, ty: 100, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
@@ -75,17 +75,6 @@ export function PDFViewer({
   const onDocLoad = ({ numPages }: { numPages: number }) => {
     console.log('PDFViewer: Document loaded successfully with', numPages, 'pages');
     setNumPages(numPages);
-    // Center the PDF on initial load
-    if (viewportRef.current && transform.tx === 0 && transform.ty === 0) {
-      const rect = viewportRef.current.getBoundingClientRect();
-      const pageWidth = 800 * 0.75; // approximate width for height=800
-      const pageHeight = 800;
-      setTransform({
-        tx: (rect.width - pageWidth) / 2,
-        ty: (rect.height - pageHeight) / 2,
-        scale: 1,
-      });
-    }
   };
 
   const onDocError = (error: Error) => {
@@ -212,7 +201,7 @@ export function PDFViewer({
       if (e.key === 'ArrowRight') setPageNumber(p => Math.min(numPages || p, p + 1));
       if (e.key === '-' || e.key === '_') zoom('out');
       if (e.key === '=' || e.key === '+') zoom('in');
-      if (e.key === '0') setTransform({ tx: 0, ty: 0, scale: 1 });
+      if (e.key === '0') setTransform({ tx: 200, ty: 100, scale: 1 });
       if (e.key.toLowerCase() === 's') setScreenshotMode(v => !v);
       if (e.key === 'Escape' && screenshotMode) setScreenshotMode(false);
     };
