@@ -11,7 +11,6 @@ export function CheckList({
   activeCheckId: string | null;
   onSelect: (id: string) => void;
 }) {
-  console.log('CheckList rendered with', checks.length, 'checks, activeCheckId:', activeCheckId);
   const [query, setQuery] = useState('');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand first section by default
@@ -113,10 +112,7 @@ export function CheckList({
             <div key={mainPrefix} className="border-b border-gray-200">
               {/* Main Section Header */}
               <button
-                onClick={() => {
-                  console.log('Section toggle clicked:', mainPrefix);
-                  toggleSection(mainPrefix);
-                }}
+                onClick={() => toggleSection(mainPrefix)}
                 className="w-full px-3 py-2 flex items-center text-left hover:bg-gray-50 transition-colors"
               >
                 <svg
@@ -144,15 +140,11 @@ export function CheckList({
                         {/* Check Header */}
                         <button
                           type="button"
-                          onClick={e => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log('Check clicked:', check.id, check.code_section_number);
-                            onSelect(check.id);
-                          }}
+                          onClick={() => onSelect(check.id)}
                           className={clsx(
                             'w-full px-4 py-2 flex items-start text-left hover:bg-gray-100 cursor-pointer transition-colors',
-                            activeCheckId === check.id && 'bg-blue-500 text-white hover:bg-blue-600'
+                            activeCheckId === check.id &&
+                              'bg-blue-100 border-l-4 border-blue-500 hover:bg-blue-200'
                           )}
                         >
                           <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>

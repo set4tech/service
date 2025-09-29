@@ -478,13 +478,13 @@ export function PDFViewer({
         onMouseLeave={() => {
           if (!screenshotMode) setIsDragging(false);
         }}
-        style={{ clipPath: 'inset(0)' }}
+        style={{ clipPath: 'inset(0)', touchAction: 'none' }}
       >
         <div
           className="absolute inset-0 flex items-center justify-center"
           style={{
             transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
-            transformOrigin: 'center center',
+            transformOrigin: '0 0',
             willChange: 'transform',
           }}
         >
