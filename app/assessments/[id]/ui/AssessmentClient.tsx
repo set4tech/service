@@ -74,9 +74,9 @@ export default function AssessmentClient({
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="fixed inset-0 flex overflow-hidden">
       {/* Left Sidebar with Checks */}
-      <aside className="w-80 flex-shrink-0 flex flex-col bg-white border-r">
+      <aside className="w-80 flex-shrink-0 flex flex-col bg-white border-r overflow-hidden">
         {/* Header */}
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between mb-3">
