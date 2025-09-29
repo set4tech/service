@@ -45,6 +45,7 @@ export function PDFViewer({
   // Fetch presigned URL for private S3 PDFs
   useEffect(() => {
     (async () => {
+      console.log('PDFViewer: Starting to fetch presigned URL for:', pdfUrl);
       setLoadingUrl(true);
       try {
         const res = await fetch('/api/pdf/presign', {
@@ -52,7 +53,13 @@ export function PDFViewer({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pdfUrl }),
         });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+        }
+
         const data = await res.json();
+        console.log('PDFViewer: Received presigned URL response:', data);
         setPresignedUrl(data.url);
       } catch (err) {
         console.error('Failed to get presigned URL:', err);
@@ -63,7 +70,14 @@ export function PDFViewer({
     })();
   }, [pdfUrl]);
 
-  const onDocLoad = ({ numPages }: { numPages: number }) => setNumPages(numPages);
+  const onDocLoad = ({ numPages }: { numPages: number }) => {
+    console.log('PDFViewer: Document loaded successfully with', numPages, 'pages');
+    setNumPages(numPages);
+  };
+
+  const onDocError = (error: Error) => {
+    console.error('PDFViewer: Document loading error:', error);
+  };
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -120,6 +134,23 @@ export function PDFViewer({
       scale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor)),
     }));
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') setPageNumber(p => Math.max(1, p - 1));
+      if (e.key === 'ArrowRight') setPageNumber(p => Math.min(numPages || p, p + 1));
+      if (e.key === '-' || e.key === '_') zoom('out');
+      if (e.key === '=' || e.key === '+') zoom('in');
+      if (e.key === '0') setTransform({ x: 0, y: 0, scale: 1 });
+      if (e.key.toLowerCase() === 's') setScreenshotMode(v => !v);
+      if (e.key === 'Escape' && screenshotMode) setScreenshotMode(false);
+    };
+    el.addEventListener('keydown', onKey);
+    return () => el.removeEventListener('keydown', onKey);
+  }, [screenshotMode, numPages]);
 
   // Advanced: access raw pdf via pdfjs for cropping
   useEffect(() => {
@@ -252,37 +283,58 @@ export function PDFViewer({
   };
 
   if (loadingUrl) {
-    return <div className="p-6 text-center">Loading PDF...</div>;
+    return (
+      <div className="p-6 text-center">
+        <div>Loading PDF...</div>
+        <div className="text-sm text-gray-500 mt-2">PDF URL: {pdfUrl}</div>
+      </div>
+    );
   }
 
   if (!presignedUrl) {
-    return <div className="p-6 text-center text-red-600">Failed to load PDF</div>;
+    return (
+      <div className="p-6 text-center text-red-600">
+        <div>Failed to load PDF</div>
+        <div className="text-sm text-gray-500 mt-2">Original URL: {pdfUrl}</div>
+        <div className="text-xs text-gray-400 mt-1">Check browser console for more details</div>
+      </div>
+    );
   }
 
+  const zoomPct = Math.round(transform.scale * 100);
+
   return (
-    <div className="relative h-full w-full">
+    <div
+      ref={containerRef}
+      tabIndex={0}
+      role="region"
+      aria-label="PDF viewer"
+      className="relative h-full w-full outline-none"
+    >
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-        <button className="px-3 py-2 border rounded" onClick={() => zoom('out')}>
+        <button aria-label="Zoom out" className="btn-icon" onClick={() => zoom('out')}>
           −
         </button>
-        <button className="px-3 py-2 border rounded" onClick={() => zoom('in')}>
+        <div className="px-2 py-2 text-sm bg-white border rounded">{zoomPct}%</div>
+        <button aria-label="Zoom in" className="btn-icon" onClick={() => zoom('in')}>
           +
         </button>
         <button
-          className={`px-3 py-2 border rounded ${screenshotMode ? 'bg-blue-600 text-white' : ''}`}
+          aria-pressed={screenshotMode}
+          aria-label="Toggle screenshot mode (S)"
+          className={`btn-icon ${screenshotMode ? 'bg-blue-600 text-white' : ''}`}
           onClick={() => setScreenshotMode(v => !v)}
         >
-          📸 Screenshot
+          📸
         </button>
         {screenshotMode && selection && (
-          <button className="px-3 py-2 border rounded" onClick={capture}>
+          <button className="btn-secondary" onClick={capture}>
             Save
           </button>
         )}
       </div>
 
       <div
-        ref={containerRef}
         className={`absolute inset-0 overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         onWheel={handleWheel}
         onMouseDown={onMouseDown}
@@ -299,7 +351,9 @@ export function PDFViewer({
           <Document
             file={presignedUrl}
             onLoadSuccess={onDocLoad}
+            onLoadError={onDocError}
             loading={<div className="text-sm text-gray-500">Loading PDF…</div>}
+            error={<div className="text-sm text-red-500">Failed to load PDF document</div>}
           >
             <Page
               pageNumber={pageNumber}
@@ -326,8 +380,9 @@ export function PDFViewer({
 
       <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3 bg-white/90 rounded px-2 py-1 border">
         <button
-          className="px-2 py-1 border rounded"
+          className="btn-icon"
           onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+          aria-label="Previous page"
         >
           ◀
         </button>
@@ -335,11 +390,13 @@ export function PDFViewer({
           Page {pageNumber} / {numPages || '…'}
         </div>
         <button
-          className="px-2 py-1 border rounded"
+          className="btn-icon"
           onClick={() => setPageNumber(p => Math.min(numPages || p, p + 1))}
+          aria-label="Next page"
         >
           ▶
         </button>
+        <span className="text-xs text-gray-600 ml-2">Shortcuts: ←/→, -/+, 0, S, Esc</span>
       </div>
     </div>
   );
