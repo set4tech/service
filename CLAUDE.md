@@ -5,6 +5,7 @@
 This repository contains the main **service** application - a Next.js 15.5.3 application for building code compliance assessment.
 
 ### Main Application
+
 - **Location**: Root directory (`/`)
 - **Name**: service
 - **Tech Stack**:
@@ -15,6 +16,7 @@ This repository contains the main **service** application - a Next.js 15.5.3 app
   - Vercel Serverless Functions
 
 ### Important Notes
+
 - This is the ONLY Next.js application in the repository
 - All new features should be developed in this root service app
 - The compliance assessment feature (see COMPLIANCE_ASSESSMENT_FEATURE_SPEC.md) will be built here
@@ -66,6 +68,7 @@ npm run lint
 ## Environment Variables Required
 
 See `.envrc` for required environment variables including:
+
 - Supabase credentials
 - AWS S3 configuration
 - AI service API keys (OpenAI/Google)
@@ -74,3 +77,12 @@ See `.envrc` for required environment variables including:
 ## Development
 
 Update files in place unless specifically told not to.
+
+## Git Commands
+
+**IMPORTANT**: NEVER use the following git commands:
+
+- `git add -A` - Always add specific files instead
+- `git add *` - Always add specific files instead
+
+When staging files for commit, always use explicit file paths (e.g., `git add path/to/file.ts`).
