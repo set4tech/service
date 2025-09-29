@@ -27,16 +27,18 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
   useEffect(() => setActiveCheckId(checks[0]?.id || null), [checks]);
 
   return (
-    <div className="grid grid-cols-2 h-screen">
-      <div className="border-r flex flex-col overflow-hidden">
+    <div className="grid grid-cols-1 lg:grid-cols-2 h-screen">
+      <aside className="border-r flex flex-col overflow-hidden bg-white">
         <div className="p-3 border-b">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-medium">Progress</div>
-            <Link
-              href="/"
-              className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <Link href="/" className="btn-secondary">
+              <svg
+                className="w-4 h-4 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -44,20 +46,23 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
                   d="M10 19l-7-7m0 0l7-7m-7 7h18"
                 />
               </svg>
-              My Projects
+              <span>My Projects</span>
             </Link>
           </div>
-          <div className="h-2 bg-gray-200 rounded mt-2">
-            <div className="h-2 bg-blue-600 rounded" style={{ width: `${progress.pct}%` }} />
+          <div
+            className="progress mt-2"
+            style={{ '--value': `${progress.pct}%` } as React.CSSProperties}
+          >
+            <div className="bar" />
           </div>
-          <div className="text-xs mt-1">
+          <div className="text-xs text-gray-600 mt-1">
             {progress.completed} of {progress.totalChecks} checks
           </div>
           <div className="mt-2 text-sm">Active Checks:</div>
           <CheckTabs checks={checks} activeCheckId={activeCheckId} onSelect={setActiveCheckId} />
         </div>
 
-        <div className="p-3 overflow-auto">
+        <div className="p-3 overflow-auto stack-md">
           {activeCheck ? (
             <>
               <div className="text-sm text-gray-600 mb-2">
@@ -68,25 +73,17 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
                 {activeCheck.check_location ? `— ${activeCheck.check_location}` : null}
               </div>
 
-              <div className="mt-3">
-                <PromptEditor check={activeCheck} />
-              </div>
-
-              <div className="mt-3">
-                <AnalysisPanel check={activeCheck} onRefresh={() => null} />
-              </div>
-
-              <div className="mt-3">
-                <ScreenshotGallery check={activeCheck} refreshKey={screenshotsChanged} />
-              </div>
+              <PromptEditor check={activeCheck} />
+              <AnalysisPanel check={activeCheck} onRefresh={() => null} />
+              <ScreenshotGallery check={activeCheck} refreshKey={screenshotsChanged} />
             </>
           ) : (
             <div className="text-sm text-gray-600">No check selected.</div>
           )}
         </div>
-      </div>
+      </aside>
 
-      <div className="overflow-hidden">
+      <section className="overflow-hidden bg-gray-50 border border-gray-300">
         {pdfUrl ? (
           <PDFViewer
             pdfUrl={pdfUrl}
@@ -96,7 +93,7 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
         ) : (
           <div className="p-6">No PDF attached to this assessment.</div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
