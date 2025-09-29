@@ -24,27 +24,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Filename is required' }, { status: 400 });
     }
 
-    if (!projectId) {
-      return NextResponse.json({ error: 'Project ID is required' }, { status: 400 });
-    }
-
-    // Get project details for human-readable filename
-    const { data: project, error: projectError } = await supabase
-      .from('projects')
-      .select('name')
-      .eq('id', projectId)
-      .single();
-
-    if (projectError || !project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    }
-
-    // Generate human-readable filename
+    let key;
     const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    const projectName = project.name.replace(/[^a-zA-Z0-9]/g, '_'); // Sanitize project name for filename
     const originalName = filename.replace(/\.[^/.]+$/, ''); // Remove extension
     const extension = filename.split('.').pop(); // Get extension
-    const key = `analysis-app-data/pdfs/${projectName}_${originalName}_${timestamp}.${extension}`;
+
+    if (projectId) {
+      // Get project details for human-readable filename
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('name')
+        .eq('id', projectId)
+        .single();
+
+      if (projectError || !project) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      }
+
+      // Generate human-readable filename with project name
+      const projectName = project.name.replace(/[^a-zA-Z0-9]/g, '_'); // Sanitize project name for filename
+      key = `analysis-app-data/pdfs/${projectName}_${originalName}_${timestamp}.${extension}`;
+    } else {
+      // Generate temporary filename without project name (for upload before project creation)
+      const randomId = Math.random().toString(36).substring(2, 15);
+      key = `analysis-app-data/pdfs/temp_${originalName}_${timestamp}_${randomId}.${extension}`;
+    }
+
     const bucketName = 'set4-data';
 
     // Create the PutObject command
