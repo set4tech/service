@@ -11,7 +11,7 @@ const PDFViewerComponent = dynamic(
   },
   {
     ssr: false,
-    loading: () => <div className="p-6 text-center">Loading PDF viewer...</div>
+    loading: () => <div className="p-6 text-center">Loading PDF viewer...</div>,
   }
 );
 
@@ -19,5 +19,9 @@ export function PDFViewerWrapper(props: any) {
   if (typeof window === 'undefined') {
     return <div className="p-6">PDF viewer requires client-side rendering</div>;
   }
-  return <PDFViewerComponent {...props} />;
+  return (
+    <div className="h-full w-full">
+      <PDFViewerComponent {...props} />
+    </div>
+  );
 }

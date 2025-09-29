@@ -34,7 +34,9 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
             <div className="text-sm font-medium">Progress</div>
             <Link href="/" className="btn-secondary">
               <svg
-                className="w-4 h-4 flex-shrink-0"
+                width="16"
+                height="16"
+                className="flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -83,7 +85,7 @@ export default function AssessmentClient({ assessment, checks, progress }: Props
         </div>
       </aside>
 
-      <section className="overflow-hidden bg-gray-50 border border-gray-300">
+      <section className="relative overflow-hidden bg-gray-50 border border-gray-300">
         {pdfUrl ? (
           <PDFViewer
             pdfUrl={pdfUrl}
