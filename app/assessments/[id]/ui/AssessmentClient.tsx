@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CheckList } from '@/components/checks/CheckList';
 import { PDFViewerWrapper as PDFViewer } from '@/components/pdf/PDFViewerWrapper';
+import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 
 interface Props {
   assessment: any;
@@ -57,7 +58,7 @@ export default function AssessmentClient({
   }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
-  const [_screenshotsChanged, setScreenshotsChanged] = useState(0);
+  const [screenshotsChanged, setScreenshotsChanged] = useState(0);
 
   useEffect(() => setActiveCheckId(checks[0]?.id || null), [checks]);
 
@@ -111,9 +112,16 @@ export default function AssessmentClient({
         </div>
 
         {/* Checks List */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden min-h-0">
           <CheckList checks={checks} activeCheckId={activeCheckId} onSelect={setActiveCheckId} />
         </div>
+
+        {/* Screenshots for Active Check */}
+        {activeCheck && (
+          <div className="border-t p-4 max-h-64 overflow-y-auto flex-shrink-0">
+            <ScreenshotGallery check={activeCheck} refreshKey={screenshotsChanged} />
+          </div>
+        )}
       </aside>
 
       {/* Main Content Area with PDF Viewer */}
