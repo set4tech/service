@@ -31,6 +31,7 @@ export function PDFViewer({
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
   const [screenshotMode, setScreenshotMode] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
   const [selection, setSelection] = useState<{
     startX: number;
     startY: number;
@@ -103,18 +104,19 @@ export function PDFViewer({
   const onMouseDown = (e: React.MouseEvent) => {
     console.log('onMouseDown - screenshotMode:', screenshotMode, 'button:', e.button);
     if (screenshotMode) {
-      console.log('Screenshot mode - preventing default and setting selection');
+      console.log('Screenshot mode - starting new selection');
       e.preventDefault();
       e.stopPropagation();
-      const rect = containerRef.current!.getBoundingClientRect();
+      const { x, y } = screenToPdf(e.clientX, e.clientY);
       const newSelection = {
-        startX: e.clientX - rect.left,
-        startY: e.clientY - rect.top,
-        endX: e.clientX - rect.left,
-        endY: e.clientY - rect.top,
+        startX: x,
+        startY: y,
+        endX: x,
+        endY: y,
       };
-      console.log('Setting selection:', newSelection);
+      console.log('Setting selection (PDF coords):', newSelection);
       setSelection(newSelection);
+      setIsSelecting(true);
       return;
     }
     if (e.button !== 0) return;
@@ -125,12 +127,12 @@ export function PDFViewer({
 
   const onMouseMove = (e: React.MouseEvent) => {
     if (screenshotMode) {
-      console.log('onMouseMove - screenshotMode active, selection:', selection);
-      if (selection) {
+      console.log('onMouseMove - screenshotMode active, isSelecting:', isSelecting);
+      if (isSelecting && selection) {
         e.preventDefault();
         e.stopPropagation();
-        const rect = containerRef.current!.getBoundingClientRect();
-        setSelection(s => s && { ...s, endX: e.clientX - rect.left, endY: e.clientY - rect.top });
+        const { x, y } = screenToPdf(e.clientX, e.clientY);
+        setSelection(s => s && { ...s, endX: x, endY: y });
       }
       return;
     }
@@ -145,6 +147,8 @@ export function PDFViewer({
     if (screenshotMode && selection) {
       e.preventDefault();
       e.stopPropagation();
+      setIsSelecting(false);
+      console.log('Selection complete - box locked in place');
     }
     setIsDragging(false);
   };
@@ -462,22 +466,22 @@ export function PDFViewer({
               renderAnnotationLayer={false}
             />
           </Document>
-        </div>
 
-        {screenshotMode && selection && (
-          <div
-            className="absolute pointer-events-none"
-            style={{
-              left: Math.min(selection.startX, selection.endX),
-              top: Math.min(selection.startY, selection.endY),
-              width: Math.abs(selection.endX - selection.startX),
-              height: Math.abs(selection.endY - selection.startY),
-              border: '2px solid rgba(37, 99, 235, 0.8)',
-              backgroundColor: 'rgba(37, 99, 235, 0.1)',
-              zIndex: 40,
-            }}
-          />
-        )}
+          {screenshotMode && selection && (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: Math.min(selection.startX, selection.endX),
+                top: Math.min(selection.startY, selection.endY),
+                width: Math.abs(selection.endX - selection.startX),
+                height: Math.abs(selection.endY - selection.startY),
+                border: '2px solid rgba(37, 99, 235, 0.8)',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                zIndex: 40,
+              }}
+            />
+          )}
+        </div>
       </div>
 
       <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
