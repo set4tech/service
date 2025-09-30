@@ -88,38 +88,56 @@ export function PDFViewer({
     console.error('PDFViewer: Document loading error:', error);
   };
 
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
+  // Native wheel handler for reliable zoom (prevents page scroll)
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+
+    const onWheel = (e: WheelEvent) => {
+      // Don't hijack the wheel while selecting a screenshot region
+      if (screenshotMode) return;
+
+      // Critically, preventDefault on a non-passive listener at the viewport node
       e.preventDefault();
       e.stopPropagation();
-      if (screenshotMode) return;
 
       const scaleSpeed = 0.003;
       const scaleDelta = -e.deltaY * scaleSpeed;
 
       setTransform(prev => {
         const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
-        const _ratio = newScale / prev.scale;
 
-        // Zoom toward cursor position
-        const vp = viewportRef.current!;
+        // Zoom towards cursor relative to the viewport box
         const rect = vp.getBoundingClientRect();
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
 
-        // Point in content space before zoom
         const cx = (sx - prev.tx) / prev.scale;
         const cy = (sy - prev.ty) / prev.scale;
 
-        // New translate to keep that point under cursor
         const tx = sx - cx * newScale;
         const ty = sy - cy * newScale;
 
         return { tx, ty, scale: newScale };
       });
-    },
-    [screenshotMode]
-  );
+    };
+
+    // Non-passive is the whole point
+    vp.addEventListener('wheel', onWheel, { passive: false });
+
+    // Safari pinch zoom emits gesture*; cancel it so it doesn't zoom the page
+    const cancel = (e: Event) => e.preventDefault();
+    vp.addEventListener('gesturestart', cancel as EventListener, { passive: false });
+    vp.addEventListener('gesturechange', cancel as EventListener, { passive: false });
+    vp.addEventListener('gestureend', cancel as EventListener, { passive: false });
+
+    return () => {
+      vp.removeEventListener('wheel', onWheel as EventListener);
+      vp.removeEventListener('gesturestart', cancel as EventListener);
+      vp.removeEventListener('gesturechange', cancel as EventListener);
+      vp.removeEventListener('gestureend', cancel as EventListener);
+    };
+  }, [screenshotMode]);
 
   const screenToContent = useCallback(
     (clientX: number, clientY: number) => {
@@ -408,6 +426,7 @@ export function PDFViewer({
       role="region"
       aria-label="PDF viewer"
       className="relative h-full w-full outline-none overscroll-contain"
+      style={{ touchAction: 'none' }}
     >
       {screenshotMode && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
@@ -472,14 +491,13 @@ export function PDFViewer({
         className={`absolute inset-0 overflow-hidden ${
           screenshotMode ? 'cursor-crosshair' : isDragging ? 'cursor-grabbing' : 'cursor-grab'
         }`}
-        onWheel={handleWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={() => {
           if (!screenshotMode) setIsDragging(false);
         }}
-        style={{ clipPath: 'inset(0)', touchAction: 'none' }}
+        style={{ clipPath: 'inset(0)' }}
       >
         <div
           style={{

@@ -131,11 +131,13 @@ export default function AssessmentClient({
       {/* Main Content Area with PDF Viewer */}
       <div className="flex-1 bg-gray-50 overflow-hidden flex flex-col">
         {pdfUrl ? (
-          <PDFViewer
-            pdfUrl={pdfUrl}
-            activeCheck={activeCheck || undefined}
-            onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
-          />
+          <div className="flex-1 h-full">
+            <PDFViewer
+              pdfUrl={pdfUrl}
+              activeCheck={activeCheck || undefined}
+              onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
+            />
+          </div>
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">
             <div className="text-center">

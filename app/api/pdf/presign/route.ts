@@ -6,6 +6,8 @@ export async function POST(req: NextRequest) {
     const { pdfUrl } = await req.json();
     if (!pdfUrl) return NextResponse.json({ error: 'pdfUrl required' }, { status: 400 });
 
+    console.log('[PDF Presign] Processing URL:', pdfUrl);
+
     // Extract key from S3 URL (supports both https://bucket.s3.region.amazonaws.com/key and s3://bucket/key formats)
     let key: string;
     if (pdfUrl.startsWith('s3://')) {
@@ -16,17 +18,23 @@ export async function POST(req: NextRequest) {
       // Decode the pathname to handle URL-encoded characters properly
       key = decodeURIComponent(url.pathname.slice(1)); // Remove leading slash and decode
     } else {
-      return NextResponse.json({ error: 'Invalid S3 URL format' }, { status: 400 });
+      console.error('[PDF Presign] Invalid S3 URL format:', pdfUrl);
+      return NextResponse.json(
+        { error: 'Invalid S3 URL format', receivedUrl: pdfUrl },
+        { status: 400 }
+      );
     }
 
+    console.log('[PDF Presign] Extracted key:', key);
     const presignedUrl = await presignGet(key, 3600); // 1 hour expiry
     return NextResponse.json({ url: presignedUrl });
   } catch (error) {
-    console.error('Error generating presigned URL:', error);
+    console.error('[PDF Presign] Error generating presigned URL:', error);
     return NextResponse.json(
       {
         error: 'Failed to generate presigned URL',
         details: error instanceof Error ? error.message : 'Unknown error',
+        pdfUrl: req.nextUrl ? 'URL received' : 'No URL',
       },
       { status: 500 }
     );
