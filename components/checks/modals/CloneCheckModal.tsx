@@ -16,11 +16,6 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
   const [error, setError] = useState<string | null>(null);
 
   const handleClone = async () => {
-    if (!instanceLabel.trim()) {
-      setError('Please enter a label for this instance');
-      return;
-    }
-
     setIsCloning(true);
     setError(null);
 
@@ -29,7 +24,7 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          instanceLabel: instanceLabel.trim(),
+          instanceLabel: instanceLabel.trim() || undefined,
           copyScreenshots,
         }),
       });
@@ -72,7 +67,7 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
 
           <div>
             <label htmlFor="instanceLabel" className="block text-sm font-medium text-gray-700 mb-1">
-              Instance Label <span className="text-red-500">*</span>
+              Instance Label <span className="text-gray-400">(optional)</span>
             </label>
             <input
               id="instanceLabel"
@@ -84,7 +79,7 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Give this instance a descriptive name to distinguish it from others
+              Leave blank to auto-generate (e.g., &quot;Instance 2&quot;)
             </p>
           </div>
 
@@ -120,7 +115,7 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
           </button>
           <button
             onClick={handleClone}
-            disabled={isCloning || !instanceLabel.trim()}
+            disabled={isCloning}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
           >
             {isCloning ? 'Creating...' : 'Create Instance'}

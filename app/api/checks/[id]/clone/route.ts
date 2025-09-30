@@ -31,7 +31,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Failed to determine instance number' }, { status: 500 });
   }
 
-  const nextInstanceNumber = siblings && siblings.length > 0 ? siblings[0].instance_number + 1 : 2;
+  const nextInstanceNumber =
+    siblings && siblings.length > 0 && siblings[0].instance_number != null
+      ? siblings[0].instance_number + 1
+      : 2;
 
   // Create the new check instance
   const clone = {
