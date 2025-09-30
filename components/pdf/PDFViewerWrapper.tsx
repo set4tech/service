@@ -1,27 +1,37 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { Suspense } from 'react';
 
 // Dynamically import the entire PDFViewer component with no SSR
-// Using a function that returns the import to prevent build-time analysis
 const PDFViewerComponent = dynamic(
-  async () => {
-    const mod = await import('./PDFViewer');
-    return { default: mod.PDFViewer };
-  },
+  () => import('./PDFViewer').then(mod => ({ default: mod.PDFViewer })),
   {
     ssr: false,
-    loading: () => <div className="p-6 text-center">Loading PDF viewer...</div>,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-sm text-gray-500">Loading PDF viewer...</div>
+        </div>
+      </div>
+    ),
   }
 );
 
 export function PDFViewerWrapper(props: any) {
-  if (typeof window === 'undefined') {
-    return <div className="p-6">PDF viewer requires client-side rendering</div>;
-  }
   return (
     <div className="h-full w-full">
-      <PDFViewerComponent {...props} />
+      <Suspense
+        fallback={
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-sm text-gray-500">Loading PDF viewer...</div>
+            </div>
+          </div>
+        }
+      >
+        <PDFViewerComponent {...props} />
+      </Suspense>
     </div>
   );
 }

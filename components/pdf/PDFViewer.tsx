@@ -1,18 +1,80 @@
 'use client';
 
 import { Document, Page, pdfjs } from 'react-pdf';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useReducer, useState } from 'react';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-interface Transform {
-  tx: number;
-  ty: number;
-  scale: number;
-}
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 10;
+
+// Consolidated viewer state
+interface ViewerState {
+  transform: { tx: number; ty: number; scale: number };
+  pageNumber: number;
+  numPages: number;
+  isDragging: boolean;
+  screenshotMode: boolean;
+  isSelecting: boolean;
+  selection: { startX: number; startY: number; endX: number; endY: number } | null;
+}
+
+type ViewerAction =
+  | { type: 'SET_TRANSFORM'; payload: ViewerState['transform'] }
+  | { type: 'SET_PAGE'; payload: number }
+  | { type: 'SET_NUM_PAGES'; payload: number }
+  | { type: 'START_DRAG'; payload: { x: number; y: number } }
+  | { type: 'END_DRAG' }
+  | { type: 'TOGGLE_SCREENSHOT_MODE' }
+  | { type: 'START_SELECTION'; payload: { x: number; y: number } }
+  | { type: 'UPDATE_SELECTION'; payload: { x: number; y: number } }
+  | { type: 'END_SELECTION' }
+  | { type: 'CLEAR_SELECTION' }
+  | { type: 'RESET_ZOOM' };
+
+function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
+  switch (action.type) {
+    case 'SET_TRANSFORM':
+      return { ...state, transform: action.payload };
+    case 'SET_PAGE':
+      return { ...state, pageNumber: action.payload, selection: null, screenshotMode: false };
+    case 'SET_NUM_PAGES':
+      return { ...state, numPages: action.payload };
+    case 'START_DRAG':
+      return { ...state, isDragging: true };
+    case 'END_DRAG':
+      return { ...state, isDragging: false };
+    case 'TOGGLE_SCREENSHOT_MODE':
+      return { ...state, screenshotMode: !state.screenshotMode, selection: null };
+    case 'START_SELECTION':
+      return {
+        ...state,
+        isSelecting: true,
+        selection: {
+          startX: action.payload.x,
+          startY: action.payload.y,
+          endX: action.payload.x,
+          endY: action.payload.y,
+        },
+      };
+    case 'UPDATE_SELECTION':
+      return state.selection
+        ? {
+            ...state,
+            selection: { ...state.selection, endX: action.payload.x, endY: action.payload.y },
+          }
+        : state;
+    case 'END_SELECTION':
+      return { ...state, isSelecting: false };
+    case 'CLEAR_SELECTION':
+      return { ...state, selection: null, screenshotMode: false };
+    case 'RESET_ZOOM':
+      return { ...state, transform: { tx: 0, ty: 0, scale: 1 } };
+    default:
+      return state;
+  }
+}
 
 export function PDFViewer({
   pdfUrl,
@@ -24,22 +86,20 @@ export function PDFViewer({
   onScreenshotSaved: () => void;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const _contentRef = useRef<HTMLDivElement>(null);
   const pageContainerRef = useRef<HTMLDivElement>(null);
-  const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState<number>(1);
-  const [transform, setTransform] = useState<Transform>({ tx: 0, ty: 0, scale: 1 });
-  const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
-  const [screenshotMode, setScreenshotMode] = useState(false);
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [selection, setSelection] = useState<{
-    startX: number;
-    startY: number;
-    endX: number;
-    endY: number;
-  } | null>(null); // Content coordinates, top-left origin
+  // Consolidated state management
+  const [state, dispatch] = useReducer(viewerReducer, {
+    transform: { tx: 0, ty: 0, scale: 1 },
+    pageNumber: 1,
+    numPages: 0,
+    isDragging: false,
+    screenshotMode: false,
+    isSelecting: false,
+    selection: null,
+  });
+
   const [pdfInstance, setPdfInstance] = useState<any>(null);
   const [pageInstance, setPageInstance] = useState<any>(null);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
@@ -47,41 +107,28 @@ export function PDFViewer({
 
   // Fetch presigned URL for private S3 PDFs
   useEffect(() => {
-    (async () => {
-      console.log('PDFViewer: Starting to fetch presigned URL for:', pdfUrl);
+    async function fetchPresignedUrl() {
       setLoadingUrl(true);
-      try {
-        const res = await fetch('/api/pdf/presign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pdfUrl }),
-        });
+      const res = await fetch('/api/pdf/presign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdfUrl }),
+      });
 
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-        }
-
+      if (res.ok) {
         const data = await res.json();
-        console.log('PDFViewer: Received presigned URL response:', data);
         setPresignedUrl(data.url);
-      } catch (err) {
-        console.error('Failed to get presigned URL:', err);
+      } else {
         setPresignedUrl(null);
-      } finally {
-        setLoadingUrl(false);
       }
-    })();
+      setLoadingUrl(false);
+    }
+
+    fetchPresignedUrl();
   }, [pdfUrl]);
 
   const onDocLoad = ({ numPages }: { numPages: number }) => {
-    console.log('PDFViewer: Document loaded successfully with', numPages, 'pages');
-    console.log('Transform state:', transform);
-    console.log('ViewportRef exists:', !!viewportRef.current);
-    if (viewportRef.current) {
-      const rect = viewportRef.current.getBoundingClientRect();
-      console.log('Viewport dimensions:', rect.width, 'x', rect.height);
-    }
-    setNumPages(numPages);
+    dispatch({ type: 'SET_NUM_PAGES', payload: numPages });
   };
 
   const onDocError = (error: Error) => {
@@ -94,32 +141,27 @@ export function PDFViewer({
     if (!vp) return;
 
     const onWheel = (e: WheelEvent) => {
-      // Don't hijack the wheel while selecting a screenshot region
-      if (screenshotMode) return;
+      if (state.screenshotMode) return;
 
-      // Critically, preventDefault on a non-passive listener at the viewport node
       e.preventDefault();
       e.stopPropagation();
 
       const scaleSpeed = 0.003;
       const scaleDelta = -e.deltaY * scaleSpeed;
+      const prev = state.transform;
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
 
-      setTransform(prev => {
-        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
+      const rect = vp.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
 
-        // Zoom towards cursor relative to the viewport box
-        const rect = vp.getBoundingClientRect();
-        const sx = e.clientX - rect.left;
-        const sy = e.clientY - rect.top;
+      const cx = (sx - prev.tx) / prev.scale;
+      const cy = (sy - prev.ty) / prev.scale;
 
-        const cx = (sx - prev.tx) / prev.scale;
-        const cy = (sy - prev.ty) / prev.scale;
+      const tx = sx - cx * newScale;
+      const ty = sy - cy * newScale;
 
-        const tx = sx - cx * newScale;
-        const ty = sy - cy * newScale;
-
-        return { tx, ty, scale: newScale };
-      });
+      dispatch({ type: 'SET_TRANSFORM', payload: { tx, ty, scale: newScale } });
     };
 
     // Non-passive is the whole point
@@ -137,84 +179,91 @@ export function PDFViewer({
       vp.removeEventListener('gesturechange', cancel as EventListener);
       vp.removeEventListener('gestureend', cancel as EventListener);
     };
-  }, [screenshotMode]);
+  }, [state.screenshotMode, state.transform]);
 
   const screenToContent = useCallback(
     (clientX: number, clientY: number) => {
       if (!pageContainerRef.current) return { x: 0, y: 0 };
 
       const pageRect = pageContainerRef.current.getBoundingClientRect();
-
-      // Get position relative to page element (not viewport)
-      const x = (clientX - pageRect.left) / transform.scale;
-      const y = (clientY - pageRect.top) / transform.scale;
+      const x = (clientX - pageRect.left) / state.transform.scale;
+      const y = (clientY - pageRect.top) / state.transform.scale;
 
       return { x, y };
     },
-    [transform.scale]
+    [state.transform.scale]
   );
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if (screenshotMode) {
+    if (state.screenshotMode) {
       e.preventDefault();
       e.stopPropagation();
       const { x, y } = screenToContent(e.clientX, e.clientY);
-      setSelection({ startX: x, startY: y, endX: x, endY: y });
-      setIsSelecting(true);
+      dispatch({ type: 'START_SELECTION', payload: { x, y } });
       return;
     }
     if (e.button !== 0) return;
-    setIsDragging(true);
-    dragStart.current = { x: e.clientX, y: e.clientY, tx: transform.tx, ty: transform.ty };
+    dispatch({ type: 'START_DRAG', payload: { x: e.clientX, y: e.clientY } });
+    dragStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      tx: state.transform.tx,
+      ty: state.transform.ty,
+    };
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    if (screenshotMode) {
-      if (isSelecting && selection) {
+    if (state.screenshotMode) {
+      if (state.isSelecting && state.selection) {
         e.preventDefault();
         e.stopPropagation();
         const { x, y } = screenToContent(e.clientX, e.clientY);
-        setSelection(s => s && { ...s, endX: x, endY: y });
+        dispatch({ type: 'UPDATE_SELECTION', payload: { x, y } });
       }
       return;
     }
-    if (!isDragging) return;
+    if (!state.isDragging) return;
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
-    setTransform(prev => ({
-      ...prev,
-      tx: dragStart.current.tx + dx,
-      ty: dragStart.current.ty + dy,
-    }));
+    dispatch({
+      type: 'SET_TRANSFORM',
+      payload: {
+        ...state.transform,
+        tx: dragStart.current.tx + dx,
+        ty: dragStart.current.ty + dy,
+      },
+    });
   };
 
   const onMouseUp = (e: React.MouseEvent) => {
-    if (screenshotMode && selection) {
+    if (state.screenshotMode && state.selection) {
       e.preventDefault();
       e.stopPropagation();
-      setIsSelecting(false);
+      dispatch({ type: 'END_SELECTION' });
     }
-    setIsDragging(false);
+    dispatch({ type: 'END_DRAG' });
   };
 
   const zoom = (dir: 'in' | 'out') => {
     const factor = dir === 'in' ? 1.2 : 1 / 1.2;
-    setTransform(prev => {
-      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
-      // Zoom toward center
-      const vp = viewportRef.current;
-      if (!vp) return { ...prev, scale: newScale };
+    const prev = state.transform;
+    const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
+    // Zoom toward center
+    const vp = viewportRef.current;
+    if (!vp) {
+      dispatch({ type: 'SET_TRANSFORM', payload: { ...prev, scale: newScale } });
+      return;
+    }
 
-      const rect = vp.getBoundingClientRect();
-      const sx = rect.width / 2;
-      const sy = rect.height / 2;
-      const cx = (sx - prev.tx) / prev.scale;
-      const cy = (sy - prev.ty) / prev.scale;
-      const tx = sx - cx * newScale;
-      const ty = sy - cy * newScale;
+    const rect = vp.getBoundingClientRect();
+    const sx = rect.width / 2;
+    const sy = rect.height / 2;
+    const cx = (sx - prev.tx) / prev.scale;
+    const cy = (sy - prev.ty) / prev.scale;
+    const tx = sx - cx * newScale;
+    const ty = sy - cy * newScale;
 
-      return { tx, ty, scale: newScale };
-    });
+    dispatch({ type: 'SET_TRANSFORM', payload: { tx, ty, scale: newScale } });
   };
 
   // Keyboard shortcuts
@@ -222,23 +271,24 @@ export function PDFViewer({
     const el = viewportRef.current;
     if (!el) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') setPageNumber(p => Math.max(1, p - 1));
-      if (e.key === 'ArrowRight') setPageNumber(p => Math.min(numPages || p, p + 1));
+      if (e.key === 'ArrowLeft')
+        dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) });
+      if (e.key === 'ArrowRight')
+        dispatch({
+          type: 'SET_PAGE',
+          payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
+        });
       if (e.key === '-' || e.key === '_') zoom('out');
       if (e.key === '=' || e.key === '+') zoom('in');
-      if (e.key === '0') setTransform({ tx: 0, ty: 0, scale: 1 });
-      if (e.key.toLowerCase() === 's') setScreenshotMode(v => !v);
-      if (e.key === 'Escape' && screenshotMode) setScreenshotMode(false);
+      if (e.key === '0') dispatch({ type: 'RESET_ZOOM' });
+      if (e.key.toLowerCase() === 's') dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
+      if (e.key === 'Escape' && state.screenshotMode) dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
     };
     el.addEventListener('keydown', onKey);
     return () => el.removeEventListener('keydown', onKey);
-  }, [screenshotMode, numPages]);
+  }, [state.screenshotMode, state.numPages, state.pageNumber]);
 
-  // Clear selection on page change
-  useEffect(() => {
-    setSelection(null);
-    setScreenshotMode(false);
-  }, [pageNumber]);
+  // Clear selection on page change happens in reducer via SET_PAGE action
 
   // Advanced: access raw pdf via pdfjs for cropping
   useEffect(() => {
@@ -253,10 +303,10 @@ export function PDFViewer({
   useEffect(() => {
     (async () => {
       if (!pdfInstance) return;
-      const p = await pdfInstance.getPage(pageNumber);
+      const p = await pdfInstance.getPage(state.pageNumber);
       setPageInstance(p);
     })();
-  }, [pdfInstance, pageNumber]);
+  }, [pdfInstance, state.pageNumber]);
 
   const pickRenderScale = (page: any, desired = 2.5) => {
     const base = page.getViewport({ scale: 1 });
@@ -272,12 +322,12 @@ export function PDFViewer({
 
   const capture = async () => {
     try {
-      if (!selection || !pageInstance || !activeCheck) return;
+      if (!state.selection || !pageInstance || !activeCheck) return;
 
-      const sx = Math.min(selection.startX, selection.endX);
-      const sy = Math.min(selection.startY, selection.endY);
-      const sw = Math.abs(selection.endX - selection.startX);
-      const sh = Math.abs(selection.endY - selection.startY);
+      const sx = Math.min(state.selection.startX, state.selection.endX);
+      const sy = Math.min(state.selection.startY, state.selection.endY);
+      const sw = Math.abs(state.selection.endX - state.selection.startX);
+      const sh = Math.abs(state.selection.endY - state.selection.startY);
 
       // Render page offscreen
       const renderScale = pickRenderScale(pageInstance, 2.5);
@@ -303,8 +353,7 @@ export function PDFViewer({
       const ch = Math.min(rh, canvas.height - cy);
 
       if (cw < 5 || ch < 5) {
-        setSelection(null);
-        setScreenshotMode(false);
+        dispatch({ type: 'CLEAR_SELECTION' });
         return;
       }
 
@@ -368,13 +417,13 @@ export function PDFViewer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           check_id: activeCheck.id,
-          page_number: pageNumber,
+          page_number: state.pageNumber,
           crop_coordinates: {
             x: sx,
             y: sy,
             width: sw,
             height: sh,
-            zoom_level: transform.scale,
+            zoom_level: state.transform.scale,
           },
           screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
           thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
@@ -387,8 +436,7 @@ export function PDFViewer({
       }
       console.log('capture() complete!');
 
-      setSelection(null);
-      setScreenshotMode(false);
+      dispatch({ type: 'CLEAR_SELECTION' });
       onScreenshotSaved();
     } catch (error) {
       console.error('capture() failed with error:', error);
@@ -417,7 +465,7 @@ export function PDFViewer({
     );
   }
 
-  const zoomPct = Math.round(transform.scale * 100);
+  const zoomPct = Math.round(state.transform.scale * 100);
 
   return (
     <div
@@ -428,7 +476,7 @@ export function PDFViewer({
       className="relative h-full w-full outline-none overscroll-contain"
       style={{ touchAction: 'none' }}
     >
-      {screenshotMode && (
+      {state.screenshotMode && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
             📸 Screenshot Mode: Click and drag to select area
@@ -453,55 +501,39 @@ export function PDFViewer({
           +
         </button>
         <button
-          aria-pressed={screenshotMode}
+          aria-pressed={state.screenshotMode}
           aria-label="Toggle screenshot mode (S)"
-          className={`btn-icon shadow-md ${screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
-          onClick={() => {
-            console.log('Screenshot button clicked, current mode:', screenshotMode);
-            setScreenshotMode(v => {
-              console.log('Setting screenshot mode to:', !v);
-              return !v;
-            });
-          }}
+          className={`btn-icon shadow-md ${state.screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
+          onClick={() => dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' })}
         >
           📸
         </button>
-        {screenshotMode && selection && (
-          <>
-            {console.log(
-              'Rendering Save button - screenshotMode:',
-              screenshotMode,
-              'selection:',
-              selection
-            )}
-            <button
-              className="btn-secondary shadow-md"
-              onClick={() => {
-                console.log('Save button clicked!');
-                capture();
-              }}
-            >
-              Save
-            </button>
-          </>
+        {state.screenshotMode && state.selection && (
+          <button className="btn-secondary shadow-md" onClick={() => capture()}>
+            Save
+          </button>
         )}
       </div>
 
       <div
         className={`absolute inset-0 overflow-hidden ${
-          screenshotMode ? 'cursor-crosshair' : isDragging ? 'cursor-grabbing' : 'cursor-grab'
+          state.screenshotMode
+            ? 'cursor-crosshair'
+            : state.isDragging
+              ? 'cursor-grabbing'
+              : 'cursor-grab'
         }`}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={() => {
-          if (!screenshotMode) setIsDragging(false);
+          if (!state.screenshotMode) dispatch({ type: 'END_DRAG' });
         }}
         style={{ clipPath: 'inset(0)' }}
       >
         <div
           style={{
-            transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
+            transform: `translate(${state.transform.tx}px, ${state.transform.ty}px) scale(${state.transform.scale})`,
             transformOrigin: '0 0',
             willChange: 'transform',
             position: 'absolute',
@@ -518,20 +550,20 @@ export function PDFViewer({
           >
             <div ref={pageContainerRef} style={{ position: 'relative' }}>
               <Page
-                pageNumber={pageNumber}
+                pageNumber={state.pageNumber}
                 height={800}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
               />
-              {screenshotMode && selection && (
+              {state.screenshotMode && state.selection && (
                 <div
                   className="pointer-events-none"
                   style={{
                     position: 'absolute',
-                    left: Math.min(selection.startX, selection.endX),
-                    top: Math.min(selection.startY, selection.endY),
-                    width: Math.abs(selection.endX - selection.startX),
-                    height: Math.abs(selection.endY - selection.startY),
+                    left: Math.min(state.selection.startX, state.selection.endX),
+                    top: Math.min(state.selection.startY, state.selection.endY),
+                    width: Math.abs(state.selection.endX - state.selection.startX),
+                    height: Math.abs(state.selection.endY - state.selection.startY),
                     border: '2px solid rgba(37, 99, 235, 0.8)',
                     backgroundColor: 'rgba(37, 99, 235, 0.1)',
                     zIndex: 40,
@@ -546,17 +578,22 @@ export function PDFViewer({
       <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
         <button
           className="btn-icon bg-white"
-          onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+          onClick={() => dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) })}
           aria-label="Previous page"
         >
           ◀
         </button>
         <div className="text-sm font-medium">
-          Page {pageNumber} / {numPages || '…'}
+          Page {state.pageNumber} / {state.numPages || '…'}
         </div>
         <button
           className="btn-icon bg-white"
-          onClick={() => setPageNumber(p => Math.min(numPages || p, p + 1))}
+          onClick={() =>
+            dispatch({
+              type: 'SET_PAGE',
+              payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
+            })
+          }
           aria-label="Next page"
         >
           ▶

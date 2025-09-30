@@ -104,7 +104,7 @@ export function CheckList({
       </div>
 
       {/* Check List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1">
         {groupedChecks.map(([mainPrefix, groupChecks]) => {
           const isExpanded = expandedSections.has(mainPrefix);
 

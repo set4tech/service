@@ -1,10 +1,23 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { CheckList } from '@/components/checks/CheckList';
-import { PDFViewerWrapper as PDFViewer } from '@/components/pdf/PDFViewerWrapper';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
+
+// Load PDF viewer only on client side - removes need for wrapper component
+const PDFViewer = dynamic(
+  () => import('@/components/pdf/PDFViewer').then(mod => ({ default: mod.PDFViewer })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center">
+        <div className="text-sm text-gray-500">Loading PDF viewer...</div>
+      </div>
+    ),
+  }
+);
 
 interface Props {
   assessment: any;
@@ -78,9 +91,9 @@ export default function AssessmentClient({
   }
 
   return (
-    <div className="h-screen flex">
+    <div className="fixed inset-0 flex overflow-hidden">
       {/* Left Sidebar with Checks */}
-      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-full overflow-hidden relative z-10">
+      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden relative z-10">
         {/* Header */}
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between mb-3">
@@ -116,7 +129,7 @@ export default function AssessmentClient({
         </div>
 
         {/* Checks List */}
-        <div className="flex-1 overflow-hidden min-h-0">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           <CheckList checks={checks} activeCheckId={activeCheckId} onSelect={handleCheckSelect} />
         </div>
 
@@ -129,15 +142,13 @@ export default function AssessmentClient({
       </div>
 
       {/* Main Content Area with PDF Viewer */}
-      <div className="flex-1 bg-gray-50 overflow-hidden flex flex-col">
+      <div className="flex-1 bg-gray-50 overflow-hidden h-screen">
         {pdfUrl ? (
-          <div className="flex-1 h-full">
-            <PDFViewer
-              pdfUrl={pdfUrl}
-              activeCheck={activeCheck || undefined}
-              onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
-            />
-          </div>
+          <PDFViewer
+            pdfUrl={pdfUrl}
+            activeCheck={activeCheck || undefined}
+            onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
+          />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">
             <div className="text-center">
