@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { CheckList } from '@/components/checks/CheckList';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
+import { CodeDetailPanel } from '@/components/checks/CodeDetailPanel';
 
 // Load PDF viewer only on client side - removes need for wrapper component
 const PDFViewer = dynamic(
@@ -34,9 +35,26 @@ export default function AssessmentClient({
   const [progress] = useState(initialProgress);
   const [isSeeding, setIsSeeding] = useState(false);
   const [activeCheckId, setActiveCheckId] = useState<string | null>(checks[0]?.id || null);
+  const [showDetailPanel, setShowDetailPanel] = useState(false);
+  const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
+  const [detailPanelWidth, setDetailPanelWidth] = useState(400);
+
+  const checksSidebarRef = useRef<HTMLDivElement>(null);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
+  const checksResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
+    isDragging: false,
+    startX: 0,
+    startWidth: 0,
+  });
+  const detailResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
+    isDragging: false,
+    startX: 0,
+    startWidth: 0,
+  });
 
   const handleCheckSelect = (checkId: string) => {
     setActiveCheckId(checkId);
+    setShowDetailPanel(true);
   };
 
   const activeCheck = useMemo(
@@ -77,6 +95,56 @@ export default function AssessmentClient({
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
   const [screenshotsChanged, setScreenshotsChanged] = useState(0);
 
+  // Resize handlers for checks sidebar
+  const handleChecksResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    checksResizerRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startWidth: checksSidebarWidth,
+    };
+  };
+
+  // Resize handlers for detail panel
+  const handleDetailResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    detailResizerRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startWidth: detailPanelWidth,
+    };
+  };
+
+  // Mouse move handler for resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (checksResizerRef.current.isDragging) {
+        const deltaX = e.clientX - checksResizerRef.current.startX;
+        const newWidth = Math.max(280, Math.min(600, checksResizerRef.current.startWidth + deltaX));
+        setChecksSidebarWidth(newWidth);
+      }
+
+      if (detailResizerRef.current.isDragging) {
+        const deltaX = e.clientX - detailResizerRef.current.startX;
+        const newWidth = Math.max(300, Math.min(700, detailResizerRef.current.startWidth + deltaX));
+        setDetailPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      checksResizerRef.current.isDragging = false;
+      detailResizerRef.current.isDragging = false;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   // Refetch active check's screenshots when a new one is saved
   useEffect(() => {
     if (screenshotsChanged === 0 || !activeCheckId) return;
@@ -112,7 +180,11 @@ export default function AssessmentClient({
   return (
     <div className="fixed inset-0 flex overflow-hidden">
       {/* Left Sidebar with Checks */}
-      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden relative z-10">
+      <div
+        ref={checksSidebarRef}
+        className="flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden relative z-10"
+        style={{ width: `${checksSidebarWidth}px` }}
+      >
         {/* Header */}
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between mb-3">
@@ -159,6 +231,39 @@ export default function AssessmentClient({
           </div>
         )}
       </div>
+
+      {/* Resize Handle for Checks Sidebar */}
+      <div
+        onMouseDown={handleChecksResizeStart}
+        className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors relative z-20"
+        style={{ touchAction: 'none' }}
+      />
+
+      {/* Code Detail Panel */}
+      <div
+        ref={detailPanelRef}
+        className="flex-shrink-0 h-screen overflow-hidden transition-all duration-300 ease-in-out"
+        style={{
+          width: showDetailPanel ? `${detailPanelWidth}px` : '0px',
+          opacity: showDetailPanel ? 1 : 0,
+        }}
+      >
+        {showDetailPanel && (
+          <CodeDetailPanel
+            sectionKey={activeCheck?.code_section_key || null}
+            onClose={() => setShowDetailPanel(false)}
+          />
+        )}
+      </div>
+
+      {/* Resize Handle for Detail Panel */}
+      {showDetailPanel && (
+        <div
+          onMouseDown={handleDetailResizeStart}
+          className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors relative z-20"
+          style={{ touchAction: 'none' }}
+        />
+      )}
 
       {/* Main Content Area with PDF Viewer */}
       <div className="flex-1 bg-gray-50 overflow-hidden h-screen">
