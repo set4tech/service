@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       getSignedUrl(
         s3,
         new GetObjectCommand({
-          Bucket: process.env.AWS_S3_BUCKET_NAME!,
+          Bucket: 'set4-data',
           Key: screenshotKey,
         }),
         { expiresIn: 3600 }
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       getSignedUrl(
         s3,
         new GetObjectCommand({
-          Bucket: process.env.AWS_S3_BUCKET_NAME!,
+          Bucket: 'set4-data',
           Key: thumbnailKey,
         }),
         { expiresIn: 3600 }
