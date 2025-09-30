@@ -70,7 +70,10 @@ export default function AssessmentClient({
   );
 
   // Auto-seed checks if empty (only try once)
-  const [hasSeedAttempted, setHasSeedAttempted] = useState(false);
+  const [hasSeedAttempted, setHasSeedAttempted] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(`seed-attempted-${assessment.id}`) === 'true';
+  });
 
   useEffect(() => {
     console.log('[AssessmentClient] Effect triggered', {
@@ -83,6 +86,7 @@ export default function AssessmentClient({
       console.log('[AssessmentClient] Starting seed process for assessment:', assessment.id);
       setIsSeeding(true);
       setHasSeedAttempted(true);
+      localStorage.setItem(`seed-attempted-${assessment.id}`, 'true');
 
       // Fetch first batch immediately
       fetch(`/api/assessments/${assessment.id}/seed`, { method: 'POST' })

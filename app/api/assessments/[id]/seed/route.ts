@@ -50,6 +50,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       'ICC+CBC_Chapter11A_11B+2025+CA',
     ];
 
+    console.log('[Seed API] Using code IDs:', codeIds);
+
     // 2. Fetch ALL sections for selected codes (filter by drawing_assessable)
     const { data: allSections, error: sectionsError } = await supabase
       .from('sections')
