@@ -3,7 +3,9 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { AIResponse } from './types';
 
-const gemini = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
+const gemini = new GoogleGenerativeAI(
+  process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
+);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -60,8 +62,21 @@ export async function runAI(
       const modelName = req.model || 'gemini-2.5-pro';
       const model = gemini.getGenerativeModel({ model: modelName });
       const parts: any[] = [{ text: req.prompt }];
-      for (const url of req.screenshots)
-        parts.push({ fileData: { fileUri: url, mimeType: 'image/png' } });
+
+      // Convert screenshots to base64 inline data
+      for (const url of req.screenshots) {
+        const response = await fetch(url);
+        const buffer = await response.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        const mimeType = response.headers.get('content-type') || 'image/png';
+
+        parts.push({
+          inlineData: {
+            mimeType,
+            data: base64,
+          },
+        });
+      }
 
       const res = await model.generateContent({ contents: [{ role: 'user', parts }] });
       const text = res.response.text();
@@ -74,7 +89,7 @@ export async function runAI(
 
       // Convert screenshots to base64 content blocks
       const imageBlocks = await Promise.all(
-        req.screenshots.map(async (url) => {
+        req.screenshots.map(async url => {
           const response = await fetch(url);
           const buffer = await response.arrayBuffer();
           const base64 = Buffer.from(buffer).toString('base64');
@@ -102,7 +117,7 @@ export async function runAI(
         messages: [{ role: 'user', content }],
       });
 
-      const textBlock = resp.content.find((block) => block.type === 'text');
+      const textBlock = resp.content.find(block => block.type === 'text');
       const raw = textBlock && textBlock.type === 'text' ? textBlock.text : '{}';
       const parsed = safeParseJson(raw);
       return { model: modelName, raw, parsed };
