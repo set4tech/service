@@ -65,19 +65,44 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .eq('drawing_assessable', true)
       .order('number');
 
-    if (sectionsError || !allSections) {
-      console.error('[Seed API] Failed to fetch sections:', sectionsError);
-      return NextResponse.json({ error: 'Failed to fetch sections' }, { status: 500 });
+    if (sectionsError) {
+      console.error('❌❌❌ [Seed API] DATABASE ERROR ❌❌❌');
+      console.error('[Seed API] Error details:', sectionsError);
+      return NextResponse.json(
+        { error: 'Database error: ' + sectionsError.message },
+        { status: 500 }
+      );
+    }
+
+    if (!allSections) {
+      console.error('❌❌❌ [Seed API] NULL RESULT ❌❌❌');
+      console.error('[Seed API] Query returned null but no error');
+      return NextResponse.json({ error: 'Query returned null' }, { status: 500 });
     }
 
     console.log('[Seed API] Found sections:', allSections.length);
 
-    // Debug: check what we'd get without drawing_assessable filter
-    const { count: totalCount } = await supabase
-      .from('sections')
-      .select('*', { count: 'exact', head: true })
-      .in('code_id', codeIds);
-    console.log('[Seed API] Total sections without drawing_assessable filter:', totalCount);
+    if (allSections.length === 0) {
+      console.warn('⚠️⚠️⚠️ [Seed API] ZERO SECTIONS FOUND ⚠️⚠️⚠️');
+      console.warn('[Seed API] This likely means the code_id does not exist in the database');
+      console.warn(
+        '[Seed API] Check that selected_code_ids matches actual code_id values in sections table'
+      );
+
+      // Check what we'd get without drawing_assessable filter
+      const { count: totalCount } = await supabase
+        .from('sections')
+        .select('*', { count: 'exact', head: true })
+        .in('code_id', codeIds);
+      console.warn('[Seed API] Total sections for these code_ids (no filter):', totalCount);
+
+      if (totalCount === 0) {
+        console.error('❌❌❌ [Seed API] NO SECTIONS EXIST FOR THESE CODE IDS ❌❌❌');
+        console.error('[Seed API] Available code_ids:');
+        const { data: availableCodes } = await supabase.from('sections').select('code_id').limit(5);
+        availableCodes?.forEach(c => console.error('  - ' + c.code_id));
+      }
+    }
 
     // 3. Initialize status
     await supabase
