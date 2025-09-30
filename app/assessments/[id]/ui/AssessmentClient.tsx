@@ -46,6 +46,13 @@ export default function AssessmentClient({
     included: number;
   } | null>(null);
 
+  // Background seeding status
+  const [backgroundSeeding, setBackgroundSeeding] = useState<{
+    active: boolean;
+    processed: number;
+    total: number;
+  }>({ active: false, processed: 0, total: 0 });
+
   const checksSidebarRef = useRef<HTMLDivElement>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
   const checksResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
@@ -124,6 +131,57 @@ export default function AssessmentClient({
         });
     }
   }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
+
+  // Poll for background seeding progress
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout;
+
+    const pollStatus = async () => {
+      try {
+        const res = await fetch(`/api/assessments/${assessment.id}/status`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        // Check if background seeding is active
+        const isBackgroundActive = data.seeding_status === 'in_progress' && data.sections_total > 0;
+
+        setBackgroundSeeding({
+          active: isBackgroundActive,
+          processed: data.sections_processed || 0,
+          total: data.sections_total || 0,
+        });
+
+        // If seeding completed and we have more checks than before, refresh
+        if (data.seeding_status === 'completed' && data.check_count > checks.length) {
+          console.log('[AssessmentClient] Background seeding complete, refreshing checks...');
+          // Fetch updated checks
+          const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
+          if (checksRes.ok) {
+            const updatedChecks = await checksRes.json();
+            setChecks(updatedChecks);
+          }
+        }
+
+        // Stop polling when complete
+        if (data.seeding_status === 'completed' && pollInterval) {
+          clearInterval(pollInterval);
+        }
+      } catch (error) {
+        console.error('[AssessmentClient] Failed to poll status:', error);
+      }
+    };
+
+    // Start polling if we have checks (meaning we've already done initial seed)
+    if (checks.length > 0 && !isSeeding) {
+      pollStatus(); // Check immediately
+      pollInterval = setInterval(pollStatus, 3000); // Then every 3 seconds
+    }
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [assessment.id, checks.length, isSeeding]);
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
   const [screenshotsChanged, setScreenshotsChanged] = useState(0);
@@ -264,6 +322,21 @@ export default function AssessmentClient({
               </svg>
             </Link>
           </div>
+
+          {/* Background Seeding Banner */}
+          {backgroundSeeding.active && (
+            <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600" />
+                <span className="text-xs font-medium text-blue-900">
+                  Still retrieving code sections...
+                </span>
+              </div>
+              <div className="text-xs text-blue-700">
+                {backgroundSeeding.processed} / {backgroundSeeding.total} processed
+              </div>
+            </div>
+          )}
 
           {/* Progress Bar */}
           <div className="mb-3">
