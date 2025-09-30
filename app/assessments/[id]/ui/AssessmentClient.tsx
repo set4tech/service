@@ -30,7 +30,7 @@ export default function AssessmentClient({
   checks: initialChecks,
   progress: initialProgress,
 }: Props) {
-  const [checks] = useState(initialChecks);
+  const [checks, setChecks] = useState(initialChecks);
   const [progress] = useState(initialProgress);
   const [isSeeding, setIsSeeding] = useState(false);
   const [activeCheckId, setActiveCheckId] = useState<string | null>(checks[0]?.id || null);
@@ -77,7 +77,26 @@ export default function AssessmentClient({
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
   const [screenshotsChanged, setScreenshotsChanged] = useState(0);
 
-  useEffect(() => setActiveCheckId(checks[0]?.id || null), [checks]);
+  // Refetch active check's screenshots when a new one is saved
+  useEffect(() => {
+    if (screenshotsChanged === 0 || !activeCheckId) return;
+
+    const refetchScreenshots = async () => {
+      try {
+        const res = await fetch(`/api/checks/${activeCheckId}/screenshots`);
+        if (res.ok) {
+          const screenshots = await res.json();
+          setChecks(prev =>
+            prev.map(check => (check.id === activeCheckId ? { ...check, screenshots } : check))
+          );
+        }
+      } catch (error) {
+        console.error('Failed to refetch screenshots:', error);
+      }
+    };
+
+    refetchScreenshots();
+  }, [screenshotsChanged, activeCheckId]);
 
   if (checks.length === 0 && isSeeding) {
     return (
