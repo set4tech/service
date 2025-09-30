@@ -34,8 +34,10 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Only show the combined CBC_Chapter11A_11B code (the only one with sections)
-    const filteredData = (data || []).filter(code => code.id === 'ICC+CBC_Chapter11A_11B+2025+CA');
+    // Show both 11A and 11B codes separately
+    const filteredData = (data || []).filter(
+      code => code.id === 'ICC+CBC_Chapter11A+2025+CA' || code.id === 'ICC+CBC_Chapter11B+2025+CA'
+    );
 
     // Map Supabase fields to Neo4j format for backward compatibility
     const codes: CodeNode[] = filteredData.map(code => ({
