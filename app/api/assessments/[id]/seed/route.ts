@@ -51,6 +51,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     ];
 
     console.log('[Seed API] Using code IDs:', codeIds);
+    console.log(
+      '[Seed API] Query: sections WHERE code_id IN',
+      codeIds,
+      'AND drawing_assessable = true'
+    );
 
     // 2. Fetch ALL sections for selected codes (filter by drawing_assessable)
     const { data: allSections, error: sectionsError } = await supabase
@@ -66,6 +71,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     console.log('[Seed API] Found sections:', allSections.length);
+
+    // Debug: check what we'd get without drawing_assessable filter
+    const { count: totalCount } = await supabase
+      .from('sections')
+      .select('*', { count: 'exact', head: true })
+      .in('code_id', codeIds);
+    console.log('[Seed API] Total sections without drawing_assessable filter:', totalCount);
 
     // 3. Initialize status
     await supabase
