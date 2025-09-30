@@ -34,8 +34,11 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
+    // Filter out the combined CBC_Chapter11A_11B code (now split into separate 11A and 11B)
+    const filteredData = (data || []).filter(code => code.id !== 'ICC+CBC_Chapter11A_11B+2025+CA');
+
     // Map Supabase fields to Neo4j format for backward compatibility
-    const codes: CodeNode[] = (data || []).map(code => ({
+    const codes: CodeNode[] = filteredData.map(code => ({
       id: code.id,
       name: code.title, // title → name
       publisher: code.provider, // provider → publisher

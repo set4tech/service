@@ -10,15 +10,17 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const codeId = searchParams.get('codeId');
+  const includeNonAssessable = searchParams.get('include_non_assessable') === 'true';
 
   if (!codeId) {
     return NextResponse.json({ error: 'codeId is required' }, { status: 400 });
   }
 
   try {
-    // Check cache first
-    if (sectionsCache.has(codeId)) {
-      return NextResponse.json(sectionsCache.get(codeId));
+    // Check cache first (cache key includes filter option)
+    const cacheKey = `${codeId}:${includeNonAssessable}`;
+    if (sectionsCache.has(cacheKey)) {
+      return NextResponse.json(sectionsCache.get(cacheKey));
     }
 
     const supabase = supabaseAdmin();
@@ -40,19 +42,45 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get all sections for this code
-    const { data: sections, error: sectionsError } = await supabase
+    // Determine the actual code_id to query and chapter prefix filter
+    let queryCodeId = codeId;
+    let chapterPrefix: string | null = null;
+
+    // Handle virtual 11A and 11B codes by mapping to combined code and filtering
+    if (codeId === 'ICC+CBC_Chapter11A+2025+CA') {
+      queryCodeId = 'ICC+CBC_Chapter11A_11B+2025+CA';
+      chapterPrefix = '11A-';
+    } else if (codeId === 'ICC+CBC_Chapter11B+2025+CA') {
+      queryCodeId = 'ICC+CBC_Chapter11A_11B+2025+CA';
+      chapterPrefix = '11B-';
+    }
+
+    // Get all sections for this code (optionally filter by drawing_assessable)
+    let query = supabase
       .from('sections')
       .select('key, number, title, text, item_type, paragraphs, source_url')
-      .eq('code_id', codeId)
-      .order('number');
+      .eq('code_id', queryCodeId);
+
+    if (!includeNonAssessable) {
+      query = query.eq('drawing_assessable', true);
+    }
+
+    const { data: sections, error: sectionsError } = await query.order('number');
+
+    // Filter sections by chapter prefix if needed
+    let filteredSections = sections || [];
+    if (chapterPrefix) {
+      filteredSections = filteredSections.filter((section: any) =>
+        section.number.startsWith(chapterPrefix)
+      );
+    }
 
     if (sectionsError) {
       throw sectionsError;
     }
 
     // Format sections for frontend consumption
-    const formattedSections = (sections || []).map((section: any) => ({
+    const formattedSections = filteredSections.map((section: any) => ({
       key: section.key,
       number: section.number,
       title: section.title,
@@ -73,7 +101,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Cache the result
-    sectionsCache.set(codeId, result);
+    sectionsCache.set(cacheKey, result);
 
     return NextResponse.json(result);
   } catch (error) {
@@ -112,7 +140,8 @@ export async function POST(request: NextRequest) {
     // Get references for this section
     const { data: refs } = await supabase
       .from('section_references')
-      .select(`
+      .select(
+        `
         target_section_key,
         citation_text,
         target:sections!section_references_target_section_key_fkey (
@@ -121,7 +150,8 @@ export async function POST(request: NextRequest) {
           title,
           text
         )
-      `)
+      `
+      )
       .eq('source_section_key', sectionKey);
 
     const references = (refs || []).map((ref: any) => ({
