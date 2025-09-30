@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  console.log('[Seed API] Starting seed for assessment:', id);
   const supabase = supabaseAdmin();
 
   try {
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single();
 
     if (assessmentError || !assessment) {
+      console.error('[Seed API] Assessment not found:', assessmentError);
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
 
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .limit(1);
 
     if (existingChecks && existingChecks.length > 0) {
+      console.log('[Seed API] Assessment already has checks:', existingChecks.length);
       return NextResponse.json({
         message: 'Assessment already has checks',
         count: existingChecks.length,
@@ -56,8 +59,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .order('number');
 
     if (sectionsError || !allSections) {
+      console.error('[Seed API] Failed to fetch sections:', sectionsError);
       return NextResponse.json({ error: 'Failed to fetch sections' }, { status: 500 });
     }
+
+    console.log('[Seed API] Found sections:', allSections.length);
 
     // 3. Initialize status
     await supabase
@@ -80,6 +86,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Process first batch synchronously
     try {
+      console.log('[Seed API] Processing first batch of', firstBatch.length, 'sections');
       const prompt = buildBatchPrompt(firstBatch, variables);
       const response = await anthropic.messages.create({
         model: 'claude-opus-4-20250514',
@@ -93,6 +100,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       // Filter applicable sections
       const applicable = firstBatch.filter((section, idx) => decisions[idx]?.applies === true);
+      console.log(
+        '[Seed API] First batch applicable sections:',
+        applicable.length,
+        '/',
+        firstBatch.length
+      );
 
       // Insert checks for first batch
       if (applicable.length > 0) {
@@ -105,7 +118,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           status: 'pending',
         }));
 
-        await supabase.from('checks').insert(checkRows);
+        const { error: insertError } = await supabase.from('checks').insert(checkRows);
+        if (insertError) {
+          console.error('[Seed API] Failed to insert checks:', insertError);
+        } else {
+          console.log('[Seed API] Successfully inserted', checkRows.length, 'checks');
+        }
       }
 
       // Log first batch decisions
@@ -131,10 +149,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .update({ sections_processed: processedCount })
         .eq('id', id);
     } catch (error) {
-      console.error('First batch processing error:', error);
+      console.error('[Seed API] First batch processing error:', error);
     }
 
     // Start background processing for remaining batches (don't await)
+    console.log(
+      '[Seed API] Starting background processing for remaining',
+      allSections.length - BATCH_SIZE,
+      'sections'
+    );
     processRemainingBatches(
       id,
       allSections.slice(BATCH_SIZE),
@@ -145,6 +168,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     // Return immediately with first batch results
+    console.log('[Seed API] Returning first batch results:', {
+      processedCount,
+      includedCount,
+      total: allSections.length,
+    });
     return NextResponse.json({
       type: 'first_batch_complete',
       processed: processedCount,

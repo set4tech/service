@@ -73,18 +73,30 @@ export default function AssessmentClient({
   const [hasSeedAttempted, setHasSeedAttempted] = useState(false);
 
   useEffect(() => {
+    console.log('[AssessmentClient] Effect triggered', {
+      checksLength: checks.length,
+      isSeeding,
+      hasSeedAttempted,
+    });
+
     if (checks.length === 0 && !isSeeding && !hasSeedAttempted) {
+      console.log('[AssessmentClient] Starting seed process for assessment:', assessment.id);
       setIsSeeding(true);
       setHasSeedAttempted(true);
 
       // Fetch first batch immediately
       fetch(`/api/assessments/${assessment.id}/seed`, { method: 'POST' })
         .then(async response => {
+          console.log('[AssessmentClient] Seed response received:', response.status, response.ok);
+
           if (!response.ok) {
-            throw new Error(`Seed failed: ${response.status}`);
+            const errorText = await response.text();
+            console.error('[AssessmentClient] Seed failed:', response.status, errorText);
+            throw new Error(`Seed failed: ${response.status} - ${errorText}`);
           }
 
           const data = await response.json();
+          console.log('[AssessmentClient] Seed data:', data);
 
           // Set initial progress
           setSeedingProgress({
@@ -93,11 +105,17 @@ export default function AssessmentClient({
             included: data.included,
           });
 
-          // Reload to show first batch of checks
-          window.location.reload();
+          // Only reload if we actually got some checks
+          if (data.included > 0) {
+            console.log('[AssessmentClient] Reloading to show first batch...');
+            setTimeout(() => window.location.reload(), 500);
+          } else {
+            console.warn('[AssessmentClient] No checks included in first batch, not reloading');
+            setIsSeeding(false);
+          }
         })
         .catch(error => {
-          console.error('Failed to seed assessment:', error);
+          console.error('[AssessmentClient] Failed to seed assessment:', error);
           setIsSeeding(false);
         });
     }
