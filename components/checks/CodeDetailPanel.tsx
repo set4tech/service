@@ -327,7 +327,9 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
                       <div className="font-medium text-sm text-blue-900">{ref.number}</div>
                       <div className="text-sm text-gray-700 mt-1">{ref.title}</div>
                       {ref.text && (
-                        <div className="text-xs text-gray-600 mt-2 line-clamp-3">{ref.text}</div>
+                        <div className="text-xs text-gray-600 mt-2 leading-relaxed whitespace-pre-wrap">
+                          {ref.text}
+                        </div>
                       )}
                     </div>
                   ))}
