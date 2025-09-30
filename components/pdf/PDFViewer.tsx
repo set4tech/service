@@ -552,6 +552,7 @@ export function PDFViewer({
               <Page
                 pageNumber={state.pageNumber}
                 height={800}
+                scale={5}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
               />
