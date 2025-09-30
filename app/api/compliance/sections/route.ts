@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       `
       MATCH (s:Section {key: $sectionKey})
       OPTIONAL MATCH (s)-[:REFS]->(ref:Section)
-      RETURN s, collect(ref) as references
+      RETURN s, collect(DISTINCT ref) as references
     `,
       { sectionKey }
     );
@@ -95,16 +95,19 @@ export async function POST(request: NextRequest) {
     const sectionData = section.s.properties;
     const references = section.references.map((ref: any) => ref.properties);
 
+    // Use paragraphs property directly from Section node
+    const paragraphs = sectionData.paragraphs || [];
+
     return NextResponse.json({
       key: sectionData.key,
       number: sectionData.number,
       title: sectionData.title,
       type: sectionData.item_type || 'section',
-      requirements: sectionData.paragraphs || [],
+      requirements: paragraphs,
       text: sectionData.text,
       references,
       source_id: sectionData.source_id,
-      hasContent: !!(sectionData.paragraphs && sectionData.paragraphs.length > 0),
+      hasContent: !!(paragraphs && paragraphs.length > 0),
     });
   } catch (error) {
     return NextResponse.json(

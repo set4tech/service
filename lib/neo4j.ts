@@ -35,23 +35,27 @@ export async function getCodeAssembly(codeId: string, useCache = true) {
   if (useCache && assemblyCache.has(codeId)) return assemblyCache.get(codeId);
 
   try {
-    // First try to find sections that belong to this code with their paragraphs
+    // Get sections that belong to this code
     const rows = await runQuery<any>(
       `MATCH (s:Section)
        WHERE s.key STARTS WITH $codePrefix
-       OPTIONAL MATCH (s)-[:HAS_PARAGRAPH]->(p:Paragraph)
-       RETURN s, collect(p) as paragraphs
+       RETURN s
        ORDER BY s.number`,
       { codePrefix: codeId.replace(/\+/g, ':') + ':' }
     );
 
     const sections = rows.map(row => {
       const s = row.s.properties;
-      const paragraphs = (row.paragraphs || []).map((p: any) => p.properties || {});
+      // Use paragraphs property directly from Section node
+      const paragraphs = s.paragraphs || [];
+      const fullText = Array.isArray(paragraphs)
+        ? paragraphs.map((p: any) => (typeof p === 'string' ? p : p.text || '')).join('\n\n')
+        : '';
+
       return {
         ...s,
         paragraphs,
-        fullText: paragraphs.map((p: any) => p.text || '').join('\n\n'),
+        fullText,
         subsections: [],
       };
     });

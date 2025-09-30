@@ -7,7 +7,7 @@ interface CodeSection {
   number: string;
   title: string;
   text?: string;
-  requirements?: string[];
+  requirements?: Array<string | { text: string; [key: string]: any }>;
   references?: Array<{
     key: string;
     number: string;
@@ -104,7 +104,7 @@ export function CodeDetailPanel({ sectionKey, onClose }: CodeDetailPanelProps) {
             {section.text && (
               <div>
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Code Text
+                  Section Summary
                 </div>
                 <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
                   {section.text}
@@ -112,20 +112,25 @@ export function CodeDetailPanel({ sectionKey, onClose }: CodeDetailPanelProps) {
               </div>
             )}
 
-            {/* Requirements */}
+            {/* Explanation (Paragraphs) */}
             {section.requirements && section.requirements.length > 0 && (
               <div>
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Requirements
+                  Explanation
                 </div>
-                <ul className="space-y-2">
-                  {section.requirements.map((req, idx) => (
-                    <li key={idx} className="text-sm text-gray-800 leading-relaxed pl-4 relative">
-                      <span className="absolute left-0 text-gray-400">•</span>
-                      {req}
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-3">
+                  {section.requirements.map((req, idx) => {
+                    const text = typeof req === 'string' ? req : req.text || '';
+                    return (
+                      <div key={idx} className="text-sm text-gray-800 leading-relaxed">
+                        <div className="text-xs text-gray-500 font-mono mb-1">
+                          Paragraph {idx + 1}
+                        </div>
+                        <div className="pl-3 border-l-2 border-gray-300">{text}</div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
