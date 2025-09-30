@@ -48,6 +48,13 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
   const [assessing, setAssessing] = useState(false);
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
 
+  // Prompt editing state
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [defaultPrompt, setDefaultPrompt] = useState<string>('');
+  const [customPrompt, setCustomPrompt] = useState<string>('');
+  const [isPromptEditing, setIsPromptEditing] = useState(false);
+  const [loadingPrompt, setLoadingPrompt] = useState(false);
+
   // Analysis history state
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
@@ -114,6 +121,40 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
       });
   }, [checkId]);
 
+  // Load prompt when user clicks to view it
+  const handleViewPrompt = async () => {
+    if (!checkId) return;
+
+    setShowPrompt(true);
+
+    // If we already loaded the prompt, don't fetch again
+    if (defaultPrompt) return;
+
+    setLoadingPrompt(true);
+    try {
+      const response = await fetch(`/api/checks/${checkId}/prompt`);
+      const data = await response.json();
+
+      if (response.ok && data.prompt) {
+        setDefaultPrompt(data.prompt);
+      }
+    } catch (err) {
+      console.error('Failed to load prompt:', err);
+    } finally {
+      setLoadingPrompt(false);
+    }
+  };
+
+  const handleEditPrompt = () => {
+    setIsPromptEditing(true);
+    setCustomPrompt(defaultPrompt);
+  };
+
+  const handleResetPrompt = () => {
+    setCustomPrompt('');
+    setIsPromptEditing(false);
+  };
+
   const handleAssess = async () => {
     if (!checkId) return;
 
@@ -129,6 +170,7 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           aiProvider: selectedModel,
+          customPrompt: customPrompt.trim() || undefined,
           extraContext: extraContext.trim() || undefined,
         }),
       });
@@ -323,6 +365,67 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
                       <option value="gpt-4o">GPT-4o</option>
                     </select>
                   </div>
+
+                  {/* View/Edit Prompt Section */}
+                  <div>
+                    <button
+                      onClick={handleViewPrompt}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      {showPrompt ? '− Hide' : '📝 View/Edit'} Prompt
+                    </button>
+                  </div>
+
+                  {/* Prompt Display/Editor */}
+                  {showPrompt && (
+                    <div className="space-y-2">
+                      {loadingPrompt ? (
+                        <div className="text-xs text-gray-500">Loading prompt...</div>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-medium text-gray-700">
+                              AI Prompt {customPrompt && '(Custom)'}
+                            </label>
+                            <div className="flex gap-2">
+                              {!isPromptEditing ? (
+                                <button
+                                  onClick={handleEditPrompt}
+                                  disabled={assessing}
+                                  className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-400"
+                                >
+                                  ✏️ Edit
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={handleResetPrompt}
+                                  disabled={assessing}
+                                  className="text-xs text-gray-600 hover:text-gray-700 font-medium disabled:text-gray-400"
+                                >
+                                  ↺ Reset
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <textarea
+                            value={isPromptEditing ? customPrompt : defaultPrompt}
+                            onChange={e => isPromptEditing && setCustomPrompt(e.target.value)}
+                            readOnly={!isPromptEditing}
+                            disabled={assessing}
+                            rows={12}
+                            className={`w-full px-3 py-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 font-mono ${
+                              isPromptEditing ? 'bg-yellow-50' : 'bg-gray-50'
+                            }`}
+                          />
+                          {isPromptEditing && (
+                            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                              ⚠️ Editing prompt - your changes will be used for the next assessment
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {/* Extra Context Toggle */}
                   <div>

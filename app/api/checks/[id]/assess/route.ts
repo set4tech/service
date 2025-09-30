@@ -37,10 +37,15 @@ async function getPresignedUrl(s3Url: string): Promise<string> {
 }
 
 // Map user-friendly model names to provider and specific model
-function getModelConfig(model: string): { provider: 'gemini' | 'openai' | 'anthropic'; modelName: string } {
+function getModelConfig(model: string): {
+  provider: 'gemini' | 'openai' | 'anthropic';
+  modelName: string;
+} {
   switch (model) {
     case 'gemini-2.5-pro':
       return { provider: 'gemini', modelName: 'gemini-2.5-pro' };
+    case 'gemini-2.5-flash':
+      return { provider: 'gemini', modelName: 'gemini-2.5-flash' };
     case 'claude-opus-4':
       return { provider: 'anthropic', modelName: 'claude-opus-4-20250514' };
     case 'gpt-4o':
@@ -116,7 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const screenshotUrls = await Promise.all(
-      (screenshots || []).map(async (s) => await getPresignedUrl(s.screenshot_url))
+      (screenshots || []).map(async s => await getPresignedUrl(s.screenshot_url))
     );
 
     // 5. Build the prompt
