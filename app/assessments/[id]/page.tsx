@@ -5,7 +5,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = supabaseAdmin();
 
-  const [{ data: assessment }, { data: checks }] = await Promise.all([
+  const [{ data: assessment }, { data: allChecks }] = await Promise.all([
     supabase.from('assessments').select('*, projects(pdf_url)').eq('id', id).single(),
     supabase
       .from('checks')
@@ -13,6 +13,22 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       .eq('assessment_id', id)
       .order('code_section_number', { ascending: true }),
   ]);
+
+  // Group checks by parent - instances will be nested under their parent
+  const checks = (allChecks || []).reduce((acc: any[], check: any) => {
+    if (!check.parent_check_id) {
+      // This is a parent check - find all its instances
+      const instances = (allChecks || []).filter(
+        (c: any) => c.parent_check_id === check.id
+      );
+      acc.push({
+        ...check,
+        instances,
+        instance_count: instances.length,
+      });
+    }
+    return acc;
+  }, []);
 
   if (!assessment) {
     return <div className="p-6">Assessment not found.</div>;

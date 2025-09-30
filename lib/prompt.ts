@@ -27,5 +27,6 @@ export function renderTemplate(template: string, vars: PromptVariables): string 
     .replace(/\{\{code_section\}\}/g, () => JSON.stringify(vars.code_section, null, 2))
     .replace(/\{\{check_name\}\}/g, () => vars.check_name)
     .replace(/\{\{location\}\}/g, () => vars.check_location || '')
-    .replace(/\{\{screenshots\}\}/g, () => JSON.stringify(vars.screenshots, null, 2));
+    .replace(/\{\{screenshots\}\}/g, () => JSON.stringify(vars.screenshots, null, 2))
+    .replace(/\{\{building_context\}\}/g, () => JSON.stringify(vars.building_context || {}, null, 2));
 }

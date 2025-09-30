@@ -250,6 +250,7 @@ export default function AssessmentClient({
       >
         {showDetailPanel && (
           <CodeDetailPanel
+            checkId={activeCheck?.id || null}
             sectionKey={activeCheck?.code_section_key || null}
             onClose={() => setShowDetailPanel(false)}
           />

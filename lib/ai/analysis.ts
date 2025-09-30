@@ -1,14 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { AIResponse } from './types';
 
 const gemini = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export interface AnalysisRequest {
   prompt: string;
   screenshots: string[]; // https urls or s3 signed GET urls the model can fetch
-  provider: 'gemini' | 'openai';
+  provider: 'gemini' | 'openai' | 'anthropic';
+  model?: string; // specific model to use (e.g., 'gemini-2.5-pro', 'gpt-4o', 'claude-opus-4-20250514')
 }
 
 async function withRetry<T>(
@@ -54,7 +57,8 @@ export async function runAI(
 ): Promise<{ model: string; raw: string; parsed: AIResponse }> {
   if (req.provider === 'gemini') {
     return withRetry(async () => {
-      const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // adjust if you need Pro
+      const modelName = req.model || 'gemini-2.5-pro';
+      const model = gemini.getGenerativeModel({ model: modelName });
       const parts: any[] = [{ text: req.prompt }];
       for (const url of req.screenshots)
         parts.push({ fileData: { fileUri: url, mimeType: 'image/png' } });
@@ -62,10 +66,50 @@ export async function runAI(
       const res = await model.generateContent({ contents: [{ role: 'user', parts }] });
       const text = res.response.text();
       const parsed = safeParseJson(text);
-      return { model: 'gemini-2.0-flash-exp', raw: text, parsed };
+      return { model: modelName, raw: text, parsed };
+    });
+  } else if (req.provider === 'anthropic') {
+    return withRetry(async () => {
+      const modelName = req.model || 'claude-opus-4-20250514';
+
+      // Convert screenshots to base64 content blocks
+      const imageBlocks = await Promise.all(
+        req.screenshots.map(async (url) => {
+          const response = await fetch(url);
+          const buffer = await response.arrayBuffer();
+          const base64 = Buffer.from(buffer).toString('base64');
+          const mediaType = response.headers.get('content-type') || 'image/png';
+
+          return {
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              data: base64,
+            },
+          };
+        })
+      );
+
+      const content: Anthropic.MessageParam['content'] = [
+        { type: 'text', text: req.prompt },
+        ...imageBlocks,
+      ];
+
+      const resp = await anthropic.messages.create({
+        model: modelName,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content }],
+      });
+
+      const textBlock = resp.content.find((block) => block.type === 'text');
+      const raw = textBlock && textBlock.type === 'text' ? textBlock.text : '{}';
+      const parsed = safeParseJson(raw);
+      return { model: modelName, raw, parsed };
     });
   } else {
     return withRetry(async () => {
+      const modelName = req.model || 'gpt-4o';
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         {
           role: 'user',
@@ -77,16 +121,16 @@ export async function runAI(
       ];
       const resp = await openai.chat.completions.create(
         {
-          model: 'gpt-4-vision-preview',
+          model: modelName,
           messages,
           response_format: { type: 'json_object' },
-          max_tokens: 1800,
+          max_tokens: 4096,
         },
         { signal }
       );
       const raw = resp.choices[0]?.message?.content || '{}';
       const parsed = safeParseJson(raw);
-      return { model: 'gpt-4-vision-preview', raw, parsed };
+      return { model: modelName, raw, parsed };
     });
   }
 }
