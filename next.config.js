@@ -10,6 +10,21 @@ const nextConfig = {
       },
     ],
   },
-}
+  webpack: config => {
+    // Exclude pdf-parse test directory from build
+    config.externals = config.externals || [];
+    config.externals.push({
+      canvas: 'commonjs canvas',
+    });
 
-module.exports = nextConfig
+    // Ignore missing optional dependencies
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+    };
+
+    return config;
+  },
+};
+
+module.exports = nextConfig;
