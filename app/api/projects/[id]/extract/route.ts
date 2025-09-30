@@ -1,19 +1,24 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { downloadPdfFromUrl, extractPdfWithPages, formatPdfForLlm } from '@/lib/pdf-extractor';
-import { extractAllVariables, cleanExtractedVariables, type VariableChecklist } from '@/lib/gemini-extractor';
+import {
+  extractAllVariables,
+  cleanExtractedVariables,
+  type VariableChecklist,
+} from '@/lib/gemini-extractor';
 import fs from 'fs/promises';
 import path from 'path';
 
 export const maxDuration = 600; // 10 minutes for large PDFs
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params;
 
   try {
+    // Dynamic import to avoid build-time issues with pdf-parse
+    const { downloadPdfFromUrl, extractPdfWithPages, formatPdfForLlm } = await import(
+      '@/lib/pdf-extractor'
+    );
+
     const supabase = supabaseAdmin();
 
     // Get project with PDF URL
@@ -24,25 +29,16 @@ export async function POST(
       .single();
 
     if (projectError || !project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
     if (!project.pdf_url) {
-      return NextResponse.json(
-        { error: 'No PDF uploaded for this project' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No PDF uploaded for this project' }, { status: 400 });
     }
 
     // Check if already processing
     if (project.extraction_status === 'processing') {
-      return NextResponse.json(
-        { error: 'Extraction already in progress' },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: 'Extraction already in progress' }, { status: 409 });
     }
 
     // Update status to processing
@@ -51,7 +47,7 @@ export async function POST(
       .update({
         extraction_status: 'processing',
         extraction_started_at: new Date().toISOString(),
-        extraction_error: null
+        extraction_error: null,
       })
       .eq('id', projectId);
 
@@ -73,14 +69,11 @@ export async function POST(
         .update({
           extraction_status: 'failed',
           extraction_error: 'Failed to extract text from PDF',
-          extraction_completed_at: new Date().toISOString()
+          extraction_completed_at: new Date().toISOString(),
         })
         .eq('id', projectId);
 
-      return NextResponse.json(
-        { error: 'Failed to extract text from PDF' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Failed to extract text from PDF' }, { status: 500 });
     }
 
     console.log(`Extracted ${pagesContent.length} pages`);
@@ -110,8 +103,8 @@ export async function POST(
               current,
               total,
               category,
-              variable
-            }
+              variable,
+            },
           })
           .eq('id', projectId);
 
@@ -130,8 +123,8 @@ export async function POST(
         total_pages: pagesContent.length,
         document_size_chars: formattedPdf.length,
         chunks_processed: numChunks,
-        checklist_version: 'variable_checklist.json'
-      }
+        checklist_version: 'variable_checklist.json',
+      },
     };
 
     // Save to database
@@ -141,7 +134,7 @@ export async function POST(
         extracted_variables: finalVariables,
         extraction_status: 'completed',
         extraction_completed_at: new Date().toISOString(),
-        extraction_progress: null
+        extraction_progress: null,
       })
       .eq('id', projectId);
 
@@ -156,10 +149,9 @@ export async function POST(
         total_variables: Object.values(cleanedVariables).reduce(
           (sum, cat) => sum + Object.keys(cat as Record<string, any>).length,
           0
-        )
-      }
+        ),
+      },
     });
-
   } catch (error: any) {
     console.error('Error extracting variables:', error);
 
@@ -170,7 +162,7 @@ export async function POST(
       .update({
         extraction_status: 'failed',
         extraction_error: error.message || 'Unknown error',
-        extraction_completed_at: new Date().toISOString()
+        extraction_completed_at: new Date().toISOString(),
       })
       .eq('id', projectId);
 
@@ -192,10 +184,7 @@ export async function POST(
 /**
  * GET endpoint to check extraction status
  */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params;
 
   try {
@@ -203,15 +192,14 @@ export async function GET(
 
     const { data: project, error } = await supabase
       .from('projects')
-      .select('extraction_status, extraction_progress, extraction_error, extracted_variables, extraction_started_at, extraction_completed_at')
+      .select(
+        'extraction_status, extraction_progress, extraction_error, extracted_variables, extraction_started_at, extraction_completed_at'
+      )
       .eq('id', projectId)
       .single();
 
     if (error || !project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
     return NextResponse.json({
@@ -220,14 +208,10 @@ export async function GET(
       error: project.extraction_error,
       variables: project.extracted_variables,
       started_at: project.extraction_started_at,
-      completed_at: project.extraction_completed_at
+      completed_at: project.extraction_completed_at,
     });
-
   } catch (error: any) {
     console.error('Error fetching extraction status:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch extraction status' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch extraction status' }, { status: 500 });
   }
 }
