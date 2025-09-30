@@ -71,125 +71,86 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    // 4. Stream response using ReadableStream
-    const stream = new ReadableStream({
-      async start(controller) {
-        const BATCH_SIZE = 10;
-        let processedCount = 0;
-        let includedCount = 0;
+    // 4. Process first batch immediately, then continue in background
+    const BATCH_SIZE = 10;
+    const firstBatch = allSections.slice(0, BATCH_SIZE);
 
-        for (let i = 0; i < allSections.length; i += BATCH_SIZE) {
-          const batch = allSections.slice(i, i + BATCH_SIZE);
+    let processedCount = 0;
+    let includedCount = 0;
 
-          try {
-            // AI Analysis
-            const prompt = buildBatchPrompt(batch, variables);
-            const response = await anthropic.messages.create({
-              model: 'claude-opus-4-20250514',
-              max_tokens: 2000,
-              temperature: 0.1,
-              messages: [{ role: 'user', content: prompt }],
-            });
+    // Process first batch synchronously
+    try {
+      const prompt = buildBatchPrompt(firstBatch, variables);
+      const response = await anthropic.messages.create({
+        model: 'claude-opus-4-20250514',
+        max_tokens: 2000,
+        temperature: 0.1,
+        messages: [{ role: 'user', content: prompt }],
+      });
 
-            const decisionsText =
-              response.content[0].type === 'text' ? response.content[0].text : '[]';
-            const decisions = JSON.parse(decisionsText);
+      const decisionsText = response.content[0].type === 'text' ? response.content[0].text : '[]';
+      const decisions = JSON.parse(decisionsText);
 
-            // Filter applicable sections
-            const applicable = batch.filter((section, idx) => decisions[idx]?.applies === true);
+      // Filter applicable sections
+      const applicable = firstBatch.filter((section, idx) => decisions[idx]?.applies === true);
 
-            // Insert checks for this batch
-            if (applicable.length > 0) {
-              const checkRows = applicable.map(s => ({
-                assessment_id: id,
-                code_section_key: s.key,
-                code_section_number: s.number,
-                code_section_title: s.title,
-                check_name: `${s.number} - ${s.title}`,
-                status: 'pending',
-              }));
+      // Insert checks for first batch
+      if (applicable.length > 0) {
+        const checkRows = applicable.map(s => ({
+          assessment_id: id,
+          code_section_key: s.key,
+          code_section_number: s.number,
+          code_section_title: s.title,
+          check_name: `${s.number} - ${s.title}`,
+          status: 'pending',
+        }));
 
-              const { error: insertError } = await supabase.from('checks').insert(checkRows);
-              if (insertError) {
-                console.error('Failed to insert checks:', insertError);
-              }
-            }
+        await supabase.from('checks').insert(checkRows);
+      }
 
-            // Log ALL decisions (both included and excluded) to audit table
-            const logRows = batch.map((s, idx) => ({
-              assessment_id: id,
-              section_key: s.key,
-              decision: decisions[idx]?.applies || false,
-              decision_source: 'ai',
-              decision_confidence: decisions[idx]?.confidence || 'low',
-              reasons: [decisions[idx]?.reason || 'No reason provided'],
-              details: {},
-              building_params_hash: 'ai_hash',
-              variables_snapshot: variables,
-            }));
+      // Log first batch decisions
+      const logRows = firstBatch.map((s, idx) => ({
+        assessment_id: id,
+        section_key: s.key,
+        decision: decisions[idx]?.applies || false,
+        decision_source: 'ai',
+        decision_confidence: decisions[idx]?.confidence || 'low',
+        reasons: [decisions[idx]?.reason || 'No reason provided'],
+        details: {},
+        building_params_hash: 'ai_hash',
+        variables_snapshot: variables,
+      }));
 
-            await supabase.from('section_applicability_log').insert(logRows);
+      await supabase.from('section_applicability_log').insert(logRows);
 
-            processedCount += batch.length;
-            includedCount += applicable.length;
+      processedCount = firstBatch.length;
+      includedCount = applicable.length;
 
-            // Update progress in assessments table
-            await supabase
-              .from('assessments')
-              .update({ sections_processed: processedCount })
-              .eq('id', id);
+      await supabase
+        .from('assessments')
+        .update({ sections_processed: processedCount })
+        .eq('id', id);
+    } catch (error) {
+      console.error('First batch processing error:', error);
+    }
 
-            // Stream batch result to client
-            const message =
-              JSON.stringify({
-                type: 'batch_complete',
-                processed: processedCount,
-                total: allSections.length,
-                included_in_batch: applicable.length,
-                total_included: includedCount,
-              }) + '\n';
+    // Start background processing for remaining batches (don't await)
+    processRemainingBatches(
+      id,
+      allSections.slice(BATCH_SIZE),
+      variables,
+      anthropic,
+      processedCount,
+      includedCount
+    );
 
-            controller.enqueue(new TextEncoder().encode(message));
-          } catch (error) {
-            console.error('Batch processing error:', error);
-            const errorMsg =
-              JSON.stringify({
-                type: 'error',
-                message: error instanceof Error ? error.message : 'Unknown error',
-                batch_index: i,
-              }) + '\n';
-            controller.enqueue(new TextEncoder().encode(errorMsg));
-          }
-        }
-
-        // Finalize
-        await supabase
-          .from('assessments')
-          .update({
-            seeding_status: 'completed',
-            total_sections: includedCount,
-          })
-          .eq('id', id);
-
-        const finalMsg =
-          JSON.stringify({
-            type: 'complete',
-            total_processed: processedCount,
-            total_included: includedCount,
-            total_excluded: processedCount - includedCount,
-          }) + '\n';
-
-        controller.enqueue(new TextEncoder().encode(finalMsg));
-        controller.close();
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'application/x-ndjson',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
+    // Return immediately with first batch results
+    return NextResponse.json({
+      type: 'first_batch_complete',
+      processed: processedCount,
+      total: allSections.length,
+      included: includedCount,
+      message: 'First batch complete. Processing continues in background.',
     });
   } catch (error) {
     console.error('Error seeding assessment:', error);
@@ -201,6 +162,89 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 500 }
     );
   }
+}
+
+async function processRemainingBatches(
+  assessmentId: string,
+  remainingSections: any[],
+  variables: any,
+  anthropic: Anthropic,
+  initialProcessed: number,
+  initialIncluded: number
+) {
+  const supabase = supabaseAdmin();
+  const BATCH_SIZE = 10;
+  let processedCount = initialProcessed;
+  let includedCount = initialIncluded;
+
+  for (let i = 0; i < remainingSections.length; i += BATCH_SIZE) {
+    const batch = remainingSections.slice(i, i + BATCH_SIZE);
+
+    try {
+      const prompt = buildBatchPrompt(batch, variables);
+      const response = await anthropic.messages.create({
+        model: 'claude-opus-4-20250514',
+        max_tokens: 2000,
+        temperature: 0.1,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const decisionsText = response.content[0].type === 'text' ? response.content[0].text : '[]';
+      const decisions = JSON.parse(decisionsText);
+
+      const applicable = batch.filter((section, idx) => decisions[idx]?.applies === true);
+
+      if (applicable.length > 0) {
+        const checkRows = applicable.map(s => ({
+          assessment_id: assessmentId,
+          code_section_key: s.key,
+          code_section_number: s.number,
+          code_section_title: s.title,
+          check_name: `${s.number} - ${s.title}`,
+          status: 'pending',
+        }));
+
+        await supabase.from('checks').insert(checkRows);
+      }
+
+      const logRows = batch.map((s, idx) => ({
+        assessment_id: assessmentId,
+        section_key: s.key,
+        decision: decisions[idx]?.applies || false,
+        decision_source: 'ai',
+        decision_confidence: decisions[idx]?.confidence || 'low',
+        reasons: [decisions[idx]?.reason || 'No reason provided'],
+        details: {},
+        building_params_hash: 'ai_hash',
+        variables_snapshot: variables,
+      }));
+
+      await supabase.from('section_applicability_log').insert(logRows);
+
+      processedCount += batch.length;
+      includedCount += applicable.length;
+
+      await supabase
+        .from('assessments')
+        .update({ sections_processed: processedCount })
+        .eq('id', assessmentId);
+    } catch (error) {
+      console.error('Background batch processing error:', error);
+    }
+  }
+
+  // Finalize when all batches complete
+  await supabase
+    .from('assessments')
+    .update({
+      seeding_status: 'completed',
+      total_sections: includedCount,
+    })
+    .eq('id', assessmentId);
+
+  console.log(
+    `Background processing complete for assessment ${assessmentId}: ${includedCount}/${processedCount} sections included`
+  );
 }
 
 function buildBatchPrompt(sections: any[], variables: any): string {
