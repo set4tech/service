@@ -39,6 +39,13 @@ export default function AssessmentClient({
   const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
   const [detailPanelWidth, setDetailPanelWidth] = useState(400);
 
+  // NEW: Streaming progress state
+  const [seedingProgress, setSeedingProgress] = useState<{
+    processed: number;
+    total: number;
+    included: number;
+  } | null>(null);
+
   const checksSidebarRef = useRef<HTMLDivElement>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
   const checksResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
@@ -69,26 +76,58 @@ export default function AssessmentClient({
     if (checks.length === 0 && !isSeeding && !hasSeedAttempted) {
       setIsSeeding(true);
       setHasSeedAttempted(true);
-      fetch(`/api/assessments/${assessment.id}/seed`, {
-        method: 'POST',
-      })
-        .then(res => {
-          if (!res.ok) {
-            throw new Error(`Seed failed: ${res.status}`);
+
+      // Streaming fetch
+      fetch(`/api/assessments/${assessment.id}/seed`, { method: 'POST' })
+        .then(async response => {
+          if (!response.ok) {
+            throw new Error(`Seed failed: ${response.status}`);
           }
-          return res.json();
-        })
-        .then(data => {
-          if (data.success && data.seeded > 0) {
-            // Reload the page to get fresh data
-            window.location.reload();
+
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error('No response body reader');
+          }
+
+          const decoder = new TextDecoder();
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n').filter(l => l.trim());
+
+            for (const line of lines) {
+              try {
+                const message = JSON.parse(line);
+
+                if (message.type === 'batch_complete') {
+                  // Update UI with progress
+                  setSeedingProgress({
+                    processed: message.processed,
+                    total: message.total,
+                    included: message.total_included,
+                  });
+                } else if (message.type === 'complete') {
+                  console.log('Seeding complete:', message);
+                  // Reload to show all checks
+                  setTimeout(() => {
+                    window.location.reload();
+                  }, 500);
+                } else if (message.type === 'error') {
+                  console.error('Batch error:', message.message);
+                }
+              } catch (e) {
+                console.error('Failed to parse stream message:', e);
+              }
+            }
           }
         })
         .catch(error => {
           console.error('Failed to seed assessment:', error);
-          // Don't reset hasSeedAttempted to prevent retry loop
-        })
-        .finally(() => setIsSeeding(false));
+          setIsSeeding(false);
+        });
     }
   }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
 
@@ -166,19 +205,50 @@ export default function AssessmentClient({
     refetchScreenshots();
   }, [screenshotsChanged, activeCheckId]);
 
-  if (checks.length === 0 && isSeeding) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="text-lg font-medium mb-2">Initializing assessment checks...</div>
-          <div className="text-sm text-gray-600">Loading building code sections</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="fixed inset-0 flex overflow-hidden">
+      {/* Loading Modal */}
+      {isSeeding && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              <h3 className="text-lg font-semibold">Loading Code Sections</h3>
+            </div>
+
+            {seedingProgress && (
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>
+                    Processed: {seedingProgress.processed} / {seedingProgress.total}
+                  </span>
+                  <span className="font-medium text-blue-600">
+                    Applicable: {seedingProgress.included}
+                  </span>
+                </div>
+
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                    style={{
+                      width: `${Math.round((seedingProgress.processed / seedingProgress.total) * 100)}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="text-xs text-gray-500 text-center">
+                  {Math.round((seedingProgress.processed / seedingProgress.total) * 100)}% complete
+                </div>
+              </div>
+            )}
+
+            <p className="text-sm text-gray-500 mt-4">
+              AI is analyzing code sections for applicability to your project. Generic sections and
+              irrelevant features are being filtered out.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Left Sidebar with Checks */}
       <div
         ref={checksSidebarRef}
