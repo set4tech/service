@@ -77,52 +77,24 @@ export default function AssessmentClient({
       setIsSeeding(true);
       setHasSeedAttempted(true);
 
-      // Streaming fetch
+      // Fetch first batch immediately
       fetch(`/api/assessments/${assessment.id}/seed`, { method: 'POST' })
         .then(async response => {
           if (!response.ok) {
             throw new Error(`Seed failed: ${response.status}`);
           }
 
-          const reader = response.body?.getReader();
-          if (!reader) {
-            throw new Error('No response body reader');
-          }
+          const data = await response.json();
 
-          const decoder = new TextDecoder();
+          // Set initial progress
+          setSeedingProgress({
+            processed: data.processed,
+            total: data.total,
+            included: data.included,
+          });
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n').filter(l => l.trim());
-
-            for (const line of lines) {
-              try {
-                const message = JSON.parse(line);
-
-                if (message.type === 'batch_complete') {
-                  // Update UI with progress
-                  setSeedingProgress({
-                    processed: message.processed,
-                    total: message.total,
-                    included: message.total_included,
-                  });
-                } else if (message.type === 'complete') {
-                  console.log('Seeding complete:', message);
-                  // Reload to show all checks
-                  setTimeout(() => {
-                    window.location.reload();
-                  }, 500);
-                } else if (message.type === 'error') {
-                  console.error('Batch error:', message.message);
-                }
-              } catch (e) {
-                console.error('Failed to parse stream message:', e);
-              }
-            }
-          }
+          // Reload to show first batch of checks
+          window.location.reload();
         })
         .catch(error => {
           console.error('Failed to seed assessment:', error);
