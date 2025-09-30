@@ -8,13 +8,19 @@ export interface Check {
   code_section_title: string;
   check_name: string;
   check_location: string;
-  parent_check_id?: string;
+  parent_check_id?: string | null;
+  instance_number: number;
+  instance_label?: string | null;
   prompt_template_id?: string;
   actual_prompt_used?: string;
   status: 'pending' | 'completed' | 'failed';
   project_id?: string;
   created_at?: string;
   updated_at?: string;
+
+  // Virtual fields (populated by queries, not in DB)
+  instances?: Check[];
+  instance_count?: number;
 }
 
 export interface PromptTemplate {

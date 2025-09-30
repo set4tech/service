@@ -33,7 +33,7 @@ async function deleteDuplicateChecks() {
 
   // Find duplicates (keep first, delete rest)
   const toDelete: string[] = [];
-  for (const [key, group] of groups) {
+  for (const [key, group] of Array.from(groups.entries())) {
     if (group.length > 1) {
       // Keep the first one, delete the rest
       for (let i = 1; i < group.length; i++) {
@@ -54,10 +54,7 @@ async function deleteDuplicateChecks() {
   const batchSize = 100;
   for (let i = 0; i < toDelete.length; i += batchSize) {
     const batch = toDelete.slice(i, i + batchSize);
-    const { error: deleteError } = await supabase
-      .from('checks')
-      .delete()
-      .in('id', batch);
+    const { error: deleteError } = await supabase.from('checks').delete().in('id', batch);
 
     if (deleteError) {
       console.error(`Error deleting batch ${i / batchSize + 1}:`, deleteError);

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
+import { CloneCheckModal } from './modals/CloneCheckModal';
 
 export function CheckList({
   checks,
@@ -20,6 +21,8 @@ export function CheckList({
     }
     return new Set();
   });
+  const [expandedInstances, setExpandedInstances] = useState<Set<string>>(new Set());
+  const [cloneModalCheck, setCloneModalCheck] = useState<any | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -65,6 +68,21 @@ export function CheckList({
       newExpanded.add(section);
     }
     setExpandedSections(newExpanded);
+  };
+
+  const toggleInstances = (checkId: string) => {
+    const newExpanded = new Set(expandedInstances);
+    if (newExpanded.has(checkId)) {
+      newExpanded.delete(checkId);
+    } else {
+      newExpanded.add(checkId);
+    }
+    setExpandedInstances(newExpanded);
+  };
+
+  const handleCloneSuccess = () => {
+    // Reload the page to fetch updated checks
+    window.location.reload();
   };
 
   const getStatusIcon = (check: any) => {
@@ -135,32 +153,127 @@ export function CheckList({
               {isExpanded && (
                 <div className="bg-gray-50">
                   {groupChecks.map(check => {
+                    const hasInstances = check.instances && check.instances.length > 0;
+                    const isInstancesExpanded = expandedInstances.has(check.id);
+
                     return (
                       <div key={check.id} className="border-b border-gray-100 last:border-b-0">
-                        {/* Check Header */}
-                        <button
-                          type="button"
-                          onClick={() => onSelect(check.id)}
-                          className={clsx(
-                            'w-full px-4 py-2 flex items-start text-left hover:bg-gray-100 cursor-pointer transition-colors',
-                            activeCheckId === check.id &&
-                              'bg-blue-100 border-l-4 border-blue-500 hover:bg-blue-200'
+                        {/* Parent Check */}
+                        <div className="flex items-stretch">
+                          {/* Expand/Collapse button (only if has instances) */}
+                          {hasInstances && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                toggleInstances(check.id);
+                              }}
+                              className="px-2 flex items-center hover:bg-gray-200 transition-colors"
+                            >
+                              <svg
+                                width="8"
+                                height="8"
+                                className={clsx(
+                                  'transition-transform text-gray-500',
+                                  isInstancesExpanded && 'rotate-90'
+                                )}
+                                fill="currentColor"
+                                viewBox="0 0 10 10"
+                              >
+                                <path d="M2 2l5 3-5 3z" />
+                              </svg>
+                            </button>
                           )}
-                        >
-                          <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>
-                            {getStatusIcon(check)}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start">
-                              <span className="font-medium text-sm text-gray-900 mr-2">
-                                {check.code_section_number}
-                              </span>
-                              <span className="text-sm text-gray-700 truncate">
-                                {check.code_section_title}
-                              </span>
+
+                          {/* Check Button */}
+                          <button
+                            type="button"
+                            onClick={() => onSelect(check.id)}
+                            className={clsx(
+                              'flex-1 px-4 py-2 flex items-start text-left hover:bg-gray-100 cursor-pointer transition-colors',
+                              activeCheckId === check.id &&
+                                'bg-blue-100 border-l-4 border-blue-500 hover:bg-blue-200',
+                              !hasInstances && 'pl-6'
+                            )}
+                          >
+                            <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>
+                              {getStatusIcon(check)}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start">
+                                <span className="font-medium text-sm text-gray-900 mr-2">
+                                  {check.code_section_number}
+                                </span>
+                                <span className="text-sm text-gray-700 truncate">
+                                  {check.code_section_title}
+                                </span>
+                              </div>
+                              {hasInstances && (
+                                <span className="text-xs text-blue-600 font-medium mt-0.5">
+                                  {check.instances.length}{' '}
+                                  {check.instances.length === 1 ? 'instance' : 'instances'}
+                                </span>
+                              )}
                             </div>
+                          </button>
+
+                          {/* Clone Button */}
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              setCloneModalCheck(check);
+                            }}
+                            className="px-3 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
+                            title="Add instance"
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 4v16m8-8H4"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Instance List */}
+                        {hasInstances && isInstancesExpanded && (
+                          <div className="bg-gray-100 border-t border-gray-200">
+                            {check.instances.map((instance: any) => (
+                              <button
+                                key={instance.id}
+                                type="button"
+                                onClick={() => onSelect(instance.id)}
+                                className={clsx(
+                                  'w-full pl-12 pr-4 py-2 flex items-start text-left hover:bg-gray-200 cursor-pointer transition-colors border-b border-gray-200 last:border-b-0',
+                                  activeCheckId === instance.id &&
+                                    'bg-blue-50 border-l-4 border-blue-400 hover:bg-blue-100'
+                                )}
+                              >
+                                <span
+                                  className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(instance))}
+                                >
+                                  {getStatusIcon(instance)}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm text-gray-700 font-medium">
+                                    {instance.instance_label ||
+                                      `Instance ${instance.instance_number}`}
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    {instance.code_section_number}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
                           </div>
-                        </button>
+                        )}
                       </div>
                     );
                   })}
@@ -177,6 +290,16 @@ export function CheckList({
           {filtered.length} of {checks.length} checks
         </div>
       </div>
+
+      {/* Clone Modal */}
+      {cloneModalCheck && (
+        <CloneCheckModal
+          checkId={cloneModalCheck.id}
+          checkName={`${cloneModalCheck.code_section_number} - ${cloneModalCheck.code_section_title}`}
+          onClose={() => setCloneModalCheck(null)}
+          onSuccess={handleCloneSuccess}
+        />
+      )}
     </div>
   );
 }

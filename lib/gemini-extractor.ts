@@ -10,22 +10,27 @@ export type ExtractionResult = VariableResult | 'not_applicable' | null;
 
 export interface VariableChecklist {
   [category: string]: {
-    [variable: string]: {
-      description: string;
-    } | {
-      [nestedVariable: string]: {
-        description: string;
-      }
-    }
-  }
+    [variable: string]:
+      | {
+          description: string;
+        }
+      | {
+          [nestedVariable: string]: {
+            description: string;
+          };
+        };
+  };
 }
 
 export interface ExtractedVariables {
   [category: string]: {
-    [variable: string]: VariableResult | 'not_applicable' | {
-      [nestedVariable: string]: VariableResult | 'not_applicable'
-    }
-  }
+    [variable: string]:
+      | VariableResult
+      | 'not_applicable'
+      | {
+          [nestedVariable: string]: VariableResult | 'not_applicable';
+        };
+  };
 }
 
 const MAX_CHARS_PER_CHUNK = 40000; // ~10k tokens
@@ -121,7 +126,10 @@ Return as YAML. Do NOT include page numbers, quotes, or descriptions.`;
       for (const line of lines) {
         if (line.trim().startsWith('quote:') && !line.trim().startsWith('quote: |')) {
           const quoteContent = line.split('quote:', 2)[1]?.trim();
-          if (quoteContent && (quoteContent.length > 80 || quoteContent.includes(':') || quoteContent.includes('\n'))) {
+          if (
+            quoteContent &&
+            (quoteContent.length > 80 || quoteContent.includes(':') || quoteContent.includes('\n'))
+          ) {
             const indent = line.length - line.trimStart().length;
             fixedLines.push(' '.repeat(indent) + 'quote: |');
             fixedLines.push(' '.repeat(indent + 2) + quoteContent);
@@ -154,7 +162,7 @@ Return as YAML. Do NOT include page numbers, quotes, or descriptions.`;
       } else if (status === 'found') {
         return {
           value: result.value,
-          confidence: result.confidence || 'medium'
+          confidence: result.confidence || 'medium',
         };
       }
     }
@@ -164,7 +172,11 @@ Return as YAML. Do NOT include page numbers, quotes, or descriptions.`;
     const errorStr = error.toString();
 
     // Check for rate limit errors
-    if (errorStr.includes('429') || errorStr.toLowerCase().includes('quota') || errorStr.toLowerCase().includes('rate')) {
+    if (
+      errorStr.includes('429') ||
+      errorStr.toLowerCase().includes('quota') ||
+      errorStr.toLowerCase().includes('rate')
+    ) {
       throw new Error('RATE_LIMITED');
     }
 
@@ -303,7 +315,10 @@ export async function extractAllVariables(
           // Check if it has a description (leaf node)
           if ('description' in varInfo) {
             currentVar++;
-            const description = varInfo.description;
+            const description =
+              typeof varInfo.description === 'string'
+                ? varInfo.description
+                : varInfo.description.description;
 
             if (onProgress) {
               onProgress(currentVar, totalVars, category, varName);
@@ -337,7 +352,8 @@ export async function extractAllVariables(
             for (const [nestedName, nestedInfo] of Object.entries(varInfo)) {
               if (nestedInfo && typeof nestedInfo === 'object' && 'description' in nestedInfo) {
                 currentVar++;
-                const description = typeof nestedInfo.description === 'string' ? nestedInfo.description : '';
+                const description =
+                  typeof nestedInfo.description === 'string' ? nestedInfo.description : '';
 
                 if (onProgress) {
                   onProgress(currentVar, totalVars, category, `${varName}.${nestedName}`);
