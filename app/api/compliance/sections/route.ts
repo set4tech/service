@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCodeAssembly, runQuery } from '@/lib/neo4j';
+import { supabaseAdmin } from '@/lib/supabase-server';
 
 // Cache for section data (in production, use Redis)
 const sectionsCache = new Map<string, unknown>();
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -15,40 +18,56 @@ export async function GET(request: NextRequest) {
   try {
     // Check cache first
     if (sectionsCache.has(codeId)) {
-      // Return cached sections
       return NextResponse.json(sectionsCache.get(codeId));
     }
 
-    // Get code assembly from Neo4j using TypeScript backend
-    const assembly = await getCodeAssembly(codeId);
+    const supabase = supabaseAdmin();
 
-    if (!assembly || !assembly.sections) {
+    // Get code info
+    const { data: code, error: codeError } = await supabase
+      .from('codes')
+      .select('id, title')
+      .eq('id', codeId)
+      .single();
+
+    if (codeError || !code) {
       return NextResponse.json(
         {
           error: 'Code not found',
-          details: `No sections found for code ID: ${codeId}`,
+          details: `No code found for ID: ${codeId}`,
         },
         { status: 404 }
       );
     }
 
+    // Get all sections for this code
+    const { data: sections, error: sectionsError } = await supabase
+      .from('sections')
+      .select('key, number, title, text, item_type, paragraphs, source_url')
+      .eq('code_id', codeId)
+      .order('number');
+
+    if (sectionsError) {
+      throw sectionsError;
+    }
+
     // Format sections for frontend consumption
-    const formattedSections = assembly.sections.map((section: any) => ({
-      key: section.key || `${section.id}`,
+    const formattedSections = (sections || []).map((section: any) => ({
+      key: section.key,
       number: section.number,
       title: section.title,
       type: section.item_type || 'section',
       requirements: section.paragraphs || [],
       text: section.text,
-      references: [], // TODO: Add references if needed
-      source_id: section.source_id,
+      references: [],
+      source_url: section.source_url,
       hasContent: !!(section.paragraphs && section.paragraphs.length > 0),
-      subsections: section.subsections || [],
+      subsections: [],
     }));
 
     const result = {
       code_id: codeId,
-      code_title: `Code ${codeId}`, // TODO: Get actual code title
+      code_title: code.title,
       total_sections: formattedSections.length,
       sections: formattedSections,
     };
@@ -77,36 +96,53 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Query Neo4j for the specific section with its references
-    const sections = await runQuery<any>(
-      `
-      MATCH (s:Section {key: $sectionKey})
-      OPTIONAL MATCH (s)-[:REFS]->(ref:Section)
-      RETURN s, collect(DISTINCT ref) as references
-    `,
-      { sectionKey }
-    );
+    const supabase = supabaseAdmin();
 
-    if (!sections.length) {
+    // Get section data
+    const { data: section, error: sectionError } = await supabase
+      .from('sections')
+      .select('key, number, title, text, item_type, paragraphs, source_url')
+      .eq('key', sectionKey)
+      .single();
+
+    if (sectionError || !section) {
       return NextResponse.json({ error: 'Section not found' }, { status: 404 });
     }
 
-    const section = sections[0];
-    const sectionData = section.s.properties;
-    const references = section.references.map((ref: any) => ref.properties);
+    // Get references for this section
+    const { data: refs } = await supabase
+      .from('section_references')
+      .select(`
+        target_section_key,
+        citation_text,
+        target:sections!section_references_target_section_key_fkey (
+          key,
+          number,
+          title,
+          text
+        )
+      `)
+      .eq('source_section_key', sectionKey);
 
-    // Use paragraphs property directly from Section node
-    const paragraphs = sectionData.paragraphs || [];
+    const references = (refs || []).map((ref: any) => ({
+      key: ref.target?.key,
+      number: ref.target?.number,
+      title: ref.target?.title,
+      text: ref.target?.text,
+      citation_text: ref.citation_text,
+    }));
+
+    const paragraphs = section.paragraphs || [];
 
     return NextResponse.json({
-      key: sectionData.key,
-      number: sectionData.number,
-      title: sectionData.title,
-      type: sectionData.item_type || 'section',
+      key: section.key,
+      number: section.number,
+      title: section.title,
+      type: section.item_type || 'section',
       requirements: paragraphs,
-      text: sectionData.text,
+      text: section.text,
       references,
-      source_id: sectionData.source_id,
+      source_url: section.source_url,
       hasContent: !!(paragraphs && paragraphs.length > 0),
     });
   } catch (error) {

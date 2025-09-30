@@ -1,0 +1,88 @@
+{
+  "project_identity": {
+    "full_address": {
+      "description": "Street address including city/town and county",
+      "type": "text"
+    },
+    "authority_having_jurisdiction": {
+      "description": "The building department or code authority issuing permits/inspections",
+      "type": "text"
+    }
+  },
+  "project_scope": {
+    "work_type": {
+      "description": "Type of work being performed",
+      "type": "select",
+      "options": ["New Construction", "Addition", "Alteration/Renovation", "Change of Occupancy", "Site/Civil Work", "Maintenance Only"]
+    },
+    "permit_date": {
+      "description": "Permit application or issuance date",
+      "type": "date"
+    }
+  },
+  "building_characteristics": {
+    "building_size_sf": {
+      "description": "Gross floor area per story (square feet)",
+      "type": "number"
+    },
+    "number_of_stories": {
+      "description": "Number of stories",
+      "type": "number"
+    },
+    "has_mezzanine": {
+      "description": "Does the building have a mezzanine?",
+      "type": "boolean"
+    },
+    "elevator_exemption_applies": {
+      "description": "Does ADA elevator exemption apply? (≤3 stories or ≤3,000 sf per story)",
+      "type": "boolean"
+    },
+    "occupancy_classification": {
+      "description": "IBC occupancy group(s)",
+      "type": "select",
+      "options": ["A - Assembly", "B - Business", "E - Educational", "F - Factory", "H - High Hazard", "I - Institutional", "M - Mercantile", "R - Residential", "S - Storage", "U - Utility", "Mixed Use"]
+    },
+    "has_parking": {
+      "description": "Does the site include parking?",
+      "type": "boolean"
+    },
+    "has_exterior_routes": {
+      "description": "Are there accessible exterior routes on site?",
+      "type": "boolean"
+    }
+  },
+  "facility_type": {
+    "category": {
+      "description": "Primary facility category",
+      "type": "select",
+      "options": ["Private Commercial (ADA Title III)", "State/Local Government (ADA Title II)", "Federal Facility (ABA)", "Multifamily Housing (FHA)", "Single Family/Townhome", "Transportation Facility"]
+    },
+    "is_public_accommodation": {
+      "description": "Is this a public accommodation or commercial facility?",
+      "type": "boolean"
+    }
+  },
+  "funding_sources": {
+    "has_federal_assistance": {
+      "description": "Any federal financial assistance (grants, loans, leases, subsidies)?",
+      "type": "boolean"
+    },
+    "funding_type": {
+      "description": "Type of funding/assistance",
+      "type": "multiselect",
+      "options": ["Private", "HUD Assistance", "Other Federal Grant/Loan", "State Grant", "Local Public Funding", "Section 504"]
+    }
+  },
+  "ownership": {
+    "owner_type": {
+      "description": "Facility owner type",
+      "type": "select",
+      "options": ["Private", "Nonprofit", "State/Local Government", "Federal", "Tribal", "Religious Organization", "Private Club"]
+    },
+    "government_level": {
+      "description": "If government-owned, which level?",
+      "type": "select",
+      "options": ["N/A", "City", "County", "State of California", "Federal"]
+    }
+  }
+}
