@@ -26,7 +26,7 @@ export function CheckList({
 
   const filtered = useMemo(() => {
     // Filter out checks marked as not_applicable
-    let filteredChecks = checks.filter(c => c.manual_override !== 'not_applicable');
+    const filteredChecks = checks.filter(c => c.manual_override !== 'not_applicable');
 
     // Apply search query
     const q = query.trim().toLowerCase();
@@ -110,7 +110,6 @@ export function CheckList({
     if (check.status === 'analyzing') return 'text-yellow-600';
     return 'text-gray-400';
   };
-
 
   // Auto-expand first section when checks change
   useEffect(() => {
