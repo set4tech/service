@@ -104,6 +104,7 @@ export function PDFViewer({
   const [pageInstance, setPageInstance] = useState<any>(null);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
+  const [pageDisplayScale, setPageDisplayScale] = useState<number>(1);
 
   // Fetch presigned URL for private S3 PDFs
   useEffect(() => {
@@ -183,15 +184,29 @@ export function PDFViewer({
 
   const screenToContent = useCallback(
     (clientX: number, clientY: number) => {
-      if (!pageContainerRef.current) return { x: 0, y: 0 };
+      if (!pageContainerRef.current || !viewportRef.current) return { x: 0, y: 0 };
 
-      const pageRect = pageContainerRef.current.getBoundingClientRect();
-      const x = (clientX - pageRect.left) / state.transform.scale;
-      const y = (clientY - pageRect.top) / state.transform.scale;
+      const viewportRect = viewportRef.current.getBoundingClientRect();
+
+      // Account for the transform's translation when converting to content coordinates
+      const x = (clientX - viewportRect.left - state.transform.tx) / state.transform.scale;
+      const y = (clientY - viewportRect.top - state.transform.ty) / state.transform.scale;
+
+      console.log('screenToContent:', {
+        clientX,
+        clientY,
+        viewportLeft: viewportRect.left,
+        viewportTop: viewportRect.top,
+        tx: state.transform.tx,
+        ty: state.transform.ty,
+        scale: state.transform.scale,
+        contentX: x,
+        contentY: y,
+      });
 
       return { x, y };
     },
-    [state.transform.scale]
+    [state.transform]
   );
 
   const onMouseDown = (e: React.MouseEvent) => {
@@ -324,45 +339,108 @@ export function PDFViewer({
     try {
       if (!state.selection || !pageInstance || !activeCheck) return;
 
+      // Get the actual canvas element to understand its coordinate system
+      const canvas = pageContainerRef.current?.querySelector('canvas') as HTMLCanvasElement | null;
+      if (!canvas) {
+        console.error('capture() cannot find canvas element');
+        return;
+      }
+
+      console.log('capture() canvas info:', {
+        clientWidth: canvas.clientWidth,
+        clientHeight: canvas.clientHeight,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        ratio: canvas.width / canvas.clientWidth,
+      });
+
+      // Selection coordinates are relative to the pageContainer (in CSS pixels)
       const sx = Math.min(state.selection.startX, state.selection.endX);
       const sy = Math.min(state.selection.startY, state.selection.endY);
       const sw = Math.abs(state.selection.endX - state.selection.startX);
       const sh = Math.abs(state.selection.endY - state.selection.startY);
 
-      // Render page offscreen
+      console.log('capture() selection in CSS pixels:', { sx, sy, sw, sh });
+
+      // The canvas internal resolution is higher than CSS pixels
+      // Convert CSS pixels to canvas pixels
+      const canvasScale = canvas.width / canvas.clientWidth;
+      const canvasSx = sx * canvasScale;
+      const canvasSy = sy * canvasScale;
+      const canvasSw = sw * canvasScale;
+      const canvasSh = sh * canvasScale;
+
+      console.log('capture() selection in canvas pixels:', {
+        canvasSx,
+        canvasSy,
+        canvasSw,
+        canvasSh,
+        canvasScale,
+      });
+
+      // Render page offscreen at high resolution
       const renderScale = pickRenderScale(pageInstance, 2.5);
       const viewport = pageInstance.getViewport({ scale: renderScale });
 
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.ceil(viewport.width);
-      canvas.height = Math.ceil(viewport.height);
-      const ctx = canvas.getContext('2d')!;
+      console.log('capture() render viewport:', {
+        width: viewport.width,
+        height: viewport.height,
+        renderScale,
+      });
+
+      const offscreenCanvas = document.createElement('canvas');
+      offscreenCanvas.width = Math.ceil(viewport.width);
+      offscreenCanvas.height = Math.ceil(viewport.height);
+      const ctx = offscreenCanvas.getContext('2d')!;
 
       await pageInstance.render({ canvasContext: ctx, viewport }).promise;
 
-      // Map content→render (pure scale, no center offsets)
-      const rx = Math.max(0, Math.floor(sx * renderScale));
-      const ry = Math.max(0, Math.floor(sy * renderScale));
-      const rw = Math.max(1, Math.ceil(sw * renderScale));
-      const rh = Math.max(1, Math.ceil(sh * renderScale));
+      // Map from canvas pixels to render pixels
+      // Both the displayed canvas and the offscreen render are at different scales from the natural PDF
+      // We need to find the ratio between them
+      const displayedCanvasScale = canvas.width / canvas.clientWidth;
+      const renderToDisplayedRatio = viewport.width / canvas.width;
+
+      const rx = Math.max(0, Math.floor(canvasSx * renderToDisplayedRatio));
+      const ry = Math.max(0, Math.floor(canvasSy * renderToDisplayedRatio));
+      const rw = Math.max(1, Math.ceil(canvasSw * renderToDisplayedRatio));
+      const rh = Math.max(1, Math.ceil(canvasSh * renderToDisplayedRatio));
+
+      console.log('capture() render coords:', {
+        rx,
+        ry,
+        rw,
+        rh,
+        renderToDisplayedRatio,
+      });
 
       // Clamp to page bounds
-      const cx = Math.min(rx, canvas.width - 1);
-      const cy = Math.min(ry, canvas.height - 1);
-      const cw = Math.min(rw, canvas.width - cx);
-      const ch = Math.min(rh, canvas.height - cy);
+      const cx = Math.min(rx, offscreenCanvas.width - 1);
+      const cy = Math.min(ry, offscreenCanvas.height - 1);
+      const cw = Math.min(rw, offscreenCanvas.width - cx);
+      const ch = Math.min(rh, offscreenCanvas.height - cy);
+
+      console.log('capture() clamped coords:', {
+        cx,
+        cy,
+        cw,
+        ch,
+        offscreenW: offscreenCanvas.width,
+        offscreenH: offscreenCanvas.height,
+      });
 
       if (cw < 5 || ch < 5) {
-        dispatch({ type: 'CLEAR_SELECTION' });
-        return;
+        console.warn('capture() WARNING: selection was clamped to tiny size:', { cw, ch });
+        console.warn('This usually means coordinates are outside the page bounds');
       }
 
       const crop = { x: cx, y: cy, w: cw, h: ch };
+      console.log('capture() final crop:', crop);
       const out = document.createElement('canvas');
       out.width = crop.w;
       out.height = crop.h;
       const octx = out.getContext('2d')!;
-      octx.drawImage(canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+      octx.drawImage(offscreenCanvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
 
       // Thumbnail
       const thumbMax = 240;
@@ -555,6 +633,34 @@ export function PDFViewer({
                 scale={5}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
+                onLoadSuccess={(page) => {
+                  // react-pdf's Page component ignores the scale prop when height is specified
+                  // The actual rendered size is determined purely by height prop
+                  // The canvas is rendered at the scale that matches the height
+                  const actualViewport = page.getViewport({ scale: 1 });
+                  const renderedScale = 800 / actualViewport.height;
+
+                  // However, the DOM element might be at a different scale due to react-pdf internals
+                  // We need to measure the actual rendered size
+                  setTimeout(() => {
+                    if (pageContainerRef.current) {
+                      const canvas = pageContainerRef.current.querySelector('canvas');
+                      if (canvas) {
+                        const displayScale = canvas.clientHeight / actualViewport.height;
+                        setPageDisplayScale(displayScale);
+                        console.log('Page display scale calculated:', {
+                          naturalHeight: actualViewport.height,
+                          naturalWidth: actualViewport.width,
+                          canvasClientHeight: canvas.clientHeight,
+                          canvasClientWidth: canvas.clientWidth,
+                          canvasHeight: canvas.height,
+                          canvasWidth: canvas.width,
+                          displayScale,
+                        });
+                      }
+                    }
+                  }, 100);
+                }}
               />
               {state.screenshotMode && state.selection && (
                 <div

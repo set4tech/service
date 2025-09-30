@@ -25,9 +25,13 @@ export function CheckList({
   const [cloneModalCheck, setCloneModalCheck] = useState<any | null>(null);
 
   const filtered = useMemo(() => {
+    // Filter out checks marked as not_applicable
+    let filteredChecks = checks.filter(c => c.manual_override !== 'not_applicable');
+
+    // Apply search query
     const q = query.trim().toLowerCase();
-    if (!q) return checks;
-    return checks.filter(
+    if (!q) return filteredChecks;
+    return filteredChecks.filter(
       c =>
         c.check_name?.toLowerCase().includes(q) ||
         c.code_section_number?.toLowerCase().includes(q) ||
@@ -86,6 +90,10 @@ export function CheckList({
   };
 
   const getStatusIcon = (check: any) => {
+    // Prioritize manual override
+    if (check.manual_override === 'compliant') return '✓';
+    if (check.manual_override === 'non_compliant') return '✗';
+    // Fall back to AI assessment
     if (check.latest_status === 'compliant') return '✓';
     if (check.latest_status === 'non_compliant') return '✗';
     if (check.status === 'analyzing') return '⚡';
@@ -93,11 +101,16 @@ export function CheckList({
   };
 
   const getStatusColor = (check: any) => {
+    // Prioritize manual override
+    if (check.manual_override === 'compliant') return 'text-green-600 font-bold';
+    if (check.manual_override === 'non_compliant') return 'text-red-600 font-bold';
+    // Fall back to AI assessment
     if (check.latest_status === 'compliant') return 'text-green-600';
     if (check.latest_status === 'non_compliant') return 'text-red-600';
     if (check.status === 'analyzing') return 'text-yellow-600';
     return 'text-gray-400';
   };
+
 
   // Auto-expand first section when checks change
   useEffect(() => {
@@ -207,12 +220,19 @@ export function CheckList({
                                   {check.code_section_title}
                                 </span>
                               </div>
-                              {hasInstances && (
-                                <span className="text-xs text-blue-600 font-medium mt-0.5">
-                                  {check.instances.length}{' '}
-                                  {check.instances.length === 1 ? 'instance' : 'instances'}
-                                </span>
-                              )}
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {check.manual_override && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                    Manual
+                                  </span>
+                                )}
+                                {hasInstances && (
+                                  <span className="text-xs text-blue-600 font-medium">
+                                    {check.instances.length}{' '}
+                                    {check.instances.length === 1 ? 'instance' : 'instances'}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </button>
 
@@ -262,9 +282,16 @@ export function CheckList({
                                   {getStatusIcon(instance)}
                                 </span>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm text-gray-700 font-medium">
-                                    {instance.instance_label ||
-                                      `Instance ${instance.instance_number}`}
+                                  <div className="flex items-center gap-2">
+                                    <div className="text-sm text-gray-700 font-medium">
+                                      {instance.instance_label ||
+                                        `Instance ${instance.instance_number}`}
+                                    </div>
+                                    {instance.manual_override && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                        Manual
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-gray-500 mt-0.5">
                                     {instance.code_section_number}

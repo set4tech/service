@@ -34,9 +34,10 @@ interface CodeDetailPanelProps {
   checkId: string | null;
   sectionKey: string | null;
   onClose: () => void;
+  onCheckUpdate?: () => void; // Callback when check is updated
 }
 
-export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPanelProps) {
+export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }: CodeDetailPanelProps) {
   const [section, setSection] = useState<CodeSection | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +60,13 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
+
+  // Manual override state
+  const [manualOverride, setManualOverride] = useState<'compliant' | 'non_compliant' | 'not_applicable' | null>(null);
+  const [manualOverrideNote, setManualOverrideNote] = useState('');
+  const [showOverrideNote, setShowOverrideNote] = useState(false);
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
 
   // Load last selected model from localStorage
   useEffect(() => {
@@ -99,24 +107,33 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
       });
   }, [sectionKey]);
 
-  // Load analysis runs
+  // Load analysis runs and manual override
   useEffect(() => {
     if (!checkId) {
       setAnalysisRuns([]);
+      setManualOverride(null);
+      setManualOverrideNote('');
       return;
     }
 
     setLoadingRuns(true);
-    fetch(`/api/checks/${checkId}/analysis-runs`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.runs) {
-          setAnalysisRuns(data.runs);
+    Promise.all([
+      fetch(`/api/checks/${checkId}/analysis-runs`).then(res => res.json()),
+      fetch(`/api/checks/${checkId}`).then(res => res.json())
+    ])
+      .then(([runsData, checkData]) => {
+        if (runsData.runs) {
+          setAnalysisRuns(runsData.runs);
+        }
+        if (checkData.check) {
+          setManualOverride(checkData.check.manual_override || null);
+          setManualOverrideNote(checkData.check.manual_override_note || '');
+          setShowOverrideNote(!!checkData.check.manual_override_note);
         }
         setLoadingRuns(false);
       })
       .catch(err => {
-        console.error('Failed to load analysis runs:', err);
+        console.error('Failed to load check data:', err);
         setLoadingRuns(false);
       });
   }, [checkId]);
@@ -153,6 +170,76 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
   const handleResetPrompt = () => {
     setCustomPrompt('');
     setIsPromptEditing(false);
+  };
+
+  const handleSaveOverride = async () => {
+    if (!checkId) return;
+
+    setSavingOverride(true);
+    setOverrideError(null);
+
+    try {
+      const response = await fetch(`/api/checks/${checkId}/manual-override`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          override: manualOverride,
+          note: manualOverrideNote.trim() || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save override');
+      }
+
+      // Notify parent component
+      if (onCheckUpdate) {
+        onCheckUpdate();
+      }
+    } catch (err: any) {
+      console.error('Override save error:', err);
+      setOverrideError(err.message);
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
+  const handleClearOverride = async () => {
+    setManualOverride(null);
+    setManualOverrideNote('');
+    setShowOverrideNote(false);
+
+    // Auto-save when clearing
+    if (!checkId) return;
+
+    setSavingOverride(true);
+    setOverrideError(null);
+
+    try {
+      const response = await fetch(`/api/checks/${checkId}/manual-override`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ override: null }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to clear override');
+      }
+
+      // Notify parent component
+      if (onCheckUpdate) {
+        onCheckUpdate();
+      }
+    } catch (err: any) {
+      console.error('Override clear error:', err);
+      setOverrideError(err.message);
+    } finally {
+      setSavingOverride(false);
+    }
   };
 
   const handleAssess = async () => {
@@ -341,6 +428,148 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
             {!section.text && (!section.requirements || section.requirements.length === 0) && (
               <div className="text-sm text-gray-500 italic">
                 No detailed content available for this section.
+              </div>
+            )}
+
+            {/* Manual Override Section */}
+            {checkId && (
+              <div className="border-t pt-6 mt-6">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Manual Compliance Judgment
+                </div>
+
+                <div className="space-y-3">
+                  {/* Override Status Banner */}
+                  {manualOverride && (
+                    <div
+                      className={`px-3 py-2 rounded border ${
+                        manualOverride === 'compliant'
+                          ? 'bg-green-50 border-green-200 text-green-800'
+                          : manualOverride === 'non_compliant'
+                          ? 'bg-red-50 border-red-200 text-red-800'
+                          : 'bg-gray-50 border-gray-200 text-gray-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">
+                          ✓ Manual Override:{' '}
+                          {manualOverride === 'compliant'
+                            ? 'COMPLIANT'
+                            : manualOverride === 'non_compliant'
+                            ? 'NON-COMPLIANT'
+                            : 'NOT APPLICABLE'}
+                        </span>
+                        <button
+                          onClick={handleClearOverride}
+                          disabled={savingOverride}
+                          className="text-xs underline hover:no-underline disabled:opacity-50"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Four-button toggle */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                      Set Compliance Status
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setManualOverride('compliant')}
+                        disabled={savingOverride}
+                        className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                          manualOverride === 'compliant'
+                            ? 'bg-green-100 border-green-400 text-green-800'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Compliant
+                      </button>
+                      <button
+                        onClick={() => setManualOverride('non_compliant')}
+                        disabled={savingOverride}
+                        className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                          manualOverride === 'non_compliant'
+                            ? 'bg-red-100 border-red-400 text-red-800'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Non-Compliant
+                      </button>
+                      <button
+                        onClick={() => setManualOverride('not_applicable')}
+                        disabled={savingOverride}
+                        className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                          manualOverride === 'not_applicable'
+                            ? 'bg-gray-100 border-gray-400 text-gray-800'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Not Applicable
+                      </button>
+                      <button
+                        onClick={() => setManualOverride(null)}
+                        disabled={savingOverride}
+                        className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                          manualOverride === null
+                            ? 'bg-blue-100 border-blue-400 text-blue-800'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Optional note toggle */}
+                  {manualOverride && (
+                    <div>
+                      <button
+                        onClick={() => setShowOverrideNote(!showOverrideNote)}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        {showOverrideNote ? '− Hide' : '+ Add'} Note
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Note textarea */}
+                  {showOverrideNote && manualOverride && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Reasoning (Optional)
+                      </label>
+                      <textarea
+                        value={manualOverrideNote}
+                        onChange={e => setManualOverrideNote(e.target.value)}
+                        disabled={savingOverride}
+                        placeholder="Explain why this check is compliant or non-compliant..."
+                        rows={3}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                      />
+                    </div>
+                  )}
+
+                  {/* Save button */}
+                  {manualOverride && (
+                    <button
+                      onClick={handleSaveOverride}
+                      disabled={savingOverride}
+                      className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                    >
+                      {savingOverride ? 'Saving...' : 'Save Manual Override'}
+                    </button>
+                  )}
+
+                  {/* Error message */}
+                  {overrideError && (
+                    <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                      {overrideError}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

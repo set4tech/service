@@ -14,6 +14,10 @@ export interface Check {
   prompt_template_id?: string;
   actual_prompt_used?: string;
   status: 'pending' | 'completed' | 'failed';
+  manual_override?: 'compliant' | 'non_compliant' | 'not_applicable' | null;
+  manual_override_note?: string | null;
+  manual_override_at?: string | null;
+  manual_override_by?: string | null;
   project_id?: string;
   created_at?: string;
   updated_at?: string;
@@ -48,6 +52,29 @@ export interface Screenshot {
   screenshot_url: string;
   thumbnail_url?: string;
   caption?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CodeSection {
+  id: number;
+  key: string;
+  code_id: string;
+  parent_key?: string;
+  number: string;
+  title: string;
+  text?: string;
+  item_type: 'section' | 'subsection';
+  code_type: 'accessibility' | 'building' | 'fire' | 'plumbing' | 'mechanical' | 'energy';
+  paragraphs?: string[];
+  source_url?: string;
+  source_page?: number;
+  hash: string;
+
+  // Assessability classification
+  drawing_assessable?: boolean;
+  assessability_tags?: string[];
+
   created_at?: string;
   updated_at?: string;
 }
