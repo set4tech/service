@@ -310,9 +310,7 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
                 <div className="space-y-3">
                   {/* Model Selector */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      AI Model
-                    </label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">AI Model</label>
                     <select
                       value={selectedModel}
                       onChange={e => setSelectedModel(e.target.value)}
@@ -320,6 +318,7 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                     >
                       <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                       <option value="claude-opus-4">Claude Opus 4</option>
                       <option value="gpt-4o">GPT-4o</option>
                     </select>
@@ -378,13 +377,12 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
                   Assessment History
                 </div>
 
-                {loadingRuns && (
-                  <div className="text-sm text-gray-500">Loading history...</div>
-                )}
+                {loadingRuns && <div className="text-sm text-gray-500">Loading history...</div>}
 
                 {!loadingRuns && analysisRuns.length === 0 && (
                   <div className="text-sm text-gray-500 italic">
-                    No assessments yet. Click "Assess Compliance" to run your first analysis.
+                    No assessments yet. Click &ldquo;Assess Compliance&rdquo; to run your first
+                    analysis.
                   </div>
                 )}
 
@@ -418,9 +416,7 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose }: CodeDetailPane
                               >
                                 {run.confidence}
                               </span>
-                              <span className="text-xs text-gray-500 truncate">
-                                {run.ai_model}
-                              </span>
+                              <span className="text-xs text-gray-500 truncate">{run.ai_model}</span>
                             </div>
                             <svg
                               className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
