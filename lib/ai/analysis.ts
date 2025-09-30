@@ -152,13 +152,21 @@ export async function runAI(
 
 function safeParseJson(text: string): AIResponse {
   try {
-    const o = JSON.parse(text);
+    // Remove markdown code fences if present
+    let cleaned = text.trim();
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.replace(/^```json\s*\n?/, '').replace(/\n?```\s*$/, '');
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```\s*\n?/, '').replace(/\n?```\s*$/, '');
+    }
+
+    const o = JSON.parse(cleaned);
     return o as AIResponse;
-  } catch {
+  } catch (err) {
     return {
       compliance_status: 'unclear',
       confidence: 'low',
-      reasoning: 'Unable to parse model response as JSON.',
+      reasoning: `Unable to parse model response as JSON. ${err instanceof Error ? err.message : ''}`,
     };
   }
 }
