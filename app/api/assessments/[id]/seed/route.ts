@@ -46,22 +46,60 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const variables = (assessment.projects as any)?.extracted_variables ?? {};
-    const codeIds: string[] = (assessment.projects as any)?.selected_code_ids ?? [
+    const selectedCodes: string[] = (assessment.projects as any)?.selected_code_ids ?? [
       'ICC+CBC_Chapter11A_11B+2025+CA',
     ];
 
-    console.log('[Seed API] Using code IDs:', codeIds);
+    console.log('[Seed API] Selected code IDs:', selectedCodes);
+
+    // Map virtual 11A/11B codes to the real combined code and track which chapters to include
+    const codeMapping: { [key: string]: string } = {
+      'ICC+CBC_Chapter11A+2025+CA': 'ICC+CBC_Chapter11A_11B+2025+CA',
+      'ICC+CBC_Chapter11B+2025+CA': 'ICC+CBC_Chapter11A_11B+2025+CA',
+    };
+
+    const realCodeIds = Array.from(new Set(selectedCodes.map(id => codeMapping[id] || id)));
+    const chapterFilters: Array<{ name: string; test: (num: string) => boolean }> = [];
+
+    // Determine which chapters to include based on selection
+    // Chapter 11A pattern: 11xxA.x (e.g., 1101A.1, 1102A.2, 1121A)
+    // Chapter 11B pattern: 11B-xxxx (e.g., 11B-1002.2)
+    if (selectedCodes.includes('ICC+CBC_Chapter11A+2025+CA')) {
+      chapterFilters.push({
+        name: '11A',
+        test: num => /^11\d+A($|\.)/.test(num),
+      });
+    }
+    if (selectedCodes.includes('ICC+CBC_Chapter11B+2025+CA')) {
+      chapterFilters.push({
+        name: '11B',
+        test: num => num.startsWith('11B-'),
+      });
+    }
+    if (selectedCodes.includes('ICC+CBC_Chapter11A_11B+2025+CA')) {
+      chapterFilters.push(
+        {
+          name: '11A',
+          test: num => /^11\d+A($|\.)/.test(num),
+        },
+        {
+          name: '11B',
+          test: num => num.startsWith('11B-'),
+        }
+      );
+    }
+
+    console.log('[Seed API] Real code IDs:', realCodeIds);
     console.log(
-      '[Seed API] Query: sections WHERE code_id IN',
-      codeIds,
-      'AND drawing_assessable = true'
+      '[Seed API] Chapter filters:',
+      chapterFilters.map(f => f.name)
     );
 
     // 2. Fetch ALL sections for selected codes (filter by drawing_assessable)
     const { data: allSections, error: sectionsError } = await supabase
       .from('sections')
       .select('*')
-      .in('code_id', codeIds)
+      .in('code_id', realCodeIds)
       .eq('drawing_assessable', true)
       .order('number');
 
@@ -80,28 +118,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Query returned null' }, { status: 500 });
     }
 
-    console.log('[Seed API] Found sections:', allSections.length);
+    // Filter sections by chapter if needed
+    const filteredSections =
+      chapterFilters.length > 0
+        ? allSections.filter(s => chapterFilters.some(filter => filter.test(s.number)))
+        : allSections;
 
-    if (allSections.length === 0) {
-      console.warn('⚠️⚠️⚠️ [Seed API] ZERO SECTIONS FOUND ⚠️⚠️⚠️');
-      console.warn('[Seed API] This likely means the code_id does not exist in the database');
+    console.log(
+      '[Seed API] Found sections:',
+      allSections.length,
+      '-> filtered to:',
+      filteredSections.length
+    );
+
+    if (filteredSections.length === 0) {
+      console.warn('⚠️⚠️⚠️ [Seed API] ZERO SECTIONS FOUND AFTER FILTERING ⚠️⚠️⚠️');
+      console.warn('[Seed API] Selected codes:', selectedCodes);
       console.warn(
-        '[Seed API] Check that selected_code_ids matches actual code_id values in sections table'
+        '[Seed API] Chapter filters:',
+        chapterFilters.map(f => f.name)
       );
-
-      // Check what we'd get without drawing_assessable filter
-      const { count: totalCount } = await supabase
-        .from('sections')
-        .select('*', { count: 'exact', head: true })
-        .in('code_id', codeIds);
-      console.warn('[Seed API] Total sections for these code_ids (no filter):', totalCount);
-
-      if (totalCount === 0) {
-        console.error('❌❌❌ [Seed API] NO SECTIONS EXIST FOR THESE CODE IDS ❌❌❌');
-        console.error('[Seed API] Available code_ids:');
-        const { data: availableCodes } = await supabase.from('sections').select('code_id').limit(5);
-        availableCodes?.forEach(c => console.error('  - ' + c.code_id));
-      }
+      return NextResponse.json(
+        {
+          error: 'No sections found',
+          details: `Selected codes: ${selectedCodes.join(', ')}`,
+        },
+        { status: 404 }
+      );
     }
 
     // 3. Initialize status
@@ -109,7 +152,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .from('assessments')
       .update({
         seeding_status: 'in_progress',
-        sections_total: allSections.length,
+        sections_total: filteredSections.length,
         sections_processed: 0,
       })
       .eq('id', id);
@@ -118,7 +161,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // 4. Process first batch immediately, then continue in background
     const BATCH_SIZE = 10;
-    const firstBatch = allSections.slice(0, BATCH_SIZE);
+    const firstBatch = filteredSections.slice(0, BATCH_SIZE);
 
     let processedCount = 0;
     let includedCount = 0;
@@ -194,12 +237,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Start background processing for remaining batches (don't await)
     console.log(
       '[Seed API] Starting background processing for remaining',
-      allSections.length - BATCH_SIZE,
+      filteredSections.length - BATCH_SIZE,
       'sections'
     );
     processRemainingBatches(
       id,
-      allSections.slice(BATCH_SIZE),
+      filteredSections.slice(BATCH_SIZE),
       variables,
       anthropic,
       processedCount,
@@ -210,12 +253,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.log('[Seed API] Returning first batch results:', {
       processedCount,
       includedCount,
-      total: allSections.length,
+      total: filteredSections.length,
     });
     return NextResponse.json({
       type: 'first_batch_complete',
       processed: processedCount,
-      total: allSections.length,
+      total: filteredSections.length,
       included: includedCount,
       message: 'First batch complete. Processing continues in background.',
     });

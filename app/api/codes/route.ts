@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Show both 11A and 11B codes separately
+    // Show both 11A and 11B codes separately (they map to the combined code in backend)
     const filteredData = (data || []).filter(
       code => code.id === 'ICC+CBC_Chapter11A+2025+CA' || code.id === 'ICC+CBC_Chapter11B+2025+CA'
     );
