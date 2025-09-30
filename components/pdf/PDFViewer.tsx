@@ -104,7 +104,6 @@ export function PDFViewer({
   const [pageInstance, setPageInstance] = useState<any>(null);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
-  const [pageDisplayScale, setPageDisplayScale] = useState<number>(1);
 
   // Fetch presigned URL for private S3 PDFs
   useEffect(() => {
@@ -398,7 +397,6 @@ export function PDFViewer({
       // Map from canvas pixels to render pixels
       // Both the displayed canvas and the offscreen render are at different scales from the natural PDF
       // We need to find the ratio between them
-      const displayedCanvasScale = canvas.width / canvas.clientWidth;
       const renderToDisplayedRatio = viewport.width / canvas.width;
 
       const rx = Math.max(0, Math.floor(canvasSx * renderToDisplayedRatio));
@@ -633,34 +631,6 @@ export function PDFViewer({
                 scale={5}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
-                onLoadSuccess={(page) => {
-                  // react-pdf's Page component ignores the scale prop when height is specified
-                  // The actual rendered size is determined purely by height prop
-                  // The canvas is rendered at the scale that matches the height
-                  const actualViewport = page.getViewport({ scale: 1 });
-                  const renderedScale = 800 / actualViewport.height;
-
-                  // However, the DOM element might be at a different scale due to react-pdf internals
-                  // We need to measure the actual rendered size
-                  setTimeout(() => {
-                    if (pageContainerRef.current) {
-                      const canvas = pageContainerRef.current.querySelector('canvas');
-                      if (canvas) {
-                        const displayScale = canvas.clientHeight / actualViewport.height;
-                        setPageDisplayScale(displayScale);
-                        console.log('Page display scale calculated:', {
-                          naturalHeight: actualViewport.height,
-                          naturalWidth: actualViewport.width,
-                          canvasClientHeight: canvas.clientHeight,
-                          canvasClientWidth: canvas.clientWidth,
-                          canvasHeight: canvas.height,
-                          canvasWidth: canvas.width,
-                          displayScale,
-                        });
-                      }
-                    }
-                  }, 100);
-                }}
               />
               {state.screenshotMode && state.selection && (
                 <div
