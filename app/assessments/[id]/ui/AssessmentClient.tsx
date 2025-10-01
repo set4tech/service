@@ -29,6 +29,7 @@ interface Props {
 export default function AssessmentClient({
   assessment,
   checks: initialChecks,
+  progress: _initialProgress,
 }: Props) {
   const [checks, setChecks] = useState(initialChecks);
 
@@ -37,8 +38,10 @@ export default function AssessmentClient({
     const totalChecks = checks.length;
     // Count checks with AI assessment OR manual override (but not not_applicable)
     const completed = checks.filter(
-      c => c.latest_status || c.status === 'completed' ||
-           (c.manual_override && c.manual_override !== 'not_applicable')
+      c =>
+        c.latest_status ||
+        c.status === 'completed' ||
+        (c.manual_override && c.manual_override !== 'not_applicable')
     ).length;
     const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
     return { totalChecks, completed, pct };
@@ -407,7 +410,11 @@ export default function AssessmentClient({
                   if (res.ok) {
                     const { check: updatedCheck } = await res.json();
                     setChecks(prev =>
-                      prev.map(c => (c.id === updatedCheck.id ? { ...c, ...updatedCheck, instances: c.instances } : c))
+                      prev.map(c =>
+                        c.id === updatedCheck.id
+                          ? { ...c, ...updatedCheck, instances: c.instances }
+                          : c
+                      )
                     );
                   }
                 } catch (error) {
