@@ -1,5 +1,8 @@
 // Database types for the application
 
+// Compliance override status enum (matches PostgreSQL enum: compliance_override_status)
+export type ComplianceOverrideStatus = 'compliant' | 'non_compliant' | 'not_applicable';
+
 export interface Check {
   id: string;
   assessment_id: string;
@@ -14,7 +17,7 @@ export interface Check {
   prompt_template_id?: string;
   actual_prompt_used?: string;
   status: 'pending' | 'completed' | 'failed';
-  manual_override?: 'compliant' | 'non_compliant' | 'not_applicable' | null;
+  manual_override?: ComplianceOverrideStatus | null;
   manual_override_note?: string | null;
   manual_override_at?: string | null;
   manual_override_by?: string | null;
@@ -22,9 +25,17 @@ export interface Check {
   created_at?: string;
   updated_at?: string;
 
+  // Element check fields
+  check_type?: 'section' | 'element';
+  element_group_id?: string | null;
+  element_sections?: string[];  // Array of section_keys for element checks
+
   // Virtual fields (populated by queries, not in DB)
   instances?: Check[];
   instance_count?: number;
+  element_group_name?: string;
+  element_group_slug?: string;
+  section_results?: SectionResult[];  // For element checks: per-section breakdown
 }
 
 export interface PromptTemplate {
@@ -77,4 +88,32 @@ export interface CodeSection {
 
   created_at?: string;
   updated_at?: string;
+}
+
+export interface ElementGroup {
+  id: string;
+  name: string;
+  slug: 'doors' | 'bathrooms' | 'kitchens';
+  description?: string;
+  icon?: string;
+  sort_order: number;
+  created_at?: string;
+}
+
+export interface ElementSectionMapping {
+  id: string;
+  element_group_id: string;
+  section_key: string;
+  created_at?: string;
+}
+
+export interface SectionResult {
+  section_key: string;
+  section_number?: string;
+  section_title?: string;
+  status: 'compliant' | 'non_compliant' | 'not_applicable';
+  reasoning: string;
+  confidence?: 'high' | 'medium' | 'low';
+  manual_override?: ComplianceOverrideStatus | null;
+  manual_override_note?: string | null;
 }
