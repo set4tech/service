@@ -9,7 +9,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     supabase.from('assessments').select('*, projects(pdf_url)').eq('id', id).single(),
     supabase
       .from('checks')
-      .select('*')
+      .select('*, element_groups(name, slug)')
       .eq('assessment_id', id)
       .order('code_section_number', { ascending: true }),
   ]);
@@ -18,11 +18,16 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const checks = (allChecks || []).reduce((acc: any[], check: any) => {
     if (!check.parent_check_id) {
       // This is a parent check - find all its instances
-      const instances = (allChecks || []).filter(
-        (c: any) => c.parent_check_id === check.id
-      );
+      const instances = (allChecks || []).filter((c: any) => c.parent_check_id === check.id);
+
+      // Flatten element_groups join
+      const elementGroup = check.element_groups;
+
       acc.push({
         ...check,
+        element_group_name: elementGroup?.name || null,
+        element_group_slug: elementGroup?.slug || null,
+        element_groups: undefined, // Remove nested object
         instances,
         instance_count: instances.length,
       });
