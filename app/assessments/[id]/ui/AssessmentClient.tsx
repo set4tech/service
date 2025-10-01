@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import clsx from 'clsx';
 import { CheckList } from '@/components/checks/CheckList';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 import { CodeDetailPanel } from '@/components/checks/CodeDetailPanel';
@@ -32,8 +33,17 @@ export default function AssessmentClient({
   progress: _initialProgress,
 }: Props) {
   const [checks, setChecks] = useState(initialChecks);
+  const [checkMode, setCheckMode] = useState<'section' | 'element'>('section');
 
-  // Calculate progress dynamically from checks state
+  // Filter checks by mode
+  const displayedChecks = useMemo(() => {
+    return checks.filter(c => {
+      const type = c.check_type || 'section';
+      return type === checkMode;
+    });
+  }, [checks, checkMode]);
+
+  // Calculate progress dynamically from checks state (all checks, not filtered)
   const progress = useMemo(() => {
     const totalChecks = checks.length;
     // Count checks with AI assessment OR manual override (but not not_applicable)
@@ -336,6 +346,32 @@ export default function AssessmentClient({
             </Link>
           </div>
 
+          {/* Mode Toggle */}
+          <div className="mb-3 flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setCheckMode('section')}
+              className={clsx(
+                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                checkMode === 'section'
+                  ? 'bg-white shadow-sm text-gray-900'
+                  : 'text-gray-600 hover:text-gray-900'
+              )}
+            >
+              By Section
+            </button>
+            <button
+              onClick={() => setCheckMode('element')}
+              className={clsx(
+                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                checkMode === 'element'
+                  ? 'bg-white shadow-sm text-gray-900'
+                  : 'text-gray-600 hover:text-gray-900'
+              )}
+            >
+              By Element
+            </button>
+          </div>
+
           {/* Background Seeding Banner */}
           {backgroundSeeding.active && (
             <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
@@ -371,7 +407,12 @@ export default function AssessmentClient({
 
         {/* Checks List */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <CheckList checks={checks} activeCheckId={activeCheckId} onSelect={handleCheckSelect} />
+          <CheckList
+            checks={displayedChecks}
+            checkMode={checkMode}
+            activeCheckId={activeCheckId}
+            onSelect={handleCheckSelect}
+          />
         </div>
 
         {/* Screenshots for Active Check */}

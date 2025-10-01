@@ -5,10 +5,12 @@ import { CloneCheckModal } from './modals/CloneCheckModal';
 
 export function CheckList({
   checks,
+  checkMode = 'section',
   activeCheckId,
   onSelect,
 }: {
   checks: any[];
+  checkMode?: 'section' | 'element';
   activeCheckId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -43,26 +45,42 @@ export function CheckList({
   const groupedChecks = useMemo(() => {
     const mainGroups = new Map<string, any[]>();
 
-    filtered.forEach(check => {
-      const sectionNumber = check.code_section_number || '';
-      // Group by main prefix (e.g., "11B")
-      const mainPrefix = sectionNumber.split('-')[0] || 'Other';
+    if (checkMode === 'element') {
+      // Group by element group name
+      filtered.forEach(check => {
+        const groupName = check.element_group_name || 'Other';
+        if (!mainGroups.has(groupName)) {
+          mainGroups.set(groupName, []);
+        }
+        mainGroups.get(groupName)!.push(check);
+      });
 
-      if (!mainGroups.has(mainPrefix)) {
-        mainGroups.set(mainPrefix, []);
-      }
-      mainGroups.get(mainPrefix)!.push(check);
-    });
+      // Sort each group by instance number
+      mainGroups.forEach(group => {
+        group.sort((a, b) => a.instance_number - b.instance_number);
+      });
+    } else {
+      // Group by section prefix (original logic)
+      filtered.forEach(check => {
+        const sectionNumber = check.code_section_number || '';
+        const mainPrefix = sectionNumber.split('-')[0] || 'Other';
 
-    // Sort each group
-    mainGroups.forEach(group => {
-      group.sort((a, b) =>
-        (a.code_section_number || '').localeCompare(b.code_section_number || '')
-      );
-    });
+        if (!mainGroups.has(mainPrefix)) {
+          mainGroups.set(mainPrefix, []);
+        }
+        mainGroups.get(mainPrefix)!.push(check);
+      });
+
+      // Sort each group by section number
+      mainGroups.forEach(group => {
+        group.sort((a, b) =>
+          (a.code_section_number || '').localeCompare(b.code_section_number || '')
+        );
+      });
+    }
 
     return Array.from(mainGroups.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered]);
+  }, [filtered, checkMode]);
 
   const toggleSection = (section: string) => {
     const newExpanded = new Set(expandedSections);
@@ -140,7 +158,7 @@ export function CheckList({
 
           return (
             <div key={mainPrefix} className="border-b border-gray-200">
-              {/* Main Section Header */}
+              {/* Main Section/Element Header */}
               <button
                 onClick={() => toggleSection(mainPrefix)}
                 className="w-full px-3 py-2 flex items-center text-left hover:bg-gray-50 transition-colors"
@@ -157,7 +175,9 @@ export function CheckList({
                 >
                   <path d="M2 2l5 3-5 3z" />
                 </svg>
-                <span className="text-sm font-semibold text-gray-900">Section {mainPrefix}</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  {checkMode === 'element' ? mainPrefix : `Section ${mainPrefix}`}
+                </span>
                 <span className="ml-auto text-xs text-gray-500">({groupChecks.length})</span>
               </button>
 
@@ -211,27 +231,62 @@ export function CheckList({
                               {getStatusIcon(check)}
                             </span>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-start">
-                                <span className="font-medium text-sm text-gray-900 mr-2">
-                                  {check.code_section_number}
-                                </span>
-                                <span className="text-sm text-gray-700 truncate">
-                                  {check.code_section_title}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                {check.manual_override && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
-                                    Manual
-                                  </span>
-                                )}
-                                {hasInstances && (
-                                  <span className="text-xs text-blue-600 font-medium">
-                                    {check.instances.length}{' '}
-                                    {check.instances.length === 1 ? 'instance' : 'instances'}
-                                  </span>
-                                )}
-                              </div>
+                              {checkMode === 'element' ? (
+                                // Element mode: show instance label and screenshot count
+                                <>
+                                  <div className="flex items-start">
+                                    <span className="font-medium text-sm text-gray-900 mr-2">
+                                      {check.instance_label || `Instance ${check.instance_number}`}
+                                    </span>
+                                    {check.screenshots?.length > 0 && (
+                                      <span className="text-xs text-gray-500">
+                                        ({check.screenshots.length}{' '}
+                                        {check.screenshots.length === 1
+                                          ? 'screenshot'
+                                          : 'screenshots'}
+                                        )
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {check.manual_override && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                        Manual
+                                      </span>
+                                    )}
+                                    {check.element_sections && (
+                                      <span className="text-xs text-gray-500">
+                                        {check.element_sections.length} sections
+                                      </span>
+                                    )}
+                                  </div>
+                                </>
+                              ) : (
+                                // Section mode: show section number and title (original)
+                                <>
+                                  <div className="flex items-start">
+                                    <span className="font-medium text-sm text-gray-900 mr-2">
+                                      {check.code_section_number}
+                                    </span>
+                                    <span className="text-sm text-gray-700 truncate">
+                                      {check.code_section_title}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {check.manual_override && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                        Manual
+                                      </span>
+                                    )}
+                                    {hasInstances && (
+                                      <span className="text-xs text-blue-600 font-medium">
+                                        {check.instances.length}{' '}
+                                        {check.instances.length === 1 ? 'instance' : 'instances'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </button>
 

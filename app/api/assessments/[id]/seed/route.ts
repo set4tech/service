@@ -103,6 +103,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .eq('drawing_assessable', true)
       .order('number');
 
+    // Get element-mapped sections to exclude from section-by-section checks
+    const { data: elementMappings } = await supabase
+      .from('element_section_mappings')
+      .select('section_key');
+
+    const elementSectionKeys = new Set(elementMappings?.map(m => m.section_key) || []);
+
     if (sectionsError) {
       console.error('❌❌❌ [Seed API] DATABASE ERROR ❌❌❌');
       console.error('[Seed API] Error details:', sectionsError);
@@ -118,11 +125,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Query returned null' }, { status: 500 });
     }
 
-    // Filter sections by chapter if needed
+    // Filter sections by chapter if needed, and exclude element-mapped sections
     const filteredSections =
       chapterFilters.length > 0
-        ? allSections.filter(s => chapterFilters.some(filter => filter.test(s.number)))
-        : allSections;
+        ? allSections.filter(
+            s =>
+              chapterFilters.some(filter => filter.test(s.number)) && !elementSectionKeys.has(s.key)
+          )
+        : allSections.filter(s => !elementSectionKeys.has(s.key));
 
     console.log(
       '[Seed API] Found sections:',
@@ -239,6 +249,50 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .eq('id', id);
     } catch (error) {
       console.error('[Seed API] First batch processing error:', error);
+    }
+
+    // Create element group templates (do this after first batch is complete)
+    try {
+      console.log('[Seed API] Creating element group templates...');
+      const { data: elementGroups } = await supabase
+        .from('element_groups')
+        .select('id, name, slug')
+        .order('sort_order');
+
+      if (elementGroups && elementGroups.length > 0) {
+        for (const group of elementGroups) {
+          // Get all sections for this element group
+          const { data: groupMappings } = await supabase
+            .from('element_section_mappings')
+            .select('section_key')
+            .eq('element_group_id', group.id);
+
+          const sectionKeys = groupMappings?.map(m => m.section_key) || [];
+
+          if (sectionKeys.length > 0) {
+            // Create template check for this element group
+            await supabase.from('checks').insert({
+              assessment_id: id,
+              check_type: 'element',
+              element_group_id: group.id,
+              element_sections: sectionKeys,
+              code_section_key: sectionKeys[0], // Use first section as representative
+              code_section_number: group.slug,
+              code_section_title: `${group.name} Template`,
+              check_name: `${group.name} - Template`,
+              check_location: 'TBD',
+              instance_number: 0, // Template = instance 0
+              status: 'pending',
+            });
+
+            console.log(
+              `[Seed API] Created template for ${group.name} with ${sectionKeys.length} sections`
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[Seed API] Element template creation error:', error);
     }
 
     // Start background processing for remaining batches (don't await)

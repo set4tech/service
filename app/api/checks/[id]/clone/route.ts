@@ -49,6 +49,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     instance_label: instanceLabel || `Instance ${nextInstanceNumber}`,
     prompt_template_id: original.prompt_template_id,
     status: 'pending',
+    // Copy element check fields if present
+    check_type: original.check_type || 'section',
+    element_group_id: original.element_group_id || null,
+    element_sections: original.element_sections || null,
   };
 
   const { data, error } = await supabase.from('checks').insert(clone).select('*').single();
