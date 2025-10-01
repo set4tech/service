@@ -29,10 +29,20 @@ interface Props {
 export default function AssessmentClient({
   assessment,
   checks: initialChecks,
-  progress: initialProgress,
 }: Props) {
   const [checks, setChecks] = useState(initialChecks);
-  const [progress] = useState(initialProgress);
+
+  // Calculate progress dynamically from checks state
+  const progress = useMemo(() => {
+    const totalChecks = checks.length;
+    // Count checks with AI assessment OR manual override (but not not_applicable)
+    const completed = checks.filter(
+      c => c.latest_status || c.status === 'completed' ||
+           (c.manual_override && c.manual_override !== 'not_applicable')
+    ).length;
+    const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
+    return { totalChecks, completed, pct };
+  }, [checks]);
   const [isSeeding, setIsSeeding] = useState(false);
   const [activeCheckId, setActiveCheckId] = useState<string | null>(checks[0]?.id || null);
   const [showDetailPanel, setShowDetailPanel] = useState(false);
@@ -390,6 +400,21 @@ export default function AssessmentClient({
             checkId={activeCheck?.id || null}
             sectionKey={activeCheck?.code_section_key || null}
             onClose={() => setShowDetailPanel(false)}
+            onCheckUpdate={async () => {
+              if (activeCheck?.id) {
+                try {
+                  const res = await fetch(`/api/checks/${activeCheck.id}`);
+                  if (res.ok) {
+                    const { check: updatedCheck } = await res.json();
+                    setChecks(prev =>
+                      prev.map(c => (c.id === updatedCheck.id ? { ...c, ...updatedCheck, instances: c.instances } : c))
+                    );
+                  }
+                } catch (error) {
+                  console.error('Failed to refetch check:', error);
+                }
+              }
+            }}
           />
         )}
       </div>

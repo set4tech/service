@@ -157,7 +157,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       })
       .eq('id', id);
 
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      baseURL: 'https://anthropic.helicone.ai',
+      defaultHeaders: {
+        'Helicone-Auth': `Bearer ${process.env.HELICONE_API_KEY}`,
+        'Helicone-Property-Tag': 'section-applicability-filtering',
+      },
+    });
 
     // 4. Process first batch immediately, then continue in background
     const BATCH_SIZE = 10;

@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { ComplianceOverrideStatus } from '@/types/database';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const body = await req.json();
-    const { override, note } = body;
+    const { override, note } = body as { override: ComplianceOverrideStatus | null; note?: string };
 
     // Validate override value
-    if (override !== null && override !== 'compliant' && override !== 'non_compliant' && override !== 'not_applicable') {
+    const validStatuses: (ComplianceOverrideStatus | null)[] = ['compliant', 'non_compliant', 'not_applicable', null];
+    if (!validStatuses.includes(override)) {
       return NextResponse.json(
         { error: 'Invalid override value. Must be "compliant", "non_compliant", "not_applicable", or null' },
         { status: 400 }
