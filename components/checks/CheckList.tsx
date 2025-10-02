@@ -71,8 +71,16 @@ export function CheckList({
     const sourceChecks = searchResults !== null ? searchResults : checks;
 
     // Filter out checks marked as not_applicable
-    return sourceChecks.filter(c => c.manual_override !== 'not_applicable');
-  }, [searchResults, checks]);
+    // In element mode, also filter out child instances (show only templates and parents)
+    return sourceChecks.filter(c => {
+      if (c.manual_override === 'not_applicable') return false;
+
+      // In element mode, only show parent checks (template or instances without parent)
+      if (checkMode === 'element' && c.parent_check_id) return false;
+
+      return true;
+    });
+  }, [searchResults, checks, checkMode]);
 
   // Group checks hierarchically
   const groupedChecks = useMemo(() => {
@@ -289,8 +297,18 @@ export function CheckList({
                                 // Element mode: show instance label and screenshot count
                                 <>
                                   <div className="flex items-start">
-                                    <span className="font-medium text-sm text-gray-900 mr-2">
-                                      {check.instance_label || `Instance ${check.instance_number}`}
+                                    <span
+                                      className={clsx(
+                                        'font-medium text-sm mr-2',
+                                        check.instance_number === 0
+                                          ? 'text-gray-500 italic'
+                                          : 'text-gray-900'
+                                      )}
+                                    >
+                                      {check.instance_number === 0
+                                        ? 'Template (click + to create instances)'
+                                        : check.instance_label ||
+                                          `Instance ${check.instance_number}`}
                                     </span>
                                     {check.screenshots?.length > 0 && (
                                       <span className="text-xs text-gray-500">
@@ -311,6 +329,12 @@ export function CheckList({
                                     {check.element_sections && (
                                       <span className="text-xs text-gray-500">
                                         {check.element_sections.length} sections
+                                      </span>
+                                    )}
+                                    {hasInstances && (
+                                      <span className="text-xs text-blue-600 font-medium">
+                                        {check.instances.length}{' '}
+                                        {check.instances.length === 1 ? 'instance' : 'instances'}
                                       </span>
                                     )}
                                   </div>
@@ -344,30 +368,36 @@ export function CheckList({
                             </div>
                           </button>
 
-                          {/* Clone Button */}
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              setCloneModalCheck(check);
-                            }}
-                            className="px-3 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
-                            title="Add instance"
-                          >
-                            <svg
-                              width="16"
-                              height="16"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                          {/* Clone Button - only show for non-template checks in section mode, or for any check in element mode */}
+                          {(checkMode === 'section' || checkMode === 'element') && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                setCloneModalCheck(check);
+                              }}
+                              className="px-3 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
+                              title={
+                                checkMode === 'element' && check.instance_number === 0
+                                  ? 'Create instance'
+                                  : 'Add instance'
+                              }
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M12 4v16m8-8H4"
-                              />
-                            </svg>
-                          </button>
+                              <svg
+                                width="16"
+                                height="16"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 4v16m8-8H4"
+                                />
+                              </svg>
+                            </button>
+                          )}
                         </div>
 
                         {/* Instance List */}

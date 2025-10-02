@@ -30,6 +30,13 @@ interface AnalysisRun {
   execution_time_ms?: number;
 }
 
+interface Check {
+  id: string;
+  check_type?: string;
+  element_sections?: string[];
+  element_group_name?: string;
+}
+
 interface CodeDetailPanelProps {
   checkId: string | null;
   sectionKey: string | null;
@@ -37,10 +44,20 @@ interface CodeDetailPanelProps {
   onCheckUpdate?: () => void; // Callback when check is updated
 }
 
-export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }: CodeDetailPanelProps) {
-  const [section, setSection] = useState<CodeSection | null>(null);
+export function CodeDetailPanel({
+  checkId,
+  sectionKey,
+  onClose,
+  onCheckUpdate,
+}: CodeDetailPanelProps) {
+  const [check, setCheck] = useState<Check | null>(null);
+  const [sections, setSections] = useState<CodeSection[]>([]);
+  const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Computed: current section to display
+  const section = sections[activeSectionIndex] || null;
 
   // Assessment state
   const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-pro');
@@ -62,7 +79,9 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }:
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
 
   // Manual override state
-  const [manualOverride, setManualOverride] = useState<'compliant' | 'non_compliant' | 'not_applicable' | null>(null);
+  const [manualOverride, setManualOverride] = useState<
+    'compliant' | 'non_compliant' | 'not_applicable' | null
+  >(null);
   const [manualOverrideNote, setManualOverrideNote] = useState('');
   const [showOverrideNote, setShowOverrideNote] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
@@ -76,36 +95,67 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }:
     }
   }, []);
 
-  // Load code section
+  // Load check data and determine if it's an element check
   useEffect(() => {
-    if (!sectionKey) {
-      setSection(null);
+    if (!checkId) {
+      setCheck(null);
+      return;
+    }
+
+    fetch(`/api/checks/${checkId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.check) {
+          setCheck(data.check);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load check:', err);
+      });
+  }, [checkId]);
+
+  // Load code sections (single or multiple for element checks)
+  useEffect(() => {
+    if (!sectionKey && !check?.element_sections) {
+      setSections([]);
+      setActiveSectionIndex(0);
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    fetch('/api/compliance/sections', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sectionKey }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setSection(data);
-        }
+    // Determine which sections to load
+    const sectionKeys = check?.element_sections || (sectionKey ? [sectionKey] : []);
+
+    if (sectionKeys.length === 0) {
+      setSections([]);
+      setLoading(false);
+      return;
+    }
+
+    // Load all sections in parallel
+    Promise.all(
+      sectionKeys.map(key =>
+        fetch('/api/compliance/sections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sectionKey: key }),
+        }).then(res => res.json())
+      )
+    )
+      .then(results => {
+        const loadedSections = results.filter(data => !data.error);
+        setSections(loadedSections);
+        setActiveSectionIndex(0);
         setLoading(false);
       })
       .catch(err => {
-        console.error('Failed to load section:', err);
+        console.error('Failed to load sections:', err);
         setError(err.message);
         setLoading(false);
       });
-  }, [sectionKey]);
+  }, [sectionKey, check]);
 
   // Load analysis runs and manual override
   useEffect(() => {
@@ -119,7 +169,7 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }:
     setLoadingRuns(true);
     Promise.all([
       fetch(`/api/checks/${checkId}/analysis-runs`).then(res => res.json()),
-      fetch(`/api/checks/${checkId}`).then(res => res.json())
+      fetch(`/api/checks/${checkId}`).then(res => res.json()),
     ])
       .then(([runsData, checkData]) => {
         if (runsData.runs) {
@@ -323,16 +373,27 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }:
     return colors[confidence as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
 
-  if (!sectionKey) return null;
+  if (!sectionKey && !check?.element_sections) return null;
+
+  const isElementCheck = check?.check_type === 'element' && sections.length > 1;
 
   return (
     <div className="h-full flex flex-col bg-white border-r border-gray-200">
       {/* Header */}
       <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
-        <h3 className="text-base font-semibold text-gray-900">Code Section Details</h3>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-gray-900">
+            {isElementCheck
+              ? `${check?.element_group_name || 'Element'} Check`
+              : 'Code Section Details'}
+          </h3>
+          {isElementCheck && (
+            <div className="text-xs text-gray-500 mt-0.5">{sections.length} related sections</div>
+          )}
+        </div>
         <button
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 transition-colors"
+          className="text-gray-400 hover:text-gray-600 transition-colors ml-2 flex-shrink-0"
           aria-label="Close panel"
         >
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -345,6 +406,27 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }:
           </svg>
         </button>
       </div>
+
+      {/* Section Tabs for Element Checks */}
+      {isElementCheck && (
+        <div className="px-2 py-2 border-b bg-gray-50 flex-shrink-0 overflow-x-auto">
+          <div className="flex gap-1">
+            {sections.map((sec, idx) => (
+              <button
+                key={sec.key}
+                onClick={() => setActiveSectionIndex(idx)}
+                className={`px-3 py-1.5 text-xs font-medium rounded whitespace-nowrap transition-colors ${
+                  idx === activeSectionIndex
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                }`}
+              >
+                {sec.number}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
@@ -446,8 +528,8 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }:
                         manualOverride === 'compliant'
                           ? 'bg-green-50 border-green-200 text-green-800'
                           : manualOverride === 'non_compliant'
-                          ? 'bg-red-50 border-red-200 text-red-800'
-                          : 'bg-gray-50 border-gray-200 text-gray-800'
+                            ? 'bg-red-50 border-red-200 text-red-800'
+                            : 'bg-gray-50 border-gray-200 text-gray-800'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -456,8 +538,8 @@ export function CodeDetailPanel({ checkId, sectionKey, onClose, onCheckUpdate }:
                           {manualOverride === 'compliant'
                             ? 'COMPLIANT'
                             : manualOverride === 'non_compliant'
-                            ? 'NON-COMPLIANT'
-                            : 'NOT APPLICABLE'}
+                              ? 'NON-COMPLIANT'
+                              : 'NOT APPLICABLE'}
                         </span>
                         <button
                           onClick={handleClearOverride}

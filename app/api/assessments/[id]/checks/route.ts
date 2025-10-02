@@ -5,21 +5,49 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search');
+  const elementGroup = searchParams.get('element_group'); // e.g., 'doors', 'bathrooms', 'kitchens'
   const supabase = supabaseAdmin();
 
   try {
-    const query = supabase.from('checks').select('*').eq('assessment_id', id);
+    let query = supabase.from('checks').select('*').eq('assessment_id', id);
+
+    // Filter by element group if specified
+    if (elementGroup) {
+      // Get the element_group_id for this slug
+      const { data: group } = await supabase
+        .from('element_groups')
+        .select('id')
+        .eq('slug', elementGroup)
+        .single();
+
+      if (group) {
+        query = query.eq('element_group_id', group.id);
+      }
+    }
 
     // Add full-text search if search query provided
     if (search && search.trim()) {
       console.log('[SEARCH] Query:', search.trim(), 'Assessment ID:', id);
       const searchPattern = search.trim().toLowerCase();
 
-      // Get all checks for this assessment
-      const { data: allChecksData, error: checksError } = await supabase
-        .from('checks')
-        .select('*')
-        .eq('assessment_id', id);
+      // Build base query for checks
+      let checksQuery = supabase.from('checks').select('*').eq('assessment_id', id);
+
+      // Apply element group filter to search as well
+      if (elementGroup) {
+        const { data: group } = await supabase
+          .from('element_groups')
+          .select('id')
+          .eq('slug', elementGroup)
+          .single();
+
+        if (group) {
+          checksQuery = checksQuery.eq('element_group_id', group.id);
+        }
+      }
+
+      // Get all checks for this assessment (with optional element filter)
+      const { data: allChecksData, error: checksError } = await checksQuery;
 
       if (checksError) {
         console.error('[SEARCH] Checks error:', checksError);
@@ -38,11 +66,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log('[SEARCH] Checks matching titles/numbers:', checksMatchingCheckFields.length);
 
-      // Get sections that match the search pattern
+      // Get sections that match the search pattern (search in text field only, paragraphs is JSONB)
       const { data: matchingSections, error: sectionsError } = await supabase
         .from('sections')
         .select('key')
-        .or(`text.ilike.%${search.trim()}%,paragraphs::text.ilike.%${search.trim()}%`);
+        .ilike('text', `%${searchPattern}%`);
 
       if (sectionsError) {
         console.error('[SEARCH] Sections error:', sectionsError);
