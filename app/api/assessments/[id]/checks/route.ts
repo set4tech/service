@@ -12,43 +12,65 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Add full-text search if search query provided
     if (search && search.trim()) {
-      // Join with sections table and search across section content
-      const { data: searchResults, error: searchError } = await supabase
-        .from('checks')
-        .select(
-          `
-          *,
-          section:sections!checks_code_section_key_fkey(text, paragraphs)
-        `
-        )
-        .eq('assessment_id', id)
-        .or(
-          `code_section_number.ilike.%${search.trim()}%,code_section_title.ilike.%${search.trim()}%`
-        );
-
-      if (searchError) throw searchError;
-
-      // Additional filtering for section text/paragraphs content
+      console.log('[SEARCH] Query:', search.trim(), 'Assessment ID:', id);
       const searchPattern = search.trim().toLowerCase();
-      const allChecks = (searchResults || []).filter((check: any) => {
-        const matchesCheckFields =
-          check.code_section_number?.toLowerCase().includes(searchPattern) ||
-          check.code_section_title?.toLowerCase().includes(searchPattern);
 
-        if (matchesCheckFields) return true;
+      // Get all checks for this assessment
+      const { data: allChecksData, error: checksError } = await supabase
+        .from('checks')
+        .select('*')
+        .eq('assessment_id', id);
 
-        // Check section text and paragraphs
-        const section = check.section;
-        if (!section) return false;
+      if (checksError) {
+        console.error('[SEARCH] Checks error:', checksError);
+        throw checksError;
+      }
 
-        const matchesText = section.text?.toLowerCase().includes(searchPattern);
-        const matchesParagraphs = section.paragraphs?.some((p: any) => {
-          const text = typeof p === 'string' ? p : p.text || '';
-          return text.toLowerCase().includes(searchPattern);
-        });
+      console.log('[SEARCH] Found checks:', allChecksData?.length);
 
-        return matchesText || matchesParagraphs;
-      });
+      // First filter by check fields (fast, in-memory)
+      const checksMatchingCheckFields =
+        allChecksData?.filter(
+          (check: any) =>
+            check.code_section_number?.toLowerCase().includes(searchPattern) ||
+            check.code_section_title?.toLowerCase().includes(searchPattern)
+        ) || [];
+
+      console.log('[SEARCH] Checks matching titles/numbers:', checksMatchingCheckFields.length);
+
+      // Get sections that match the search pattern
+      const { data: matchingSections, error: sectionsError } = await supabase
+        .from('sections')
+        .select('key')
+        .or(`text.ilike.%${search.trim()}%,paragraphs::text.ilike.%${search.trim()}%`);
+
+      if (sectionsError) {
+        console.error('[SEARCH] Sections error:', sectionsError);
+        throw sectionsError;
+      }
+
+      console.log('[SEARCH] Sections matching content:', matchingSections?.length);
+
+      // Create a set of matching section keys
+      const matchingSectionKeys = new Set(matchingSections?.map((s: any) => s.key) || []);
+
+      // Get checks that reference matching sections
+      const checksMatchingSectionContent =
+        allChecksData?.filter((check: any) => matchingSectionKeys.has(check.code_section_key)) ||
+        [];
+
+      console.log('[SEARCH] Checks matching section content:', checksMatchingSectionContent.length);
+
+      // Combine both sets (unique checks)
+      const allMatchingCheckIds = new Set([
+        ...checksMatchingCheckFields.map((c: any) => c.id),
+        ...checksMatchingSectionContent.map((c: any) => c.id),
+      ]);
+
+      const allChecks =
+        allChecksData?.filter((check: any) => allMatchingCheckIds.has(check.id)) || [];
+
+      console.log('[SEARCH] Total unique matches:', allChecks.length);
 
       // Group and return
       const checks = allChecks.reduce((acc: any[], check: any) => {
