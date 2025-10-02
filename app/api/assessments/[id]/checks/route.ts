@@ -9,7 +9,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = supabaseAdmin();
 
   try {
-    let query = supabase.from('checks').select('*').eq('assessment_id', id);
+    // Join with element_groups to get element_group_name
+    let query = supabase.from('checks').select('*, element_groups(name)').eq('assessment_id', id);
 
     // Filter by element group if specified
     if (elementGroup) {
@@ -30,8 +31,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       console.log('[SEARCH] Query:', search.trim(), 'Assessment ID:', id);
       const searchPattern = search.trim().toLowerCase();
 
-      // Build base query for checks
-      let checksQuery = supabase.from('checks').select('*').eq('assessment_id', id);
+      // Build base query for checks with element_groups join
+      let checksQuery = supabase
+        .from('checks')
+        .select('*, element_groups(name)')
+        .eq('assessment_id', id);
 
       // Apply element group filter to search as well
       if (elementGroup) {
@@ -56,9 +60,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log('[SEARCH] Found checks:', allChecksData?.length);
 
+      // Map element_groups.name to element_group_name
+      const mappedChecks = (allChecksData || []).map((check: any) => ({
+        ...check,
+        element_group_name: check.element_groups?.name || null,
+        element_groups: undefined, // Remove nested object
+      }));
+
       // First filter by check fields (fast, in-memory)
       const checksMatchingCheckFields =
-        allChecksData?.filter(
+        mappedChecks.filter(
           (check: any) =>
             check.code_section_number?.toLowerCase().includes(searchPattern) ||
             check.code_section_title?.toLowerCase().includes(searchPattern)
@@ -84,8 +95,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       // Get checks that reference matching sections
       const checksMatchingSectionContent =
-        allChecksData?.filter((check: any) => matchingSectionKeys.has(check.code_section_key)) ||
-        [];
+        mappedChecks.filter((check: any) => matchingSectionKeys.has(check.code_section_key)) || [];
 
       console.log('[SEARCH] Checks matching section content:', checksMatchingSectionContent.length);
 
@@ -96,7 +106,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ]);
 
       const allChecks =
-        allChecksData?.filter((check: any) => allMatchingCheckIds.has(check.id)) || [];
+        mappedChecks.filter((check: any) => allMatchingCheckIds.has(check.id)) || [];
 
       console.log('[SEARCH] Total unique matches:', allChecks.length);
 
@@ -124,11 +134,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
+    // Map element_groups.name to element_group_name
+    const mappedChecks = (allChecks || []).map((check: any) => ({
+      ...check,
+      element_group_name: check.element_groups?.name || null,
+      element_groups: undefined, // Remove nested object
+    }));
+
     // Group checks by parent - instances will be nested under their parent
-    const checks = (allChecks || []).reduce((acc: any[], check: any) => {
+    const checks = mappedChecks.reduce((acc: any[], check: any) => {
       if (!check.parent_check_id) {
         // This is a parent check - find all its instances
-        const instances = (allChecks || []).filter((c: any) => c.parent_check_id === check.id);
+        const instances = mappedChecks.filter((c: any) => c.parent_check_id === check.id);
         acc.push({
           ...check,
           instances,

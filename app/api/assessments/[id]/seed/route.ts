@@ -270,6 +270,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           const sectionKeys = groupMappings?.map(m => m.section_key) || [];
 
           if (sectionKeys.length > 0) {
+            // Check if template already exists for this element group
+            const { data: existingTemplate } = await supabase
+              .from('checks')
+              .select('id')
+              .eq('assessment_id', id)
+              .eq('element_group_id', group.id)
+              .eq('instance_number', 0)
+              .eq('check_type', 'element')
+              .limit(1);
+
+            if (existingTemplate && existingTemplate.length > 0) {
+              console.log(`[Seed API] Template already exists for ${group.name}, skipping`);
+              continue;
+            }
+
             // Create template check for this element group
             await supabase.from('checks').insert({
               assessment_id: id,
