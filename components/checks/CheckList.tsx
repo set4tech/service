@@ -8,13 +8,17 @@ export function CheckList({
   checkMode = 'section',
   activeCheckId,
   onSelect,
+  assessmentId,
 }: {
   checks: any[];
   checkMode?: 'section' | 'element';
   activeCheckId: string | null;
   onSelect: (id: string) => void;
+  assessmentId?: string;
 }) {
   const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand first section by default
     if (checks.length > 0) {
@@ -26,20 +30,49 @@ export function CheckList({
   const [expandedInstances, setExpandedInstances] = useState<Set<string>>(new Set());
   const [cloneModalCheck, setCloneModalCheck] = useState<any | null>(null);
 
-  const filtered = useMemo(() => {
-    // Filter out checks marked as not_applicable
-    const filteredChecks = checks.filter(c => c.manual_override !== 'not_applicable');
+  // Debounced search effect
+  useEffect(() => {
+    const q = query.trim();
 
-    // Apply search query
-    const q = query.trim().toLowerCase();
-    if (!q) return filteredChecks;
-    return filteredChecks.filter(
-      c =>
-        c.check_name?.toLowerCase().includes(q) ||
-        c.code_section_number?.toLowerCase().includes(q) ||
-        c.code_section_title?.toLowerCase().includes(q)
-    );
-  }, [query, checks]);
+    // If no query, clear search results
+    if (!q) {
+      setSearchResults(null);
+      return;
+    }
+
+    // Only do server-side search if assessmentId is provided
+    if (!assessmentId) {
+      return;
+    }
+
+    // Debounce search
+    setSearching(true);
+    const timeoutId = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/assessments/${assessmentId}/checks?search=${encodeURIComponent(q)}`
+        );
+        if (response.ok) {
+          const results = await response.json();
+          setSearchResults(results);
+        }
+      } catch (error) {
+        console.error('Search failed:', error);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [query, assessmentId]);
+
+  const filtered = useMemo(() => {
+    // Use search results if available, otherwise use passed checks
+    const sourceChecks = searchResults !== null ? searchResults : checks;
+
+    // Filter out checks marked as not_applicable
+    return sourceChecks.filter(c => c.manual_override !== 'not_applicable');
+  }, [searchResults, checks]);
 
   // Group checks hierarchically
   const groupedChecks = useMemo(() => {
@@ -143,12 +176,33 @@ export function CheckList({
     <div className="flex flex-col h-full">
       {/* Search */}
       <div className="p-3 border-b border-gray-200">
-        <input
-          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="Search checks..."
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-        />
+        <div className="relative">
+          <input
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Search checks and section content..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+          {searching && (
+            <div className="absolute right-3 top-2.5 text-gray-400">
+              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Check List */}

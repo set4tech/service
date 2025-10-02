@@ -11,14 +11,15 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const codeId = searchParams.get('codeId');
   const includeNonAssessable = searchParams.get('include_non_assessable') === 'true';
+  const search = searchParams.get('search');
 
   if (!codeId) {
     return NextResponse.json({ error: 'codeId is required' }, { status: 400 });
   }
 
   try {
-    // Check cache first (cache key includes filter option)
-    const cacheKey = `${codeId}:${includeNonAssessable}`;
+    // Check cache first (cache key includes filter option and search query)
+    const cacheKey = `${codeId}:${includeNonAssessable}:${search || ''}`;
     if (sectionsCache.has(cacheKey)) {
       return NextResponse.json(sectionsCache.get(cacheKey));
     }
@@ -63,6 +64,14 @@ export async function GET(request: NextRequest) {
 
     if (!includeNonAssessable) {
       query = query.eq('drawing_assessable', true);
+    }
+
+    // Add full-text search if search query provided
+    if (search && search.trim()) {
+      const searchPattern = `%${search.trim()}%`;
+      query = query.or(
+        `number.ilike.${searchPattern},title.ilike.${searchPattern},text.ilike.${searchPattern},paragraphs::text.ilike.${searchPattern}`
+      );
     }
 
     const { data: sections, error: sectionsError } = await query.order('number');

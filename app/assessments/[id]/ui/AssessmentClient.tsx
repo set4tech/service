@@ -412,6 +412,7 @@ export default function AssessmentClient({
             checkMode={checkMode}
             activeCheckId={activeCheckId}
             onSelect={handleCheckSelect}
+            assessmentId={assessment.id}
           />
         </div>
 
