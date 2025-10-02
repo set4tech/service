@@ -215,13 +215,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           code_section_title: s.title,
           check_name: `${s.number} - ${s.title}`,
           status: 'pending',
+          parent_check_id: null,
+          instance_number: 1,
         }));
 
-        const { error: insertError } = await supabase.from('checks').insert(checkRows);
+        const { error: insertError } = await supabase.from('checks').upsert(checkRows, {
+          onConflict: 'assessment_id,code_section_number,parent_check_id,instance_number',
+          ignoreDuplicates: true,
+        });
         if (insertError) {
           console.error('[Seed API] Failed to insert checks:', insertError);
         } else {
-          console.log('[Seed API] Successfully inserted', checkRows.length, 'checks');
+          console.log('[Seed API] Successfully inserted/ignored', checkRows.length, 'checks');
         }
       }
 
@@ -388,9 +393,14 @@ async function processRemainingBatches(
           code_section_title: s.title,
           check_name: `${s.number} - ${s.title}`,
           status: 'pending',
+          parent_check_id: null,
+          instance_number: 1,
         }));
 
-        await supabase.from('checks').insert(checkRows);
+        await supabase.from('checks').upsert(checkRows, {
+          onConflict: 'assessment_id,code_section_number,parent_check_id,instance_number',
+          ignoreDuplicates: true,
+        });
       }
 
       const logRows = batch.map((s, idx) => ({
