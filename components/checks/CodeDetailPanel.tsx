@@ -552,12 +552,12 @@ export function CodeDetailPanel({
                     </div>
                   )}
 
-                  {/* Four-button toggle */}
+                  {/* Three-button toggle */}
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-2">
                       Set Compliance Status
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         onClick={() => setManualOverride('compliant')}
                         disabled={savingOverride}
@@ -590,17 +590,6 @@ export function CodeDetailPanel({
                         }`}
                       >
                         Not Applicable
-                      </button>
-                      <button
-                        onClick={() => setManualOverride(null)}
-                        disabled={savingOverride}
-                        className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
-                          manualOverride === null
-                            ? 'bg-blue-100 border-blue-400 text-blue-800'
-                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        Clear
                       </button>
                     </div>
                   </div>
