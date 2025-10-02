@@ -296,20 +296,43 @@ export function CheckList({
                               {checkMode === 'element' ? (
                                 // Element mode: show instance label and screenshot count
                                 <>
-                                  <div className="flex items-start">
-                                    <span
-                                      className={clsx(
-                                        'font-medium text-sm mr-2',
-                                        check.instance_number === 0
-                                          ? 'text-gray-500 italic'
-                                          : 'text-gray-900'
-                                      )}
-                                    >
-                                      {check.instance_number === 0
-                                        ? 'Template (click + to create instances)'
-                                        : check.instance_label ||
+                                  <div className="flex items-start gap-1">
+                                    {check.instance_number === 0 ? (
+                                      <>
+                                        <span className="text-sm text-blue-600 font-medium">
+                                          Click + to add your first{' '}
+                                          {check.element_group_name?.toLowerCase() || 'item'}
+                                        </span>
+                                        <button
+                                          onClick={e => {
+                                            e.stopPropagation();
+                                          }}
+                                          className="group relative"
+                                          title="Element-based checking"
+                                        >
+                                          <svg
+                                            width="14"
+                                            height="14"
+                                            className="text-gray-400 hover:text-gray-600"
+                                            fill="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+                                          </svg>
+                                          <div className="hidden group-hover:block absolute left-0 top-6 w-64 bg-gray-900 text-white text-xs rounded p-2 shadow-lg z-50">
+                                            Each {check.element_group_name?.toLowerCase()} you add
+                                            will be assessed against all{' '}
+                                            {check.element_sections?.length || 0} related code
+                                            sections in one check.
+                                          </div>
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <span className="font-medium text-sm text-gray-900">
+                                        {check.instance_label ||
                                           `Instance ${check.instance_number}`}
-                                    </span>
+                                      </span>
+                                    )}
                                     {check.screenshots?.length > 0 && (
                                       <span className="text-xs text-gray-500">
                                         ({check.screenshots.length}{' '}
@@ -326,15 +349,19 @@ export function CheckList({
                                         Manual
                                       </span>
                                     )}
-                                    {check.element_sections && (
+                                    {check.element_sections && check.instance_number === 0 ? (
+                                      <span className="text-xs text-gray-500 italic">
+                                        Covers {check.element_sections.length} code sections
+                                      </span>
+                                    ) : check.element_sections ? (
                                       <span className="text-xs text-gray-500">
                                         {check.element_sections.length} sections
                                       </span>
-                                    )}
+                                    ) : null}
                                     {hasInstances && (
                                       <span className="text-xs text-blue-600 font-medium">
                                         {check.instances.length}{' '}
-                                        {check.instances.length === 1 ? 'instance' : 'instances'}
+                                        {check.instances.length === 1 ? 'added' : 'added'}
                                       </span>
                                     )}
                                   </div>

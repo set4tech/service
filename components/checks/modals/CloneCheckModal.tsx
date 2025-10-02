@@ -15,6 +15,14 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
   const [isCloning, setIsCloning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Detect if this is an element check based on check name pattern
+  const isElementCheck =
+    checkName.includes(' - Template') ||
+    checkName.includes('Bathrooms') ||
+    checkName.includes('Doors') ||
+    checkName.includes('Kitchens');
+  const elementType = checkName.split(' ')[0]; // e.g., "Bathrooms", "Doors", "Kitchens"
+
   const handleClone = async () => {
     setIsCloning(true);
     setError(null);
@@ -50,36 +58,58 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Create Check Instance</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            {isElementCheck ? `Add New ${elementType.slice(0, -1)}` : 'Create Check Instance'}
+          </h3>
         </div>
 
         {/* Body */}
         <div className="px-6 py-4 space-y-4">
-          <div>
-            <div className="text-sm text-gray-600 mb-3">
-              <span className="font-medium">Check:</span> {checkName}
+          {isElementCheck ? (
+            <div>
+              <p className="text-sm text-gray-700 mb-2">
+                Add a specific {elementType.toLowerCase().slice(0, -1)} from your project to assess
+                for compliance.
+              </p>
+              <p className="text-xs text-gray-500">
+                Each {elementType.toLowerCase().slice(0, -1)} will be checked against all relevant
+                code sections in one assessment.
+              </p>
             </div>
-            <p className="text-xs text-gray-500">
-              Create a new instance to assess the same code section against a different element
-              (e.g., another door, window, or area).
-            </p>
-          </div>
+          ) : (
+            <div>
+              <div className="text-sm text-gray-600 mb-3">
+                <span className="font-medium">Check:</span> {checkName}
+              </div>
+              <p className="text-xs text-gray-500">
+                Create a new instance to assess the same code section against a different element
+                (e.g., another door, window, or area).
+              </p>
+            </div>
+          )}
 
           <div>
             <label htmlFor="instanceLabel" className="block text-sm font-medium text-gray-700 mb-1">
-              Instance Label <span className="text-gray-400">(optional)</span>
+              {isElementCheck ? 'Label' : 'Instance Label'}{' '}
+              <span className="text-gray-400">(optional)</span>
             </label>
             <input
               id="instanceLabel"
               type="text"
               value={instanceLabel}
               onChange={e => setInstanceLabel(e.target.value)}
-              placeholder="e.g., Door 2 - North Entrance"
+              placeholder={
+                isElementCheck
+                  ? `e.g., ${elementType === 'Bathrooms' ? "Women's Restroom - 1st Floor" : elementType === 'Doors' ? 'Main Entrance Door' : 'Staff Kitchen'}`
+                  : 'e.g., Door 2 - North Entrance'
+              }
               disabled={isCloning}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Leave blank to auto-generate (e.g., &quot;Instance 2&quot;)
+              {isElementCheck
+                ? 'Give this a descriptive name to identify it in your project'
+                : 'Leave blank to auto-generate (e.g., "Instance 2")'}
             </p>
           </div>
 
@@ -118,7 +148,11 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
             disabled={isCloning}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
           >
-            {isCloning ? 'Creating...' : 'Create Instance'}
+            {isCloning
+              ? 'Adding...'
+              : isElementCheck
+                ? `Add ${elementType.slice(0, -1)}`
+                : 'Create Instance'}
           </button>
         </div>
       </div>

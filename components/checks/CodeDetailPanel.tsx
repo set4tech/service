@@ -439,6 +439,32 @@ export function CodeDetailPanel({
           </div>
         )}
 
+        {/* Element Check Info Banner */}
+        {isElementCheck && !loading && (
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start gap-2">
+              <svg
+                width="20"
+                height="20"
+                className="text-blue-600 flex-shrink-0 mt-0.5"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+              </svg>
+              <div>
+                <div className="text-sm font-semibold text-blue-900 mb-1">Element-Based Check</div>
+                <div className="text-xs text-blue-800 leading-relaxed">
+                  This {check?.element_group_name?.toLowerCase()} check evaluates{' '}
+                  <span className="font-semibold">{sections.length} code sections</span> together in
+                  a single assessment. All requirements from these sections apply to this specific{' '}
+                  {check?.element_group_name?.toLowerCase()}.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {section && !loading && (
           <div className="space-y-6">
             {/* Section Header */}
@@ -762,7 +788,11 @@ export function CodeDetailPanel({
                     disabled={assessing}
                     className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
                   >
-                    {assessing ? 'Analyzing...' : 'Assess Compliance'}
+                    {assessing
+                      ? 'Analyzing...'
+                      : isElementCheck
+                        ? `Assess All ${sections.length} Sections`
+                        : 'Assess Compliance'}
                   </button>
 
                   {/* Assessment Error */}
