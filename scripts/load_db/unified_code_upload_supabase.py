@@ -181,6 +181,8 @@ def upload_items_to_supabase(
                     "item_type": item["item_type"],
                     "code_type": code_type,
                     "paragraphs": item.get("paragraphs", []),
+                    "tables": item.get("tables", []),
+                    "figures": item.get("figures", []),
                     "source_url": item.get("source_url", ""),
                     "source_page": item.get("source_page"),
                     "hash": sha256_of(
@@ -320,6 +322,8 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
                 "parent_key": None,
                 "paragraphs": [],
                 "refers_to": [],
+                "tables": [],
+                "figures": section.get("figures", []),
                 "source_url": section.get("source_url", ""),
             }
         )
@@ -357,6 +361,8 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
                     "parent_key": parent_key,
                     "paragraphs": paragraphs,
                     "refers_to": refers_to,
+                    "tables": subsection.get("tables", []),
+                    "figures": subsection.get("figures", []),
                     "source_url": subsection.get("source_url", ""),
                 }
             )
