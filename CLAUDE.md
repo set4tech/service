@@ -15,14 +15,13 @@ This repository contains the main **service** application - a Next.js 15.5.3 app
   - Tailwind CSS 3.4.17
   - Vercel Serverless Functions
   - Supabase (PostgreSQL)
-  - Neo4j (code assembly graphs)
   - AWS S3 (PDF/screenshot storage)
 
 ### Important Notes
 
 - This is the ONLY Next.js application in the repository
 - All new features should be developed in this root service app
-- Uses both Supabase (relational data) and Neo4j (code relationships)
+- Uses Supabase PostgreSQL for all data storage
 
 ## Development Commands
 
@@ -60,8 +59,7 @@ npm run test:coverage
 │   │   ├── screenshots/          # Screenshot upload & presigning
 │   │   ├── projects/             # Project management
 │   │   ├── customers/            # Customer management
-│   │   ├── element-groups/       # Element-based checking
-│   │   └── neo4j/                # Code assembly (Neo4j)
+│   │   └── element-groups/       # Element-based checking
 │   ├── assessments/[id]/         # Assessment detail page
 │   ├── projects/                  # Projects list & creation
 │   └── customers/                 # Customers list
@@ -77,7 +75,6 @@ npm run test:coverage
 │   │   ├── types.ts              # AI response types
 │   │   └── constants.ts          # Default models/configs
 │   ├── supabase-server.ts        # Supabase client
-│   ├── neo4j.ts                  # Neo4j driver
 │   ├── s3.ts                     # S3 upload/presign
 │   └── prompt.ts                 # Prompt templating
 ├── scripts/                       # Data processing & utilities
@@ -224,7 +221,6 @@ See `.envrc` for required environment variables including:
 - **Supabase**: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
 - **AWS S3**: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`
 - **AI Services**: `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`
-- **Neo4j**: `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`
 
 ## Development Patterns
 

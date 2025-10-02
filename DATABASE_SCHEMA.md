@@ -251,7 +251,6 @@ Individual building projects for customers.
 - `building_address`: Building location
 - `building_type`: Type of building (e.g., "Commercial", "Residential")
 - `pdf_url`: S3 URL to architectural drawings PDF
-- `code_assembly_id`: Neo4j assembly ID for applicable codes
 - `selected_code_ids`: Array of code IDs to assess against
 - `status`: Project status ('in_progress', 'completed', etc.)
 - `extracted_variables`: JSONB of building metadata extracted from drawings

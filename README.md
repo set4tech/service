@@ -209,7 +209,6 @@ scripts/
 
 - **Frontend**: Next.js 15 (App Router), React 19, TypeScript
 - **Database**: Supabase (PostgreSQL)
-- **Graph DB**: Neo4j (code relationships)
 - **Storage**: AWS S3 (PDFs, screenshots)
 - **AI**: Google Gemini 2.5 Pro, OpenAI GPT-4o, Anthropic Claude Opus 4
 - **PDF**: PDF.js for rendering and annotation
@@ -271,11 +270,6 @@ See `DATABASE_SCHEMA.md` for complete schema documentation.
 Always use the Supabase pooler connection (see CLAUDE.md for details).
 
 ## Architecture Decisions
-
-### Why Two Database Systems?
-
-- **PostgreSQL/Supabase**: Relational data (projects, checks, assessments)
-- **Neo4j**: Code relationship graphs (section dependencies, assemblies)
 
 ### Why Multiple AI Providers?
 

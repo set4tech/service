@@ -39,13 +39,13 @@ export async function GET(request: NextRequest) {
       code => code.id === 'ICC+CBC_Chapter11A+2025+CA' || code.id === 'ICC+CBC_Chapter11B+2025+CA'
     );
 
-    // Map Supabase fields to Neo4j format for backward compatibility
+    // Map Supabase fields to expected format
     const codes: CodeNode[] = filteredData.map(code => ({
       id: code.id,
-      name: code.title, // title → name
-      publisher: code.provider, // provider → publisher
+      name: code.title,
+      publisher: code.provider,
       jurisdiction: code.jurisdiction,
-      year: code.version, // version → year
+      year: code.version,
     }));
 
     return NextResponse.json(codes);
