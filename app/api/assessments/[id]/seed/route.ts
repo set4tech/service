@@ -96,14 +96,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    // Filter sections by chapter if needed, and exclude element-mapped sections
+    // Filter sections by chapter if needed, and exclude element-mapped sections and general/scope sections
     const filteredSections =
       chapterFilters.length > 0
         ? allSections.filter(
             s =>
-              chapterFilters.some(filter => filter.test(s.number)) && !elementSectionKeys.has(s.key)
+              chapterFilters.some(filter => filter.test(s.number)) &&
+              !elementSectionKeys.has(s.key) &&
+              !/(general|scope)/i.test(s.title)
           )
-        : allSections.filter(s => !elementSectionKeys.has(s.key));
+        : allSections.filter(
+            s => !elementSectionKeys.has(s.key) && !/(general|scope)/i.test(s.title)
+          );
 
     if (filteredSections.length === 0) {
       return NextResponse.json(
