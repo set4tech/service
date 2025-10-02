@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { getCodeAssembly } from '@/lib/neo4j';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: checkId } = await params;
@@ -10,7 +9,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // 1. Fetch check from DB
     const { data: check, error: checkError } = await supabase
       .from('checks')
-      .select('*, assessments(project_id, projects(extracted_variables, code_assembly_id))')
+      .select('*, assessments(project_id, projects(extracted_variables))')
       .eq('id', checkId)
       .single();
 
@@ -22,31 +21,34 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const assessment = check.assessments as any;
     const project = assessment?.projects;
     const buildingContext = project?.extracted_variables || {};
-    const codeAssemblyId = project?.code_assembly_id;
 
-    // 3. Fetch code section text from Neo4j
-    let codeSectionText = '';
+    // 3. Fetch code section text from Supabase
     let codeSectionData: any = null;
 
-    if (check.code_section_key && codeAssemblyId) {
-      const assembly = await getCodeAssembly(codeAssemblyId);
-      const section = assembly.sections?.find((s: any) => s.key === check.code_section_key);
+    if (check.code_section_key) {
+      const { data: section } = await supabase
+        .from('sections')
+        .select('key, number, title, paragraphs')
+        .eq('key', check.code_section_key)
+        .single();
+
       if (section) {
-        codeSectionText = section.fullText || '';
+        const paragraphs = section.paragraphs || [];
+        const text = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
         codeSectionData = {
           number: section.number || check.code_section_number || '',
           title: section.title || check.code_section_title || '',
-          text: codeSectionText,
+          text,
         };
       }
     }
 
-    // Fallback if Neo4j doesn't have the section
+    // Fallback if section not found
     if (!codeSectionData) {
       codeSectionData = {
         number: check.code_section_number || '',
         title: check.code_section_title || '',
-        text: 'Section text not available from code assembly',
+        text: 'Section text not available',
       };
     }
 

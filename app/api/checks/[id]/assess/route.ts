@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { runAI } from '@/lib/ai/analysis';
-import { getCodeAssembly } from '@/lib/neo4j';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -157,7 +156,9 @@ Return your response as a JSON object with this exact structure:
 
       await supabase.from('analysis_runs').insert(analysisRun);
 
-      console.log(`[Background] Completed batch ${batchNum}/${batches.length} for check ${checkId}`);
+      console.log(
+        `[Background] Completed batch ${batchNum}/${batches.length} for check ${checkId}`
+      );
     } catch (error) {
       console.error(`[Background] Error processing batch ${batchNum}:`, error);
       // Continue with next batch even if this one fails
@@ -213,22 +214,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const assessment = check.assessments as any;
     const project = assessment?.projects;
     const buildingContext = project?.extracted_variables || {};
-    const codeAssemblyId = project?.code_assembly_id;
 
-    // 3. Fetch code sections from Neo4j
-    const sectionKeys = check.element_sections || (check.code_section_key ? [check.code_section_key] : []);
+    // 3. Fetch code sections from Supabase
+    const sectionKeys =
+      check.element_sections || (check.code_section_key ? [check.code_section_key] : []);
     const codeSections: any[] = [];
 
-    if (sectionKeys.length > 0 && codeAssemblyId) {
-      const assembly = await getCodeAssembly(codeAssemblyId);
-      for (const key of sectionKeys) {
-        const section = assembly.sections?.find((s: any) => s.key === key);
-        if (section) {
+    if (sectionKeys.length > 0) {
+      const { data: sections, error: sectionsError } = await supabase
+        .from('sections')
+        .select('key, number, title, paragraphs')
+        .in('key', sectionKeys);
+
+      if (!sectionsError && sections) {
+        for (const section of sections) {
+          const paragraphs = section.paragraphs || [];
+          const text = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
+
           codeSections.push({
-            key,
+            key: section.key,
             number: section.number || '',
             title: section.title || '',
-            text: section.fullText || 'Section text not available',
+            text: text || 'Section text not available',
           });
         }
       }
@@ -239,7 +246,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         key: check.code_section_key || 'unknown',
         number: check.code_section_number || '',
         title: check.code_section_title || '',
-        text: 'Section text not available from code assembly',
+        text: 'Section text not available - no sections found',
       });
     }
 
@@ -399,9 +406,10 @@ Return your response as a JSON object with this exact structure:
       batchGroupId,
       totalBatches: batches.length,
       firstBatchResult: savedRun,
-      message: batches.length > 1
-        ? `First batch complete. Processing ${batches.length - 1} more batches in background.`
-        : 'Assessment complete.',
+      message:
+        batches.length > 1
+          ? `First batch complete. Processing ${batches.length - 1} more batches in background.`
+          : 'Assessment complete.',
     });
   } catch (error: any) {
     console.error('Assessment error:', error);
