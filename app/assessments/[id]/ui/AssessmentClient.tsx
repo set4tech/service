@@ -6,6 +6,7 @@ import Link from 'next/link';
 import clsx from 'clsx';
 import { CheckList } from '@/components/checks/CheckList';
 import { CodeDetailPanel } from '@/components/checks/CodeDetailPanel';
+import { ViolationsSummary } from '@/components/checks/ViolationsSummary';
 
 // Load PDF viewer only on client side - removes need for wrapper component
 const PDFViewer = dynamic(
@@ -32,10 +33,11 @@ export default function AssessmentClient({
   progress: _initialProgress,
 }: Props) {
   const [checks, setChecks] = useState(initialChecks);
-  const [checkMode, setCheckMode] = useState<'section' | 'element'>('section');
+  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>('section');
 
-  // Filter checks by mode
+  // Filter checks by mode (skip filtering for summary mode)
   const displayedChecks = useMemo(() => {
+    if (checkMode === 'summary') return checks;
     return checks.filter(c => {
       const type = c.check_type || 'section';
       return type === checkMode;
@@ -438,6 +440,17 @@ export default function AssessmentClient({
             >
               By Element
             </button>
+            <button
+              onClick={() => setCheckMode('summary')}
+              className={clsx(
+                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                checkMode === 'summary'
+                  ? 'bg-white shadow-sm text-gray-900'
+                  : 'text-gray-600 hover:text-gray-900'
+              )}
+            >
+              Summary
+            </button>
           </div>
 
           {/* Background Seeding Banner */}
@@ -475,14 +488,18 @@ export default function AssessmentClient({
 
         {/* Checks List */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <CheckList
-            checks={displayedChecks}
-            checkMode={checkMode}
-            activeCheckId={activeCheckId}
-            onSelect={handleCheckSelect}
-            assessmentId={assessment.id}
-            onCheckAdded={handleCheckAdded}
-          />
+          {checkMode === 'summary' ? (
+            <ViolationsSummary checks={checks} onCheckSelect={handleCheckSelect} />
+          ) : (
+            <CheckList
+              checks={displayedChecks}
+              checkMode={checkMode === 'section' ? 'section' : 'element'}
+              activeCheckId={activeCheckId}
+              onSelect={handleCheckSelect}
+              assessmentId={assessment.id}
+              onCheckAdded={handleCheckAdded}
+            />
+          )}
         </div>
       </div>
 
