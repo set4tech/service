@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import clsx from 'clsx';
 import { CheckList } from '@/components/checks/CheckList';
-import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 import { CodeDetailPanel } from '@/components/checks/CodeDetailPanel';
 
 // Load PDF viewer only on client side - removes need for wrapper component
@@ -471,13 +470,6 @@ export default function AssessmentClient({
             onCheckAdded={handleCheckAdded}
           />
         </div>
-
-        {/* Screenshots for Active Check */}
-        {activeCheck && activeCheck.screenshots?.length > 0 && (
-          <div className="border-t p-4 max-h-64 overflow-y-auto flex-shrink-0">
-            <ScreenshotGallery check={activeCheck} refreshKey={screenshotsChanged} />
-          </div>
-        )}
       </div>
 
       {/* Resize Handle for Checks Sidebar */}
@@ -500,6 +492,8 @@ export default function AssessmentClient({
           <CodeDetailPanel
             checkId={activeCheck?.id || null}
             sectionKey={activeCheck?.code_section_key || null}
+            activeCheck={activeCheck}
+            screenshotsRefreshKey={screenshotsChanged}
             onClose={() => setShowDetailPanel(false)}
             onCheckUpdate={async () => {
               if (activeCheck?.id) {

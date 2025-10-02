@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 
 interface CodeSection {
   key: string;
@@ -46,6 +47,8 @@ interface CodeDetailPanelProps {
   sectionKey: string | null;
   onClose: () => void;
   onCheckUpdate?: () => void; // Callback when check is updated
+  activeCheck?: any; // Active check object (for screenshots)
+  screenshotsRefreshKey?: number; // Key to trigger screenshot refresh
 }
 
 export function CodeDetailPanel({
@@ -53,6 +56,8 @@ export function CodeDetailPanel({
   sectionKey,
   onClose,
   onCheckUpdate,
+  activeCheck,
+  screenshotsRefreshKey,
 }: CodeDetailPanelProps) {
   const [check, setCheck] = useState<Check | null>(null);
   const [sections, setSections] = useState<CodeSection[]>([]);
@@ -373,9 +378,7 @@ export function CodeDetailPanel({
           const progress = Math.round((completed / total) * 100);
           setAssessmentProgress(progress);
           setAssessmentMessage(
-            inProgress
-              ? `Processing batch ${completed + 1}/${total}...`
-              : 'Assessment complete!'
+            inProgress ? `Processing batch ${completed + 1}/${total}...` : 'Assessment complete!'
           );
 
           // Update runs (only add new ones)
@@ -658,6 +661,13 @@ export function CodeDetailPanel({
             )}
           </div>
         )}
+
+        {/* Screenshots Section */}
+        {activeCheck && (
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <ScreenshotGallery check={activeCheck} refreshKey={screenshotsRefreshKey || 0} />
+          </div>
+        )}
       </div>
 
       {/* Assessment Controls - Static */}
@@ -909,7 +919,9 @@ export function CodeDetailPanel({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-600">{assessmentMessage}</span>
-                      <span className="text-gray-500 font-mono">{Math.round(assessmentProgress)}%</span>
+                      <span className="text-gray-500 font-mono">
+                        {Math.round(assessmentProgress)}%
+                      </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                       <div
