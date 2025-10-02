@@ -87,6 +87,9 @@ export function CodeDetailPanel({
   const [savingOverride, setSavingOverride] = useState(false);
   const [overrideError, setOverrideError] = useState<string | null>(null);
 
+  // Section tabs toggle state
+  const [showSectionTabs, setShowSectionTabs] = useState(false);
+
   // Load last selected model from localStorage
   useEffect(() => {
     const lastModel = localStorage.getItem('lastSelectedAIModel');
@@ -409,22 +412,51 @@ export function CodeDetailPanel({
 
       {/* Section Tabs for Element Checks */}
       {isElementCheck && (
-        <div className="px-2 py-2 border-b bg-gray-50 flex-shrink-0 overflow-x-auto">
-          <div className="flex gap-1">
-            {sections.map((sec, idx) => (
-              <button
-                key={sec.key}
-                onClick={() => setActiveSectionIndex(idx)}
-                className={`px-3 py-1.5 text-xs font-medium rounded whitespace-nowrap transition-colors ${
-                  idx === activeSectionIndex
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                }`}
-              >
-                {sec.number}
-              </button>
-            ))}
-          </div>
+        <div className="border-b bg-gray-50 flex-shrink-0">
+          {/* Toggle Button */}
+          <button
+            onClick={() => setShowSectionTabs(!showSectionTabs)}
+            className="w-full px-4 py-2 flex items-center justify-between hover:bg-gray-100 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-700">Code Sections</span>
+              <span className="text-xs text-gray-500">({sections.length})</span>
+            </div>
+            <svg
+              className={`w-4 h-4 text-gray-400 transition-transform ${showSectionTabs ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+
+          {/* Expandable Section List */}
+          {showSectionTabs && (
+            <div className="px-2 pb-2 max-h-48 overflow-y-auto">
+              <div className="space-y-1">
+                {sections.map((sec, idx) => (
+                  <button
+                    key={sec.key}
+                    onClick={() => setActiveSectionIndex(idx)}
+                    className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors text-left ${
+                      idx === activeSectionIndex
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                  >
+                    {sec.number}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -538,413 +570,411 @@ export function CodeDetailPanel({
                 No detailed content available for this section.
               </div>
             )}
-
-            {/* Manual Override Section */}
-            {checkId && (
-              <div className="border-t pt-6 mt-6">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  Manual Compliance Judgment
-                </div>
-
-                <div className="space-y-3">
-                  {/* Override Status Banner */}
-                  {manualOverride && (
-                    <div
-                      className={`px-3 py-2 rounded border ${
-                        manualOverride === 'compliant'
-                          ? 'bg-green-50 border-green-200 text-green-800'
-                          : manualOverride === 'non_compliant'
-                            ? 'bg-red-50 border-red-200 text-red-800'
-                            : 'bg-gray-50 border-gray-200 text-gray-800'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold">
-                          ✓ Manual Override:{' '}
-                          {manualOverride === 'compliant'
-                            ? 'COMPLIANT'
-                            : manualOverride === 'non_compliant'
-                              ? 'NON-COMPLIANT'
-                              : 'NOT APPLICABLE'}
-                        </span>
-                        <button
-                          onClick={handleClearOverride}
-                          disabled={savingOverride}
-                          className="text-xs underline hover:no-underline disabled:opacity-50"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Three-button toggle */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-2">
-                      Set Compliance Status
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        onClick={() => setManualOverride('compliant')}
-                        disabled={savingOverride}
-                        className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
-                          manualOverride === 'compliant'
-                            ? 'bg-green-100 border-green-400 text-green-800'
-                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        Compliant
-                      </button>
-                      <button
-                        onClick={() => setManualOverride('non_compliant')}
-                        disabled={savingOverride}
-                        className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
-                          manualOverride === 'non_compliant'
-                            ? 'bg-red-100 border-red-400 text-red-800'
-                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        Non-Compliant
-                      </button>
-                      <button
-                        onClick={() => setManualOverride('not_applicable')}
-                        disabled={savingOverride}
-                        className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
-                          manualOverride === 'not_applicable'
-                            ? 'bg-gray-100 border-gray-400 text-gray-800'
-                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        Not Applicable
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Optional note toggle */}
-                  {manualOverride && (
-                    <div>
-                      <button
-                        onClick={() => setShowOverrideNote(!showOverrideNote)}
-                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        {showOverrideNote ? '− Hide' : '+ Add'} Note
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Note textarea */}
-                  {showOverrideNote && manualOverride && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Reasoning (Optional)
-                      </label>
-                      <textarea
-                        value={manualOverrideNote}
-                        onChange={e => setManualOverrideNote(e.target.value)}
-                        disabled={savingOverride}
-                        placeholder="Explain why this check is compliant or non-compliant..."
-                        rows={3}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                      />
-                    </div>
-                  )}
-
-                  {/* Save button */}
-                  {manualOverride && (
-                    <button
-                      onClick={handleSaveOverride}
-                      disabled={savingOverride}
-                      className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
-                    >
-                      {savingOverride ? 'Saving...' : 'Save Manual Override'}
-                    </button>
-                  )}
-
-                  {/* Error message */}
-                  {overrideError && (
-                    <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
-                      {overrideError}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Assessment Section */}
-            {checkId && (
-              <div className="border-t pt-6 mt-6">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  AI Assessment
-                </div>
-
-                <div className="space-y-3">
-                  {/* Model Selector */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">AI Model</label>
-                    <select
-                      value={selectedModel}
-                      onChange={e => setSelectedModel(e.target.value)}
-                      disabled={assessing}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                    >
-                      <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                      <option value="claude-opus-4">Claude Opus 4</option>
-                      <option value="gpt-4o">GPT-4o</option>
-                    </select>
-                  </div>
-
-                  {/* View/Edit Prompt Section */}
-                  <div>
-                    <button
-                      onClick={handleViewPrompt}
-                      className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      {showPrompt ? '− Hide' : '📝 View/Edit'} Prompt
-                    </button>
-                  </div>
-
-                  {/* Prompt Display/Editor */}
-                  {showPrompt && (
-                    <div className="space-y-2">
-                      {loadingPrompt ? (
-                        <div className="text-xs text-gray-500">Loading prompt...</div>
-                      ) : (
-                        <>
-                          <div className="flex items-center justify-between">
-                            <label className="block text-xs font-medium text-gray-700">
-                              AI Prompt {customPrompt && '(Custom)'}
-                            </label>
-                            <div className="flex gap-2">
-                              {!isPromptEditing ? (
-                                <button
-                                  onClick={handleEditPrompt}
-                                  disabled={assessing}
-                                  className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-400"
-                                >
-                                  ✏️ Edit
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={handleResetPrompt}
-                                  disabled={assessing}
-                                  className="text-xs text-gray-600 hover:text-gray-700 font-medium disabled:text-gray-400"
-                                >
-                                  ↺ Reset
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <textarea
-                            value={isPromptEditing ? customPrompt : defaultPrompt}
-                            onChange={e => isPromptEditing && setCustomPrompt(e.target.value)}
-                            readOnly={!isPromptEditing}
-                            disabled={assessing}
-                            rows={12}
-                            className={`w-full px-3 py-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 font-mono ${
-                              isPromptEditing ? 'bg-yellow-50' : 'bg-gray-50'
-                            }`}
-                          />
-                          {isPromptEditing && (
-                            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                              ⚠️ Editing prompt - your changes will be used for the next assessment
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Extra Context Toggle */}
-                  <div>
-                    <button
-                      onClick={() => setShowExtraContext(!showExtraContext)}
-                      className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      {showExtraContext ? '− Hide' : '+ Add'} Extra Context
-                    </button>
-                  </div>
-
-                  {/* Extra Context Textarea */}
-                  {showExtraContext && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Additional Context (Optional)
-                      </label>
-                      <textarea
-                        value={extraContext}
-                        onChange={e => setExtraContext(e.target.value)}
-                        disabled={assessing}
-                        placeholder="Add any additional context or specific questions..."
-                        rows={3}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                      />
-                    </div>
-                  )}
-
-                  {/* Assess Button */}
-                  <button
-                    onClick={handleAssess}
-                    disabled={assessing}
-                    className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
-                  >
-                    {assessing
-                      ? 'Analyzing...'
-                      : isElementCheck
-                        ? `Assess All ${sections.length} Sections`
-                        : 'Assess Compliance'}
-                  </button>
-
-                  {/* Assessment Error */}
-                  {assessmentError && (
-                    <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
-                      {assessmentError}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Assessment History */}
-            {checkId && (
-              <div className="border-t pt-6 mt-6">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  Assessment History
-                </div>
-
-                {loadingRuns && <div className="text-sm text-gray-500">Loading history...</div>}
-
-                {!loadingRuns && analysisRuns.length === 0 && (
-                  <div className="text-sm text-gray-500 italic">
-                    No assessments yet. Click &ldquo;Assess Compliance&rdquo; to run your first
-                    analysis.
-                  </div>
-                )}
-
-                {!loadingRuns && analysisRuns.length > 0 && (
-                  <div className="space-y-3">
-                    {analysisRuns.map(run => {
-                      const isExpanded = expandedRuns.has(run.id);
-                      const statusColors = getStatusColor(run.compliance_status);
-
-                      return (
-                        <div
-                          key={run.id}
-                          className="border border-gray-200 rounded overflow-hidden"
-                        >
-                          {/* Run Header */}
-                          <button
-                            onClick={() => toggleRunExpanded(run.id)}
-                            className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left"
-                          >
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className="text-xs font-mono text-gray-500">
-                                #{run.run_number}
-                              </span>
-                              <span
-                                className={`text-xs px-2 py-0.5 rounded border font-medium ${statusColors}`}
-                              >
-                                {run.compliance_status.replace('_', ' ')}
-                              </span>
-                              <span
-                                className={`text-xs px-2 py-0.5 rounded font-medium ${getConfidenceBadge(run.confidence)}`}
-                              >
-                                {run.confidence}
-                              </span>
-                              <span className="text-xs text-gray-500 truncate">{run.ai_model}</span>
-                            </div>
-                            <svg
-                              className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 9l-7 7-7-7"
-                              />
-                            </svg>
-                          </button>
-
-                          {/* Run Details */}
-                          {isExpanded && (
-                            <div className="px-3 py-3 space-y-3 bg-white">
-                              {/* Timestamp */}
-                              <div className="text-xs text-gray-500">
-                                {new Date(run.executed_at).toLocaleString()}
-                                {run.execution_time_ms && (
-                                  <span className="ml-2">
-                                    ({(run.execution_time_ms / 1000).toFixed(1)}s)
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Reasoning */}
-                              {run.ai_reasoning && (
-                                <div>
-                                  <div className="text-xs font-semibold text-gray-700 mb-1">
-                                    Reasoning
-                                  </div>
-                                  <div className="text-sm text-gray-800 leading-relaxed bg-gray-50 p-2 rounded border border-gray-200">
-                                    {run.ai_reasoning}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Violations */}
-                              {run.violations && run.violations.length > 0 && (
-                                <div>
-                                  <div className="text-xs font-semibold text-red-700 mb-1">
-                                    Violations
-                                  </div>
-                                  <ul className="space-y-1">
-                                    {run.violations.map((v: any, idx: number) => (
-                                      <li
-                                        key={idx}
-                                        className="text-sm text-gray-800 pl-3 border-l-2 border-red-300"
-                                      >
-                                        <span className="font-medium text-red-700">
-                                          [{v.severity}]
-                                        </span>{' '}
-                                        {v.description}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* Recommendations */}
-                              {run.recommendations && run.recommendations.length > 0 && (
-                                <div>
-                                  <div className="text-xs font-semibold text-blue-700 mb-1">
-                                    Recommendations
-                                  </div>
-                                  <ul className="space-y-1">
-                                    {run.recommendations.map((rec: string, idx: number) => (
-                                      <li
-                                        key={idx}
-                                        className="text-sm text-gray-800 pl-3 border-l-2 border-blue-300"
-                                      >
-                                        {rec}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
+
+      {/* Assessment Controls - Static */}
+      {checkId && (
+        <div className="flex-shrink-0 border-t bg-gray-50 overflow-y-auto max-h-[50vh]">
+          <div className="p-4 space-y-6">
+            {/* Manual Override Section */}
+            <div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Manual Compliance Judgment
+              </div>
+
+              <div className="space-y-3">
+                {/* Override Status Banner */}
+                {manualOverride && (
+                  <div
+                    className={`px-3 py-2 rounded border ${
+                      manualOverride === 'compliant'
+                        ? 'bg-green-50 border-green-200 text-green-800'
+                        : manualOverride === 'non_compliant'
+                          ? 'bg-red-50 border-red-200 text-red-800'
+                          : 'bg-gray-50 border-gray-200 text-gray-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold">
+                        ✓ Manual Override:{' '}
+                        {manualOverride === 'compliant'
+                          ? 'COMPLIANT'
+                          : manualOverride === 'non_compliant'
+                            ? 'NON-COMPLIANT'
+                            : 'NOT APPLICABLE'}
+                      </span>
+                      <button
+                        onClick={handleClearOverride}
+                        disabled={savingOverride}
+                        className="text-xs underline hover:no-underline disabled:opacity-50"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Three-button toggle */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-2">
+                    Set Compliance Status
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => setManualOverride('compliant')}
+                      disabled={savingOverride}
+                      className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                        manualOverride === 'compliant'
+                          ? 'bg-green-100 border-green-400 text-green-800'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      Compliant
+                    </button>
+                    <button
+                      onClick={() => setManualOverride('non_compliant')}
+                      disabled={savingOverride}
+                      className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                        manualOverride === 'non_compliant'
+                          ? 'bg-red-100 border-red-400 text-red-800'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      Non-Compliant
+                    </button>
+                    <button
+                      onClick={() => setManualOverride('not_applicable')}
+                      disabled={savingOverride}
+                      className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                        manualOverride === 'not_applicable'
+                          ? 'bg-gray-100 border-gray-400 text-gray-800'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      Not Applicable
+                    </button>
+                  </div>
+                </div>
+
+                {/* Optional note toggle */}
+                {manualOverride && (
+                  <div>
+                    <button
+                      onClick={() => setShowOverrideNote(!showOverrideNote)}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      {showOverrideNote ? '− Hide' : '+ Add'} Note
+                    </button>
+                  </div>
+                )}
+
+                {/* Note textarea */}
+                {showOverrideNote && manualOverride && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Reasoning (Optional)
+                    </label>
+                    <textarea
+                      value={manualOverrideNote}
+                      onChange={e => setManualOverrideNote(e.target.value)}
+                      disabled={savingOverride}
+                      placeholder="Explain why this check is compliant or non-compliant..."
+                      rows={3}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                    />
+                  </div>
+                )}
+
+                {/* Save button */}
+                {manualOverride && (
+                  <button
+                    onClick={handleSaveOverride}
+                    disabled={savingOverride}
+                    className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                  >
+                    {savingOverride ? 'Saving...' : 'Save Manual Override'}
+                  </button>
+                )}
+
+                {/* Error message */}
+                {overrideError && (
+                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                    {overrideError}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Assessment Section */}
+            <div className="border-t pt-6">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                AI Assessment
+              </div>
+
+              <div className="space-y-3">
+                {/* Model Selector */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">AI Model</label>
+                  <select
+                    value={selectedModel}
+                    onChange={e => setSelectedModel(e.target.value)}
+                    disabled={assessing}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  >
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                    <option value="claude-opus-4">Claude Opus 4</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                  </select>
+                </div>
+
+                {/* View/Edit Prompt Section */}
+                <div>
+                  <button
+                    onClick={handleViewPrompt}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    {showPrompt ? '− Hide' : '📝 View/Edit'} Prompt
+                  </button>
+                </div>
+
+                {/* Prompt Display/Editor */}
+                {showPrompt && (
+                  <div className="space-y-2">
+                    {loadingPrompt ? (
+                      <div className="text-xs text-gray-500">Loading prompt...</div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-medium text-gray-700">
+                            AI Prompt {customPrompt && '(Custom)'}
+                          </label>
+                          <div className="flex gap-2">
+                            {!isPromptEditing ? (
+                              <button
+                                onClick={handleEditPrompt}
+                                disabled={assessing}
+                                className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-400"
+                              >
+                                ✏️ Edit
+                              </button>
+                            ) : (
+                              <button
+                                onClick={handleResetPrompt}
+                                disabled={assessing}
+                                className="text-xs text-gray-600 hover:text-gray-700 font-medium disabled:text-gray-400"
+                              >
+                                ↺ Reset
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <textarea
+                          value={isPromptEditing ? customPrompt : defaultPrompt}
+                          onChange={e => isPromptEditing && setCustomPrompt(e.target.value)}
+                          readOnly={!isPromptEditing}
+                          disabled={assessing}
+                          rows={12}
+                          className={`w-full px-3 py-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 font-mono ${
+                            isPromptEditing ? 'bg-yellow-50' : 'bg-gray-50'
+                          }`}
+                        />
+                        {isPromptEditing && (
+                          <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                            ⚠️ Editing prompt - your changes will be used for the next assessment
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Extra Context Toggle */}
+                <div>
+                  <button
+                    onClick={() => setShowExtraContext(!showExtraContext)}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    {showExtraContext ? '− Hide' : '+ Add'} Extra Context
+                  </button>
+                </div>
+
+                {/* Extra Context Textarea */}
+                {showExtraContext && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Additional Context (Optional)
+                    </label>
+                    <textarea
+                      value={extraContext}
+                      onChange={e => setExtraContext(e.target.value)}
+                      disabled={assessing}
+                      placeholder="Add any additional context or specific questions..."
+                      rows={3}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                    />
+                  </div>
+                )}
+
+                {/* Assess Button */}
+                <button
+                  onClick={handleAssess}
+                  disabled={assessing}
+                  className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                >
+                  {assessing
+                    ? 'Analyzing...'
+                    : isElementCheck
+                      ? `Assess All ${sections.length} Sections`
+                      : 'Assess Compliance'}
+                </button>
+
+                {/* Assessment Error */}
+                {assessmentError && (
+                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                    {assessmentError}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Assessment History */}
+            <div className="border-t pt-6">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Assessment History
+              </div>
+
+              {loadingRuns && <div className="text-sm text-gray-500">Loading history...</div>}
+
+              {!loadingRuns && analysisRuns.length === 0 && (
+                <div className="text-sm text-gray-500 italic">
+                  No assessments yet. Click &ldquo;Assess Compliance&rdquo; to run your first
+                  analysis.
+                </div>
+              )}
+
+              {!loadingRuns && analysisRuns.length > 0 && (
+                <div className="space-y-3">
+                  {analysisRuns.map(run => {
+                    const isExpanded = expandedRuns.has(run.id);
+                    const statusColors = getStatusColor(run.compliance_status);
+
+                    return (
+                      <div key={run.id} className="border border-gray-200 rounded overflow-hidden">
+                        {/* Run Header */}
+                        <button
+                          onClick={() => toggleRunExpanded(run.id)}
+                          className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left"
+                        >
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-xs font-mono text-gray-500">
+                              #{run.run_number}
+                            </span>
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded border font-medium ${statusColors}`}
+                            >
+                              {run.compliance_status.replace('_', ' ')}
+                            </span>
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded font-medium ${getConfidenceBadge(run.confidence)}`}
+                            >
+                              {run.confidence}
+                            </span>
+                            <span className="text-xs text-gray-500 truncate">{run.ai_model}</span>
+                          </div>
+                          <svg
+                            className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 9l-7 7-7-7"
+                            />
+                          </svg>
+                        </button>
+
+                        {/* Run Details */}
+                        {isExpanded && (
+                          <div className="px-3 py-3 space-y-3 bg-white">
+                            {/* Timestamp */}
+                            <div className="text-xs text-gray-500">
+                              {new Date(run.executed_at).toLocaleString()}
+                              {run.execution_time_ms && (
+                                <span className="ml-2">
+                                  ({(run.execution_time_ms / 1000).toFixed(1)}s)
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Reasoning */}
+                            {run.ai_reasoning && (
+                              <div>
+                                <div className="text-xs font-semibold text-gray-700 mb-1">
+                                  Reasoning
+                                </div>
+                                <div className="text-sm text-gray-800 leading-relaxed bg-gray-50 p-2 rounded border border-gray-200">
+                                  {run.ai_reasoning}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Violations */}
+                            {run.violations && run.violations.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-red-700 mb-1">
+                                  Violations
+                                </div>
+                                <ul className="space-y-1">
+                                  {run.violations.map((v: any, idx: number) => (
+                                    <li
+                                      key={idx}
+                                      className="text-sm text-gray-800 pl-3 border-l-2 border-red-300"
+                                    >
+                                      <span className="font-medium text-red-700">
+                                        [{v.severity}]
+                                      </span>{' '}
+                                      {v.description}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Recommendations */}
+                            {run.recommendations && run.recommendations.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-blue-700 mb-1">
+                                  Recommendations
+                                </div>
+                                <ul className="space-y-1">
+                                  {run.recommendations.map((rec: string, idx: number) => (
+                                    <li
+                                      key={idx}
+                                      className="text-sm text-gray-800 pl-3 border-l-2 border-blue-300"
+                                    >
+                                      {rec}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

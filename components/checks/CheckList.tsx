@@ -305,11 +305,11 @@ export function CheckList({
                                             ?.toLowerCase()
                                             .replace(/s$/, '') || 'item'}
                                         </span>
-                                        <button
+                                        <span
                                           onClick={e => {
                                             e.stopPropagation();
                                           }}
-                                          className="group relative"
+                                          className="group relative cursor-help"
                                           title="Element-based checking"
                                         >
                                           <svg
@@ -330,7 +330,7 @@ export function CheckList({
                                             {check.element_sections?.length || 0} related code
                                             sections in one check.
                                           </div>
-                                        </button>
+                                        </span>
                                       </>
                                     ) : (
                                       <span className="font-medium text-sm text-gray-900">
