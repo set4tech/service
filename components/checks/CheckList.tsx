@@ -301,7 +301,9 @@ export function CheckList({
                                       <>
                                         <span className="text-sm text-blue-600 font-medium">
                                           Click + to add your first{' '}
-                                          {check.element_group_name?.toLowerCase() || 'item'}
+                                          {check.element_group_name
+                                            ?.toLowerCase()
+                                            .replace(/s$/, '') || 'item'}
                                         </span>
                                         <button
                                           onClick={e => {
@@ -320,8 +322,11 @@ export function CheckList({
                                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
                                           </svg>
                                           <div className="hidden group-hover:block absolute left-0 top-6 w-64 bg-gray-900 text-white text-xs rounded p-2 shadow-lg z-50">
-                                            Each {check.element_group_name?.toLowerCase()} you add
-                                            will be assessed against all{' '}
+                                            Each{' '}
+                                            {check.element_group_name
+                                              ?.toLowerCase()
+                                              .replace(/s$/, '') || 'item'}{' '}
+                                            you add will be assessed against all{' '}
                                             {check.element_sections?.length || 0} related code
                                             sections in one check.
                                           </div>

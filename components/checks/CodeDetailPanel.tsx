@@ -455,10 +455,10 @@ export function CodeDetailPanel({
               <div>
                 <div className="text-sm font-semibold text-blue-900 mb-1">Element-Based Check</div>
                 <div className="text-xs text-blue-800 leading-relaxed">
-                  This {check?.element_group_name?.toLowerCase()} check evaluates{' '}
+                  This {check?.element_group_name?.toLowerCase().replace(/s$/, '')} check evaluates{' '}
                   <span className="font-semibold">{sections.length} code sections</span> together in
                   a single assessment. All requirements from these sections apply to this specific{' '}
-                  {check?.element_group_name?.toLowerCase()}.
+                  {check?.element_group_name?.toLowerCase().replace(/s$/, '')}.
                 </div>
               </div>
             </div>

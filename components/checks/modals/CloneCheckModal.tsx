@@ -21,7 +21,8 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
     checkName.includes('Bathrooms') ||
     checkName.includes('Doors') ||
     checkName.includes('Kitchens');
-  const elementType = checkName.split(' ')[0]; // e.g., "Bathrooms", "Doors", "Kitchens"
+  const elementTypePlural = checkName.split(' ')[0]; // e.g., "Bathrooms", "Doors", "Kitchens"
+  const elementType = elementTypePlural.replace(/s$/, ''); // Singular: "Bathroom", "Door", "Kitchen"
 
   const handleClone = async () => {
     setIsCloning(true);
@@ -59,7 +60,7 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
-            {isElementCheck ? `Add New ${elementType.slice(0, -1)}` : 'Create Check Instance'}
+            {isElementCheck ? `Add New ${elementType}` : 'Create Check Instance'}
           </h3>
         </div>
 
@@ -68,12 +69,12 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
           {isElementCheck ? (
             <div>
               <p className="text-sm text-gray-700 mb-2">
-                Add a specific {elementType.toLowerCase().slice(0, -1)} from your project to assess
-                for compliance.
+                Add a specific {elementType.toLowerCase()} from your project to assess for
+                compliance.
               </p>
               <p className="text-xs text-gray-500">
-                Each {elementType.toLowerCase().slice(0, -1)} will be checked against all relevant
-                code sections in one assessment.
+                Each {elementType.toLowerCase()} will be checked against all relevant code sections
+                in one assessment.
               </p>
             </div>
           ) : (
@@ -100,7 +101,7 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
               onChange={e => setInstanceLabel(e.target.value)}
               placeholder={
                 isElementCheck
-                  ? `e.g., ${elementType === 'Bathrooms' ? "Women's Restroom - 1st Floor" : elementType === 'Doors' ? 'Main Entrance Door' : 'Staff Kitchen'}`
+                  ? `e.g., ${elementType === 'Bathroom' ? "Women's Restroom - 1st Floor" : elementType === 'Door' ? 'Main Entrance Door' : 'Staff Kitchen'}`
                   : 'e.g., Door 2 - North Entrance'
               }
               disabled={isCloning}
@@ -148,11 +149,7 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
             disabled={isCloning}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
           >
-            {isCloning
-              ? 'Adding...'
-              : isElementCheck
-                ? `Add ${elementType.slice(0, -1)}`
-                : 'Create Instance'}
+            {isCloning ? 'Adding...' : isElementCheck ? `Add ${elementType}` : 'Create Instance'}
           </button>
         </div>
       </div>
