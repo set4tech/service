@@ -190,54 +190,66 @@ export default function AssessmentClient({
     }
   }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
 
-  // Poll for background seeding progress
+  // Poll for batch seeding progress
   useEffect(() => {
     let pollInterval: NodeJS.Timeout;
 
-    const pollStatus = async () => {
+    const pollAndContinue = async () => {
       try {
-        const res = await fetch(`/api/assessments/${assessment.id}/status`);
-        if (!res.ok) return;
+        // Check current status
+        const statusRes = await fetch(`/api/assessments/${assessment.id}/status`);
+        if (!statusRes.ok) return;
 
-        const data = await res.json();
+        const statusData = await statusRes.json();
 
-        // Check if background seeding is active
-        const isBackgroundActive = data.seeding_status === 'in_progress' && data.sections_total > 0;
-
+        // Update background seeding state
+        const isActive =
+          statusData.seeding_status === 'in_progress' && statusData.sections_total > 0;
         setBackgroundSeeding({
-          active: isBackgroundActive,
-          processed: data.sections_processed || 0,
-          total: data.sections_total || 0,
+          active: isActive,
+          processed: statusData.sections_processed || 0,
+          total: statusData.sections_total || 0,
         });
 
-        // If we have more checks than before, refresh (works for both in-progress and completed)
-        if (data.check_count > checks.length) {
-          console.log('[AssessmentClient] New checks detected, refreshing...', {
-            currentCount: checks.length,
-            newCount: data.check_count,
+        // If seeding is in progress, call seed API to process next batch
+        if (statusData.seeding_status === 'in_progress') {
+          const seedRes = await fetch(`/api/assessments/${assessment.id}/seed`, {
+            method: 'POST',
           });
-          // Fetch updated checks
-          const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
-          if (checksRes.ok) {
-            const updatedChecks = await checksRes.json();
-            setChecks(updatedChecks);
-          }
-        }
 
-        // Stop polling when complete
-        if (data.seeding_status === 'completed' && pollInterval) {
+          if (seedRes.ok) {
+            const seedData = await seedRes.json();
+            console.log('[AssessmentClient] Batch processed:', seedData);
+
+            // Refresh checks if we got new ones
+            const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
+            if (checksRes.ok) {
+              const updatedChecks = await checksRes.json();
+              if (updatedChecks.length > checks.length) {
+                setChecks(updatedChecks);
+              }
+            }
+
+            // If completed, stop polling
+            if (seedData.status === 'completed') {
+              clearInterval(pollInterval);
+              setBackgroundSeeding({ active: false, processed: 0, total: 0 });
+            }
+          }
+        } else if (statusData.seeding_status === 'completed') {
+          // Stop polling if already completed
           clearInterval(pollInterval);
+          setBackgroundSeeding({ active: false, processed: 0, total: 0 });
         }
       } catch (error) {
-        console.error('[AssessmentClient] Failed to poll status:', error);
+        console.error('[AssessmentClient] Polling error:', error);
       }
     };
 
     // Start polling after initial seed attempt completes
-    // This ensures we catch background-processed checks
     if (hasSeedAttempted && !isSeeding) {
-      pollStatus(); // Check immediately
-      pollInterval = setInterval(pollStatus, 3000); // Then every 3 seconds
+      pollAndContinue(); // Start immediately
+      pollInterval = setInterval(pollAndContinue, 2000); // Poll every 2 seconds
     }
 
     return () => {

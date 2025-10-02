@@ -15,6 +15,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         `
         id,
         project_id,
+        seeding_status,
+        sections_total,
+        sections_processed,
         projects (
           id,
           selected_code_ids,
@@ -30,27 +33,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
 
-    // Check if already has checks
-    const { data: existingChecks } = await supabase
-      .from('checks')
-      .select('id')
-      .eq('assessment_id', id)
-      .limit(1);
-
-    if (existingChecks && existingChecks.length > 0) {
-      console.log('[Seed API] Assessment already has checks:', existingChecks.length);
-      return NextResponse.json({
-        message: 'Assessment already has checks',
-        count: existingChecks.length,
-      });
-    }
-
     const variables = (assessment.projects as any)?.extracted_variables ?? {};
     const selectedCodes: string[] = (assessment.projects as any)?.selected_code_ids ?? [
       'ICC+CBC_Chapter11A_11B+2025+CA',
     ];
-
-    console.log('[Seed API] Selected code IDs:', selectedCodes);
 
     // Map virtual 11A/11B codes to the real combined code and track which chapters to include
     const codeMapping: { [key: string]: string } = {
@@ -62,8 +48,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const chapterFilters: Array<{ name: string; test: (num: string) => boolean }> = [];
 
     // Determine which chapters to include based on selection
-    // Chapter 11A pattern: 11xxA.x (e.g., 1101A.1, 1102A.2, 1121A)
-    // Chapter 11B pattern: 11B-xxxx (e.g., 11B-1002.2)
     if (selectedCodes.includes('ICC+CBC_Chapter11A+2025+CA')) {
       chapterFilters.push({
         name: '11A',
@@ -89,12 +73,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    console.log('[Seed API] Real code IDs:', realCodeIds);
-    console.log(
-      '[Seed API] Chapter filters:',
-      chapterFilters.map(f => f.name)
-    );
-
     // 2. Fetch ALL sections for selected codes (filter by drawing_assessable)
     const { data: allSections, error: sectionsError } = await supabase
       .from('sections')
@@ -110,19 +88,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const elementSectionKeys = new Set(elementMappings?.map(m => m.section_key) || []);
 
-    if (sectionsError) {
-      console.error('❌❌❌ [Seed API] DATABASE ERROR ❌❌❌');
-      console.error('[Seed API] Error details:', sectionsError);
+    if (sectionsError || !allSections) {
+      console.error('[Seed API] Database error:', sectionsError);
       return NextResponse.json(
-        { error: 'Database error: ' + sectionsError.message },
+        { error: 'Database error: ' + sectionsError?.message },
         { status: 500 }
       );
-    }
-
-    if (!allSections) {
-      console.error('❌❌❌ [Seed API] NULL RESULT ❌❌❌');
-      console.error('[Seed API] Query returned null but no error');
-      return NextResponse.json({ error: 'Query returned null' }, { status: 500 });
     }
 
     // Filter sections by chapter if needed, and exclude element-mapped sections
@@ -134,39 +105,83 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           )
         : allSections.filter(s => !elementSectionKeys.has(s.key));
 
-    console.log(
-      '[Seed API] Found sections:',
-      allSections.length,
-      '-> filtered to:',
-      filteredSections.length
-    );
-
     if (filteredSections.length === 0) {
-      console.warn('⚠️⚠️⚠️ [Seed API] ZERO SECTIONS FOUND AFTER FILTERING ⚠️⚠️⚠️');
-      console.warn('[Seed API] Selected codes:', selectedCodes);
-      console.warn(
-        '[Seed API] Chapter filters:',
-        chapterFilters.map(f => f.name)
-      );
       return NextResponse.json(
-        {
-          error: 'No sections found',
-          details: `Selected codes: ${selectedCodes.join(', ')}`,
-        },
+        { error: 'No sections found', details: `Selected codes: ${selectedCodes.join(', ')}` },
         { status: 404 }
       );
     }
 
-    // 3. Initialize status
-    await supabase
-      .from('assessments')
-      .update({
-        seeding_status: 'in_progress',
-        sections_total: filteredSections.length,
-        sections_processed: 0,
-      })
-      .eq('id', id);
+    // 3. Check if this is the first request (initialize) or a continuation
+    const isFirstRequest =
+      !assessment.seeding_status || assessment.seeding_status === 'not_started';
+    const BATCH_SIZE = 10;
 
+    if (isFirstRequest) {
+      // Initialize status and create element templates
+      await supabase
+        .from('assessments')
+        .update({
+          seeding_status: 'in_progress',
+          sections_total: filteredSections.length,
+          sections_processed: 0,
+        })
+        .eq('id', id);
+
+      // Create element group templates
+      try {
+        const { data: elementGroups } = await supabase
+          .from('element_groups')
+          .select('id, name, slug')
+          .order('sort_order');
+
+        if (elementGroups && elementGroups.length > 0) {
+          for (const group of elementGroups) {
+            const { data: groupMappings } = await supabase
+              .from('element_section_mappings')
+              .select('section_key')
+              .eq('element_group_id', group.id);
+
+            const sectionKeys = groupMappings?.map(m => m.section_key) || [];
+
+            if (sectionKeys.length > 0) {
+              await supabase.from('checks').insert({
+                assessment_id: id,
+                check_type: 'element',
+                element_group_id: group.id,
+                element_sections: sectionKeys,
+                code_section_key: sectionKeys[0],
+                code_section_number: group.slug,
+                code_section_title: `${group.name} Template`,
+                check_name: `${group.name} - Template`,
+                check_location: 'TBD',
+                instance_number: 0,
+                status: 'pending',
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[Seed API] Element template creation error:', error);
+      }
+    }
+
+    // 4. Get current progress
+    const currentProcessed = assessment.sections_processed || 0;
+    const currentBatch = filteredSections.slice(currentProcessed, currentProcessed + BATCH_SIZE);
+
+    if (currentBatch.length === 0) {
+      // All done
+      await supabase.from('assessments').update({ seeding_status: 'completed' }).eq('id', id);
+
+      return NextResponse.json({
+        status: 'completed',
+        processed: currentProcessed,
+        total: filteredSections.length,
+      });
+    }
+
+    // 5. Process current batch
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
       baseURL: 'https://anthropic.helicone.ai',
@@ -176,172 +191,65 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       },
     });
 
-    // 4. Process first batch immediately, then continue in background
-    const BATCH_SIZE = 10;
-    const firstBatch = filteredSections.slice(0, BATCH_SIZE);
+    const prompt = buildBatchPrompt(currentBatch, variables);
+    const response = await anthropic.messages.create({
+      model: 'claude-opus-4-20250514',
+      max_tokens: 2000,
+      temperature: 0.1,
+      messages: [{ role: 'user', content: prompt }],
+    });
 
-    let processedCount = 0;
-    let includedCount = 0;
+    const decisionsText = response.content[0].type === 'text' ? response.content[0].text : '[]';
+    const decisions = JSON.parse(decisionsText);
 
-    // Process first batch synchronously
-    try {
-      console.log('[Seed API] Processing first batch of', firstBatch.length, 'sections');
-      const prompt = buildBatchPrompt(firstBatch, variables);
-      const response = await anthropic.messages.create({
-        model: 'claude-opus-4-20250514',
-        max_tokens: 2000,
-        temperature: 0.1,
-        messages: [{ role: 'user', content: prompt }],
-      });
+    // Filter applicable sections
+    const applicable = currentBatch.filter((section, idx) => decisions[idx]?.applies === true);
 
-      const decisionsText = response.content[0].type === 'text' ? response.content[0].text : '[]';
-      const decisions = JSON.parse(decisionsText);
-
-      // Filter applicable sections
-      const applicable = firstBatch.filter((section, idx) => decisions[idx]?.applies === true);
-      console.log(
-        '[Seed API] First batch applicable sections:',
-        applicable.length,
-        '/',
-        firstBatch.length
-      );
-
-      // Insert checks for first batch
-      if (applicable.length > 0) {
-        const checkRows = applicable.map(s => ({
-          assessment_id: id,
-          code_section_key: s.key,
-          code_section_number: s.number,
-          code_section_title: s.title,
-          check_name: `${s.number} - ${s.title}`,
-          status: 'pending',
-          parent_check_id: null,
-          instance_number: 1,
-        }));
-
-        const { error: insertError } = await supabase.from('checks').upsert(checkRows, {
-          onConflict: 'assessment_id,code_section_number,parent_check_id,instance_number',
-          ignoreDuplicates: true,
-        });
-        if (insertError) {
-          console.error('[Seed API] Failed to insert checks:', insertError);
-        } else {
-          console.log('[Seed API] Successfully inserted/ignored', checkRows.length, 'checks');
-        }
-      }
-
-      // Log first batch decisions
-      const logRows = firstBatch.map((s, idx) => ({
+    // Insert checks for applicable sections
+    if (applicable.length > 0) {
+      const checkRows = applicable.map(s => ({
         assessment_id: id,
-        section_key: s.key,
-        decision: decisions[idx]?.applies || false,
-        decision_source: 'ai',
-        decision_confidence: decisions[idx]?.confidence || 'low',
-        reasons: [decisions[idx]?.reason || 'No reason provided'],
-        details: {},
-        building_params_hash: 'ai_hash',
-        variables_snapshot: variables,
+        code_section_key: s.key,
+        code_section_number: s.number,
+        code_section_title: s.title,
+        check_name: `${s.number} - ${s.title}`,
+        status: 'pending',
+        parent_check_id: null,
+        instance_number: 1,
       }));
 
-      await supabase.from('section_applicability_log').insert(logRows);
-
-      processedCount = firstBatch.length;
-      includedCount = applicable.length;
-
-      await supabase
-        .from('assessments')
-        .update({ sections_processed: processedCount })
-        .eq('id', id);
-    } catch (error) {
-      console.error('[Seed API] First batch processing error:', error);
+      await supabase.from('checks').upsert(checkRows, {
+        onConflict: 'assessment_id,code_section_number,parent_check_id,instance_number',
+        ignoreDuplicates: true,
+      });
     }
 
-    // Create element group templates (do this after first batch is complete)
-    try {
-      console.log('[Seed API] Creating element group templates...');
-      const { data: elementGroups } = await supabase
-        .from('element_groups')
-        .select('id, name, slug')
-        .order('sort_order');
+    // Log decisions
+    const logRows = currentBatch.map((s, idx) => ({
+      assessment_id: id,
+      section_key: s.key,
+      decision: decisions[idx]?.applies || false,
+      decision_source: 'ai',
+      decision_confidence: decisions[idx]?.confidence || 'low',
+      reasons: [decisions[idx]?.reason || 'No reason provided'],
+      details: {},
+      building_params_hash: 'ai_hash',
+      variables_snapshot: variables,
+    }));
 
-      if (elementGroups && elementGroups.length > 0) {
-        for (const group of elementGroups) {
-          // Get all sections for this element group
-          const { data: groupMappings } = await supabase
-            .from('element_section_mappings')
-            .select('section_key')
-            .eq('element_group_id', group.id);
+    await supabase.from('section_applicability_log').insert(logRows);
 
-          const sectionKeys = groupMappings?.map(m => m.section_key) || [];
+    // Update progress
+    const newProcessed = currentProcessed + currentBatch.length;
+    await supabase.from('assessments').update({ sections_processed: newProcessed }).eq('id', id);
 
-          if (sectionKeys.length > 0) {
-            // Check if template already exists for this element group
-            const { data: existingTemplate } = await supabase
-              .from('checks')
-              .select('id')
-              .eq('assessment_id', id)
-              .eq('element_group_id', group.id)
-              .eq('instance_number', 0)
-              .eq('check_type', 'element')
-              .limit(1);
-
-            if (existingTemplate && existingTemplate.length > 0) {
-              console.log(`[Seed API] Template already exists for ${group.name}, skipping`);
-              continue;
-            }
-
-            // Create template check for this element group
-            await supabase.from('checks').insert({
-              assessment_id: id,
-              check_type: 'element',
-              element_group_id: group.id,
-              element_sections: sectionKeys,
-              code_section_key: sectionKeys[0], // Use first section as representative
-              code_section_number: group.slug,
-              code_section_title: `${group.name} Template`,
-              check_name: `${group.name} - Template`,
-              check_location: 'TBD',
-              instance_number: 0, // Template = instance 0
-              status: 'pending',
-            });
-
-            console.log(
-              `[Seed API] Created template for ${group.name} with ${sectionKeys.length} sections`
-            );
-          }
-        }
-      }
-    } catch (error) {
-      console.error('[Seed API] Element template creation error:', error);
-    }
-
-    // Start background processing for remaining batches (don't await)
-    console.log(
-      '[Seed API] Starting background processing for remaining',
-      filteredSections.length - BATCH_SIZE,
-      'sections'
-    );
-    processRemainingBatches(
-      id,
-      filteredSections.slice(BATCH_SIZE),
-      variables,
-      anthropic,
-      processedCount,
-      includedCount
-    );
-
-    // Return immediately with first batch results
-    console.log('[Seed API] Returning first batch results:', {
-      processedCount,
-      includedCount,
-      total: filteredSections.length,
-    });
+    // Return status
     return NextResponse.json({
-      type: 'first_batch_complete',
-      processed: processedCount,
+      status: 'in_progress',
+      processed: newProcessed,
       total: filteredSections.length,
-      included: includedCount,
-      message: 'First batch complete. Processing continues in background.',
+      included: applicable.length,
+      batch_size: currentBatch.length,
     });
   } catch (error) {
     console.error('Error seeding assessment:', error);
@@ -353,94 +261,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 500 }
     );
   }
-}
-
-async function processRemainingBatches(
-  assessmentId: string,
-  remainingSections: any[],
-  variables: any,
-  anthropic: Anthropic,
-  initialProcessed: number,
-  initialIncluded: number
-) {
-  const supabase = supabaseAdmin();
-  const BATCH_SIZE = 10;
-  let processedCount = initialProcessed;
-  let includedCount = initialIncluded;
-
-  for (let i = 0; i < remainingSections.length; i += BATCH_SIZE) {
-    const batch = remainingSections.slice(i, i + BATCH_SIZE);
-
-    try {
-      const prompt = buildBatchPrompt(batch, variables);
-      const response = await anthropic.messages.create({
-        model: 'claude-opus-4-20250514',
-        max_tokens: 2000,
-        temperature: 0.1,
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const decisionsText = response.content[0].type === 'text' ? response.content[0].text : '[]';
-      const decisions = JSON.parse(decisionsText);
-
-      const applicable = batch.filter((section, idx) => decisions[idx]?.applies === true);
-
-      if (applicable.length > 0) {
-        const checkRows = applicable.map(s => ({
-          assessment_id: assessmentId,
-          code_section_key: s.key,
-          code_section_number: s.number,
-          code_section_title: s.title,
-          check_name: `${s.number} - ${s.title}`,
-          status: 'pending',
-          parent_check_id: null,
-          instance_number: 1,
-        }));
-
-        await supabase.from('checks').upsert(checkRows, {
-          onConflict: 'assessment_id,code_section_number,parent_check_id,instance_number',
-          ignoreDuplicates: true,
-        });
-      }
-
-      const logRows = batch.map((s, idx) => ({
-        assessment_id: assessmentId,
-        section_key: s.key,
-        decision: decisions[idx]?.applies || false,
-        decision_source: 'ai',
-        decision_confidence: decisions[idx]?.confidence || 'low',
-        reasons: [decisions[idx]?.reason || 'No reason provided'],
-        details: {},
-        building_params_hash: 'ai_hash',
-        variables_snapshot: variables,
-      }));
-
-      await supabase.from('section_applicability_log').insert(logRows);
-
-      processedCount += batch.length;
-      includedCount += applicable.length;
-
-      await supabase
-        .from('assessments')
-        .update({ sections_processed: processedCount })
-        .eq('id', assessmentId);
-    } catch (error) {
-      console.error('Background batch processing error:', error);
-    }
-  }
-
-  // Finalize when all batches complete
-  await supabase
-    .from('assessments')
-    .update({
-      seeding_status: 'completed',
-      total_sections: includedCount,
-    })
-    .eq('id', assessmentId);
-
-  console.log(
-    `Background processing complete for assessment ${assessmentId}: ${includedCount}/${processedCount} sections included`
-  );
 }
 
 function buildBatchPrompt(sections: any[], variables: any): string {
