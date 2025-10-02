@@ -3,19 +3,23 @@ import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { CloneCheckModal } from './modals/CloneCheckModal';
 
+interface CheckListProps {
+  checks: any[];
+  checkMode?: 'section' | 'element';
+  activeCheckId: string | null;
+  onSelect: (id: string) => void;
+  assessmentId?: string;
+  onCheckAdded?: (newCheck: any) => void;
+}
+
 export function CheckList({
   checks,
   checkMode = 'section',
   activeCheckId,
   onSelect,
   assessmentId,
-}: {
-  checks: any[];
-  checkMode?: 'section' | 'element';
-  activeCheckId: string | null;
-  onSelect: (id: string) => void;
-  assessmentId?: string;
-}) {
+  onCheckAdded,
+}: CheckListProps) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
@@ -143,9 +147,18 @@ export function CheckList({
     setExpandedInstances(newExpanded);
   };
 
-  const handleCloneSuccess = () => {
-    // Reload the page to fetch updated checks
-    window.location.reload();
+  const handleCloneSuccess = (newCheck: any) => {
+    setCloneModalCheck(null);
+
+    // If parent provides a callback, use it to add the check
+    if (onCheckAdded) {
+      onCheckAdded(newCheck);
+      // Select the new check
+      onSelect(newCheck.id);
+    } else {
+      // Fallback to full page reload if no callback provided
+      window.location.reload();
+    }
   };
 
   const getStatusIcon = (check: any) => {
