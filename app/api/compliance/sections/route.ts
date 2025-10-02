@@ -4,6 +4,25 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 // Cache for section data (in production, use Redis)
 const sectionsCache = new Map<string, unknown>();
 
+// Hardcoded list of definitional/scoping sections to exclude
+// Only excludes: DEFINITIONS, APPLICATION, Scope sections, and General sections that are purely scoping
+const DEFINITIONAL_SECTION_IDS = [
+  // DEFINITIONS sections
+  2080, 12,
+  // APPLICATION sections
+  2051, 20,
+  // Scope sections
+  2052, 640, 21, 254, 299, 363, 400, 487, 532, 618,
+  // Where required
+  2054,
+  // Application based on use
+  22, 232,
+  // General sections that are ONLY scoping/references (no actual requirements)
+  639, 111, 117, 118, 124, 157, 158, 167, 172, 177, 179, 180, 181, 185, 186, 191, 192, 200, 201,
+  205, 207, 208, 209, 212, 213, 221, 222, 227, 228, 230, 231, 234, 235, 253, 256, 260, 266, 271,
+  279, 282, 283, 294, 298, 301, 304, 312, 326, 362, 399, 486, 531, 617,
+];
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -59,12 +78,15 @@ export async function GET(request: NextRequest) {
     // Get all sections for this code (optionally filter by drawing_assessable)
     let query = supabase
       .from('sections')
-      .select('key, number, title, text, item_type, paragraphs, source_url')
+      .select('id, key, number, title, text, item_type, paragraphs, source_url')
       .eq('code_id', queryCodeId);
 
     if (!includeNonAssessable) {
       query = query.eq('drawing_assessable', true);
     }
+
+    // Always exclude definitional/scoping sections
+    query = query.not('id', 'in', `(${DEFINITIONAL_SECTION_IDS.join(',')})`);
 
     // Add full-text search if search query provided
     if (search && search.trim()) {
@@ -138,7 +160,7 @@ export async function POST(request: NextRequest) {
     // Get section data
     const { data: section, error: sectionError } = await supabase
       .from('sections')
-      .select('key, number, title, text, item_type, paragraphs, source_url')
+      .select('id, key, number, title, text, item_type, paragraphs, source_url')
       .eq('key', sectionKey)
       .single();
 
