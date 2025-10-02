@@ -20,6 +20,12 @@ interface ViewerState {
   selection: { startX: number; startY: number; endX: number; endY: number } | null;
 }
 
+interface PDFLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+}
+
 type ViewerAction =
   | { type: 'SET_TRANSFORM'; payload: ViewerState['transform'] }
   | { type: 'SET_PAGE'; payload: number }
@@ -85,6 +91,7 @@ export function PDFViewer({
   activeCheck?: any;
   onScreenshotSaved: () => void;
 }) {
+  const assessmentId = activeCheck?.assessment_id;
   const viewportRef = useRef<HTMLDivElement>(null);
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
@@ -104,8 +111,14 @@ export function PDFViewer({
   const [pageInstance, setPageInstance] = useState<any>(null);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
+  const [renderScale, setRenderScale] = useState(2.0); // Default 2x resolution
+  const [savingScale, setSavingScale] = useState(false);
+  const [layers, setLayers] = useState<PDFLayer[]>([]);
+  const [showLayerPanel, setShowLayerPanel] = useState(false);
+  const [optionalContentConfig, setOptionalContentConfig] = useState<any>(null);
+  const [layerVersion, setLayerVersion] = useState(0);
 
-  // Fetch presigned URL for private S3 PDFs
+  // Fetch presigned URL for private S3 PDFs and load saved scale preference
   useEffect(() => {
     async function fetchPresignedUrl() {
       setLoadingUrl(true);
@@ -124,8 +137,24 @@ export function PDFViewer({
       setLoadingUrl(false);
     }
 
+    async function loadSavedScale() {
+      if (!assessmentId) return;
+      try {
+        const res = await fetch(`/api/assessments/${assessmentId}/pdf-scale`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.pdf_scale) {
+            setRenderScale(data.pdf_scale);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load saved PDF scale:', err);
+      }
+    }
+
     fetchPresignedUrl();
-  }, [pdfUrl]);
+    loadSavedScale();
+  }, [pdfUrl, assessmentId]);
 
   const onDocLoad = ({ numPages }: { numPages: number }) => {
     dispatch({ type: 'SET_NUM_PAGES', payload: numPages });
@@ -314,6 +343,42 @@ export function PDFViewer({
     })();
   }, [presignedUrl]);
 
+  // Extract PDF layers (Optional Content Groups)
+  useEffect(() => {
+    if (!pdfInstance) return;
+    (async () => {
+      try {
+        const ocConfig = await pdfInstance.getOptionalContentConfig();
+        if (!ocConfig) {
+          setLayers([]);
+          return;
+        }
+
+        setOptionalContentConfig(ocConfig);
+
+        const groups = ocConfig.getOrder();
+        if (!groups || groups.length === 0) {
+          setLayers([]);
+          return;
+        }
+
+        const layerList: PDFLayer[] = groups.map((groupId: string) => {
+          const group = ocConfig.getGroup(groupId);
+          return {
+            id: groupId,
+            name: group.name,
+            visible: ocConfig.isVisible(groupId),
+          };
+        });
+
+        setLayers(layerList);
+      } catch (err) {
+        console.error('Failed to extract PDF layers:', err);
+        setLayers([]);
+      }
+    })();
+  }, [pdfInstance]);
+
   useEffect(() => {
     (async () => {
       if (!pdfInstance) return;
@@ -322,7 +387,7 @@ export function PDFViewer({
     })();
   }, [pdfInstance, state.pageNumber]);
 
-  const pickRenderScale = (page: any, desired = 2.5) => {
+  const pickRenderScale = (page: any, desired: number) => {
     const base = page.getViewport({ scale: 1 });
     const maxSide = 8192;
     const maxPixels = 140_000_000;
@@ -332,6 +397,42 @@ export function PDFViewer({
     const cap = Math.max(1, Math.min(bySide, byPixels));
 
     return Math.min(desired, cap);
+  };
+
+  const updateRenderScale = async (newScale: number) => {
+    setRenderScale(newScale);
+    if (!assessmentId) return;
+
+    setSavingScale(true);
+    try {
+      await fetch(`/api/assessments/${assessmentId}/pdf-scale`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdf_scale: newScale }),
+      });
+    } catch (err) {
+      console.error('Failed to save PDF scale:', err);
+    } finally {
+      setSavingScale(false);
+    }
+  };
+
+  const toggleLayer = async (layerId: string) => {
+    if (!optionalContentConfig) return;
+
+    // Update the layer visibility in the config
+    const currentVisibility = optionalContentConfig.isVisible(layerId);
+    optionalContentConfig.setVisibility(layerId, !currentVisibility);
+
+    // Update our local state
+    setLayers(prev =>
+      prev.map(layer =>
+        layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
+      )
+    );
+
+    // Force a re-render by incrementing version
+    setLayerVersion(prev => prev + 1);
   };
 
   const capture = async () => {
@@ -378,13 +479,13 @@ export function PDFViewer({
       });
 
       // Render page offscreen at high resolution
-      const renderScale = pickRenderScale(pageInstance, 2.5);
-      const viewport = pageInstance.getViewport({ scale: renderScale });
+      const screenshotRenderScale = pickRenderScale(pageInstance, renderScale);
+      const viewport = pageInstance.getViewport({ scale: screenshotRenderScale });
 
       console.log('capture() render viewport:', {
         width: viewport.width,
         height: viewport.height,
-        renderScale,
+        renderScale: screenshotRenderScale,
       });
 
       const offscreenCanvas = document.createElement('canvas');
@@ -576,6 +677,37 @@ export function PDFViewer({
         >
           +
         </button>
+        <div className="flex items-center gap-1 bg-white border rounded shadow-md px-2 py-1">
+          <span className="text-xs text-gray-600 whitespace-nowrap">Detail:</span>
+          <button
+            aria-label="Decrease resolution"
+            className="btn-icon bg-white text-xs px-1.5 py-0.5"
+            onClick={() => updateRenderScale(Math.max(1, renderScale - 0.5))}
+            disabled={savingScale || renderScale <= 1}
+          >
+            −
+          </button>
+          <span className="text-xs font-medium w-8 text-center">{renderScale.toFixed(1)}x</span>
+          <button
+            aria-label="Increase resolution"
+            className="btn-icon bg-white text-xs px-1.5 py-0.5"
+            onClick={() => updateRenderScale(Math.min(6, renderScale + 0.5))}
+            disabled={savingScale || renderScale >= 6}
+          >
+            +
+          </button>
+        </div>
+        {layers.length > 0 && (
+          <button
+            aria-pressed={showLayerPanel}
+            aria-label="Toggle layers panel"
+            className={`btn-icon shadow-md ${showLayerPanel ? 'bg-blue-600 text-white' : 'bg-white'}`}
+            onClick={() => setShowLayerPanel(!showLayerPanel)}
+            title="Layers"
+          >
+            ☰
+          </button>
+        )}
         <button
           aria-pressed={state.screenshotMode}
           aria-label="Toggle screenshot mode (S)"
@@ -590,6 +722,37 @@ export function PDFViewer({
           </button>
         )}
       </div>
+
+      {/* Layer Panel */}
+      {showLayerPanel && layers.length > 0 && (
+        <div className="absolute top-16 right-3 z-50 bg-white border rounded shadow-lg p-3 w-64 pointer-events-auto">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold">PDF Layers</h3>
+            <button
+              className="text-xs text-gray-500 hover:text-gray-700"
+              onClick={() => setShowLayerPanel(false)}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {layers.map(layer => (
+              <label
+                key={layer.id}
+                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
+              >
+                <input
+                  type="checkbox"
+                  checked={layer.visible}
+                  onChange={() => toggleLayer(layer.id)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">{layer.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div
         className={`absolute inset-0 overflow-hidden ${
@@ -626,9 +789,10 @@ export function PDFViewer({
           >
             <div ref={pageContainerRef} style={{ position: 'relative' }}>
               <Page
+                key={`page-${state.pageNumber}-scale-${renderScale}-layers-${layerVersion}`}
                 pageNumber={state.pageNumber}
                 height={800}
-                scale={5}
+                scale={renderScale}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
               />

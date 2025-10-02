@@ -8,6 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,md,json}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,md,json}\"",
@@ -61,6 +64,7 @@
     "@types/pdf-parse": "^1.1.5",
     "@typescript-eslint/eslint-plugin": "^8.44.1",
     "@typescript-eslint/parser": "^8.44.1",
+    "@vitest/coverage-v8": "^2.1.8",
     "autoprefixer": "^10.4.21",
     "canvas": "npm:empty-module@^0.0.2",
     "eslint": "^9.36.0",
@@ -70,6 +74,7 @@
     "lint-staged": "^16.2.3",
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.17",
+    "vitest": "^2.1.8"
   }
 }

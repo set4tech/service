@@ -28,6 +28,10 @@ interface AnalysisRun {
   recommendations?: string[];
   executed_at: string;
   execution_time_ms?: number;
+  batch_group_id?: string;
+  batch_number?: number;
+  total_batches?: number;
+  section_keys_in_batch?: string[];
 }
 
 interface Check {
@@ -65,6 +69,9 @@ export function CodeDetailPanel({
   const [showExtraContext, setShowExtraContext] = useState(false);
   const [assessing, setAssessing] = useState(false);
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
+  const [assessmentProgress, setAssessmentProgress] = useState(0);
+  const [assessmentMessage, setAssessmentMessage] = useState('');
+  const [_currentBatchGroupId, setCurrentBatchGroupId] = useState<string | null>(null);
 
   // Prompt editing state
   const [showPrompt, setShowPrompt] = useState(false);
@@ -300,11 +307,14 @@ export function CodeDetailPanel({
 
     setAssessing(true);
     setAssessmentError(null);
+    setAssessmentProgress(0);
+    setAssessmentMessage('Starting assessment...');
 
     // Save selected model to localStorage
     localStorage.setItem('lastSelectedAIModel', selectedModel);
 
     try {
+      // 1. Start assessment (returns immediately with first batch)
       const response = await fetch(`/api/checks/${checkId}/assess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -321,24 +331,100 @@ export function CodeDetailPanel({
         throw new Error(data.error || 'Assessment failed');
       }
 
-      // Reload analysis runs
-      const runsResponse = await fetch(`/api/checks/${checkId}/analysis-runs`);
-      const runsData = await runsResponse.json();
-      if (runsData.runs) {
-        setAnalysisRuns(runsData.runs);
-        // Auto-expand the latest run
-        if (runsData.runs[0]) {
-          setExpandedRuns(new Set([runsData.runs[0].id]));
-        }
+      // Add first batch result immediately
+      if (data.firstBatchResult) {
+        setAnalysisRuns(prev => [data.firstBatchResult, ...prev]);
+        setExpandedRuns(new Set([data.firstBatchResult.id]));
       }
 
-      // Clear extra context after successful assessment
-      setExtraContext('');
-      setShowExtraContext(false);
+      const { batchGroupId, totalBatches } = data;
+      setCurrentBatchGroupId(batchGroupId);
+
+      if (totalBatches === 1) {
+        // Single batch - complete immediately
+        setAssessmentMessage('Assessment complete!');
+        setAssessmentProgress(100);
+        setExtraContext('');
+        setShowExtraContext(false);
+        if (onCheckUpdate) {
+          onCheckUpdate();
+        }
+        setAssessing(false);
+        return;
+      }
+
+      // 2. Poll for progress if multiple batches
+      setAssessmentMessage(`Processing batch 1/${totalBatches}...`);
+      setAssessmentProgress(Math.round((1 / totalBatches) * 100));
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const progressRes = await fetch(`/api/checks/${checkId}/assessment-progress`);
+          const progressData = await progressRes.json();
+
+          if (!progressRes.ok) {
+            clearInterval(pollInterval);
+            throw new Error(progressData.error || 'Failed to fetch progress');
+          }
+
+          const { completed, total, runs, inProgress } = progressData;
+
+          // Update progress
+          const progress = Math.round((completed / total) * 100);
+          setAssessmentProgress(progress);
+          setAssessmentMessage(
+            inProgress
+              ? `Processing batch ${completed + 1}/${total}...`
+              : 'Assessment complete!'
+          );
+
+          // Update runs (only add new ones)
+          if (runs && runs.length > 0) {
+            setAnalysisRuns(prev => {
+              const existingIds = new Set(prev.map(r => r.id));
+              const newRuns = runs.filter((r: any) => !existingIds.has(r.id));
+              if (newRuns.length > 0) {
+                // Auto-expand new runs
+                setExpandedRuns(prevExpanded => {
+                  const updated = new Set(prevExpanded);
+                  newRuns.forEach((r: any) => updated.add(r.id));
+                  return updated;
+                });
+                return [...newRuns, ...prev];
+              }
+              return prev;
+            });
+          }
+
+          // Stop polling when complete
+          if (!inProgress) {
+            clearInterval(pollInterval);
+            setExtraContext('');
+            setShowExtraContext(false);
+            if (onCheckUpdate) {
+              onCheckUpdate();
+            }
+            setAssessing(false);
+          }
+        } catch (pollError: any) {
+          console.error('Polling error:', pollError);
+          clearInterval(pollInterval);
+          setAssessmentError(pollError.message);
+          setAssessing(false);
+        }
+      }, 2000); // Poll every 2 seconds
+
+      // Safety timeout after 10 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (assessing) {
+          setAssessmentError('Assessment timed out');
+          setAssessing(false);
+        }
+      }, 600000);
     } catch (err: any) {
       console.error('Assessment error:', err);
       setAssessmentError(err.message);
-    } finally {
       setAssessing(false);
     }
   };
@@ -818,6 +904,22 @@ export function CodeDetailPanel({
                   </div>
                 )}
 
+                {/* Progress Indicator */}
+                {assessing && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">{assessmentMessage}</span>
+                      <span className="text-gray-500 font-mono">{Math.round(assessmentProgress)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-full transition-all duration-300 ease-out"
+                        style={{ width: `${assessmentProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Assess Button */}
                 <button
                   onClick={handleAssess}
@@ -860,6 +962,7 @@ export function CodeDetailPanel({
                   {analysisRuns.map(run => {
                     const isExpanded = expandedRuns.has(run.id);
                     const statusColors = getStatusColor(run.compliance_status);
+                    const isBatchedRun = run.batch_group_id && (run.total_batches ?? 0) > 1;
 
                     return (
                       <div key={run.id} className="border border-gray-200 rounded overflow-hidden">
@@ -871,6 +974,11 @@ export function CodeDetailPanel({
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <span className="text-xs font-mono text-gray-500">
                               #{run.run_number}
+                              {isBatchedRun && (
+                                <span className="ml-1 text-blue-600">
+                                  (Batch {run.batch_number}/{run.total_batches})
+                                </span>
+                              )}
                             </span>
                             <span
                               className={`text-xs px-2 py-0.5 rounded border font-medium ${statusColors}`}
