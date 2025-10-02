@@ -5,7 +5,7 @@ import { NextRequest } from 'next/server';
 // Create mock functions
 const mockSingle = vi.fn();
 const mockLimit = vi.fn(() => ({ single: mockSingle }));
-const mockOrder = vi.fn(() => ({ limit: mockLimit }));
+const mockOrder = vi.fn();
 const mockEq = vi.fn(() => ({ order: mockOrder }));
 const mockSelect = vi.fn(() => ({ eq: mockEq }));
 const mockFrom = vi.fn(() => ({ select: mockSelect }));
@@ -42,7 +42,8 @@ describe('GET /api/checks/[id]/assessment-progress', () => {
   it('should return progress for incomplete batch assessment', async () => {
     const batchGroupId = 'batch-group-123';
 
-    // Mock latest run
+    // First query: .order().limit().single()
+    mockOrder.mockReturnValueOnce({ limit: mockLimit });
     mockSingle.mockResolvedValueOnce({
       data: {
         batch_group_id: batchGroupId,
@@ -51,7 +52,7 @@ describe('GET /api/checks/[id]/assessment-progress', () => {
       error: null,
     });
 
-    // Mock runs for this batch group (2 out of 3 complete)
+    // Second query: .order() returns promise directly
     mockOrder.mockResolvedValueOnce({
       data: [
         {
@@ -90,6 +91,7 @@ describe('GET /api/checks/[id]/assessment-progress', () => {
   it('should return progress for completed batch assessment', async () => {
     const batchGroupId = 'batch-group-123';
 
+    mockOrder.mockReturnValueOnce({ limit: mockLimit });
     mockSingle.mockResolvedValueOnce({
       data: {
         batch_group_id: batchGroupId,
@@ -122,6 +124,7 @@ describe('GET /api/checks/[id]/assessment-progress', () => {
   });
 
   it('should handle single batch (non-batched) assessments', async () => {
+    mockOrder.mockReturnValueOnce({ limit: mockLimit });
     mockSingle.mockResolvedValueOnce({
       data: {
         batch_group_id: 'batch-123',
