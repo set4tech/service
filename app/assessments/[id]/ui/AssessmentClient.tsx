@@ -44,9 +44,11 @@ export default function AssessmentClient({
 
   // Calculate progress dynamically from checks state (all checks, not filtered)
   const progress = useMemo(() => {
-    const totalChecks = checks.length;
+    // Exclude checks marked as not_applicable from total count
+    const applicableChecks = checks.filter(c => c.manual_override !== 'not_applicable');
+    const totalChecks = applicableChecks.length;
     // Count checks with AI assessment OR manual override (but not not_applicable)
-    const completed = checks.filter(
+    const completed = applicableChecks.filter(
       c =>
         c.latest_status ||
         c.status === 'completed' ||
