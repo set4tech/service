@@ -94,10 +94,46 @@ export default function AssessmentClient({
     setShowDetailPanel(true);
   };
 
-  const activeCheck = useMemo(
-    () => checks.find(c => c.id === activeCheckId) || null,
-    [checks, activeCheckId]
-  );
+  const handleCheckAdded = (newCheck: any) => {
+    // Add the new check to the state
+    setChecks(prevChecks => {
+      // Find the parent check
+      const parentCheck = prevChecks.find(c => c.id === newCheck.parent_check_id);
+
+      if (parentCheck) {
+        // Add to parent's instances array
+        return prevChecks.map(c => {
+          if (c.id === newCheck.parent_check_id) {
+            return {
+              ...c,
+              instances: [...(c.instances || []), newCheck],
+              instance_count: (c.instance_count || 0) + 1,
+            };
+          }
+          return c;
+        });
+      }
+
+      // If no parent, add as new check
+      return [...prevChecks, { ...newCheck, instances: [], instance_count: 0 }];
+    });
+  };
+
+  const activeCheck = useMemo(() => {
+    // First try to find the check directly
+    const directMatch = checks.find(c => c.id === activeCheckId);
+    if (directMatch) return directMatch;
+
+    // If not found, search within instances
+    for (const check of checks) {
+      if (check.instances?.length > 0) {
+        const instance = check.instances.find((i: any) => i.id === activeCheckId);
+        if (instance) return instance;
+      }
+    }
+
+    return null;
+  }, [checks, activeCheckId]);
 
   // Auto-seed checks if empty (only try once)
   const [hasSeedAttempted, setHasSeedAttempted] = useState(() => {
@@ -175,9 +211,12 @@ export default function AssessmentClient({
           total: data.sections_total || 0,
         });
 
-        // If seeding completed and we have more checks than before, refresh
-        if (data.seeding_status === 'completed' && data.check_count > checks.length) {
-          console.log('[AssessmentClient] Background seeding complete, refreshing checks...');
+        // If we have more checks than before, refresh (works for both in-progress and completed)
+        if (data.check_count > checks.length) {
+          console.log('[AssessmentClient] New checks detected, refreshing...', {
+            currentCount: checks.length,
+            newCount: data.check_count,
+          });
           // Fetch updated checks
           const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
           if (checksRes.ok) {
@@ -195,8 +234,9 @@ export default function AssessmentClient({
       }
     };
 
-    // Start polling if we have checks (meaning we've already done initial seed)
-    if (checks.length > 0 && !isSeeding) {
+    // Start polling after initial seed attempt completes
+    // This ensures we catch background-processed checks
+    if (hasSeedAttempted && !isSeeding) {
       pollStatus(); // Check immediately
       pollInterval = setInterval(pollStatus, 3000); // Then every 3 seconds
     }
@@ -204,7 +244,7 @@ export default function AssessmentClient({
     return () => {
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [assessment.id, checks.length, isSeeding]);
+  }, [assessment.id, checks.length, hasSeedAttempted, isSeeding]);
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
   const [screenshotsChanged, setScreenshotsChanged] = useState(0);
@@ -413,6 +453,7 @@ export default function AssessmentClient({
             activeCheckId={activeCheckId}
             onSelect={handleCheckSelect}
             assessmentId={assessment.id}
+            onCheckAdded={handleCheckAdded}
           />
         </div>
 
