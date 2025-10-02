@@ -2,6 +2,8 @@
 
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useCallback, useEffect, useRef, useReducer, useState } from 'react';
+import { ViolationMarker as ViolationMarkerType } from '@/lib/reports/get-violations';
+import { ViolationMarker } from '../reports/ViolationMarker';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -86,10 +88,20 @@ export function PDFViewer({
   pdfUrl,
   activeCheck,
   onScreenshotSaved,
+  readOnly = false,
+  violationMarkers = [],
+  onMarkerClick,
+  currentPage: externalCurrentPage,
+  onPageChange,
 }: {
   pdfUrl: string;
   activeCheck?: any;
-  onScreenshotSaved: () => void;
+  onScreenshotSaved?: () => void;
+  readOnly?: boolean;
+  violationMarkers?: ViolationMarkerType[];
+  onMarkerClick?: (marker: ViolationMarkerType) => void;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
 }) {
   const assessmentId = activeCheck?.assessment_id;
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -118,6 +130,20 @@ export function PDFViewer({
   const [optionalContentConfig, setOptionalContentConfig] = useState<any>(null);
   const [layerVersion, setLayerVersion] = useState(0);
 
+  // Sync external page number with internal state
+  useEffect(() => {
+    if (externalCurrentPage && externalCurrentPage !== state.pageNumber) {
+      dispatch({ type: 'SET_PAGE', payload: externalCurrentPage });
+    }
+  }, [externalCurrentPage]);
+
+  // Notify parent of page changes
+  useEffect(() => {
+    if (onPageChange) {
+      onPageChange(state.pageNumber);
+    }
+  }, [state.pageNumber, onPageChange]);
+
   // Fetch presigned URL for private S3 PDFs and load saved scale preference
   useEffect(() => {
     async function fetchPresignedUrl() {
@@ -138,7 +164,7 @@ export function PDFViewer({
     }
 
     async function loadSavedScale() {
-      if (!assessmentId) return;
+      if (!assessmentId || readOnly) return;
       try {
         const res = await fetch(`/api/assessments/${assessmentId}/pdf-scale`);
         if (res.ok) {
@@ -154,7 +180,7 @@ export function PDFViewer({
 
     fetchPresignedUrl();
     loadSavedScale();
-  }, [pdfUrl, assessmentId]);
+  }, [pdfUrl, assessmentId, readOnly]);
 
   const onDocLoad = ({ numPages }: { numPages: number }) => {
     dispatch({ type: 'SET_NUM_PAGES', payload: numPages });
@@ -238,7 +264,7 @@ export function PDFViewer({
   );
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if (state.screenshotMode) {
+    if (state.screenshotMode && !readOnly) {
       e.preventDefault();
       e.stopPropagation();
       const { x, y } = screenToContent(e.clientX, e.clientY);
@@ -324,12 +350,13 @@ export function PDFViewer({
       if (e.key === '-' || e.key === '_') zoom('out');
       if (e.key === '=' || e.key === '+') zoom('in');
       if (e.key === '0') dispatch({ type: 'RESET_ZOOM' });
-      if (e.key.toLowerCase() === 's') dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
-      if (e.key === 'Escape' && state.screenshotMode) dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
+      if (!readOnly && e.key.toLowerCase() === 's') dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
+      if (!readOnly && e.key === 'Escape' && state.screenshotMode)
+        dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
     };
     el.addEventListener('keydown', onKey);
     return () => el.removeEventListener('keydown', onKey);
-  }, [state.screenshotMode, state.numPages, state.pageNumber]);
+  }, [state.screenshotMode, state.numPages, state.pageNumber, readOnly]);
 
   // Clear selection on page change happens in reducer via SET_PAGE action
 
@@ -426,9 +453,7 @@ export function PDFViewer({
 
     // Update our local state
     setLayers(prev =>
-      prev.map(layer =>
-        layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
-      )
+      prev.map(layer => (layer.id === layerId ? { ...layer, visible: !layer.visible } : layer))
     );
 
     // Force a re-render by incrementing version
@@ -437,7 +462,7 @@ export function PDFViewer({
 
   const capture = async () => {
     try {
-      if (!state.selection || !pageInstance || !activeCheck) return;
+      if (readOnly || !state.selection || !pageInstance || !activeCheck) return;
 
       // Get the actual canvas element to understand its coordinate system
       const canvas = pageContainerRef.current?.querySelector('canvas') as HTMLCanvasElement | null;
@@ -614,7 +639,7 @@ export function PDFViewer({
       console.log('capture() complete!');
 
       dispatch({ type: 'CLEAR_SELECTION' });
-      onScreenshotSaved();
+      if (onScreenshotSaved) onScreenshotSaved();
     } catch (error) {
       console.error('capture() failed with error:', error);
       alert(
@@ -708,18 +733,22 @@ export function PDFViewer({
             ☰
           </button>
         )}
-        <button
-          aria-pressed={state.screenshotMode}
-          aria-label="Toggle screenshot mode (S)"
-          className={`btn-icon shadow-md ${state.screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
-          onClick={() => dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' })}
-        >
-          📸
-        </button>
-        {state.screenshotMode && state.selection && (
-          <button className="btn-secondary shadow-md" onClick={() => capture()}>
-            Save
-          </button>
+        {!readOnly && (
+          <>
+            <button
+              aria-pressed={state.screenshotMode}
+              aria-label="Toggle screenshot mode (S)"
+              className={`btn-icon shadow-md ${state.screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
+              onClick={() => dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' })}
+            >
+              📸
+            </button>
+            {state.screenshotMode && state.selection && (
+              <button className="btn-secondary shadow-md" onClick={() => capture()}>
+                Save
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -811,6 +840,18 @@ export function PDFViewer({
                   }}
                 />
               )}
+              {/* Violation Markers */}
+              {readOnly &&
+                violationMarkers
+                  .filter(marker => marker.pageNumber === state.pageNumber)
+                  .map((marker, idx) => (
+                    <ViolationMarker
+                      key={`${marker.checkId}-${marker.screenshotId}-${idx}`}
+                      marker={marker}
+                      onClick={onMarkerClick || (() => {})}
+                      isVisible={true}
+                    />
+                  ))}
             </div>
           </Document>
         </div>

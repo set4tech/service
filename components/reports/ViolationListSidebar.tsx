@@ -1,0 +1,229 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { ViolationMarker } from '@/lib/reports/get-violations';
+import clsx from 'clsx';
+
+interface Props {
+  violations: ViolationMarker[];
+  selectedViolation: ViolationMarker | null;
+  onViolationClick: (violation: ViolationMarker) => void;
+  currentPage: number;
+}
+
+type GroupBy = 'page' | 'severity' | 'section';
+
+export function ViolationListSidebar({
+  violations,
+  selectedViolation,
+  onViolationClick,
+  currentPage: _currentPage,
+}: Props) {
+  const [groupBy, setGroupBy] = useState<GroupBy>('page');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter violations by search query
+  const filteredViolations = useMemo(() => {
+    if (!searchQuery) return violations;
+    const query = searchQuery.toLowerCase();
+    return violations.filter(
+      v =>
+        v.description.toLowerCase().includes(query) ||
+        v.codeSectionNumber.toLowerCase().includes(query) ||
+        v.checkName.toLowerCase().includes(query)
+    );
+  }, [violations, searchQuery]);
+
+  // Group violations based on selected grouping
+  const groupedViolations = useMemo(() => {
+    const groups: Record<string, ViolationMarker[]> = {};
+
+    filteredViolations.forEach(v => {
+      let key: string;
+      if (groupBy === 'page') {
+        key = `Page ${v.pageNumber}`;
+      } else if (groupBy === 'severity') {
+        key = v.severity.charAt(0).toUpperCase() + v.severity.slice(1);
+      } else {
+        key = v.codeSectionNumber;
+      }
+
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(v);
+    });
+
+    // Sort groups
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      if (groupBy === 'page') {
+        const pageA = parseInt(a.replace('Page ', ''));
+        const pageB = parseInt(b.replace('Page ', ''));
+        return pageA - pageB;
+      } else if (groupBy === 'severity') {
+        const order = { Major: 0, Moderate: 1, Minor: 2 };
+        return order[a as keyof typeof order] - order[b as keyof typeof order];
+      }
+      return a.localeCompare(b);
+    });
+
+    return sortedKeys.map(key => ({ key, violations: groups[key] }));
+  }, [filteredViolations, groupBy]);
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'major':
+        return 'text-red-700 bg-red-50 border-red-200';
+      case 'moderate':
+        return 'text-yellow-700 bg-yellow-50 border-yellow-200';
+      case 'minor':
+        return 'text-blue-700 bg-blue-50 border-blue-200';
+      default:
+        return 'text-gray-700 bg-gray-50 border-gray-200';
+    }
+  };
+
+  const getSeverityDot = (severity: string) => {
+    switch (severity) {
+      case 'major':
+        return 'bg-red-500';
+      case 'moderate':
+        return 'bg-yellow-500';
+      case 'minor':
+        return 'bg-blue-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Search and Group Controls */}
+      <div className="px-4 py-3 border-b bg-white">
+        <input
+          type="text"
+          placeholder="Search violations..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+
+        <div className="mt-3 flex gap-1 bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => setGroupBy('page')}
+            className={clsx(
+              'flex-1 px-2 py-1 text-xs font-medium rounded transition-colors',
+              groupBy === 'page'
+                ? 'bg-white shadow-sm text-gray-900'
+                : 'text-gray-600 hover:text-gray-900'
+            )}
+          >
+            By Page
+          </button>
+          <button
+            onClick={() => setGroupBy('severity')}
+            className={clsx(
+              'flex-1 px-2 py-1 text-xs font-medium rounded transition-colors',
+              groupBy === 'severity'
+                ? 'bg-white shadow-sm text-gray-900'
+                : 'text-gray-600 hover:text-gray-900'
+            )}
+          >
+            By Severity
+          </button>
+          <button
+            onClick={() => setGroupBy('section')}
+            className={clsx(
+              'flex-1 px-2 py-1 text-xs font-medium rounded transition-colors',
+              groupBy === 'section'
+                ? 'bg-white shadow-sm text-gray-900'
+                : 'text-gray-600 hover:text-gray-900'
+            )}
+          >
+            By Section
+          </button>
+        </div>
+      </div>
+
+      {/* Violations List */}
+      <div className="flex-1 overflow-y-auto">
+        {violations.length === 0 ? (
+          <div className="px-4 py-12 text-center">
+            <div className="text-6xl mb-4">✅</div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Violations Found</h3>
+            <p className="text-sm text-gray-600">
+              This project is currently compliant with all assessed code sections.
+            </p>
+          </div>
+        ) : groupedViolations.length === 0 ? (
+          <div className="px-4 py-8 text-center text-gray-500 text-sm">
+            No violations found matching your search.
+          </div>
+        ) : (
+          groupedViolations.map(group => (
+            <div key={group.key} className="border-b border-gray-100">
+              {/* Group Header */}
+              <div className="sticky top-0 bg-gray-50 px-4 py-2 border-b border-gray-200">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  {group.key}
+                  <span className="ml-2 text-gray-500">({group.violations.length})</span>
+                </h3>
+              </div>
+
+              {/* Group Items */}
+              <div className="divide-y divide-gray-100">
+                {group.violations.map(violation => (
+                  <button
+                    key={`${violation.checkId}-${violation.screenshotId}`}
+                    onClick={() => onViolationClick(violation)}
+                    className={clsx(
+                      'w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors',
+                      selectedViolation?.checkId === violation.checkId &&
+                        selectedViolation?.screenshotId === violation.screenshotId
+                        ? 'bg-blue-50 border-l-4 border-blue-600'
+                        : 'border-l-4 border-transparent'
+                    )}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div
+                        className={clsx(
+                          'w-2 h-2 rounded-full mt-1.5 flex-shrink-0',
+                          getSeverityDot(violation.severity)
+                        )}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-mono text-gray-600 mb-1">
+                          {violation.codeSectionNumber}
+                        </div>
+                        <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                          {violation.description}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                          <span>Page {violation.pageNumber}</span>
+                          <span>•</span>
+                          <span
+                            className={clsx(
+                              'px-2 py-0.5 rounded-full border capitalize font-medium',
+                              getSeverityColor(violation.severity)
+                            )}
+                          >
+                            {violation.severity}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Footer with total count */}
+      <div className="px-4 py-3 border-t bg-gray-50">
+        <div className="text-xs text-gray-600 text-center">
+          Showing {filteredViolations.length} of {violations.length} violations
+        </div>
+      </div>
+    </div>
+  );
+}
