@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface CloneCheckModalProps {
   checkId: string;
@@ -14,6 +15,11 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
   const [copyScreenshots, setCopyScreenshots] = useState(false);
   const [isCloning, setIsCloning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Detect if this is an element check based on check name pattern
   const isElementCheck =
@@ -54,7 +60,9 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
     }
   };
 
-  return (
+  if (!mounted) return null;
+
+  const modalContent = (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
         {/* Header */}
@@ -155,4 +163,6 @@ export function CloneCheckModal({ checkId, checkName, onClose, onSuccess }: Clon
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

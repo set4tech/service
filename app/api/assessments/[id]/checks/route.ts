@@ -60,12 +60,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log('[SEARCH] Found checks:', allChecksData?.length);
 
-      // Map element_groups.name to element_group_name
-      const mappedChecks = (allChecksData || []).map((check: any) => ({
-        ...check,
-        element_group_name: check.element_groups?.name || null,
-        element_groups: undefined, // Remove nested object
-      }));
+      // Fetch latest analysis runs for all checks
+      const checkIds = (allChecksData || []).map((c: any) => c.id);
+      const { data: latestAnalysis } = await supabase
+        .from('latest_analysis_runs')
+        .select(
+          'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+        )
+        .in('check_id', checkIds);
+
+      // Create analysis map
+      const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
+
+      // Map element_groups.name to element_group_name and add analysis data
+      const mappedChecks = (allChecksData || []).map((check: any) => {
+        const analysis = analysisMap.get(check.id);
+        return {
+          ...check,
+          element_group_name: check.element_groups?.name || null,
+          element_groups: undefined, // Remove nested object
+          latest_status: analysis?.compliance_status || null,
+          latest_confidence: analysis?.confidence || null,
+          latest_reasoning: analysis?.ai_reasoning || null,
+          latest_analysis: analysis?.violations
+            ? {
+                violations: analysis.violations,
+                recommendations: analysis.recommendations,
+              }
+            : null,
+        };
+      });
 
       // First filter by check fields (fast, in-memory)
       const checksMatchingCheckFields =
@@ -134,12 +158,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    // Map element_groups.name to element_group_name
-    const mappedChecks = (allChecks || []).map((check: any) => ({
-      ...check,
-      element_group_name: check.element_groups?.name || null,
-      element_groups: undefined, // Remove nested object
-    }));
+    // Fetch latest analysis runs for all checks
+    const checkIds = (allChecks || []).map((c: any) => c.id);
+    const { data: latestAnalysis } = await supabase
+      .from('latest_analysis_runs')
+      .select('check_id, compliance_status, confidence, ai_reasoning, violations, recommendations')
+      .in('check_id', checkIds);
+
+    // Create analysis map
+    const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
+
+    // Map element_groups.name to element_group_name and add analysis data
+    const mappedChecks = (allChecks || []).map((check: any) => {
+      const analysis = analysisMap.get(check.id);
+      return {
+        ...check,
+        element_group_name: check.element_groups?.name || null,
+        element_groups: undefined, // Remove nested object
+        latest_status: analysis?.compliance_status || null,
+        latest_confidence: analysis?.confidence || null,
+        latest_reasoning: analysis?.ai_reasoning || null,
+        latest_analysis: analysis?.violations
+          ? {
+              violations: analysis.violations,
+              recommendations: analysis.recommendations,
+            }
+          : null,
+      };
+    });
 
     // Group checks by parent - instances will be nested under their parent
     const checks = mappedChecks.reduce((acc: any[], check: any) => {

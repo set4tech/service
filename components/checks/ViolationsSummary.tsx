@@ -49,9 +49,11 @@ export function ViolationsSummary({ checks, onCheckSelect, buildingInfo, codeboo
     const result: ViolationMarker[] = [];
 
     checks.forEach(check => {
-      // Determine if non-compliant
+      // Determine if non-compliant (check both 'non_compliant' and 'violation' statuses)
       const isNonCompliant =
-        check.manual_override === 'non_compliant' || check.latest_status === 'non_compliant';
+        check.manual_override === 'non_compliant' ||
+        check.latest_status === 'non_compliant' ||
+        check.latest_status === 'violation';
 
       if (!isNonCompliant) return;
 

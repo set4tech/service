@@ -19,20 +19,64 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       .order('code_section_number', { ascending: true }),
   ]);
 
+  // Fetch latest analysis for all checks
+  const checkIds = (allChecks || []).map(c => c.id);
+  const { data: latestAnalysis } =
+    checkIds.length > 0
+      ? await supabase
+          .from('latest_analysis_runs')
+          .select(
+            'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+          )
+          .in('check_id', checkIds)
+      : { data: [] };
+
+  // Create a map of check_id -> latest analysis
+  const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
+
   // Group checks by parent - instances will be nested under their parent
   const checks = (allChecks || []).reduce((acc: any[], check: any) => {
     if (!check.parent_check_id) {
       // This is a parent check - find all its instances
-      const instances = (allChecks || []).filter((c: any) => c.parent_check_id === check.id);
+      const rawInstances = (allChecks || []).filter((c: any) => c.parent_check_id === check.id);
+
+      // Add analysis data to instances
+      const instances = rawInstances.map((instance: any) => {
+        const instanceAnalysis = analysisMap.get(instance.id);
+        return {
+          ...instance,
+          latest_status: instanceAnalysis?.compliance_status || null,
+          latest_confidence: instanceAnalysis?.confidence || null,
+          latest_reasoning: instanceAnalysis?.ai_reasoning || null,
+          latest_analysis: instanceAnalysis?.violations
+            ? {
+                violations: instanceAnalysis.violations,
+                recommendations: instanceAnalysis.recommendations,
+              }
+            : null,
+        };
+      });
 
       // Flatten element_groups join
       const elementGroup = check.element_groups;
+
+      // Add latest analysis data
+      const analysis = analysisMap.get(check.id);
 
       acc.push({
         ...check,
         element_group_name: elementGroup?.name || null,
         element_group_slug: elementGroup?.slug || null,
         element_groups: undefined, // Remove nested object
+        latest_status: analysis?.compliance_status || null,
+        latest_confidence: analysis?.confidence || null,
+        latest_reasoning: analysis?.ai_reasoning || null,
+        latest_analysis: analysis?.violations
+          ? {
+              violations: analysis.violations,
+              recommendations: analysis.recommendations,
+            }
+          : null,
         instances,
         instance_count: instances.length,
       });
