@@ -21,16 +21,34 @@ const PDFViewer = dynamic(
   }
 );
 
+interface BuildingInfo {
+  occupancy: string;
+  size_sf: number | null;
+  stories: number | null;
+  work_type: string;
+  has_parking: boolean | null;
+  facility_category: string;
+}
+
+interface Codebook {
+  id: string;
+  name: string;
+}
+
 interface Props {
   assessment: any;
   checks: any[];
   progress: { totalChecks: number; completed: number; pct: number };
+  buildingInfo: BuildingInfo;
+  codebooks: Codebook[];
 }
 
 export default function AssessmentClient({
   assessment,
   checks: initialChecks,
   progress: _initialProgress,
+  buildingInfo,
+  codebooks,
 }: Props) {
   const [checks, setChecks] = useState(initialChecks);
   const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>('section');
@@ -489,7 +507,12 @@ export default function AssessmentClient({
         {/* Checks List */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {checkMode === 'summary' ? (
-            <ViolationsSummary checks={checks} onCheckSelect={handleCheckSelect} />
+            <ViolationsSummary
+              checks={checks}
+              onCheckSelect={handleCheckSelect}
+              buildingInfo={buildingInfo}
+              codebooks={codebooks}
+            />
           ) : (
             <CheckList
               checks={displayedChecks}

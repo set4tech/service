@@ -4,12 +4,28 @@ import { useMemo, useState } from 'react';
 import { ViolationListSidebar } from '@/components/reports/ViolationListSidebar';
 import { ViolationMarker } from '@/lib/reports/get-violations';
 
+interface BuildingInfo {
+  occupancy: string;
+  size_sf: number | null;
+  stories: number | null;
+  work_type: string;
+  has_parking: boolean | null;
+  facility_category: string;
+}
+
+interface Codebook {
+  id: string;
+  name: string;
+}
+
 interface Props {
   checks: any[];
   onCheckSelect: (checkId: string) => void;
+  buildingInfo: BuildingInfo;
+  codebooks: Codebook[];
 }
 
-export function ViolationsSummary({ checks, onCheckSelect }: Props) {
+export function ViolationsSummary({ checks, onCheckSelect, buildingInfo, codebooks }: Props) {
   const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
 
   // Calculate stats
@@ -156,7 +172,7 @@ export function ViolationsSummary({ checks, onCheckSelect }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Stats Header */}
-      <div className="px-4 py-4 border-b bg-white">
+      <div className="px-4 py-4 border-b bg-white space-y-3">
         <div className={`px-4 py-3 rounded-lg border ${getSeverityColor()}`}>
           <div className="flex items-center gap-3">
             <span className="text-2xl">{getSeverityIcon()}</span>
@@ -176,6 +192,59 @@ export function ViolationsSummary({ checks, onCheckSelect }: Props) {
             </div>
           </div>
         </div>
+
+        {/* Building Info Card */}
+        <div className="px-4 py-3 rounded-lg border border-gray-200 bg-gray-50">
+          <div className="font-semibold text-xs text-gray-700 mb-2">Building Parameters</div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div>
+              <span className="text-gray-600">Occupancy:</span>{' '}
+              <span className="font-medium text-gray-900">{buildingInfo.occupancy}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Stories:</span>{' '}
+              <span className="font-medium text-gray-900">{buildingInfo.stories ?? 'N/A'}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Size:</span>{' '}
+              <span className="font-medium text-gray-900">
+                {buildingInfo.size_sf ? `${buildingInfo.size_sf.toLocaleString()} sq ft` : 'N/A'}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-600">Parking:</span>{' '}
+              <span className="font-medium text-gray-900">
+                {buildingInfo.has_parking === null
+                  ? 'N/A'
+                  : buildingInfo.has_parking
+                    ? 'Yes'
+                    : 'No'}
+              </span>
+            </div>
+            <div className="col-span-2">
+              <span className="text-gray-600">Work Type:</span>{' '}
+              <span className="font-medium text-gray-900">{buildingInfo.work_type}</span>
+            </div>
+            <div className="col-span-2">
+              <span className="text-gray-600">Facility:</span>{' '}
+              <span className="font-medium text-gray-900">{buildingInfo.facility_category}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Codebooks Card */}
+        {codebooks.length > 0 && (
+          <div className="px-4 py-3 rounded-lg border border-gray-200 bg-gray-50">
+            <div className="font-semibold text-xs text-gray-700 mb-2">Selected Code Books</div>
+            <div className="space-y-1">
+              {codebooks.map(code => (
+                <div key={code.id} className="text-xs text-gray-900">
+                  • {code.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Violations List */}
