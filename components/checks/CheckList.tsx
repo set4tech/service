@@ -33,6 +33,7 @@ export function CheckList({
   });
   const [expandedInstances, setExpandedInstances] = useState<Set<string>>(new Set());
   const [cloneModalCheck, setCloneModalCheck] = useState<any | null>(null);
+  const [deletingCheckId, setDeletingCheckId] = useState<string | null>(null);
 
   // Debounced search effect
   useEffect(() => {
@@ -158,6 +159,33 @@ export function CheckList({
     } else {
       // Fallback to full page reload if no callback provided
       window.location.reload();
+    }
+  };
+
+  const handleDeleteInstance = async (instanceId: string, instanceLabel: string) => {
+    if (!confirm(`Delete "${instanceLabel}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingCheckId(instanceId);
+
+    try {
+      const response = await fetch(`/api/checks/${instanceId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete instance');
+      }
+
+      // Reload to refresh the list
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      alert(`Failed to delete: ${error.message}`);
+    } finally {
+      setDeletingCheckId(null);
     }
   };
 
@@ -460,47 +488,107 @@ export function CheckList({
                         {hasInstances && isInstancesExpanded && (
                           <div className="bg-gray-100 border-t border-gray-200">
                             {check.instances.map((instance: any) => (
-                              <button
+                              <div
                                 key={instance.id}
-                                type="button"
-                                onClick={() => onSelect(instance.id)}
                                 className={clsx(
-                                  'w-full pl-12 pr-4 py-2 flex items-start text-left hover:bg-gray-200 cursor-pointer transition-colors border-b border-gray-200 last:border-b-0',
+                                  'flex items-start hover:bg-gray-200 transition-colors border-b border-gray-200 last:border-b-0 group',
                                   activeCheckId === instance.id &&
-                                    'bg-blue-50 border-l-4 border-blue-400 hover:bg-blue-100'
+                                    'bg-blue-50 border-l-4 border-blue-400'
                                 )}
                               >
-                                <span
+                                <button
+                                  type="button"
+                                  onClick={() => onSelect(instance.id)}
                                   className={clsx(
-                                    'mt-0.5 mr-2 text-sm',
-                                    getStatusColor(instance),
-                                    instance.status === 'analyzing' && 'animate-bounce'
+                                    'flex-1 pl-12 pr-4 py-2 flex items-start text-left cursor-pointer',
+                                    activeCheckId === instance.id && 'hover:bg-blue-100'
                                   )}
-                                  style={
-                                    instance.status === 'analyzing'
-                                      ? { animationDuration: '2s' }
-                                      : undefined
-                                  }
                                 >
-                                  {getStatusIcon(instance)}
-                                </span>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <div className="text-sm text-gray-700 font-medium">
-                                      {instance.instance_label ||
-                                        `Instance ${instance.instance_number}`}
-                                    </div>
-                                    {instance.manual_override && (
-                                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
-                                        Manual
-                                      </span>
+                                  <span
+                                    className={clsx(
+                                      'mt-0.5 mr-2 text-sm',
+                                      getStatusColor(instance),
+                                      instance.status === 'analyzing' && 'animate-bounce'
                                     )}
+                                    style={
+                                      instance.status === 'analyzing'
+                                        ? { animationDuration: '2s' }
+                                        : undefined
+                                    }
+                                  >
+                                    {getStatusIcon(instance)}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-sm text-gray-700 font-medium">
+                                        {instance.instance_label ||
+                                          `Instance ${instance.instance_number}`}
+                                      </div>
+                                      {instance.manual_override && (
+                                        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                          Manual
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      {instance.code_section_number}
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-gray-500 mt-0.5">
-                                    {instance.code_section_number}
-                                  </div>
-                                </div>
-                              </button>
+                                </button>
+
+                                {/* Delete Button */}
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    handleDeleteInstance(
+                                      instance.id,
+                                      instance.instance_label ||
+                                        `Instance ${instance.instance_number}`
+                                    );
+                                  }}
+                                  disabled={deletingCheckId === instance.id}
+                                  className="px-3 py-2 flex items-center hover:bg-red-50 transition-colors text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                                  title="Delete instance"
+                                >
+                                  {deletingCheckId === instance.id ? (
+                                    <svg
+                                      className="animate-spin h-4 w-4"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <circle
+                                        className="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                      />
+                                      <path
+                                        className="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                      />
+                                    </svg>
+                                  ) : (
+                                    <svg
+                                      width="16"
+                                      height="16"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                      />
+                                    </svg>
+                                  )}
+                                </button>
+                              </div>
                             ))}
                           </div>
                         )}
