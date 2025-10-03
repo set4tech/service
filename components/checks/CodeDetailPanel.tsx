@@ -18,6 +18,7 @@ interface CodeSection {
   requirements?: Array<string | { text: string; [key: string]: any }>;
   tables?: TableBlock[];
   figures?: string[];
+  source_url?: string;
   references?: Array<{
     key: string;
     number: string;
@@ -74,8 +75,15 @@ export function CodeDetailPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // For element checks: child section checks
+  const [childChecks, setChildChecks] = useState<any[]>([]);
+  const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
+
   // Computed: current section to display
   const section = sections[activeSectionIndex] || null;
+
+  // Computed: effective check ID (child check for elements, main check otherwise)
+  const effectiveCheckId = activeChildCheckId || checkId;
 
   // Assessment state
   const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-pro');
@@ -112,6 +120,10 @@ export function CodeDetailPanel({
   const [showNeverRelevantDialog, setShowNeverRelevantDialog] = useState(false);
   const [markingNeverRelevant, setMarkingNeverRelevant] = useState(false);
 
+  // Floorplan relevant state
+  const [showFloorplanRelevantDialog, setShowFloorplanRelevantDialog] = useState(false);
+  const [markingFloorplanRelevant, setMarkingFloorplanRelevant] = useState(false);
+
   // Section tabs toggle state
   const [showSectionTabs, setShowSectionTabs] = useState(false);
 
@@ -130,6 +142,8 @@ export function CodeDetailPanel({
   useEffect(() => {
     if (!checkId) {
       setCheck(null);
+      setChildChecks([]);
+      setActiveChildCheckId(null);
       return;
     }
 
@@ -138,6 +152,25 @@ export function CodeDetailPanel({
       .then(data => {
         if (data.check) {
           setCheck(data.check);
+
+          // If this is an element check (instance_number > 0), fetch child section checks
+          if (data.check.check_type === 'element' && data.check.instance_number > 0) {
+            return fetch(`/api/checks?parent_check_id=${checkId}`).then(res => res.json());
+          }
+        }
+        return null;
+      })
+      .then(childData => {
+        if (childData && Array.isArray(childData)) {
+          // Sort by section number
+          const sorted = childData.sort((a, b) =>
+            (a.code_section_number || '').localeCompare(b.code_section_number || '')
+          );
+          setChildChecks(sorted);
+          // Set first child as active
+          if (sorted.length > 0) {
+            setActiveChildCheckId(sorted[0].id);
+          }
         }
       })
       .catch(err => {
@@ -145,8 +178,45 @@ export function CodeDetailPanel({
       });
   }, [checkId]);
 
-  // Load code sections (single or multiple for element checks)
+  // Load code sections
   useEffect(() => {
+    // For element checks with child checks, load section based on active child check
+    if (childChecks.length > 0 && activeChildCheckId) {
+      const activeChild = childChecks.find(c => c.id === activeChildCheckId);
+      if (!activeChild?.code_section_key) {
+        setSections([]);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      fetch('/api/compliance/sections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sectionKey: activeChild.code_section_key }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            setError(data.error);
+            setSections([]);
+          } else {
+            setSections([data]);
+            setActiveSectionIndex(0);
+          }
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error('Failed to load section:', err);
+          setError(err.message);
+          setLoading(false);
+        });
+
+      return;
+    }
+
+    // Original logic for non-element checks
     if (!sectionKey && !check?.element_sections) {
       setSections([]);
       setActiveSectionIndex(0);
@@ -186,11 +256,11 @@ export function CodeDetailPanel({
         setError(err.message);
         setLoading(false);
       });
-  }, [sectionKey, check]);
+  }, [sectionKey, check, childChecks, activeChildCheckId]);
 
   // Load analysis runs and manual override
   useEffect(() => {
-    if (!checkId) {
+    if (!effectiveCheckId) {
       setAnalysisRuns([]);
       setManualOverride(null);
       setManualOverrideNote('');
@@ -199,8 +269,8 @@ export function CodeDetailPanel({
 
     setLoadingRuns(true);
     Promise.all([
-      fetch(`/api/checks/${checkId}/analysis-runs`).then(res => res.json()),
-      fetch(`/api/checks/${checkId}`).then(res => res.json()),
+      fetch(`/api/checks/${effectiveCheckId}/analysis-runs`).then(res => res.json()),
+      fetch(`/api/checks/${effectiveCheckId}`).then(res => res.json()),
     ])
       .then(([runsData, checkData]) => {
         if (runsData.runs) {
@@ -217,7 +287,7 @@ export function CodeDetailPanel({
         console.error('Failed to load check data:', err);
         setLoadingRuns(false);
       });
-  }, [checkId]);
+  }, [effectiveCheckId]);
 
   // Load prompt when user clicks to view it
   const handleViewPrompt = async () => {
@@ -254,13 +324,13 @@ export function CodeDetailPanel({
   };
 
   const handleSaveOverride = async () => {
-    if (!checkId) return;
+    if (!effectiveCheckId) return;
 
     setSavingOverride(true);
     setOverrideError(null);
 
     try {
-      const response = await fetch(`/api/checks/${checkId}/manual-override`, {
+      const response = await fetch(`/api/checks/${effectiveCheckId}/manual-override`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -293,13 +363,13 @@ export function CodeDetailPanel({
     setShowOverrideNote(false);
 
     // Auto-save when clearing
-    if (!checkId) return;
+    if (!effectiveCheckId) return;
 
     setSavingOverride(true);
     setOverrideError(null);
 
     try {
-      const response = await fetch(`/api/checks/${checkId}/manual-override`, {
+      const response = await fetch(`/api/checks/${effectiveCheckId}/manual-override`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ override: null }),
@@ -356,6 +426,39 @@ export function CodeDetailPanel({
       setOverrideError(err.message);
     } finally {
       setMarkingNeverRelevant(false);
+    }
+  };
+
+  const handleMarkFloorplanRelevant = async () => {
+    if (!sectionKey) return;
+
+    setMarkingFloorplanRelevant(true);
+    setOverrideError(null);
+
+    try {
+      const response = await fetch(`/api/sections/${sectionKey}/mark-floorplan-relevant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to mark section as floorplan relevant');
+      }
+
+      // Close dialog
+      setShowFloorplanRelevantDialog(false);
+
+      // Notify parent to refresh (section order may change)
+      if (onCheckUpdate) {
+        onCheckUpdate();
+      }
+    } catch (err: any) {
+      console.error('Mark floorplan relevant error:', err);
+      setOverrideError(err.message);
+    } finally {
+      setMarkingFloorplanRelevant(false);
     }
   };
 
@@ -552,7 +655,7 @@ export function CodeDetailPanel({
       </div>
 
       {/* Section Tabs for Element Checks */}
-      {isElementCheck && (
+      {childChecks.length > 0 && (
         <div className="border-b bg-gray-50 flex-shrink-0">
           {/* Toggle Button */}
           <button
@@ -561,7 +664,7 @@ export function CodeDetailPanel({
           >
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-gray-700">Code Sections</span>
-              <span className="text-xs text-gray-500">({sections.length})</span>
+              <span className="text-xs text-gray-500">({childChecks.length})</span>
             </div>
             <svg
               className={`w-4 h-4 text-gray-400 transition-transform ${showSectionTabs ? 'rotate-180' : ''}`}
@@ -582,22 +685,153 @@ export function CodeDetailPanel({
           {showSectionTabs && (
             <div className="px-2 pb-2 max-h-48 overflow-y-auto">
               <div className="space-y-1">
-                {sections.map((sec, idx) => (
+                {childChecks.map(childCheck => (
                   <button
-                    key={sec.key}
-                    onClick={() => setActiveSectionIndex(idx)}
+                    key={childCheck.id}
+                    onClick={() => setActiveChildCheckId(childCheck.id)}
                     className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors text-left ${
-                      idx === activeSectionIndex
+                      childCheck.id === activeChildCheckId
                         ? 'bg-blue-600 text-white'
                         : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
-                    {sec.number}
+                    {childCheck.code_section_number}
                   </button>
                 ))}
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Manual Compliance Judgment */}
+      {effectiveCheckId && (
+        <div className="border-b bg-gray-50 p-4 flex-shrink-0">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            Manual Compliance Judgment
+          </div>
+
+          <div className="space-y-3">
+            {/* Override Status Banner */}
+            {manualOverride && (
+              <div
+                className={`px-3 py-2 rounded border ${
+                  manualOverride === 'compliant'
+                    ? 'bg-green-50 border-green-200 text-green-800'
+                    : manualOverride === 'non_compliant'
+                      ? 'bg-red-50 border-red-200 text-red-800'
+                      : 'bg-gray-50 border-gray-200 text-gray-800'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">
+                    ✓ Manual Override:{' '}
+                    {manualOverride === 'compliant'
+                      ? 'COMPLIANT'
+                      : manualOverride === 'non_compliant'
+                        ? 'NON-COMPLIANT'
+                        : 'NOT APPLICABLE'}
+                  </span>
+                  <button
+                    onClick={handleClearOverride}
+                    disabled={savingOverride}
+                    className="text-xs underline hover:no-underline disabled:opacity-50"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Three-button toggle */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-2">
+                Set Compliance Status
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => setManualOverride('compliant')}
+                  disabled={savingOverride}
+                  className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                    manualOverride === 'compliant'
+                      ? 'bg-green-100 border-green-400 text-green-800'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Compliant
+                </button>
+                <button
+                  onClick={() => setManualOverride('non_compliant')}
+                  disabled={savingOverride}
+                  className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                    manualOverride === 'non_compliant'
+                      ? 'bg-red-100 border-red-400 text-red-800'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Non-Compliant
+                </button>
+                <button
+                  onClick={() => setManualOverride('not_applicable')}
+                  disabled={savingOverride}
+                  className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                    manualOverride === 'not_applicable'
+                      ? 'bg-gray-100 border-gray-400 text-gray-800'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Not Applicable
+                </button>
+              </div>
+            </div>
+
+            {/* Optional note toggle */}
+            {manualOverride && (
+              <div>
+                <button
+                  onClick={() => setShowOverrideNote(!showOverrideNote)}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  {showOverrideNote ? '− Hide' : '+ Add'} Note
+                </button>
+              </div>
+            )}
+
+            {/* Note textarea */}
+            {showOverrideNote && manualOverride && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Reasoning (Optional)
+                </label>
+                <textarea
+                  value={manualOverrideNote}
+                  onChange={e => setManualOverrideNote(e.target.value)}
+                  disabled={savingOverride}
+                  placeholder="Explain why this check is compliant or non-compliant..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                />
+              </div>
+            )}
+
+            {/* Save button */}
+            {manualOverride && (
+              <button
+                onClick={handleSaveOverride}
+                disabled={savingOverride}
+                className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+              >
+                {savingOverride ? 'Saving...' : 'Save Manual Override'}
+              </button>
+            )}
+
+            {/* Error message */}
+            {overrideError && (
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                {overrideError}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -642,8 +876,35 @@ export function CodeDetailPanel({
           <div className="space-y-6">
             {/* Section Header */}
             <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                Section
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Section
+                </div>
+                {section.source_url && (
+                  <a
+                    href={section.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+                  >
+                    See Original Code
+                    <svg
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      className="flex-shrink-0"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </a>
+                )}
               </div>
               <div className="text-lg font-bold text-gray-900">{section.number}</div>
               <div className="text-base text-gray-700 mt-1">{section.title}</div>
@@ -729,149 +990,6 @@ export function CodeDetailPanel({
       {checkId && (
         <div className="flex-shrink-0 border-t bg-gray-50 overflow-y-auto max-h-[50vh]">
           <div className="p-4 space-y-6">
-            {/* Manual Override Section */}
-            <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Manual Compliance Judgment
-              </div>
-
-              <div className="space-y-3">
-                {/* Override Status Banner */}
-                {manualOverride && (
-                  <div
-                    className={`px-3 py-2 rounded border ${
-                      manualOverride === 'compliant'
-                        ? 'bg-green-50 border-green-200 text-green-800'
-                        : manualOverride === 'non_compliant'
-                          ? 'bg-red-50 border-red-200 text-red-800'
-                          : 'bg-gray-50 border-gray-200 text-gray-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">
-                        ✓ Manual Override:{' '}
-                        {manualOverride === 'compliant'
-                          ? 'COMPLIANT'
-                          : manualOverride === 'non_compliant'
-                            ? 'NON-COMPLIANT'
-                            : 'NOT APPLICABLE'}
-                      </span>
-                      <button
-                        onClick={handleClearOverride}
-                        disabled={savingOverride}
-                        className="text-xs underline hover:no-underline disabled:opacity-50"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Three-button toggle */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Set Compliance Status
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      onClick={() => setManualOverride('compliant')}
-                      disabled={savingOverride}
-                      className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
-                        manualOverride === 'compliant'
-                          ? 'bg-green-100 border-green-400 text-green-800'
-                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      Compliant
-                    </button>
-                    <button
-                      onClick={() => setManualOverride('non_compliant')}
-                      disabled={savingOverride}
-                      className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
-                        manualOverride === 'non_compliant'
-                          ? 'bg-red-100 border-red-400 text-red-800'
-                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      Non-Compliant
-                    </button>
-                    <button
-                      onClick={() => setManualOverride('not_applicable')}
-                      disabled={savingOverride}
-                      className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
-                        manualOverride === 'not_applicable'
-                          ? 'bg-gray-100 border-gray-400 text-gray-800'
-                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      Not Applicable
-                    </button>
-                  </div>
-                </div>
-
-                {/* Mark as Never Relevant Button */}
-                <div className="pt-2 border-t border-gray-200">
-                  <button
-                    onClick={() => setShowNeverRelevantDialog(true)}
-                    disabled={savingOverride || markingNeverRelevant || !sectionKey}
-                    className="w-full px-3 py-2 text-sm font-medium rounded border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Mark as Never Relevant
-                  </button>
-                  <p className="text-xs text-gray-500 mt-1">
-                    This will permanently exclude this section from all future projects
-                  </p>
-                </div>
-
-                {/* Optional note toggle */}
-                {manualOverride && (
-                  <div>
-                    <button
-                      onClick={() => setShowOverrideNote(!showOverrideNote)}
-                      className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      {showOverrideNote ? '− Hide' : '+ Add'} Note
-                    </button>
-                  </div>
-                )}
-
-                {/* Note textarea */}
-                {showOverrideNote && manualOverride && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Reasoning (Optional)
-                    </label>
-                    <textarea
-                      value={manualOverrideNote}
-                      onChange={e => setManualOverrideNote(e.target.value)}
-                      disabled={savingOverride}
-                      placeholder="Explain why this check is compliant or non-compliant..."
-                      rows={3}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                    />
-                  </div>
-                )}
-
-                {/* Save button */}
-                {manualOverride && (
-                  <button
-                    onClick={handleSaveOverride}
-                    disabled={savingOverride}
-                    className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
-                  >
-                    {savingOverride ? 'Saving...' : 'Save Manual Override'}
-                  </button>
-                )}
-
-                {/* Error message */}
-                {overrideError && (
-                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
-                    {overrideError}
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Screenshots Section */}
             {activeCheck && (
               <div className="border-t pt-6">
@@ -1237,6 +1355,48 @@ export function CodeDetailPanel({
                   className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-red-300 disabled:cursor-not-allowed"
                 >
                   {markingNeverRelevant ? 'Marking...' : 'Yes, Mark as Never Relevant'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floorplan Relevant Confirmation Dialog */}
+      {showFloorplanRelevantDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Mark Section as Floor-Plan Relevant?
+              </h3>
+              <p className="text-sm text-gray-700 mb-4">
+                This will mark section{' '}
+                <span className="font-mono font-semibold">{section?.number}</span> as specifically
+                relevant to floorplan analysis.
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
+                <p className="text-sm text-blue-800 font-semibold">ℹ️ Info</p>
+                <p className="text-sm text-blue-700 mt-1">
+                  This section will be <strong>prioritized</strong> when displaying code sections in
+                  all projects, making it easier to find sections specifically relevant to floorplan
+                  analysis.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowFloorplanRelevantDialog(false)}
+                  disabled={markingFloorplanRelevant}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleMarkFloorplanRelevant}
+                  disabled={markingFloorplanRelevant}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                >
+                  {markingFloorplanRelevant ? 'Marking...' : 'Yes, Mark as Floor-Plan Relevant'}
                 </button>
               </div>
             </div>

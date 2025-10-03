@@ -158,16 +158,32 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = supabaseAdmin();
 
-    // Get section data
+    // Get section data (including parent_key for URL fallback)
     const { data: section, error: sectionError } = await supabase
       .from('sections')
-      .select('id, key, number, title, text, item_type, paragraphs, tables, figures, source_url')
+      .select(
+        'id, key, number, title, text, item_type, paragraphs, tables, figures, source_url, parent_key'
+      )
       .eq('key', sectionKey)
       .eq('never_relevant', false)
       .single();
 
     if (sectionError || !section) {
       return NextResponse.json({ error: 'Section not found' }, { status: 404 });
+    }
+
+    // If section doesn't have source_url, try to get it from parent
+    let sourceUrl = section.source_url;
+    if (!sourceUrl && section.parent_key) {
+      const { data: parent } = await supabase
+        .from('sections')
+        .select('source_url')
+        .eq('key', section.parent_key)
+        .single();
+
+      if (parent?.source_url) {
+        sourceUrl = parent.source_url;
+      }
     }
 
     // Get references for this section
@@ -209,7 +225,7 @@ export async function POST(request: NextRequest) {
       tables,
       figures,
       references,
-      source_url: section.source_url,
+      source_url: sourceUrl,
       hasContent: !!(paragraphs && paragraphs.length > 0),
     });
   } catch (error) {
