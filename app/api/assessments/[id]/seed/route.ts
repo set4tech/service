@@ -143,18 +143,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           for (const group of elementGroups) {
             const { data: groupMappings } = await supabase
               .from('element_section_mappings')
-              .select('section_key')
+              .select('section_key, sections!inner(number)')
               .eq('element_group_id', group.id);
 
-            const sectionKeys = groupMappings?.map(m => m.section_key) || [];
+            const allSectionKeys = groupMappings?.map(m => m.section_key) || [];
 
-            if (sectionKeys.length > 0) {
+            // Filter section keys by selected chapters (same logic as regular sections)
+            let filteredSectionKeys = allSectionKeys;
+            if (chapterFilters.length > 0 && groupMappings) {
+              filteredSectionKeys = groupMappings
+                .filter(m => {
+                  const sectionNumber = (m.sections as any)?.number;
+                  return sectionNumber && chapterFilters.some(filter => filter.test(sectionNumber));
+                })
+                .map(m => m.section_key);
+            }
+
+            if (filteredSectionKeys.length > 0) {
               await supabase.from('checks').insert({
                 assessment_id: id,
                 check_type: 'element',
                 element_group_id: group.id,
-                element_sections: sectionKeys,
-                code_section_key: sectionKeys[0],
+                element_sections: filteredSectionKeys,
+                code_section_key: filteredSectionKeys[0],
                 code_section_number: group.slug,
                 code_section_title: `${group.name} Template`,
                 check_name: `${group.name} - Template`,

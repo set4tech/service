@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { normalizeVariables } from '@/lib/variables';
 import AssessmentClient from './ui/AssessmentClient';
 
 export default async function AssessmentPage({ params }: { params: Promise<{ id: string }> }) {
@@ -6,7 +7,11 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const supabase = supabaseAdmin();
 
   const [{ data: assessment }, { data: allChecks }] = await Promise.all([
-    supabase.from('assessments').select('*, projects(pdf_url)').eq('id', id).single(),
+    supabase
+      .from('assessments')
+      .select('*, projects(pdf_url, selected_code_ids, extracted_variables)')
+      .eq('id', id)
+      .single(),
     supabase
       .from('checks')
       .select('*, element_groups(name, slug)')
@@ -39,6 +44,27 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     return <div className="p-6">Assessment not found.</div>;
   }
 
+  // Fetch codebook details for selected codes
+  const selectedCodeIds = (assessment.projects as any)?.selected_code_ids || [];
+  const { data: codes } = await supabase
+    .from('codes')
+    .select('id, title')
+    .in('id', selectedCodeIds);
+
+  const codebooks = codes?.map(c => ({ id: c.id, name: c.title })) || [];
+
+  // Extract and normalize building parameters
+  const extractedVars = (assessment.projects as any)?.extracted_variables || {};
+  const normalizedVars = normalizeVariables(extractedVars);
+  const buildingInfo = {
+    occupancy: normalizedVars.occupancy_letter || 'Unknown',
+    size_sf: normalizedVars.building_size_sf,
+    stories: normalizedVars.number_of_stories,
+    work_type: normalizedVars.work_type || 'Unknown',
+    has_parking: normalizedVars.has_parking,
+    facility_category: normalizedVars.facility_category || 'Unknown',
+  };
+
   // Get PDF URL from the related project
   const assessmentWithPdf = {
     ...assessment,
@@ -55,6 +81,8 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       assessment={assessmentWithPdf}
       checks={checks || []}
       progress={{ totalChecks, completed, pct }}
+      buildingInfo={buildingInfo}
+      codebooks={codebooks}
     />
   );
 }
