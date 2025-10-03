@@ -143,18 +143,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           for (const group of elementGroups) {
             const { data: groupMappings } = await supabase
               .from('element_section_mappings')
-              .select('section_key, sections!inner(number)')
+              .select('section_key, sections!inner(number, title)')
               .eq('element_group_id', group.id);
 
             const allSectionKeys = groupMappings?.map(m => m.section_key) || [];
 
-            // Filter section keys by selected chapters (same logic as regular sections)
+            // Filter section keys using same logic as section-by-section checks
             let filteredSectionKeys = allSectionKeys;
-            if (chapterFilters.length > 0 && groupMappings) {
+            if (groupMappings) {
               filteredSectionKeys = groupMappings
                 .filter(m => {
-                  const sectionNumber = (m.sections as any)?.number;
-                  return sectionNumber && chapterFilters.some(filter => filter.test(sectionNumber));
+                  const section = m.sections as any;
+                  const sectionNumber = section?.number;
+                  const sectionTitle = section?.title;
+
+                  // Apply chapter filter if needed
+                  if (
+                    chapterFilters.length > 0 &&
+                    !chapterFilters.some(filter => filter.test(sectionNumber))
+                  ) {
+                    return false;
+                  }
+
+                  // Exclude general/scope sections
+                  if (/(general|scope)/i.test(sectionTitle)) {
+                    return false;
+                  }
+
+                  return true;
                 })
                 .map(m => m.section_key);
             }
