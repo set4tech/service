@@ -324,7 +324,7 @@ export function CheckList({
                                     {check.instance_number === 0 ? (
                                       <>
                                         <span className="text-sm text-blue-600 font-medium">
-                                          Click + to add your first{' '}
+                                          Click + to add a{' '}
                                           {check.element_group_name
                                             ?.toLowerCase()
                                             .replace(/s$/, '') || 'item'}

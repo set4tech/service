@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 import { runAI } from '@/lib/ai/analysis';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { kv } from '@/lib/kv';
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION!,
@@ -52,140 +53,6 @@ function getModelConfig(model: string): {
     default:
       return { provider: 'gemini', modelName: 'gemini-2.5-pro' };
   }
-}
-
-// Background processing function
-async function processRemainingBatches(
-  checkId: string,
-  batches: any[][],
-  startingBatchIndex: number,
-  screenshotUrls: string[],
-  screenshots: any[],
-  check: any,
-  buildingContext: any,
-  customPrompt: string | undefined,
-  extraContext: string | undefined,
-  provider: 'gemini' | 'openai' | 'anthropic',
-  modelName: string,
-  batchGroupId: string,
-  startingRunNumber: number
-) {
-  const supabase = supabaseAdmin();
-
-  for (let batchIndex = startingBatchIndex; batchIndex < batches.length; batchIndex++) {
-    const batch = batches[batchIndex];
-    const batchNum = batchIndex + 1;
-
-    try {
-      // Build prompt
-      const sectionsText = batch
-        .map((s: any) => `## Section ${s.number} - ${s.title}\n\n${s.text}`)
-        .join('\n\n---\n\n');
-
-      let prompt = customPrompt;
-      if (!prompt) {
-        const screenshotsSection =
-          screenshots && screenshots.length > 0
-            ? `# Evidence (Screenshots)\nProvided ${screenshots.length} screenshot(s) showing relevant documentation.`
-            : '# Evidence\nNo screenshots provided. Base assessment on building information and code requirements.';
-
-        const extraContextSection = extraContext ? `\n\n# Additional Context\n${extraContext}` : '';
-
-        prompt = `You are an expert building code compliance analyst. Your task is to assess whether the provided project demonstrates compliance with the following building code sections.
-
-# Building Code Sections (Batch ${batchNum} of ${batches.length})
-${sectionsText}
-
-# Project Information
-${JSON.stringify(buildingContext, null, 2)}
-
-# Check Details
-Location: ${check.check_location || 'Not specified'}
-Check: ${check.check_name || 'Compliance check'}${extraContextSection}
-
-${screenshotsSection}
-
-# Your Task
-Analyze the evidence and determine compliance for ALL sections above:
-1. Compliance status: Must be one of: "compliant", "violation", "needs_more_info"
-2. Confidence level: "high", "medium", or "low"
-3. Reasoning for your determination across all sections
-4. Any violations found (if applicable)
-5. Recommendations (if applicable)
-
-Return your response as a JSON object with this exact structure:
-{
-  "compliance_status": "compliant" | "violation" | "needs_more_info",
-  "confidence": "high" | "medium" | "low",
-  "reasoning": "your detailed reasoning here",
-  "violations": [{"description": "...", "severity": "minor"|"moderate"|"major"}],
-  "recommendations": ["recommendation 1", "recommendation 2"]
-}`;
-      }
-
-      // Call AI
-      const started = Date.now();
-      const { model, raw, parsed } = await runAI({
-        prompt,
-        screenshots: screenshotUrls,
-        provider,
-        model: modelName,
-      });
-      const executionTimeMs = Date.now() - started;
-
-      // Create and save analysis run
-      const analysisRun = {
-        check_id: checkId,
-        run_number: startingRunNumber + batchIndex,
-        batch_group_id: batchGroupId,
-        batch_number: batchNum,
-        total_batches: batches.length,
-        section_keys_in_batch: batch.map((s: any) => s.key),
-        compliance_status: parsed.compliance_status,
-        confidence: parsed.confidence,
-        ai_provider: provider,
-        ai_model: model,
-        ai_reasoning: parsed.reasoning || null,
-        violations: parsed.violations || [],
-        compliant_aspects: parsed.compliant_aspects || [],
-        recommendations: parsed.recommendations || [],
-        additional_evidence_needed: parsed.additional_evidence_needed || [],
-        raw_ai_response: raw,
-        execution_time_ms: executionTimeMs,
-      };
-
-      await supabase.from('analysis_runs').insert(analysisRun);
-
-      console.log(
-        `[Background] Completed batch ${batchNum}/${batches.length} for check ${checkId}`
-      );
-    } catch (error) {
-      console.error(`[Background] Error processing batch ${batchNum}:`, error);
-      // Continue with next batch even if this one fails
-    }
-  }
-
-  // Update check status when all batches complete
-  const { data: allRuns } = await supabase
-    .from('analysis_runs')
-    .select('compliance_status')
-    .eq('batch_group_id', batchGroupId);
-
-  let overallStatus = 'compliant';
-  if (allRuns) {
-    const hasViolation = allRuns.some(r => r.compliance_status === 'violation');
-    const needsInfo = allRuns.some(r => r.compliance_status === 'needs_more_info');
-
-    if (hasViolation) {
-      overallStatus = 'violation';
-    } else if (needsInfo) {
-      overallStatus = 'needs_more_info';
-    }
-  }
-
-  await supabase.from('checks').update({ status: 'completed' }).eq('id', checkId);
-
-  console.log(`[Background] Assessment complete for check ${checkId}: ${overallStatus}`);
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -376,25 +243,45 @@ Return your response as a JSON object with this exact structure:
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
-    // 8. If multiple batches, start background processing
+    // 8. If multiple batches, queue remaining batches
     if (batches.length > 1) {
-      processRemainingBatches(
-        checkId,
-        batches,
-        1, // Start from batch index 1 (second batch)
-        screenshotUrls,
-        screenshots,
-        check,
-        buildingContext,
-        customPrompt,
-        extraContext,
-        provider,
-        modelName,
-        batchGroupId,
-        runNumber
-      ).catch(error => {
-        console.error('[Background] Processing error:', error);
-      });
+      // Queue batches 2+ as separate jobs
+      for (let batchIndex = 1; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        const batchNum = batchIndex + 1;
+        const jobId = crypto.randomUUID();
+
+        await kv.hset(`job:${jobId}`, {
+          id: jobId,
+          type: 'batch_analysis',
+          payload: JSON.stringify({
+            checkId,
+            batch,
+            batchNum,
+            totalBatches: batches.length,
+            batchGroupId,
+            runNumber: runNumber + batchIndex,
+            screenshotUrls,
+            screenshots,
+            check,
+            buildingContext,
+            customPrompt,
+            extraContext,
+            provider,
+            modelName,
+          }),
+          status: 'pending',
+          attempts: 0,
+          maxAttempts: 3,
+          createdAt: Date.now(),
+        });
+        await kv.lpush('queue:analysis', jobId);
+      }
+
+      // Immediately trigger queue processing (non-blocking)
+      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/queue/process`, {
+        method: 'GET',
+      }).catch(err => console.error('Failed to trigger queue processing:', err));
     } else {
       // Single batch - mark as completed immediately
       await supabase.from('checks').update({ status: 'completed' }).eq('id', checkId);
