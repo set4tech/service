@@ -73,12 +73,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    // 2. Fetch ALL sections for selected codes (filter by drawing_assessable)
+    // 2. Fetch ALL sections for selected codes (filter by drawing_assessable and never_relevant)
     const { data: allSections, error: sectionsError } = await supabase
       .from('sections')
       .select('*')
       .in('code_id', realCodeIds)
       .eq('drawing_assessable', true)
+      .eq('never_relevant', false)
       .order('number');
 
     // Get element-mapped sections to exclude from section-by-section checks

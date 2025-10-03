@@ -105,6 +105,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const { data: matchingSections, error: sectionsError } = await supabase
         .from('sections')
         .select('key')
+        .eq('never_relevant', false)
         .ilike('text', `%${searchPattern}%`);
 
       if (sectionsError) {

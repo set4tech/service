@@ -142,6 +142,37 @@ export default function AssessmentClient({
     });
   };
 
+  const handleCheckDeleted = (checkId: string) => {
+    // Remove the check from the state
+    setChecks(prevChecks => {
+      // Find the deleted check to get its parent_check_id
+      const deletedCheck = prevChecks.find(c => c.id === checkId);
+
+      if (!deletedCheck) return prevChecks;
+
+      // Remove from main array and update parent's instances if it has a parent
+      const updatedChecks = prevChecks
+        .filter(c => c.id !== checkId)
+        .map(c => {
+          if (deletedCheck.parent_check_id && c.id === deletedCheck.parent_check_id) {
+            return {
+              ...c,
+              instances: (c.instances || []).filter((inst: any) => inst.id !== checkId),
+              instance_count: Math.max((c.instance_count || 0) - 1, 0),
+            };
+          }
+          return c;
+        });
+
+      return updatedChecks;
+    });
+
+    // If the deleted check was active, clear the active check
+    if (activeCheckId === checkId) {
+      setActiveCheckId(null);
+    }
+  };
+
   const activeCheck = useMemo(() => {
     // First try to find the check directly
     const directMatch = checks.find(c => c.id === activeCheckId);
@@ -523,6 +554,7 @@ export default function AssessmentClient({
               onSelect={handleCheckSelect}
               assessmentId={assessment.id}
               onCheckAdded={handleCheckAdded}
+              onCheckDeleted={handleCheckDeleted}
             />
           )}
         </div>

@@ -91,7 +91,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const { data: sections, error: sectionsError } = await supabase
         .from('sections')
         .select('key, number, title, paragraphs')
-        .in('key', sectionKeys);
+        .in('key', sectionKeys)
+        .eq('never_relevant', false);
 
       if (!sectionsError && sections) {
         for (const section of sections) {

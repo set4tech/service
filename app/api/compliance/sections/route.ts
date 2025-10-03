@@ -79,7 +79,8 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('sections')
       .select('id, key, number, title, text, item_type, paragraphs, source_url')
-      .eq('code_id', queryCodeId);
+      .eq('code_id', queryCodeId)
+      .eq('never_relevant', false);
 
     if (!includeNonAssessable) {
       query = query.eq('drawing_assessable', true);
@@ -162,6 +163,7 @@ export async function POST(request: NextRequest) {
       .from('sections')
       .select('id, key, number, title, text, item_type, paragraphs, tables, figures, source_url')
       .eq('key', sectionKey)
+      .eq('never_relevant', false)
       .single();
 
     if (sectionError || !section) {

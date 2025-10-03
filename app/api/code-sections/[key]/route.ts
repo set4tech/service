@@ -11,6 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .from('sections')
       .select('*')
       .eq('key', key)
+      .eq('never_relevant', false)
       .single();
 
     if (sectionError || !section) {
