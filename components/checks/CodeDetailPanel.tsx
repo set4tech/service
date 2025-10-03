@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
+import { TableRenderer } from '@/components/ui/TableRenderer';
+
+interface TableBlock {
+  number: string;
+  title: string;
+  csv: string;
+}
 
 interface CodeSection {
   key: string;
@@ -9,6 +16,8 @@ interface CodeSection {
   title: string;
   text?: string;
   requirements?: Array<string | { text: string; [key: string]: any }>;
+  tables?: TableBlock[];
+  figures?: string[];
   references?: Array<{
     key: string;
     number: string;
@@ -101,6 +110,9 @@ export function CodeDetailPanel({
 
   // Section tabs toggle state
   const [showSectionTabs, setShowSectionTabs] = useState(false);
+
+  // Screenshots section toggle state
+  const [showScreenshots, setShowScreenshots] = useState(true);
 
   // Load last selected model from localStorage
   useEffect(() => {
@@ -631,6 +643,16 @@ export function CodeDetailPanel({
               </div>
             )}
 
+            {/* Tables */}
+            {section.tables && section.tables.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Tables
+                </div>
+                <TableRenderer tables={section.tables} />
+              </div>
+            )}
+
             {/* References */}
             {section.references && section.references.length > 0 && (
               <div>
@@ -659,13 +681,6 @@ export function CodeDetailPanel({
                 No detailed content available for this section.
               </div>
             )}
-          </div>
-        )}
-
-        {/* Screenshots Section */}
-        {activeCheck && (
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <ScreenshotGallery check={activeCheck} refreshKey={screenshotsRefreshKey || 0} />
           </div>
         )}
       </div>
@@ -802,6 +817,44 @@ export function CodeDetailPanel({
                 )}
               </div>
             </div>
+
+            {/* Screenshots Section */}
+            {activeCheck && (
+              <div className="border-t pt-6">
+                <div className="mb-3">
+                  <button
+                    onClick={() => setShowScreenshots(!showScreenshots)}
+                    className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors px-2 py-1 rounded"
+                  >
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Screenshots
+                    </div>
+                    <svg
+                      className={`w-4 h-4 text-gray-400 transition-transform ${showScreenshots ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                {showScreenshots && (
+                  <div className="pb-4">
+                    <ScreenshotGallery
+                      check={activeCheck}
+                      refreshKey={screenshotsRefreshKey || 0}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Assessment Section */}
             <div className="border-t pt-6">

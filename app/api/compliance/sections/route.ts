@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     // Get section data
     const { data: section, error: sectionError } = await supabase
       .from('sections')
-      .select('id, key, number, title, text, item_type, paragraphs, source_url')
+      .select('id, key, number, title, text, item_type, paragraphs, tables, figures, source_url')
       .eq('key', sectionKey)
       .single();
 
@@ -194,6 +194,8 @@ export async function POST(request: NextRequest) {
     }));
 
     const paragraphs = section.paragraphs || [];
+    const tables = section.tables || [];
+    const figures = section.figures || [];
 
     return NextResponse.json({
       key: section.key,
@@ -202,6 +204,8 @@ export async function POST(request: NextRequest) {
       type: section.item_type || 'section',
       requirements: paragraphs,
       text: section.text,
+      tables,
+      figures,
       references,
       source_url: section.source_url,
       hasContent: !!(paragraphs && paragraphs.length > 0),
