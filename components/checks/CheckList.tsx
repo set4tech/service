@@ -168,7 +168,7 @@ export function CheckList({
     // Fall back to AI assessment
     if (check.latest_status === 'compliant') return '✓';
     if (check.latest_status === 'non_compliant') return '✗';
-    if (check.status === 'analyzing') return '⚡';
+    if (check.status === 'analyzing') return '⏳';
     return '○';
   };
 
@@ -302,7 +302,18 @@ export function CheckList({
                               !hasInstances && 'pl-6'
                             )}
                           >
-                            <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>
+                            <span
+                              className={clsx(
+                                'mt-0.5 mr-2 text-sm',
+                                getStatusColor(check),
+                                check.status === 'analyzing' && 'animate-bounce'
+                              )}
+                              style={
+                                check.status === 'analyzing'
+                                  ? { animationDuration: '2s' }
+                                  : undefined
+                              }
+                            >
                               {getStatusIcon(check)}
                             </span>
                             <div className="flex-1 min-w-0">
@@ -460,7 +471,16 @@ export function CheckList({
                                 )}
                               >
                                 <span
-                                  className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(instance))}
+                                  className={clsx(
+                                    'mt-0.5 mr-2 text-sm',
+                                    getStatusColor(instance),
+                                    instance.status === 'analyzing' && 'animate-bounce'
+                                  )}
+                                  style={
+                                    instance.status === 'analyzing'
+                                      ? { animationDuration: '2s' }
+                                      : undefined
+                                  }
                                 >
                                   {getStatusIcon(instance)}
                                 </span>
