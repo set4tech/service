@@ -306,8 +306,24 @@ def upsert_mappings(supabase: Client, mappings):
     """
     if not mappings:
         return
-    # Supabase upsert
-    supabase.table('element_section_mappings').upsert(mappings, on_conflict='element_group_id,section_key').execute()
+    try:
+        # Supabase Python client doesn't support on_conflict parameter
+        # Use insert with error handling instead
+        response = supabase.table('element_section_mappings').insert(mappings).execute()
+        return response
+    except Exception as e:
+        # If duplicates exist, try individual inserts
+        print(f"   Batch insert failed, trying individual inserts: {e}")
+        success_count = 0
+        for mapping in mappings:
+            try:
+                supabase.table('element_section_mappings').insert(mapping).execute()
+                success_count += 1
+            except Exception as inner_e:
+                # Skip duplicates silently
+                if 'duplicate' not in str(inner_e).lower():
+                    print(f"   Failed to insert mapping: {inner_e}")
+        print(f"   ✓ Inserted {success_count}/{len(mappings)} mappings (skipped duplicates)")
 
 # ---------------------------
 # Main

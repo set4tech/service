@@ -488,7 +488,7 @@ export function CodeDetailPanel({
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-semibold text-gray-900">
             {isElementCheck
-              ? `${check?.element_group_name || 'Element'} Check`
+              ? `${activeCheck?.element_group_name || check?.element_group_name || 'Element'} Check`
               : 'Code Section Details'}
           </h3>
           {isElementCheck && (

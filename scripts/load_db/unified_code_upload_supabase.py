@@ -215,7 +215,10 @@ def upload_items_to_supabase(
     logger.info("Creating cross-references...")
     all_keys = {item["number"]: item["key"] for item in all_items}
 
+    # Use a set to track unique references (deduplicate)
+    unique_references = set()
     references_to_insert = []
+
     for item in all_items:
         src = item["number"]
         refers_to = item.get("refers_to", [])
@@ -227,14 +230,18 @@ def upload_items_to_supabase(
                 src_key = all_keys.get(src)
                 target_key = all_keys.get(ref_id)
                 if src_key and target_key:
-                    references_to_insert.append(
-                        {
-                            "source_section_key": src_key,
-                            "target_section_key": target_key,
-                            "explicit": True,
-                            "citation_text": "",
-                        }
-                    )
+                    # Create a unique tuple to check for duplicates
+                    ref_tuple = (src_key, target_key)
+                    if ref_tuple not in unique_references:
+                        unique_references.add(ref_tuple)
+                        references_to_insert.append(
+                            {
+                                "source_section_key": src_key,
+                                "target_section_key": target_key,
+                                "explicit": True,
+                                "citation_text": "",
+                            }
+                        )
 
     # Batch insert references
     if references_to_insert:
