@@ -9,8 +9,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = supabaseAdmin();
 
   try {
-    // Join with element_groups to get element_group_name
-    let query = supabase.from('checks').select('*, element_groups(name)').eq('assessment_id', id);
+    // Join with element_groups to get element_group_name and sections to get floorplan_relevant
+    let query = supabase
+      .from('checks')
+      .select('*, element_groups(name), sections!code_section_key(floorplan_relevant)')
+      .eq('assessment_id', id);
 
     // Filter by element group if specified
     if (elementGroup) {
@@ -31,10 +34,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       console.log('[SEARCH] Query:', search.trim(), 'Assessment ID:', id);
       const searchPattern = search.trim().toLowerCase();
 
-      // Build base query for checks with element_groups join
+      // Build base query for checks with element_groups and sections joins
       let checksQuery = supabase
         .from('checks')
-        .select('*, element_groups(name)')
+        .select('*, element_groups(name), sections!code_section_key(floorplan_relevant)')
         .eq('assessment_id', id);
 
       // Apply element group filter to search as well
@@ -72,13 +75,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Create analysis map
       const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
 
+      // Sort by floorplan_relevant first (true comes first), then by code_section_number
+      const sortedAllChecksData = (allChecksData || []).sort((a: any, b: any) => {
+        const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
+        const bFloorplanRelevant = b.sections?.floorplan_relevant ?? false;
+
+        // First sort by floorplan_relevant (descending - true first)
+        if (aFloorplanRelevant !== bFloorplanRelevant) {
+          return bFloorplanRelevant ? 1 : -1;
+        }
+
+        // Then sort by code_section_number (ascending)
+        return (a.code_section_number || '').localeCompare(b.code_section_number || '');
+      });
+
       // Map element_groups.name to element_group_name and add analysis data
-      const mappedChecks = (allChecksData || []).map((check: any) => {
+      const mappedChecks = (sortedAllChecksData || []).map((check: any) => {
         const analysis = analysisMap.get(check.id);
         return {
           ...check,
           element_group_name: check.element_groups?.name || null,
           element_groups: undefined, // Remove nested object
+          sections: undefined, // Remove nested sections object (used only for sorting)
           latest_status: analysis?.compliance_status || null,
           latest_confidence: analysis?.confidence || null,
           latest_reasoning: analysis?.ai_reasoning || null,
@@ -148,9 +166,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // No search - use original query
-    const { data: allChecks, error } = await query.order('code_section_number', {
-      ascending: true,
-    });
+    const { data: allChecks, error } = await query;
 
     if (error) {
       return NextResponse.json(
@@ -159,8 +175,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
+    // Sort by floorplan_relevant first (true comes first), then by code_section_number
+    const sortedChecks = (allChecks || []).sort((a: any, b: any) => {
+      const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
+      const bFloorplanRelevant = b.sections?.floorplan_relevant ?? false;
+
+      // First sort by floorplan_relevant (descending - true first)
+      if (aFloorplanRelevant !== bFloorplanRelevant) {
+        return bFloorplanRelevant ? 1 : -1;
+      }
+
+      // Then sort by code_section_number (ascending)
+      return (a.code_section_number || '').localeCompare(b.code_section_number || '');
+    });
+
     // Fetch latest analysis runs for all checks
-    const checkIds = (allChecks || []).map((c: any) => c.id);
+    const checkIds = (sortedChecks || []).map((c: any) => c.id);
     const { data: latestAnalysis } = await supabase
       .from('latest_analysis_runs')
       .select('check_id, compliance_status, confidence, ai_reasoning, violations, recommendations')
@@ -170,12 +200,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
 
     // Map element_groups.name to element_group_name and add analysis data
-    const mappedChecks = (allChecks || []).map((check: any) => {
+    const mappedChecks = (sortedChecks || []).map((check: any) => {
       const analysis = analysisMap.get(check.id);
       return {
         ...check,
         element_group_name: check.element_groups?.name || null,
         element_groups: undefined, // Remove nested object
+        sections: undefined, // Remove nested sections object (used only for sorting)
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
         latest_reasoning: analysis?.ai_reasoning || null,

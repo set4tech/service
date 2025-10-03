@@ -831,6 +831,36 @@ export function CodeDetailPanel({
                 {overrideError}
               </div>
             )}
+
+            {/* Mark as Floorplan Relevant and Never Relevant Buttons */}
+            <div className="pt-2 border-t border-gray-200 space-y-3">
+              <div>
+                <button
+                  onClick={() => setShowFloorplanRelevantDialog(true)}
+                  disabled={savingOverride || markingFloorplanRelevant || !sectionKey}
+                  className="w-full px-3 py-2 text-sm font-medium rounded border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="If you press on this, this code section gets flagged as being specifically relevant to floorplan analysis"
+                >
+                  Mark as Floor-Plan Relevant
+                </button>
+                <p className="text-xs text-gray-500 mt-1">
+                  Flag this section as specifically relevant to floorplan analysis
+                </p>
+              </div>
+
+              <div>
+                <button
+                  onClick={() => setShowNeverRelevantDialog(true)}
+                  disabled={savingOverride || markingNeverRelevant || !sectionKey}
+                  className="w-full px-3 py-2 text-sm font-medium rounded border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Mark as Never Relevant
+                </button>
+                <p className="text-xs text-gray-500 mt-1">
+                  This will permanently exclude this section from all future projects
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
