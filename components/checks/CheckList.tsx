@@ -10,6 +10,7 @@ interface CheckListProps {
   onSelect: (id: string) => void;
   assessmentId?: string;
   onCheckAdded?: (newCheck: any) => void;
+  onCheckDeleted?: (checkId: string) => void;
 }
 
 export function CheckList({
@@ -19,6 +20,7 @@ export function CheckList({
   onSelect,
   assessmentId,
   onCheckAdded,
+  onCheckDeleted,
 }: CheckListProps) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -76,13 +78,8 @@ export function CheckList({
     const sourceChecks = searchResults !== null ? searchResults : checks;
 
     // Filter out checks marked as not_applicable
-    // In element mode, also filter out child instances (show only templates and parents)
     return sourceChecks.filter(c => {
       if (c.manual_override === 'not_applicable') return false;
-
-      // In element mode, only show parent checks (template or instances without parent)
-      if (checkMode === 'element' && c.parent_check_id) return false;
-
       return true;
     });
   }, [searchResults, checks, checkMode]);
@@ -101,7 +98,7 @@ export function CheckList({
         mainGroups.get(groupName)!.push(check);
       });
 
-      // Sort each group by instance number
+      // Sort each group by instance number and filter out templates (instance_number === 0)
       mainGroups.forEach(group => {
         group.sort((a, b) => a.instance_number - b.instance_number);
       });
@@ -179,8 +176,13 @@ export function CheckList({
         throw new Error(data.error || 'Failed to delete instance');
       }
 
-      // Reload to refresh the list
-      window.location.reload();
+      // Call parent callback to update state
+      if (onCheckDeleted) {
+        onCheckDeleted(instanceId);
+      } else {
+        // Fallback to reload if no callback provided
+        window.location.reload();
+      }
     } catch (error: any) {
       console.error('Delete error:', error);
       alert(`Failed to delete: ${error.message}`);
@@ -258,36 +260,73 @@ export function CheckList({
       <div className="flex-1">
         {groupedChecks.map(([mainPrefix, groupChecks]) => {
           const isExpanded = expandedSections.has(mainPrefix);
+          // Find the template check (instance_number === 0) for this group in element mode
+          const templateCheck = checkMode === 'element'
+            ? groupChecks.find(c => c.instance_number === 0)
+            : null;
+          // Filter out template checks from display in element mode
+          const displayChecks = checkMode === 'element'
+            ? groupChecks.filter(c => c.instance_number !== 0)
+            : groupChecks;
 
           return (
             <div key={mainPrefix} className="border-b border-gray-200">
               {/* Main Section/Element Header */}
-              <button
-                onClick={() => toggleSection(mainPrefix)}
-                className="w-full px-3 py-2 flex items-center text-left hover:bg-gray-50 transition-colors"
-              >
-                <svg
-                  width="10"
-                  height="10"
-                  className={clsx(
-                    'mr-2 transition-transform text-gray-500',
-                    isExpanded && 'rotate-90'
-                  )}
-                  fill="currentColor"
-                  viewBox="0 0 10 10"
+              <div className="w-full flex items-center hover:bg-gray-50 transition-colors">
+                <button
+                  onClick={() => toggleSection(mainPrefix)}
+                  className="flex-1 px-3 py-2 flex items-center text-left"
                 >
-                  <path d="M2 2l5 3-5 3z" />
-                </svg>
-                <span className="text-sm font-semibold text-gray-900">
-                  {checkMode === 'element' ? mainPrefix : `Section ${mainPrefix}`}
-                </span>
-                <span className="ml-auto text-xs text-gray-500">({groupChecks.length})</span>
-              </button>
+                  <svg
+                    width="10"
+                    height="10"
+                    className={clsx(
+                      'mr-2 transition-transform text-gray-500',
+                      isExpanded && 'rotate-90'
+                    )}
+                    fill="currentColor"
+                    viewBox="0 0 10 10"
+                  >
+                    <path d="M2 2l5 3-5 3z" />
+                  </svg>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {checkMode === 'element' ? mainPrefix : `Section ${mainPrefix}`}
+                  </span>
+                  <span className="ml-auto text-xs text-gray-500">({displayChecks.length})</span>
+                </button>
+
+                {/* Add Element Button (only in element mode) */}
+                {checkMode === 'element' && templateCheck && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      setCloneModalCheck(templateCheck);
+                    }}
+                    className="px-3 py-2 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
+                    title={`Add ${mainPrefix.toLowerCase().replace(/s$/, '')}`}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
 
               {/* Individual Checks */}
               {isExpanded && (
                 <div className="bg-gray-50">
-                  {groupChecks.map(check => {
+                  {displayChecks.map(check => {
                     const hasInstances = check.instances && check.instances.length > 0;
                     const isInstancesExpanded = expandedInstances.has(check.id);
 
@@ -349,47 +388,10 @@ export function CheckList({
                                 // Element mode: show instance label and screenshot count
                                 <>
                                   <div className="flex items-start gap-1">
-                                    {check.instance_number === 0 ? (
-                                      <>
-                                        <span className="text-sm text-blue-600 font-medium">
-                                          Click + to add a{' '}
-                                          {check.element_group_name
-                                            ?.toLowerCase()
-                                            .replace(/s$/, '') || 'item'}
-                                        </span>
-                                        <span
-                                          onClick={e => {
-                                            e.stopPropagation();
-                                          }}
-                                          className="group relative cursor-help"
-                                          title="Element-based checking"
-                                        >
-                                          <svg
-                                            width="14"
-                                            height="14"
-                                            className="text-gray-400 hover:text-gray-600"
-                                            fill="currentColor"
-                                            viewBox="0 0 24 24"
-                                          >
-                                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-                                          </svg>
-                                          <div className="hidden group-hover:block absolute left-0 top-6 w-64 bg-gray-900 text-white text-xs rounded p-2 shadow-lg z-50">
-                                            Each{' '}
-                                            {check.element_group_name
-                                              ?.toLowerCase()
-                                              .replace(/s$/, '') || 'item'}{' '}
-                                            you add will be assessed against all{' '}
-                                            {check.element_sections?.length || 0} related code
-                                            sections in one check.
-                                          </div>
-                                        </span>
-                                      </>
-                                    ) : (
-                                      <span className="font-medium text-sm text-gray-900">
-                                        {check.instance_label ||
-                                          `Instance ${check.instance_number}`}
-                                      </span>
-                                    )}
+                                    <span className="font-medium text-sm text-gray-900">
+                                      {check.instance_label ||
+                                        `Instance ${check.instance_number}`}
+                                    </span>
                                     {check.screenshots?.length > 0 && (
                                       <span className="text-xs text-gray-500">
                                         ({check.screenshots.length}{' '}
@@ -406,15 +408,11 @@ export function CheckList({
                                         Manual
                                       </span>
                                     )}
-                                    {check.element_sections && check.instance_number === 0 ? (
-                                      <span className="text-xs text-gray-500 italic">
-                                        Covers {check.element_sections.length} code sections
-                                      </span>
-                                    ) : check.element_sections ? (
+                                    {check.element_sections && (
                                       <span className="text-xs text-gray-500">
                                         {check.element_sections.length} sections
                                       </span>
-                                    ) : null}
+                                    )}
                                     {hasInstances && (
                                       <span className="text-xs text-blue-600 font-medium">
                                         {check.instances.length}{' '}
@@ -452,19 +450,15 @@ export function CheckList({
                             </div>
                           </button>
 
-                          {/* Clone Button - only show for non-template checks in section mode, or for any check in element mode */}
-                          {(checkMode === 'section' || checkMode === 'element') && (
+                          {/* Clone Button - only show in section mode */}
+                          {checkMode === 'section' && (
                             <button
                               onClick={e => {
                                 e.stopPropagation();
                                 setCloneModalCheck(check);
                               }}
                               className="px-3 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
-                              title={
-                                checkMode === 'element' && check.instance_number === 0
-                                  ? 'Create instance'
-                                  : 'Add instance'
-                              }
+                              title="Add instance"
                             >
                               <svg
                                 width="16"
@@ -480,6 +474,60 @@ export function CheckList({
                                   d="M12 4v16m8-8H4"
                                 />
                               </svg>
+                            </button>
+                          )}
+
+                          {/* Delete Button - show for instances in element mode */}
+                          {checkMode === 'element' && check.instance_number > 0 && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                handleDeleteInstance(
+                                  check.id,
+                                  check.instance_label || `Instance ${check.instance_number}`
+                                );
+                              }}
+                              disabled={deletingCheckId === check.id}
+                              className="px-3 flex items-center hover:bg-red-50 transition-colors text-red-600 hover:text-red-700 disabled:opacity-50"
+                              title="Delete instance"
+                            >
+                              {deletingCheckId === check.id ? (
+                                <svg
+                                  className="animate-spin h-4 w-4"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  />
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                  />
+                                </svg>
+                              ) : (
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              )}
                             </button>
                           )}
                         </div>

@@ -88,6 +88,8 @@ export function PDFViewer({
   pdfUrl,
   activeCheck,
   onScreenshotSaved,
+  onCheckAdded,
+  onCheckSelect,
   readOnly = false,
   violationMarkers = [],
   onMarkerClick,
@@ -97,6 +99,8 @@ export function PDFViewer({
   pdfUrl: string;
   activeCheck?: any;
   onScreenshotSaved?: () => void;
+  onCheckAdded?: (check: any) => void;
+  onCheckSelect?: (checkId: string) => void;
   readOnly?: boolean;
   violationMarkers?: ViolationMarkerType[];
   onMarkerClick?: (marker: ViolationMarkerType) => void;
@@ -340,6 +344,32 @@ export function PDFViewer({
     const el = viewportRef.current;
     if (!el) return;
     const onKey = (e: KeyboardEvent) => {
+      // Screenshot mode shortcuts (when selection is active)
+      if (state.screenshotMode && state.selection && !e.repeat) {
+        const key = e.key.toLowerCase();
+        if (key === 'c') {
+          e.preventDefault();
+          capture('current');
+          return;
+        }
+        if (key === 'b') {
+          e.preventDefault();
+          capture('bathroom');
+          return;
+        }
+        if (key === 'd') {
+          e.preventDefault();
+          capture('door');
+          return;
+        }
+        if (key === 'k') {
+          e.preventDefault();
+          capture('kitchen');
+          return;
+        }
+      }
+
+      // Navigation shortcuts
       if (e.key === 'ArrowLeft')
         dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) });
       if (e.key === 'ArrowRight')
@@ -356,7 +386,7 @@ export function PDFViewer({
     };
     el.addEventListener('keydown', onKey);
     return () => el.removeEventListener('keydown', onKey);
-  }, [state.screenshotMode, state.numPages, state.pageNumber, readOnly]);
+  }, [state.screenshotMode, state.selection, state.numPages, state.pageNumber, readOnly]);
 
   // Clear selection on page change happens in reducer via SET_PAGE action
 
@@ -460,9 +490,89 @@ export function PDFViewer({
     setLayerVersion(prev => prev + 1);
   };
 
-  const capture = async () => {
+  const findElementTemplate = async (
+    elementSlug: 'bathroom' | 'door' | 'kitchen'
+  ): Promise<string | null> => {
+    // Element groups mapped to their IDs from database
+    const elementGroupIds: Record<string, string> = {
+      bathroom: 'f9557ba0-1cf6-41b2-a030-984cfe0c8c15',
+      door: '3cf23143-d9cc-436c-885e-fa6391c20caf',
+      kitchen: '709e704b-35d8-47f1-8ba0-92c22fdf3008',
+    };
+
+    const elementGroupId = elementGroupIds[elementSlug];
+    if (!elementGroupId || !assessmentId) return null;
+
     try {
-      if (readOnly || !state.selection || !pageInstance || !activeCheck) return;
+      // Find the template check (instance_number = 0) for this element group
+      const res = await fetch(`/api/assessments/${assessmentId}/checks`);
+
+      if (!res.ok) return null;
+
+      const checks = await res.json();
+
+      // Find template check for this element group
+      const template = checks.find(
+        (c: any) => c.element_group_id === elementGroupId && c.instance_number === 0
+      );
+
+      return template?.id || null;
+    } catch (error) {
+      console.error('Failed to find element template:', error);
+      return null;
+    }
+  };
+
+  const capture = async (target: 'current' | 'bathroom' | 'door' | 'kitchen' = 'current') => {
+    try {
+      if (readOnly || !state.selection || !pageInstance) return;
+
+      let targetCheckId = activeCheck?.id;
+
+      // If saving to new element, create instance first
+      if (target !== 'current') {
+        const templateCheckId = await findElementTemplate(target);
+        if (!templateCheckId) {
+          alert(
+            `Could not find ${target} template check. Please ensure ${target}s are enabled for this assessment.`
+          );
+          return;
+        }
+
+        // Clone the template to create new instance
+        const cloneRes = await fetch(`/api/checks/${templateCheckId}/clone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            instanceLabel: undefined, // Auto-generate
+            copyScreenshots: false,
+          }),
+        });
+
+        if (!cloneRes.ok) {
+          const errorData = await cloneRes.json();
+          alert(`Failed to create new ${target} instance: ${errorData.error || 'Unknown error'}`);
+          return;
+        }
+
+        const { check: newCheck } = await cloneRes.json();
+        targetCheckId = newCheck.id;
+
+        // Add check to state and select it (reuse CheckList pattern)
+        if (onCheckAdded) {
+          onCheckAdded(newCheck);
+        }
+
+        // Select the new check
+        if (onCheckSelect) {
+          onCheckSelect(newCheck.id);
+        }
+      }
+
+      if (!targetCheckId) {
+        alert('No check selected. Please select a check first.');
+        return;
+      }
 
       // Get the actual canvas element to understand its coordinate system
       const canvas = pageContainerRef.current?.querySelector('canvas') as HTMLCanvasElement | null;
@@ -587,8 +697,8 @@ export function PDFViewer({
       const res = await fetch('/api/screenshots/presign', {
         method: 'POST',
         body: JSON.stringify({
-          projectId: activeCheck.project_id || activeCheck.assessment_id,
-          checkId: activeCheck.id,
+          projectId: activeCheck?.project_id || assessmentId,
+          checkId: targetCheckId,
         }),
         headers: { 'Content-Type': 'application/json' },
       });
@@ -618,7 +728,7 @@ export function PDFViewer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          check_id: activeCheck.id,
+          check_id: targetCheckId,
           page_number: state.pageNumber,
           crop_coordinates: {
             x: sx,
@@ -686,6 +796,23 @@ export function PDFViewer({
         </div>
       )}
 
+      {state.screenshotMode && state.selection && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
+          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-blue-500 font-mono">
+            C - Current Check
+          </kbd>
+          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
+            B - Bathroom
+          </kbd>
+          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
+            D - Door
+          </kbd>
+          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
+            K - Kitchen
+          </kbd>
+        </div>
+      )}
+
       <div className="absolute top-3 right-3 z-50 flex items-center gap-2 pointer-events-auto">
         <button
           aria-label="Zoom out"
@@ -738,14 +865,15 @@ export function PDFViewer({
             <button
               aria-pressed={state.screenshotMode}
               aria-label="Toggle screenshot mode (S)"
+              title="Capture a portion of the plan to be checked against a code section or saved as an instance of an element"
               className={`btn-icon shadow-md ${state.screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
               onClick={() => dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' })}
             >
               📸
             </button>
             {state.screenshotMode && state.selection && (
-              <button className="btn-secondary shadow-md" onClick={() => capture()}>
-                Save
+              <button className="btn-secondary shadow-md" onClick={() => capture('current')}>
+                Save to Current
               </button>
             )}
           </>

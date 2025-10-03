@@ -6,10 +6,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { instanceLabel, copyScreenshots = false } = await req.json();
   const supabase = supabaseAdmin();
 
-  // Fetch the original check
+  // Fetch the original check with element group name
   const { data: original, error: e1 } = await supabase
     .from('checks')
-    .select('*')
+    .select('*, element_groups(name)')
     .eq('id', id)
     .single();
   if (e1 || !original)
@@ -55,11 +55,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     element_sections: original.element_sections || null,
   };
 
-  const { data, error } = await supabase.from('checks').insert(clone).select('*').single();
+  const { data, error } = await supabase
+    .from('checks')
+    .insert(clone)
+    .select('*, element_groups(name)')
+    .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+  // Flatten the element_groups join
+  const flattenedData = data
+    ? {
+        ...data,
+        element_group_name: (data as any).element_groups?.name || null,
+      }
+    : null;
+
   // Optionally copy screenshots
-  if (copyScreenshots && data) {
+  if (copyScreenshots && flattenedData) {
     const { data: screenshots, error: screenshotsError } = await supabase
       .from('screenshots')
       .select('*')
@@ -67,7 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (!screenshotsError && screenshots && screenshots.length > 0) {
       const newScreenshots = screenshots.map(screenshot => ({
-        check_id: data.id,
+        check_id: flattenedData.id,
         page_number: screenshot.page_number,
         crop_coordinates: screenshot.crop_coordinates,
         screenshot_url: screenshot.screenshot_url,
@@ -79,5 +91,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
-  return NextResponse.json({ check: data });
+  return NextResponse.json({ check: flattenedData });
 }
