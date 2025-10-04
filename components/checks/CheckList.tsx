@@ -89,16 +89,28 @@ export function CheckList({
     const mainGroups = new Map<string, any[]>();
 
     if (checkMode === 'element') {
-      // Group by element group name
+      // Group by element group name - flatten instances
       filtered.forEach(check => {
         const groupName = check.element_group_name || 'Other';
         if (!mainGroups.has(groupName)) {
           mainGroups.set(groupName, []);
         }
-        mainGroups.get(groupName)!.push(check);
+
+        // Add all instances (not the parent template)
+        if (check.instances && check.instances.length > 0) {
+          check.instances.forEach((instance: any) => {
+            mainGroups.get(groupName)!.push({
+              ...instance,
+              element_group_name: check.element_group_name,
+            });
+          });
+        } else if (check.instance_number !== 0) {
+          // Fallback: if no instances array, add the check itself (if not template)
+          mainGroups.get(groupName)!.push(check);
+        }
       });
 
-      // Sort each group by instance number and filter out templates (instance_number === 0)
+      // Sort each group by instance number
       mainGroups.forEach(group => {
         group.sort((a, b) => a.instance_number - b.instance_number);
       });
@@ -280,14 +292,13 @@ export function CheckList({
       <div className="flex-1">
         {groupedChecks.map(([mainPrefix, groupChecks]) => {
           const isExpanded = expandedSections.has(mainPrefix);
-          // Find the template check (instance_number === 0) for this group in element mode
+          // In element mode, get template from filtered checks (not from groupChecks which are instances)
           const templateCheck =
-            checkMode === 'element' ? groupChecks.find(c => c.instance_number === 0) : null;
-          // Filter out template checks from display in element mode
-          const displayChecks =
             checkMode === 'element'
-              ? groupChecks.filter(c => c.instance_number !== 0)
-              : groupChecks;
+              ? filtered.find(c => c.element_group_name === mainPrefix && c.instance_number === 0)
+              : null;
+          // All groupChecks are already instances (templates filtered out during grouping)
+          const displayChecks = groupChecks;
 
           return (
             <div key={mainPrefix} className="border-b border-gray-200">
