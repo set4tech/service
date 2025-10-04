@@ -111,6 +111,14 @@ export async function GET(request: NextRequest) {
       throw sectionsError;
     }
 
+    // Exclude intro sections (sections ending in .1) from the main list
+    // These are section group introductions that will be shown contextually
+    // Pattern matches: 11B-203.1, 11B-404.2.1, etc.
+    filteredSections = filteredSections.filter((section: any) => {
+      const parts = section.number.split(/[.-]/);
+      return parts[parts.length - 1] !== '1';
+    });
+
     // Format sections for frontend consumption
     const formattedSections = filteredSections.map((section: any) => ({
       key: section.key,
@@ -219,6 +227,26 @@ export async function POST(request: NextRequest) {
     const tables = section.tables || [];
     const figures = section.figures || [];
 
+    // Find the intro section (.1) for this section's parent group
+    // E.g., for 11B-203.2, find 11B-203.1
+    // For 11B-404.2.6, find 11B-404.2.1
+    let introSection = null;
+    if (section.parent_key) {
+      const { data: siblings } = await supabase
+        .from('sections')
+        .select('key, number, title, text')
+        .eq('parent_key', section.parent_key)
+        .eq('never_relevant', false);
+
+      if (siblings && siblings.length > 0) {
+        // Find the sibling that ends in .1
+        introSection = siblings.find((sibling: any) => {
+          const parts = sibling.number.split(/[.-]/);
+          return parts[parts.length - 1] === '1';
+        });
+      }
+    }
+
     return NextResponse.json({
       key: section.key,
       number: section.number,
@@ -231,6 +259,7 @@ export async function POST(request: NextRequest) {
       references,
       source_url: sourceUrl,
       hasContent: !!(paragraphs && paragraphs.length > 0),
+      intro_section: introSection || undefined,
     });
   } catch (error) {
     return NextResponse.json(
