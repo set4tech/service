@@ -127,7 +127,7 @@ export function PDFViewer({
   const [pageInstance, setPageInstance] = useState<any>(null);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
-  const [renderScale, setRenderScale] = useState(2.0); // Default 2x resolution
+  const [renderScale, setRenderScale] = useState(6.0); // Default 6x resolution
   const [savingScale, setSavingScale] = useState(false);
   const [layers, setLayers] = useState<PDFLayer[]>([]);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
