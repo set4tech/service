@@ -176,6 +176,12 @@ export function CodeDetailPanel({
       return;
     }
 
+    // Reset assessment state when switching checks
+    setAssessing(false);
+    setAssessmentError(null);
+    setAssessmentProgress(0);
+    setAssessmentMessage('');
+
     fetch(`/api/checks/${checkId}`)
       .then(res => res.json())
       .then(data => {
