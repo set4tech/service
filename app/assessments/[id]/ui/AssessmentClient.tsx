@@ -55,14 +55,21 @@ export default function AssessmentClient({
   // Debug: Log screenshots on initial load
   useEffect(() => {
     const checksWithScreenshots = initialChecks.filter((c: any) => c.screenshots?.length > 0);
+    const instancesWithScreenshots = initialChecks
+      .flatMap((c: any) => c.instances || [])
+      .filter((i: any) => i.screenshots?.length > 0);
+
     console.log(
       '[AssessmentClient] Initial checks with screenshots:',
       checksWithScreenshots.length
     );
-    checksWithScreenshots.forEach((c: any) => {
-      console.log(
-        `  - ${c.instance_label || c.code_section_number}: ${c.screenshots.length} screenshots`
-      );
+    console.log(
+      '[AssessmentClient] Initial INSTANCES with screenshots:',
+      instancesWithScreenshots.length
+    );
+
+    instancesWithScreenshots.slice(0, 5).forEach((i: any) => {
+      console.log(`  - ${i.instance_label}: ${i.screenshots.length} screenshots`);
     });
   }, []);
   const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>(() => {
