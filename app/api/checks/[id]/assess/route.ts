@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { runAI } from '@/lib/ai/analysis';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { kv } from '@/lib/kv';
@@ -149,155 +148,57 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .eq('check_id', checkId);
     const runNumber = (count || 0) + 1;
 
-    // 7. Process FIRST batch synchronously
+    // 7. Queue ALL batches in background (including the first one)
     const { provider, modelName } = getModelConfig(aiProvider);
-    const firstBatch = batches[0];
 
-    if (!firstBatch) {
+    if (batches.length === 0) {
       return NextResponse.json({ error: 'No sections to assess' }, { status: 400 });
     }
 
-    // Build prompt for first batch
-    const sectionsText = firstBatch
-      .map(s => `## Section ${s.number} - ${s.title}\n\n${s.text}`)
-      .join('\n\n---\n\n');
+    // Queue all batches as background jobs
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchNum = batchIndex + 1;
+      const jobId = crypto.randomUUID();
 
-    let prompt = customPrompt;
-    if (!prompt) {
-      const screenshotsSection =
-        screenshots && screenshots.length > 0
-          ? `# Evidence (Screenshots)\nProvided ${screenshots.length} screenshot(s) showing relevant documentation.`
-          : '# Evidence\nNo screenshots provided. Base assessment on building information and code requirements.';
-
-      const extraContextSection = extraContext ? `\n\n# Additional Context\n${extraContext}` : '';
-
-      prompt = `You are an expert building code compliance analyst. Your task is to assess whether the provided project demonstrates compliance with the following building code sections.
-
-# Building Code Sections (Batch 1 of ${batches.length})
-${sectionsText}
-
-# Project Information
-${JSON.stringify(buildingContext, null, 2)}
-
-# Check Details
-Location: ${check.check_location || 'Not specified'}
-Check: ${check.check_name || 'Compliance check'}${extraContextSection}
-
-${screenshotsSection}
-
-# Your Task
-Analyze the evidence and determine compliance for ALL sections above:
-1. Compliance status: Must be one of: "compliant", "violation", "needs_more_info"
-2. Confidence level: "high", "medium", or "low"
-3. Reasoning for your determination across all sections
-4. Any violations found (if applicable)
-5. Recommendations (if applicable)
-
-Return your response as a JSON object with this exact structure:
-{
-  "compliance_status": "compliant" | "violation" | "needs_more_info",
-  "confidence": "high" | "medium" | "low",
-  "reasoning": "your detailed reasoning here",
-  "violations": [{"description": "...", "severity": "minor"|"moderate"|"major"}],
-  "recommendations": ["recommendation 1", "recommendation 2"]
-}`;
+      await kv.hset(`job:${jobId}`, {
+        id: jobId,
+        type: 'batch_analysis',
+        payload: JSON.stringify({
+          checkId,
+          batch,
+          batchNum,
+          totalBatches: batches.length,
+          batchGroupId,
+          runNumber: runNumber + batchIndex,
+          screenshotUrls,
+          screenshots,
+          check,
+          buildingContext,
+          customPrompt,
+          extraContext,
+          provider,
+          modelName,
+        }),
+        status: 'pending',
+        attempts: 0,
+        maxAttempts: 3,
+        createdAt: Date.now(),
+      });
+      await kv.lpush('queue:analysis', jobId);
     }
 
-    // Call AI for first batch
-    const started = Date.now();
-    const { model, raw, parsed } = await runAI({
-      prompt,
-      screenshots: screenshotUrls,
-      provider,
-      model: modelName,
-    });
-    const executionTimeMs = Date.now() - started;
+    // Immediately trigger queue processing (non-blocking)
+    fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/queue/process`, {
+      method: 'GET',
+    }).catch(err => console.error('Failed to trigger queue processing:', err));
 
-    // Save first batch result
-    const firstRun = {
-      check_id: checkId,
-      run_number: runNumber,
-      batch_group_id: batchGroupId,
-      batch_number: 1,
-      total_batches: batches.length,
-      section_keys_in_batch: firstBatch.map(s => s.key),
-      compliance_status: parsed.compliance_status,
-      confidence: parsed.confidence,
-      ai_provider: provider,
-      ai_model: model,
-      ai_reasoning: parsed.reasoning || null,
-      violations: parsed.violations || [],
-      compliant_aspects: parsed.compliant_aspects || [],
-      recommendations: parsed.recommendations || [],
-      additional_evidence_needed: parsed.additional_evidence_needed || [],
-      raw_ai_response: raw,
-      execution_time_ms: executionTimeMs,
-    };
-
-    const { data: savedRun, error: insertError } = await supabase
-      .from('analysis_runs')
-      .insert(firstRun)
-      .select('*')
-      .single();
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
-    }
-
-    // 8. If multiple batches, queue remaining batches
-    if (batches.length > 1) {
-      // Queue batches 2+ as separate jobs
-      for (let batchIndex = 1; batchIndex < batches.length; batchIndex++) {
-        const batch = batches[batchIndex];
-        const batchNum = batchIndex + 1;
-        const jobId = crypto.randomUUID();
-
-        await kv.hset(`job:${jobId}`, {
-          id: jobId,
-          type: 'batch_analysis',
-          payload: JSON.stringify({
-            checkId,
-            batch,
-            batchNum,
-            totalBatches: batches.length,
-            batchGroupId,
-            runNumber: runNumber + batchIndex,
-            screenshotUrls,
-            screenshots,
-            check,
-            buildingContext,
-            customPrompt,
-            extraContext,
-            provider,
-            modelName,
-          }),
-          status: 'pending',
-          attempts: 0,
-          maxAttempts: 3,
-          createdAt: Date.now(),
-        });
-        await kv.lpush('queue:analysis', jobId);
-      }
-
-      // Immediately trigger queue processing (non-blocking)
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/queue/process`, {
-        method: 'GET',
-      }).catch(err => console.error('Failed to trigger queue processing:', err));
-    } else {
-      // Single batch - mark as completed immediately
-      await supabase.from('checks').update({ status: 'completed' }).eq('id', checkId);
-    }
-
-    // Return immediately with first batch result
+    // Return immediately - all batches are queued
     return NextResponse.json({
       success: true,
       batchGroupId,
       totalBatches: batches.length,
-      firstBatchResult: savedRun,
-      message:
-        batches.length > 1
-          ? `First batch complete. Processing ${batches.length - 1} more batches in background.`
-          : 'Assessment complete.',
+      message: `Assessment queued. Processing ${batches.length} batch${batches.length > 1 ? 'es' : ''} in background.`,
     });
   } catch (error: any) {
     console.error('=== ASSESSMENT ERROR ===');

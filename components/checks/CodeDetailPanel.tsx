@@ -10,6 +10,13 @@ interface TableBlock {
   csv: string;
 }
 
+interface IntroSection {
+  key: string;
+  number: string;
+  title: string;
+  text?: string;
+}
+
 interface CodeSection {
   key: string;
   number: string;
@@ -20,6 +27,7 @@ interface CodeSection {
   figures?: string[];
   source_url?: string;
   floorplan_relevant?: boolean;
+  intro_section?: IntroSection;
   references?: Array<{
     key: string;
     number: string;
@@ -505,32 +513,14 @@ export function CodeDetailPanel({
         throw new Error(data.error || 'Assessment failed');
       }
 
-      // Add first batch result immediately
-      if (data.firstBatchResult) {
-        setAnalysisRuns(prev => [data.firstBatchResult, ...prev]);
-        setExpandedRuns(new Set([data.firstBatchResult.id]));
-      }
-
       const { batchGroupId, totalBatches } = data;
       setCurrentBatchGroupId(batchGroupId);
 
-      if (totalBatches === 1) {
-        // Single batch - complete immediately
-        setAssessmentMessage('Assessment complete!');
-        setAssessmentProgress(100);
-        setExtraContext('');
-        setShowExtraContext(false);
-        if (onCheckUpdate) {
-          onCheckUpdate();
-        }
-        setAssessing(false);
-        return;
-      }
+      // All batches are queued in background - start polling immediately
+      setAssessmentMessage(`Processing batch 0/${totalBatches}...`);
+      setAssessmentProgress(0);
 
-      // 2. Poll for progress if multiple batches
-      setAssessmentMessage(`Processing batch 1/${totalBatches}...`);
-      setAssessmentProgress(Math.round((1 / totalBatches) * 100));
-
+      // Poll for progress from the start
       const pollInterval = setInterval(async () => {
         try {
           const progressRes = await fetch(`/api/checks/${checkId}/assessment-progress`);
@@ -547,7 +537,11 @@ export function CodeDetailPanel({
           const progress = Math.round((completed / total) * 100);
           setAssessmentProgress(progress);
           setAssessmentMessage(
-            inProgress ? `Processing batch ${completed + 1}/${total}...` : 'Assessment complete!'
+            inProgress
+              ? `Processing batch ${completed}/${total}...`
+              : completed > 0
+                ? 'Assessment complete!'
+                : 'Starting assessment...'
           );
 
           // Update runs (only add new ones)
@@ -569,7 +563,7 @@ export function CodeDetailPanel({
           }
 
           // Stop polling when complete
-          if (!inProgress) {
+          if (!inProgress && completed > 0) {
             clearInterval(pollInterval);
             setExtraContext('');
             setShowExtraContext(false);
@@ -937,6 +931,26 @@ export function CodeDetailPanel({
 
         {section && !loading && (
           <div className="space-y-6">
+            {/* Intro Section - Section Group Overview */}
+            {section.intro_section && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
+                  Section Group Overview
+                </div>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-sm font-mono font-medium text-blue-900">
+                    {section.intro_section.number}
+                  </span>
+                  <span className="text-sm text-blue-800">{section.intro_section.title}</span>
+                </div>
+                {section.intro_section.text && (
+                  <div className="text-sm text-blue-900 leading-relaxed italic mt-2">
+                    {section.intro_section.text}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Section Header */}
             <div>
               <div className="flex items-center justify-between mb-1">
