@@ -818,9 +818,9 @@ export function CodeDetailPanel({
                       ? 'bg-blue-100 border-blue-400 text-blue-800'
                       : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
-                  title="Mark as floor-plan relevant"
+                  title="Flag this section as specifically relevant to floorplan analysis - it will be prioritized when displaying sections"
                 >
-                  Not Relevant
+                  Floorplan Specific
                 </button>
                 <button
                   onClick={() => setShowNeverRelevantDialog(true)}
