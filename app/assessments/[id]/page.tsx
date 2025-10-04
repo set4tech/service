@@ -6,7 +6,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = supabaseAdmin();
 
-  const [{ data: assessment }, { data: allChecks }, { data: allScreenshots }] = await Promise.all([
+  const [{ data: assessment }, { data: allChecks }] = await Promise.all([
     supabase
       .from('assessments')
       .select('*, projects(pdf_url, selected_code_ids, extracted_variables)')
@@ -17,24 +17,22 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       .select('*, element_groups(name, slug)')
       .eq('assessment_id', id)
       .order('code_section_number', { ascending: true }),
-    supabase
-      .from('screenshots')
-      .select('*, checks!inner(assessment_id)')
-      .eq('checks.assessment_id', id)
-      .order('created_at', { ascending: true }),
   ]);
 
-  // Fetch latest analysis for all checks
+  // Fetch latest analysis and screenshots for all checks
   const checkIds = (allChecks || []).map(c => c.id);
-  const { data: latestAnalysis } =
+  const [{ data: latestAnalysis }, { data: allScreenshots }] =
     checkIds.length > 0
-      ? await supabase
-          .from('latest_analysis_runs')
-          .select(
-            'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
-          )
-          .in('check_id', checkIds)
-      : { data: [] };
+      ? await Promise.all([
+          supabase
+            .from('latest_analysis_runs')
+            .select(
+              'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+            )
+            .in('check_id', checkIds),
+          supabase.from('screenshots').select('*').in('check_id', checkIds).order('created_at'),
+        ])
+      : [{ data: [] }, { data: [] }];
 
   // Create a map of check_id -> latest analysis
   const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
