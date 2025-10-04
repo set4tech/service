@@ -63,7 +63,7 @@ export default function NewProjectPage() {
           addressInputRef.current,
           {
             types: ['address'],
-            componentRestrictions: { country: 'us' }
+            componentRestrictions: { country: 'us' },
           }
         );
 
@@ -78,7 +78,7 @@ export default function NewProjectPage() {
         console.log('Missing requirements:', {
           hasInput: !!addressInputRef.current,
           hasGoogle: !!(window as any).google,
-          hasPlaces: !!(window as any).google?.maps?.places
+          hasPlaces: !!(window as any).google?.maps?.places,
         });
       }
     }, 100);
@@ -124,9 +124,7 @@ export default function NewProjectPage() {
 
   const toggleCodeSelection = (codeId: string) => {
     setSelectedCodeIds(prev =>
-      prev.includes(codeId)
-        ? prev.filter(id => id !== codeId)
-        : [...prev, codeId]
+      prev.includes(codeId) ? prev.filter(id => id !== codeId) : [...prev, codeId]
     );
   };
 
@@ -147,7 +145,7 @@ export default function NewProjectPage() {
                 addressInputRef.current,
                 {
                   types: ['address'],
-                  componentRestrictions: { country: 'us' }
+                  componentRestrictions: { country: 'us' },
                 }
               );
 
@@ -171,8 +169,8 @@ export default function NewProjectPage() {
       ...prev,
       [category]: {
         ...prev[category],
-        [variable]: value
-      }
+        [variable]: value,
+      },
     }));
   };
 
@@ -187,8 +185,8 @@ export default function NewProjectPage() {
         ...prev,
         [category]: {
           ...prev[category],
-          [variable]: newValues
-        }
+          [variable]: newValues,
+        },
       };
     });
   };
@@ -199,9 +197,7 @@ export default function NewProjectPage() {
       const MAX_SIZE = 500 * 1024 * 1024; // 500MB reasonable limit for S3 direct upload
 
       if (file.size > MAX_SIZE) {
-        alert(
-          'File is too large. Maximum size is 500MB. Please use a smaller file.'
-        );
+        alert('File is too large. Maximum size is 500MB. Please use a smaller file.');
         e.target.value = ''; // Clear the input
         return;
       }
@@ -298,20 +294,23 @@ export default function NewProjectPage() {
 
             extractedVariables[category][varName] = {
               value: value,
-              confidence: 'high' // Manual entry is always high confidence
+              confidence: 'high', // Manual entry is always high confidence
             };
           }
         }
       }
 
       // Add metadata
-      const finalVariables = Object.keys(extractedVariables).length > 0 ? {
-        ...extractedVariables,
-        _metadata: {
-          entry_method: 'manual',
-          entry_date: new Date().toISOString()
-        }
-      } : null;
+      const finalVariables =
+        Object.keys(extractedVariables).length > 0
+          ? {
+              ...extractedVariables,
+              _metadata: {
+                entry_method: 'manual',
+                entry_date: new Date().toISOString(),
+              },
+            }
+          : null;
 
       // Create project
       const projectResponse = await fetch('/api/projects', {
@@ -325,7 +324,7 @@ export default function NewProjectPage() {
           selected_code_ids: selectedCodeIds,
           extracted_variables: finalVariables,
           extraction_status: finalVariables ? 'completed' : null,
-          extraction_completed_at: finalVariables ? new Date().toISOString() : null
+          extraction_completed_at: finalVariables ? new Date().toISOString() : null,
         }),
       });
 
@@ -355,454 +354,481 @@ export default function NewProjectPage() {
           console.log('Google Maps loaded');
           setGoogleLoaded(true);
         }}
-        onError={(e) => console.error('Google Maps load error:', e)}
+        onError={e => console.error('Google Maps load error:', e)}
       />
       <main className="min-h-screen bg-gray-50">
         <div className="max-w-3xl mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Create New Project</h1>
-          <div className="mt-4 flex space-x-2">
-            {[1, 2, 3, 4, 5, 6].map(s => (
-              <div
-                key={s}
-                className={`h-2 flex-1 rounded ${s <= step ? 'bg-blue-600' : 'bg-gray-300'}`}
-              />
-            ))}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Create New Project</h1>
+            <div className="mt-4 flex space-x-2">
+              {[1, 2, 3, 4, 5, 6].map(s => (
+                <div
+                  key={s}
+                  className={`h-2 flex-1 rounded ${s <= step ? 'bg-blue-600' : 'bg-gray-300'}`}
+                />
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          {step === 1 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Project Information</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Project Name *</label>
-                  <input
-                    type="text"
-                    value={projectData.name}
-                    onChange={e => setProjectData({ ...projectData, name: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="e.g., 255 California Street Renovation"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Description</label>
-                  <textarea
-                    value={projectData.description}
-                    onChange={e => setProjectData({ ...projectData, description: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    rows={3}
-                    placeholder="Project description..."
-                  />
-                </div>
-              </div>
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={() => setStep(2)}
-                  disabled={!projectData.name}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Upload PDF Document</h2>
-              <div className="space-y-4">
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    id="pdf-upload"
-                  />
-                  <label htmlFor="pdf-upload" className="cursor-pointer">
-                    {pdfFile ? (
-                      <div>
-                        <p className="text-green-600 font-semibold">✓ {pdfFile.name}</p>
-                        <p className="text-sm text-gray-500 mt-2">Click to change file</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-gray-600">Click to upload PDF</p>
-                        <p className="text-sm text-gray-500 mt-2">or drag and drop</p>
-                      </div>
-                    )}
-                  </label>
-                </div>
-              </div>
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setStep(1)}
-                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={() => setStep(3)}
-                  disabled={!pdfFile}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Select Code Books</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Choose which building codes are relevant for this project. Sections displayed in the assessment will be descendants of the selected codes.
-              </p>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {codeBooks.map(code => (
-                  <label
-                    key={code.id}
-                    className="flex items-start p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedCodeIds.includes(code.id)}
-                      onChange={() => toggleCodeSelection(code.id)}
-                      className="mt-1 mr-3"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium">{code.name}</div>
-                      <div className="text-sm text-gray-500">
-                        {[code.publisher, code.jurisdiction, code.year]
-                          .filter(Boolean)
-                          .join(' • ')}
-                      </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setStep(2)}
-                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={() => setStep(4)}
-                  disabled={selectedCodeIds.length === 0}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Project Variables</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Enter project details. These will be used for compliance analysis. Fields are optional.
-              </p>
-
-              {!variableChecklist ? (
-                <div className="text-center py-8 text-gray-500">Loading...</div>
-              ) : (
-                <div className="space-y-3 max-h-[500px] overflow-y-auto">
-                  {Object.entries(variableChecklist).map(([category, items]: [string, any]) => (
-                    <div key={category} className="border rounded-lg">
-                      <button
-                        type="button"
-                        onClick={() => toggleCategory(category)}
-                        className="w-full flex items-center justify-between p-3 hover:bg-gray-50 text-left"
-                      >
-                        <span className="font-medium text-gray-900">
-                          {category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </span>
-                        <span className="text-gray-400">
-                          {expandedCategories.has(category) ? '−' : '+'}
-                        </span>
-                      </button>
-
-                      {expandedCategories.has(category) && (
-                        <div className="p-3 pt-0 space-y-3 border-t">
-                          {Object.entries(items).map(([varName, varInfo]: [string, any]) => {
-                            const fieldType = varInfo.type || 'text';
-                            const label = varName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-
-                            return (
-                              <div key={varName}>
-                                <label className="block text-sm text-gray-700 mb-1">
-                                  {label}
-                                  {varInfo.description && (
-                                    <span className="block text-xs text-gray-500 mt-0.5 font-normal">
-                                      {varInfo.description}
-                                    </span>
-                                  )}
-                                </label>
-
-                                {fieldType === 'text' && (
-                                  <input
-                                    type="text"
-                                    ref={category === 'project_identity' && varName === 'full_address' ? addressInputRef : null}
-                                    value={projectVariables[category]?.[varName] || ''}
-                                    onChange={(e) => updateVariable(category, varName, e.target.value)}
-                                    className="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                                    placeholder="Enter value..."
-                                  />
-                                )}
-
-                                {fieldType === 'number' && (
-                                  <input
-                                    type="number"
-                                    value={projectVariables[category]?.[varName] || ''}
-                                    onChange={(e) => updateVariable(category, varName, e.target.value)}
-                                    className="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                                    placeholder="Enter number..."
-                                  />
-                                )}
-
-                                {fieldType === 'date' && (
-                                  <input
-                                    type="date"
-                                    value={projectVariables[category]?.[varName] || ''}
-                                    onChange={(e) => updateVariable(category, varName, e.target.value)}
-                                    className="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                                  />
-                                )}
-
-                                {fieldType === 'boolean' && (
-                                  <div className="flex items-center space-x-4">
-                                    <label className="flex items-center">
-                                      <input
-                                        type="radio"
-                                        name={`${category}_${varName}`}
-                                        checked={projectVariables[category]?.[varName] === true}
-                                        onChange={() => updateVariable(category, varName, true)}
-                                        className="mr-2"
-                                      />
-                                      Yes
-                                    </label>
-                                    <label className="flex items-center">
-                                      <input
-                                        type="radio"
-                                        name={`${category}_${varName}`}
-                                        checked={projectVariables[category]?.[varName] === false}
-                                        onChange={() => updateVariable(category, varName, false)}
-                                        className="mr-2"
-                                      />
-                                      No
-                                    </label>
-                                  </div>
-                                )}
-
-                                {fieldType === 'select' && varInfo.options && (
-                                  <select
-                                    value={projectVariables[category]?.[varName] || ''}
-                                    onChange={(e) => updateVariable(category, varName, e.target.value)}
-                                    className="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                                  >
-                                    <option value="">Select an option...</option>
-                                    {varInfo.options.map((option: string) => (
-                                      <option key={option} value={option}>{option}</option>
-                                    ))}
-                                  </select>
-                                )}
-
-                                {fieldType === 'multiselect' && varInfo.options && (
-                                  <div className="space-y-2">
-                                    {varInfo.options.map((option: string) => (
-                                      <label key={option} className="flex items-center">
-                                        <input
-                                          type="checkbox"
-                                          checked={(projectVariables[category]?.[varName] || []).includes(option)}
-                                          onChange={() => toggleMultiselect(category, varName, option)}
-                                          className="mr-2"
-                                        />
-                                        <span className="text-sm">{option}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setStep(3)}
-                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={() => setStep(5)}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 5 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Customer Information</h2>
-              <div className="space-y-4">
-                <div className="flex items-center space-x-4 mb-4">
-                  <button
-                    onClick={() => setCreateNewCustomer(false)}
-                    className={`px-5 py-2.5 rounded-lg ${
-                      !createNewCustomer ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    Select Existing
-                  </button>
-                  <button
-                    onClick={() => setCreateNewCustomer(true)}
-                    className={`px-5 py-2.5 rounded-lg ${
-                      createNewCustomer ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    Create New
-                  </button>
-                </div>
-
-                {!createNewCustomer ? (
+          <div className="bg-white rounded-lg shadow p-6">
+            {step === 1 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Project Information</h2>
+                <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      Select Customer
+                      Project Name *
                     </label>
-                    <select
-                      value={projectData.customer_id}
+                    <input
+                      type="text"
+                      value={projectData.name}
+                      onChange={e => setProjectData({ ...projectData, name: e.target.value })}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="e.g., 255 California Street Renovation"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Description</label>
+                    <textarea
+                      value={projectData.description}
                       onChange={e =>
-                        setProjectData({ ...projectData, customer_id: e.target.value })
+                        setProjectData({ ...projectData, description: e.target.value })
                       }
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    >
-                      <option value="">Select a customer...</option>
-                      {customers.map(customer => (
-                        <option key={customer.id} value={customer.id}>
-                          {customer.name}
-                        </option>
-                      ))}
-                    </select>
+                      rows={3}
+                      placeholder="Project description..."
+                    />
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Customer Name *
-                      </label>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setStep(2)}
+                    disabled={!projectData.name}
+                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Upload PDF Document</h2>
+                <div className="space-y-4">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      id="pdf-upload"
+                    />
+                    <label htmlFor="pdf-upload" className="cursor-pointer">
+                      {pdfFile ? (
+                        <div>
+                          <p className="text-green-600 font-semibold">✓ {pdfFile.name}</p>
+                          <p className="text-sm text-gray-500 mt-2">Click to change file</p>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-gray-600">Click to upload PDF</p>
+                          <p className="text-sm text-gray-500 mt-2">or drag and drop</p>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-between">
+                  <button
+                    onClick={() => setStep(1)}
+                    className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={() => setStep(3)}
+                    disabled={!pdfFile}
+                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Select Code Books</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Choose which building codes are relevant for this project. Sections displayed in
+                  the assessment will be descendants of the selected codes.
+                </p>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {codeBooks.map(code => (
+                    <label
+                      key={code.id}
+                      className="flex items-start p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
                       <input
-                        type="text"
-                        value={newCustomer.name}
-                        onChange={e => setNewCustomer({ ...newCustomer, name: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        placeholder="Enter customer name"
+                        type="checkbox"
+                        checked={selectedCodeIds.includes(code.id)}
+                        onChange={() => toggleCodeSelection(code.id)}
+                        className="mt-1 mr-3"
                       />
-                    </div>
+                      <div className="flex-1">
+                        <div className="font-medium">{code.name}</div>
+                        <div className="text-sm text-gray-500">
+                          {[code.publisher, code.jurisdiction, code.year]
+                            .filter(Boolean)
+                            .join(' • ')}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-6 flex justify-between">
+                  <button
+                    onClick={() => setStep(2)}
+                    className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={() => setStep(4)}
+                    disabled={selectedCodeIds.length === 0}
+                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 4 && (
+              <div className="flex flex-col h-[600px]">
+                <div className="flex-shrink-0">
+                  <h2 className="text-xl font-semibold mb-4">Project Variables</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Enter project details. These will be used for compliance analysis. Fields are
+                    optional.
+                  </p>
+                </div>
+
+                {!variableChecklist ? (
+                  <div className="text-center py-8 text-gray-500">Loading...</div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto space-y-3 mb-6">
+                    {Object.entries(variableChecklist).map(([category, items]: [string, any]) => (
+                      <div key={category} className="border rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => toggleCategory(category)}
+                          className="w-full flex items-center justify-between p-3 hover:bg-gray-50 text-left"
+                        >
+                          <span className="font-medium text-gray-900">
+                            {category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                          <span className="text-gray-400">
+                            {expandedCategories.has(category) ? '−' : '+'}
+                          </span>
+                        </button>
+
+                        {expandedCategories.has(category) && (
+                          <div className="p-3 pt-0 space-y-3 border-t">
+                            {Object.entries(items).map(([varName, varInfo]: [string, any]) => {
+                              const fieldType = varInfo.type || 'text';
+                              const label = varName
+                                .replace(/_/g, ' ')
+                                .replace(/\b\w/g, l => l.toUpperCase());
+
+                              return (
+                                <div key={varName}>
+                                  <label className="block text-sm text-gray-700 mb-1">
+                                    {label}
+                                    {varInfo.description && (
+                                      <span className="block text-xs text-gray-500 mt-0.5 font-normal">
+                                        {varInfo.description}
+                                      </span>
+                                    )}
+                                  </label>
+
+                                  {fieldType === 'text' && (
+                                    <input
+                                      type="text"
+                                      ref={
+                                        category === 'project_identity' &&
+                                        varName === 'full_address'
+                                          ? addressInputRef
+                                          : null
+                                      }
+                                      value={projectVariables[category]?.[varName] || ''}
+                                      onChange={e =>
+                                        updateVariable(category, varName, e.target.value)
+                                      }
+                                      className="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                      placeholder="Enter value..."
+                                    />
+                                  )}
+
+                                  {fieldType === 'number' && (
+                                    <input
+                                      type="number"
+                                      value={projectVariables[category]?.[varName] || ''}
+                                      onChange={e =>
+                                        updateVariable(category, varName, e.target.value)
+                                      }
+                                      className="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                      placeholder="Enter number..."
+                                    />
+                                  )}
+
+                                  {fieldType === 'date' && (
+                                    <input
+                                      type="date"
+                                      value={projectVariables[category]?.[varName] || ''}
+                                      onChange={e =>
+                                        updateVariable(category, varName, e.target.value)
+                                      }
+                                      className="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                  )}
+
+                                  {fieldType === 'boolean' && (
+                                    <div className="flex items-center space-x-4">
+                                      <label className="flex items-center">
+                                        <input
+                                          type="radio"
+                                          name={`${category}_${varName}`}
+                                          checked={projectVariables[category]?.[varName] === true}
+                                          onChange={() => updateVariable(category, varName, true)}
+                                          className="mr-2"
+                                        />
+                                        Yes
+                                      </label>
+                                      <label className="flex items-center">
+                                        <input
+                                          type="radio"
+                                          name={`${category}_${varName}`}
+                                          checked={projectVariables[category]?.[varName] === false}
+                                          onChange={() => updateVariable(category, varName, false)}
+                                          className="mr-2"
+                                        />
+                                        No
+                                      </label>
+                                    </div>
+                                  )}
+
+                                  {fieldType === 'select' && varInfo.options && (
+                                    <select
+                                      value={projectVariables[category]?.[varName] || ''}
+                                      onChange={e =>
+                                        updateVariable(category, varName, e.target.value)
+                                      }
+                                      className="w-full text-sm rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                    >
+                                      <option value="">Select an option...</option>
+                                      {varInfo.options.map((option: string) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+
+                                  {fieldType === 'multiselect' && varInfo.options && (
+                                    <div className="space-y-2">
+                                      {varInfo.options.map((option: string) => (
+                                        <label key={option} className="flex items-center">
+                                          <input
+                                            type="checkbox"
+                                            checked={(
+                                              projectVariables[category]?.[varName] || []
+                                            ).includes(option)}
+                                            onChange={() =>
+                                              toggleMultiselect(category, varName, option)
+                                            }
+                                            className="mr-2"
+                                          />
+                                          <span className="text-sm">{option}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
-              </div>
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setStep(4)}
-                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={() => setStep(6)}
-                  disabled={
-                    (!createNewCustomer && !projectData.customer_id) ||
-                    (createNewCustomer && !newCustomer.name)
-                  }
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
 
-          {step === 6 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Review & Create</h2>
-              <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-sm text-gray-700 mb-2">Project Details</h3>
-                  <p className="text-sm">
-                    <strong>Name:</strong> {projectData.name}
-                  </p>
-                  {projectData.description && (
-                    <p className="text-sm">
-                      <strong>Description:</strong> {projectData.description}
-                    </p>
+                <div className="flex-shrink-0 flex justify-between pt-4 border-t bg-white">
+                  <button
+                    onClick={() => setStep(3)}
+                    className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={() => setStep(5)}
+                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 5 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Customer Information</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-4 mb-4">
+                    <button
+                      onClick={() => setCreateNewCustomer(false)}
+                      className={`px-5 py-2.5 rounded-lg ${
+                        !createNewCustomer ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      Select Existing
+                    </button>
+                    <button
+                      onClick={() => setCreateNewCustomer(true)}
+                      className={`px-5 py-2.5 rounded-lg ${
+                        createNewCustomer ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      Create New
+                    </button>
+                  </div>
+
+                  {!createNewCustomer ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Select Customer
+                      </label>
+                      <select
+                        value={projectData.customer_id}
+                        onChange={e =>
+                          setProjectData({ ...projectData, customer_id: e.target.value })
+                        }
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      >
+                        <option value="">Select a customer...</option>
+                        {customers.map(customer => (
+                          <option key={customer.id} value={customer.id}>
+                            {customer.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Customer Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={newCustomer.name}
+                          onChange={e => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                          placeholder="Enter customer name"
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
-
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-sm text-gray-700 mb-2">PDF Document</h3>
-                  <p className="text-sm">{pdfFile?.name}</p>
+                <div className="mt-6 flex justify-between">
+                  <button
+                    onClick={() => setStep(4)}
+                    className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={() => setStep(6)}
+                    disabled={
+                      (!createNewCustomer && !projectData.customer_id) ||
+                      (createNewCustomer && !newCustomer.name)
+                    }
+                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    Next →
+                  </button>
                 </div>
+              </div>
+            )}
 
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-sm text-gray-700 mb-2">Selected Code Books</h3>
-                  <div className="text-sm space-y-1">
-                    {selectedCodeIds.map(id => {
-                      const code = codeBooks.find(c => c.id === id);
-                      return (
-                        <div key={id}>
-                          • {code?.name}
-                        </div>
-                      );
-                    })}
+            {step === 6 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Review & Create</h2>
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">Project Details</h3>
+                    <p className="text-sm">
+                      <strong>Name:</strong> {projectData.name}
+                    </p>
+                    {projectData.description && (
+                      <p className="text-sm">
+                        <strong>Description:</strong> {projectData.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">PDF Document</h3>
+                    <p className="text-sm">{pdfFile?.name}</p>
+                  </div>
+
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">
+                      Selected Code Books
+                    </h3>
+                    <div className="text-sm space-y-1">
+                      {selectedCodeIds.map(id => {
+                        const code = codeBooks.find(c => c.id === id);
+                        return <div key={id}>• {code?.name}</div>;
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">Customer</h3>
+                    {createNewCustomer ? (
+                      <p className="text-sm">{newCustomer.name} (New)</p>
+                    ) : (
+                      <p className="text-sm">
+                        {customers.find(c => c.id === projectData.customer_id)?.name}
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-sm text-gray-700 mb-2">Customer</h3>
-                  {createNewCustomer ? (
-                    <p className="text-sm">{newCustomer.name} (New)</p>
-                  ) : (
-                    <p className="text-sm">
-                      {customers.find(c => c.id === projectData.customer_id)?.name}
-                    </p>
-                  )}
+                <div className="mt-6 flex justify-between">
+                  <button
+                    onClick={() => setStep(5)}
+                    className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                    disabled={loading}
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={loading}
+                    className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                  >
+                    {loading ? 'Creating...' : 'Create Project'}
+                  </button>
                 </div>
               </div>
-
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setStep(5)}
-                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-                  disabled={loading}
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={handleSubmit}
-                  disabled={loading}
-                  className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition disabled:opacity-50"
-                >
-                  {loading ? 'Creating...' : 'Create Project'}
-                </button>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
     </>
   );
 }

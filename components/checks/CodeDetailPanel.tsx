@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 import { TableRenderer } from '@/components/ui/TableRenderer';
+import { TriageModal } from './TriageModal';
 
 interface TableBlock {
   number: string;
@@ -36,6 +37,16 @@ interface CodeSection {
   }>;
 }
 
+interface SectionResult {
+  section_key: string;
+  section_number: string;
+  compliance_status: string;
+  confidence: string;
+  reasoning: string;
+  violations?: any[];
+  recommendations?: string[];
+}
+
 interface AnalysisRun {
   id: string;
   run_number: number;
@@ -52,6 +63,7 @@ interface AnalysisRun {
   batch_number?: number;
   total_batches?: number;
   section_keys_in_batch?: string[];
+  section_results?: SectionResult[];
 }
 
 interface Check {
@@ -59,6 +71,7 @@ interface Check {
   check_type?: string;
   element_sections?: string[];
   element_group_name?: string;
+  instance_number?: number;
 }
 
 interface CodeDetailPanelProps {
@@ -135,6 +148,10 @@ export function CodeDetailPanel({
 
   // Section tabs toggle state
   const [showSectionTabs, setShowSectionTabs] = useState(false);
+
+  // Triage modal state
+  const [showTriageModal, setShowTriageModal] = useState(false);
+  const [triageSections, setTriageSections] = useState<SectionResult[]>([]);
 
   // Screenshots section toggle state
   const [showScreenshots, setShowScreenshots] = useState(true);
@@ -660,6 +677,7 @@ export function CodeDetailPanel({
   if (!sectionKey && !check?.element_sections) return null;
 
   const isElementCheck = check?.check_type === 'element' && sections.length > 1;
+  const isNewElementInstance = check?.check_type === 'element' && (check?.instance_number ?? 0) > 0;
 
   return (
     <div className="h-full flex flex-col bg-white border-r border-gray-200">
@@ -667,8 +685,8 @@ export function CodeDetailPanel({
       <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-semibold text-gray-900">
-            {isElementCheck
-              ? `${activeCheck?.element_group_name || check?.element_group_name || 'Element'} Check`
+            {isElementCheck || isNewElementInstance
+              ? `${activeCheck?.element_group_name || check?.element_group_name || 'Element'} Instance Details`
               : 'Code Section Details'}
           </h3>
           {isElementCheck && (
@@ -1266,6 +1284,81 @@ export function CodeDetailPanel({
               </div>
             </div>
 
+            {/* Latest Analysis Summary */}
+            {!loadingRuns && analysisRuns.length > 0 && analysisRuns[0].section_results && (
+              <div className="border-t pt-6">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Latest Analysis Summary
+                </div>
+                {(() => {
+                  const latestRun = analysisRuns[0];
+                  const sectionResults = latestRun.section_results || [];
+                  const violationCount = sectionResults.filter(
+                    (s: SectionResult) => s.compliance_status === 'violation'
+                  ).length;
+                  const needsMoreInfoCount = sectionResults.filter(
+                    (s: SectionResult) => s.compliance_status === 'needs_more_info'
+                  ).length;
+                  const notApplicableCount = sectionResults.filter(
+                    (s: SectionResult) => s.compliance_status === 'not_applicable'
+                  ).length;
+                  const compliantCount = sectionResults.filter(
+                    (s: SectionResult) => s.compliance_status === 'compliant'
+                  ).length;
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
+                        {violationCount > 0 && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-red-700">❌ Violations</span>
+                            <span className="font-semibold text-red-800">{violationCount}</span>
+                          </div>
+                        )}
+                        {needsMoreInfoCount > 0 && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-yellow-700">⚠️ Needs More Info</span>
+                            <span className="font-semibold text-yellow-800">
+                              {needsMoreInfoCount}
+                            </span>
+                          </div>
+                        )}
+                        {compliantCount > 0 && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-green-700">✅ Compliant</span>
+                            <span className="font-semibold text-green-800">{compliantCount}</span>
+                          </div>
+                        )}
+                        {notApplicableCount > 0 && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600">⊘ Not Applicable</span>
+                            <span className="font-semibold text-gray-700">
+                              {notApplicableCount}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {needsMoreInfoCount > 0 && (
+                        <button
+                          onClick={() => {
+                            const needsInfo = sectionResults.filter(
+                              (s: SectionResult) => s.compliance_status === 'needs_more_info'
+                            );
+                            setTriageSections(needsInfo);
+                            setShowTriageModal(true);
+                          }}
+                          className="w-full px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        >
+                          Review & Triage ({needsMoreInfoCount} sections)
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Assessment History */}
             <div className="border-t pt-6">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -1348,10 +1441,72 @@ export function CodeDetailPanel({
                             {run.ai_reasoning && (
                               <div>
                                 <div className="text-xs font-semibold text-gray-700 mb-1">
-                                  Reasoning
+                                  {run.section_results ? 'Summary' : 'Reasoning'}
                                 </div>
                                 <div className="text-sm text-gray-800 leading-relaxed bg-gray-50 p-2 rounded border border-gray-200">
                                   {run.ai_reasoning}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Section-Level Results */}
+                            {run.section_results && run.section_results.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-gray-700 mb-2">
+                                  Section Results ({run.section_results.length})
+                                </div>
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                  {run.section_results.map(
+                                    (sectionResult: SectionResult, idx: number) => (
+                                      <div
+                                        key={idx}
+                                        className={`p-2 rounded border ${
+                                          sectionResult.compliance_status === 'violation'
+                                            ? 'bg-red-50 border-red-200'
+                                            : sectionResult.compliance_status === 'needs_more_info'
+                                              ? 'bg-yellow-50 border-yellow-200'
+                                              : sectionResult.compliance_status === 'not_applicable'
+                                                ? 'bg-gray-50 border-gray-200'
+                                                : 'bg-green-50 border-green-200'
+                                        }`}
+                                      >
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-xs font-mono font-semibold text-gray-700 flex-shrink-0">
+                                            {sectionResult.section_number}
+                                          </span>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1 mb-1">
+                                              <span
+                                                className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                                  sectionResult.compliance_status === 'violation'
+                                                    ? 'bg-red-100 text-red-800'
+                                                    : sectionResult.compliance_status ===
+                                                        'needs_more_info'
+                                                      ? 'bg-yellow-100 text-yellow-800'
+                                                      : sectionResult.compliance_status ===
+                                                          'not_applicable'
+                                                        ? 'bg-gray-100 text-gray-600'
+                                                        : 'bg-green-100 text-green-800'
+                                                }`}
+                                              >
+                                                {sectionResult.compliance_status.replace('_', ' ')}
+                                              </span>
+                                              {sectionResult.confidence !== 'n/a' && (
+                                                <span
+                                                  className={`text-xs px-1.5 py-0.5 rounded font-medium ${getConfidenceBadge(sectionResult.confidence)}`}
+                                                >
+                                                  {sectionResult.confidence}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <p className="text-xs text-gray-700 leading-relaxed">
+                                              {sectionResult.reasoning}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -1489,6 +1644,43 @@ export function CodeDetailPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Triage Modal */}
+      {showTriageModal && triageSections.length > 0 && (
+        <TriageModal
+          sections={triageSections}
+          onClose={() => setShowTriageModal(false)}
+          onSave={async overrides => {
+            if (!effectiveCheckId) return;
+
+            try {
+              const res = await fetch(`/api/checks/${effectiveCheckId}/section-overrides`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ overrides }),
+              });
+
+              if (!res.ok) {
+                const error = await res.json();
+                throw new Error(error.error || 'Failed to save overrides');
+              }
+
+              // Refresh analysis runs to show updated data
+              const runsRes = await fetch(`/api/checks/${effectiveCheckId}/analysis-runs`);
+              const runs = await runsRes.json();
+              setAnalysisRuns(runs);
+
+              // Optionally trigger check update callback
+              if (onCheckUpdate) {
+                onCheckUpdate();
+              }
+            } catch (error: any) {
+              console.error('Failed to save section overrides:', error);
+              alert('Failed to save overrides: ' + error.message);
+            }
+          }}
+        />
       )}
     </div>
   );
