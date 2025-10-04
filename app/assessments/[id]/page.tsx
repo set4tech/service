@@ -46,6 +46,9 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     screenshotsMap.get(screenshot.check_id)!.push(screenshot);
   });
 
+  console.log('[AssessmentPage] Total screenshots loaded:', allScreenshots?.length);
+  console.log('[AssessmentPage] Screenshots by check_id:', Object.fromEntries(screenshotsMap));
+
   // Group checks by parent - instances will be nested under their parent
   const checks = (allChecks || []).reduce((acc: any[], check: any) => {
     if (!check.parent_check_id) {
@@ -78,7 +81,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       const analysis = analysisMap.get(check.id);
       const checkScreenshots = screenshotsMap.get(check.id) || [];
 
-      acc.push({
+      const checkWithData = {
         ...check,
         element_group_name: elementGroup?.name || null,
         element_group_slug: elementGroup?.slug || null,
@@ -95,7 +98,15 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
         screenshots: checkScreenshots,
         instances,
         instance_count: instances.length,
-      });
+      };
+
+      if (checkScreenshots.length > 0) {
+        console.log(
+          `[AssessmentPage] Check ${check.id} (${elementGroup?.name}) has ${checkScreenshots.length} screenshots`
+        );
+      }
+
+      acc.push(checkWithData);
     }
     return acc;
   }, []);
