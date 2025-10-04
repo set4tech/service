@@ -161,6 +161,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const batchNum = batchIndex + 1;
       const jobId = crypto.randomUUID();
 
+      console.log(
+        `[Assess] Queuing batch ${batchNum}/${batches.length} for check ${checkId}, jobId ${jobId}`
+      );
+
       await kv.hset(`job:${jobId}`, {
         id: jobId,
         type: 'batch_analysis',
@@ -186,7 +190,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         createdAt: Date.now(),
       });
       await kv.lpush('queue:analysis', jobId);
+      console.log(`[Assess] Queued job ${jobId} to queue:analysis`);
     }
+
+    console.log(
+      `[Assess] Successfully queued ${batches.length} batches for check ${checkId}, batchGroupId ${batchGroupId}`
+    );
+
+    // Mark check as processing
+    await supabase.from('checks').update({ status: 'processing' }).eq('id', checkId);
 
     // Immediately trigger queue processing (non-blocking)
     fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/queue/process`, {

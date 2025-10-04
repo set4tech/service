@@ -15,7 +15,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .limit(1)
       .single();
 
+    console.log(`[Progress] Check ${checkId}: latestRun =`, latestRun);
+
     if (!latestRun || !latestRun.batch_group_id) {
+      // No runs yet - check if assessment was just started by looking at check status
+      const { data: check } = await supabase
+        .from('checks')
+        .select('status')
+        .eq('id', checkId)
+        .single();
+
+      console.log(`[Progress] Check ${checkId}: No runs found, check status =`, check?.status);
+
+      // If check is processing, assume assessment is in progress (jobs queued but not processed yet)
+      if (check?.status === 'processing') {
+        return NextResponse.json({
+          inProgress: true,
+          completed: 0,
+          total: 1, // We don't know total yet, but signal in-progress
+          runs: [],
+        });
+      }
+
       return NextResponse.json({
         inProgress: false,
         completed: 0,
@@ -34,6 +55,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const totalBatches = latestRun.total_batches || 0;
     const completedBatches = runs?.length || 0;
     const inProgress = completedBatches < totalBatches;
+
+    console.log(
+      `[Progress] Check ${checkId}: ${completedBatches}/${totalBatches} batches, inProgress=${inProgress}`
+    );
 
     return NextResponse.json({
       inProgress,
