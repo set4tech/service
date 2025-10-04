@@ -39,9 +39,14 @@ export function ViolationsSummary({ checks, onCheckSelect, buildingInfo, codeboo
       c => c.latest_status || (c.manual_override && c.manual_override !== 'not_applicable')
     ).length;
 
+    // Count currently analyzing
+    const analyzing = applicableChecks.filter(
+      c => c.status === 'processing' || c.status === 'analyzing'
+    );
+
     const pct = totalSections > 0 ? Math.round((assessed / totalSections) * 100) : 0;
 
-    return { totalSections, assessed, pct };
+    return { totalSections, assessed, analyzing, pct };
   }, [checks]);
 
   // Transform checks to violations
@@ -191,9 +196,67 @@ export function ViolationsSummary({ checks, onCheckSelect, buildingInfo, codeboo
               <div className="text-xs mt-1">
                 {stats.assessed} of {stats.totalSections} sections assessed ({stats.pct}%)
               </div>
+              {stats.analyzing.length > 0 && (
+                <div className="text-xs mt-1 flex items-center gap-1 text-blue-600">
+                  <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  {stats.analyzing.length} analyzing...
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Currently Analyzing Checks */}
+        {stats.analyzing.length > 0 && (
+          <div className="px-4 py-3 rounded-lg border border-blue-200 bg-blue-50">
+            <div className="font-semibold text-xs text-blue-700 mb-2 flex items-center gap-2">
+              <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              Currently Analyzing
+            </div>
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {stats.analyzing.map((check: any) => (
+                <button
+                  key={check.id}
+                  onClick={() => onCheckSelect(check.id)}
+                  className="w-full text-left text-xs text-blue-900 hover:text-blue-700 hover:underline"
+                >
+                  •{' '}
+                  {check.element_group_name
+                    ? `${check.element_group_name} - ${check.instance_label || `Instance ${check.instance_number}`}`
+                    : check.code_section_number || check.code_section_title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Building Info Card */}
         <div className="px-4 py-3 rounded-lg border border-gray-200 bg-gray-50">
@@ -233,6 +296,45 @@ export function ViolationsSummary({ checks, onCheckSelect, buildingInfo, codeboo
             </div>
           </div>
         </div>
+
+        {/* Currently Analyzing */}
+        {stats.analyzing.length > 0 && (
+          <div className="px-4 py-3 rounded-lg border border-blue-200 bg-blue-50">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="animate-spin h-3 w-3 text-blue-600" fill="none" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <div className="font-semibold text-xs text-blue-700">
+                Currently Analyzing ({stats.analyzing.length})
+              </div>
+            </div>
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {stats.analyzing.map((check: any) => (
+                <button
+                  key={check.id}
+                  onClick={() => onCheckSelect(check.id)}
+                  className="w-full text-left text-xs text-blue-900 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
+                >
+                  {check.check_type === 'element'
+                    ? `${check.element_group_name} - ${check.instance_label || `Instance ${check.instance_number}`}`
+                    : check.code_section_number || check.code_section_title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Codebooks Card */}
         {codebooks.length > 0 && (
