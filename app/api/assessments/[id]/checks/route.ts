@@ -63,17 +63,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log('[SEARCH] Found checks:', allChecksData?.length);
 
-      // Fetch latest analysis runs for all checks
+      // Fetch latest analysis runs and screenshots for all checks
       const checkIds = (allChecksData || []).map((c: any) => c.id);
-      const { data: latestAnalysis } = await supabase
-        .from('latest_analysis_runs')
-        .select(
-          'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
-        )
-        .in('check_id', checkIds);
+      const [{ data: latestAnalysis }, { data: allScreenshots }] = await Promise.all([
+        supabase
+          .from('latest_analysis_runs')
+          .select(
+            'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+          )
+          .in('check_id', checkIds),
+        supabase
+          .from('screenshots')
+          .select('*')
+          .in('check_id', checkIds)
+          .order('created_at', { ascending: true }),
+      ]);
 
       // Create analysis map
       const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
+
+      // Create screenshots map
+      const screenshotsMap = new Map<string, any[]>();
+      (allScreenshots || []).forEach((screenshot: any) => {
+        if (!screenshotsMap.has(screenshot.check_id)) {
+          screenshotsMap.set(screenshot.check_id, []);
+        }
+        screenshotsMap.get(screenshot.check_id)!.push(screenshot);
+      });
 
       // Sort by floorplan_relevant first (true comes first), then by code_section_number
       const sortedAllChecksData = (allChecksData || []).sort((a: any, b: any) => {
@@ -89,9 +105,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         return (a.code_section_number || '').localeCompare(b.code_section_number || '');
       });
 
-      // Map element_groups.name to element_group_name and add analysis data
+      // Map element_groups.name to element_group_name and add analysis data and screenshots
       const mappedChecks = (sortedAllChecksData || []).map((check: any) => {
         const analysis = analysisMap.get(check.id);
+        const screenshots = screenshotsMap.get(check.id) || [];
         return {
           ...check,
           element_group_name: check.element_groups?.name || null,
@@ -106,6 +123,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 recommendations: analysis.recommendations,
               }
             : null,
+          screenshots,
         };
       });
 
@@ -175,6 +193,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
+    // Fetch screenshots for all checks
+    const { data: allScreenshots } = await supabase
+      .from('screenshots')
+      .select('*')
+      .in(
+        'check_id',
+        (allChecks || []).map((c: any) => c.id)
+      )
+      .order('created_at', { ascending: true });
+
     // Sort by floorplan_relevant first (true comes first), then by code_section_number
     const sortedChecks = (allChecks || []).sort((a: any, b: any) => {
       const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
@@ -199,9 +227,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Create analysis map
     const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
 
-    // Map element_groups.name to element_group_name and add analysis data
+    // Create screenshots map
+    const screenshotsMap = new Map<string, any[]>();
+    (allScreenshots || []).forEach((screenshot: any) => {
+      if (!screenshotsMap.has(screenshot.check_id)) {
+        screenshotsMap.set(screenshot.check_id, []);
+      }
+      screenshotsMap.get(screenshot.check_id)!.push(screenshot);
+    });
+
+    // Map element_groups.name to element_group_name and add analysis data and screenshots
     const mappedChecks = (sortedChecks || []).map((check: any) => {
       const analysis = analysisMap.get(check.id);
+      const screenshots = screenshotsMap.get(check.id) || [];
       return {
         ...check,
         element_group_name: check.element_groups?.name || null,
@@ -216,6 +254,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               recommendations: analysis.recommendations,
             }
           : null,
+        screenshots,
       };
     });
 
