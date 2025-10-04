@@ -72,11 +72,15 @@ export default function AssessmentClient({
       console.log(`  - ${i.instance_label}: ${i.screenshots.length} screenshots`);
     });
   }, []);
-  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>(() => {
-    if (typeof window === 'undefined') return 'section';
+  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>('section');
+
+  // Restore saved mode after hydration to avoid mismatch
+  useEffect(() => {
     const saved = localStorage.getItem(`checkMode-${assessment.id}`);
-    return (saved as 'section' | 'element' | 'summary') || 'section';
-  });
+    if (saved) {
+      setCheckMode(saved as 'section' | 'element' | 'summary');
+    }
+  }, [assessment.id]);
 
   // Filter checks by mode (skip filtering for summary mode)
   const displayedChecks = useMemo(() => {
