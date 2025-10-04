@@ -948,7 +948,7 @@ export function PDFViewer({
               <Page
                 key={`page-${state.pageNumber}-layers-${layerVersion}`}
                 pageNumber={state.pageNumber}
-                height={800}
+                scale={renderScale}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
                 {...({
