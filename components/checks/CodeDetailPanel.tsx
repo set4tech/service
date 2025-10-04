@@ -489,9 +489,19 @@ export function CodeDetailPanel({
         }),
       });
 
-      const data = await response.json();
+      // Handle non-JSON responses (like 504 gateway timeouts)
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        console.error('Non-JSON response from assess endpoint:', text);
+        throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+      }
 
       if (!response.ok) {
+        console.error('Assessment failed:', data);
         throw new Error(data.error || 'Assessment failed');
       }
 
@@ -585,7 +595,12 @@ export function CodeDetailPanel({
         }
       }, 600000);
     } catch (err: any) {
-      console.error('Assessment error:', err);
+      console.error('=== ASSESSMENT ERROR (Frontend) ===');
+      console.error('Error type:', err?.constructor?.name);
+      console.error('Error message:', err?.message);
+      console.error('Error stack:', err?.stack);
+      console.error('Full error:', err);
+      console.error('===================================');
       setAssessmentError(err.message);
       setAssessing(false);
     }

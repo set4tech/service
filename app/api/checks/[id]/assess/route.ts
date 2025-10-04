@@ -300,8 +300,24 @@ Return your response as a JSON object with this exact structure:
           : 'Assessment complete.',
     });
   } catch (error: any) {
-    console.error('Assessment error:', error);
+    console.error('=== ASSESSMENT ERROR ===');
+    console.error('Check ID:', checkId);
+    console.error('Error type:', error?.constructor?.name);
+    console.error('Error message:', error?.message);
+    console.error('Error stack:', error?.stack);
+    console.error('Full error object:', JSON.stringify(error, null, 2));
+    console.error('========================');
+
     await supabase.from('checks').update({ status: 'failed' }).eq('id', checkId);
-    return NextResponse.json({ error: error?.message || 'Assessment failed' }, { status: 500 });
+
+    return NextResponse.json(
+      {
+        error: error?.message || 'Assessment failed',
+        errorType: error?.constructor?.name,
+        stack: error?.stack,
+        details: error,
+      },
+      { status: 500 }
+    );
   }
 }
