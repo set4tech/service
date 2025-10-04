@@ -51,6 +51,20 @@ export default function AssessmentClient({
   codebooks,
 }: Props) {
   const [checks, setChecks] = useState(initialChecks);
+
+  // Debug: Log screenshots on initial load
+  useEffect(() => {
+    const checksWithScreenshots = initialChecks.filter((c: any) => c.screenshots?.length > 0);
+    console.log(
+      '[AssessmentClient] Initial checks with screenshots:',
+      checksWithScreenshots.length
+    );
+    checksWithScreenshots.forEach((c: any) => {
+      console.log(
+        `  - ${c.instance_label || c.code_section_number}: ${c.screenshots.length} screenshots`
+      );
+    });
+  }, []);
   const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>(() => {
     if (typeof window === 'undefined') return 'section';
     const saved = localStorage.getItem(`checkMode-${assessment.id}`);
