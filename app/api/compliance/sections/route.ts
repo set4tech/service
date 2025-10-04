@@ -187,6 +187,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Get references for this section
+    // NOTE: We intentionally include references to never_relevant sections here.
+    // Even though these sections won't appear as standalone checks, they provide
+    // valuable context when referenced by other sections. Users benefit from seeing
+    // the referenced content even if the section itself isn't assessable.
     const { data: refs } = await supabase
       .from('section_references')
       .select(
