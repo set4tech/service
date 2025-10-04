@@ -4,19 +4,31 @@ import type { Check, Screenshot } from '@/types/database';
 import Modal from '@/components/ui/Modal';
 
 export function ScreenshotGallery({ check, refreshKey }: { check: Check; refreshKey: number }) {
-  const [shots, setShots] = useState<Screenshot[]>([]);
+  const [shots, setShots] = useState<Screenshot[]>((check as any).screenshots || []);
   const [preview, setPreview] = useState<Screenshot | null>(null);
   const [presignedUrls, setPresignedUrls] = useState<
     Record<string, { screenshot: string; thumbnail: string }>
   >({});
 
   useEffect(() => {
+    // Only fetch if screenshots not already in check object
+    if ((check as any).screenshots?.length > 0) {
+      setShots((check as any).screenshots);
+      return;
+    }
+
     (async () => {
       const res = await fetch(`/api/screenshots?check_id=${check.id}`);
       const { screenshots } = await res.json();
+      console.log(
+        '[ScreenshotGallery] Fetched screenshots:',
+        screenshots?.length,
+        'for check:',
+        check.id
+      );
       setShots(screenshots || []);
     })();
-  }, [check.id, refreshKey]);
+  }, [check.id, refreshKey, (check as any).screenshots]);
 
   // Fetch presigned URLs for screenshots
   useEffect(() => {
