@@ -21,7 +21,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   // Fetch latest analysis and screenshots for all checks
   const checkIds = (allChecks || []).map(c => c.id);
-  const [{ data: latestAnalysis }, { data: allScreenshots }] =
+  const [{ data: latestAnalysis }, { data: allScreenshots, error: screenshotsError }] =
     checkIds.length > 0
       ? await Promise.all([
           supabase
@@ -33,6 +33,19 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
           supabase.from('screenshots').select('*').in('check_id', checkIds).order('created_at'),
         ])
       : [{ data: [] }, { data: [] }];
+
+  if (screenshotsError) {
+    console.error('[AssessmentPage] Screenshots fetch error:', screenshotsError);
+  }
+
+  // Debug log - server side (will show in Vercel logs)
+  if (allScreenshots && allScreenshots.length > 0) {
+    console.warn(`[Server] Loaded ${allScreenshots.length} screenshots for assessment ${id}`);
+  } else {
+    console.warn(
+      `[Server] NO screenshots loaded for assessment ${id}. CheckIds count: ${checkIds.length}`
+    );
+  }
 
   // Create a map of check_id -> latest analysis
   const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
