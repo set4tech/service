@@ -9,4 +9,6 @@ export interface AIResponse {
   reasoning?: string;
   recommendations?: string[];
   additional_evidence_needed?: string[];
+  sections?: any[];
+  overall_summary?: string;
 }

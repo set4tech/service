@@ -114,7 +114,7 @@ export function PDFViewer({
 
   // Consolidated state management
   const [state, dispatch] = useReducer(viewerReducer, {
-    transform: { tx: 0, ty: 0, scale: 6 },
+    transform: { tx: 0, ty: 0, scale: 1 },
     pageNumber: 1,
     numPages: 0,
     isDragging: false,
@@ -946,12 +946,16 @@ export function PDFViewer({
           >
             <div ref={pageContainerRef} style={{ position: 'relative' }}>
               <Page
-                key={`page-${state.pageNumber}-scale-${renderScale}-layers-${layerVersion}`}
+                key={`page-${state.pageNumber}-layers-${layerVersion}`}
                 pageNumber={state.pageNumber}
                 height={800}
-                scale={renderScale}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
+                {...({
+                  optionalContentConfigPromise: optionalContentConfig
+                    ? Promise.resolve(optionalContentConfig)
+                    : undefined,
+                } as Record<string, unknown>)}
               />
               {state.screenshotMode && state.selection && (
                 <div
