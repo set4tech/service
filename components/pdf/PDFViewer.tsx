@@ -114,7 +114,7 @@ export function PDFViewer({
 
   // Consolidated state management
   const [state, dispatch] = useReducer(viewerReducer, {
-    transform: { tx: 0, ty: 0, scale: 1 },
+    transform: { tx: 0, ty: 0, scale: 6 },
     pageNumber: 1,
     numPages: 0,
     isDragging: false,
