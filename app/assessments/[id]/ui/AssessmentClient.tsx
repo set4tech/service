@@ -51,7 +51,11 @@ export default function AssessmentClient({
   codebooks,
 }: Props) {
   const [checks, setChecks] = useState(initialChecks);
-  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>('section');
+  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>(() => {
+    if (typeof window === 'undefined') return 'section';
+    const saved = localStorage.getItem(`checkMode-${assessment.id}`);
+    return (saved as 'section' | 'element' | 'summary') || 'section';
+  });
 
   // Filter checks by mode (skip filtering for summary mode)
   const displayedChecks = useMemo(() => {
@@ -470,7 +474,10 @@ export default function AssessmentClient({
           {/* Mode Toggle */}
           <div className="mb-3 flex items-center gap-2 bg-gray-100 rounded-lg p-1">
             <button
-              onClick={() => setCheckMode('section')}
+              onClick={() => {
+                setCheckMode('section');
+                localStorage.setItem(`checkMode-${assessment.id}`, 'section');
+              }}
               className={clsx(
                 'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
                 checkMode === 'section'
@@ -481,7 +488,10 @@ export default function AssessmentClient({
               By Section
             </button>
             <button
-              onClick={() => setCheckMode('element')}
+              onClick={() => {
+                setCheckMode('element');
+                localStorage.setItem(`checkMode-${assessment.id}`, 'element');
+              }}
               className={clsx(
                 'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
                 checkMode === 'element'
@@ -492,7 +502,10 @@ export default function AssessmentClient({
               By Element
             </button>
             <button
-              onClick={() => setCheckMode('summary')}
+              onClick={() => {
+                setCheckMode('summary');
+                localStorage.setItem(`checkMode-${assessment.id}`, 'summary');
+              }}
               className={clsx(
                 'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
                 checkMode === 'summary'
