@@ -127,12 +127,18 @@ export function PDFViewer({
   const [pageInstance, setPageInstance] = useState<any>(null);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
-  const [renderScale, setRenderScale] = useState(6.0); // Default 6x resolution
+  const [renderScale, setRenderScale] = useState(2.0); // Safe default that won't exceed canvas limits
   const [savingScale, setSavingScale] = useState(false);
+  const [cappedRenderScale, setCappedRenderScale] = useState(2.0); // Actually safe scale to use
   const [layers, setLayers] = useState<PDFLayer[]>([]);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [optionalContentConfig, setOptionalContentConfig] = useState<any>(null);
   const [layerVersion, setLayerVersion] = useState(0);
+
+  // Log render scale changes
+  useEffect(() => {
+    console.log('PDFViewer: Render scale changed to', renderScale);
+  }, [renderScale]);
 
   // Sync external page number with internal state
   useEffect(() => {
@@ -151,6 +157,7 @@ export function PDFViewer({
   // Fetch presigned URL for private S3 PDFs and load saved scale preference
   useEffect(() => {
     async function fetchPresignedUrl() {
+      console.log('PDFViewer: Fetching presigned URL for', pdfUrl);
       setLoadingUrl(true);
       const res = await fetch('/api/pdf/presign', {
         method: 'POST',
@@ -160,8 +167,10 @@ export function PDFViewer({
 
       if (res.ok) {
         const data = await res.json();
+        console.log('PDFViewer: Presigned URL obtained');
         setPresignedUrl(data.url);
       } else {
+        console.error('PDFViewer: Failed to get presigned URL', res.status);
         setPresignedUrl(null);
       }
       setLoadingUrl(false);
@@ -174,7 +183,10 @@ export function PDFViewer({
         if (res.ok) {
           const data = await res.json();
           if (data.pdf_scale) {
+            console.log('PDFViewer: Loading saved scale', data.pdf_scale);
             setRenderScale(data.pdf_scale);
+          } else {
+            console.log('PDFViewer: No saved scale, using default', 2.0);
           }
         }
       } catch (err) {
@@ -187,6 +199,7 @@ export function PDFViewer({
   }, [pdfUrl, assessmentId, readOnly]);
 
   const onDocLoad = ({ numPages }: { numPages: number }) => {
+    console.log('PDFViewer: Document loaded successfully', { numPages, renderScale });
     dispatch({ type: 'SET_NUM_PAGES', payload: numPages });
   };
 
@@ -209,6 +222,13 @@ export function PDFViewer({
       const scaleDelta = -e.deltaY * scaleSpeed;
       const prev = state.transform;
       const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
+
+      console.log('PDFViewer: Wheel zoom', {
+        prevScale: prev.scale,
+        newScale,
+        deltaY: e.deltaY,
+        scaleDelta,
+      });
 
       const rect = vp.getBoundingClientRect();
       const sx = e.clientX - rect.left;
@@ -321,6 +341,14 @@ export function PDFViewer({
     const factor = dir === 'in' ? 1.2 : 1 / 1.2;
     const prev = state.transform;
     const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
+
+    console.log('PDFViewer: Button zoom', {
+      direction: dir,
+      prevScale: prev.scale,
+      newScale,
+      factor,
+    });
+
     // Zoom toward center
     const vp = viewportRef.current;
     if (!vp) {
@@ -439,10 +467,34 @@ export function PDFViewer({
   useEffect(() => {
     (async () => {
       if (!pdfInstance) return;
+      console.log('PDFViewer: Loading page', state.pageNumber);
       const p = await pdfInstance.getPage(state.pageNumber);
+      console.log('PDFViewer: Page loaded', state.pageNumber);
+
+      // Calculate safe render scale that won't exceed canvas limits
+      const base = p.getViewport({ scale: 1 });
+      const maxSide = 8192;
+      const maxPixels = 140_000_000;
+
+      const bySide = Math.min(maxSide / base.width, maxSide / base.height);
+      const byPixels = Math.sqrt(maxPixels / (base.width * base.height));
+      const cap = Math.max(1, Math.min(bySide, byPixels));
+      const safeScale = Math.min(renderScale, cap);
+
+      console.log('PDFViewer: Render dimensions check', {
+        baseWidth: base.width,
+        baseHeight: base.height,
+        requestedScale: renderScale,
+        cappedScale: safeScale,
+        finalWidth: base.width * safeScale,
+        finalHeight: base.height * safeScale,
+        wasCapped: renderScale > cap,
+      });
+
+      setCappedRenderScale(safeScale);
       setPageInstance(p);
     })();
-  }, [pdfInstance, state.pageNumber]);
+  }, [pdfInstance, state.pageNumber, renderScale]);
 
   const pickRenderScale = (page: any, desired: number) => {
     const base = page.getViewport({ scale: 1 });
@@ -453,10 +505,25 @@ export function PDFViewer({
     const byPixels = Math.sqrt(maxPixels / (base.width * base.height));
     const cap = Math.max(1, Math.min(bySide, byPixels));
 
-    return Math.min(desired, cap);
+    const finalScale = Math.min(desired, cap);
+
+    console.log('PDFViewer: pickRenderScale', {
+      baseWidth: base.width,
+      baseHeight: base.height,
+      desired,
+      cap,
+      finalScale,
+      wouldExceedLimit: desired > cap,
+    });
+
+    return finalScale;
   };
 
   const updateRenderScale = async (newScale: number) => {
+    console.log('PDFViewer: Updating render scale', {
+      oldScale: renderScale,
+      newScale,
+    });
     setRenderScale(newScale);
     if (!assessmentId) return;
 
@@ -843,8 +910,8 @@ export function PDFViewer({
           <button
             aria-label="Increase resolution"
             className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.min(6, renderScale + 0.5))}
-            disabled={savingScale || renderScale >= 6}
+            onClick={() => updateRenderScale(Math.min(10, renderScale + 0.5))}
+            disabled={savingScale || renderScale >= 10}
           >
             +
           </button>
@@ -948,9 +1015,25 @@ export function PDFViewer({
               <Page
                 key={`page-${state.pageNumber}-layers-${layerVersion}`}
                 pageNumber={state.pageNumber}
-                scale={renderScale}
+                scale={cappedRenderScale}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
+                onRenderSuccess={() => {
+                  console.log('PDFViewer: Page rendered successfully', {
+                    pageNumber: state.pageNumber,
+                    requestedScale: renderScale,
+                    actualScale: cappedRenderScale,
+                    viewportScale: state.transform.scale,
+                  });
+                }}
+                onRenderError={(error: Error) => {
+                  console.error('PDFViewer: Page render error', {
+                    pageNumber: state.pageNumber,
+                    requestedScale: renderScale,
+                    actualScale: cappedRenderScale,
+                    error,
+                  });
+                }}
                 {...({
                   optionalContentConfigPromise: optionalContentConfig
                     ? Promise.resolve(optionalContentConfig)
