@@ -176,20 +176,24 @@ export function CodeDetailPanel({
       return;
     }
 
-    // Reset assessment state when switching checks
-    setAssessing(false);
-    setAssessmentError(null);
-    setAssessmentProgress(0);
-    setAssessmentMessage('');
+    // Don't reset assessment state immediately - check if analysis is in progress first
+    // We'll check progress status after loading check data
 
     fetch(`/api/checks/${checkId}`)
       .then(res => res.json())
       .then(data => {
         if (data.check) {
+          console.log('CodeDetailPanel: Loaded check', {
+            id: data.check.id,
+            type: data.check.check_type,
+            instance_number: data.check.instance_number,
+            element_sections: data.check.element_sections,
+          });
           setCheck(data.check);
 
-          // If this is an element check (instance_number > 0), fetch child section checks
-          if (data.check.check_type === 'element' && data.check.instance_number > 0) {
+          // If this is an element check, fetch child section checks
+          if (data.check.check_type === 'element') {
+            console.log('CodeDetailPanel: Fetching child checks for element check', checkId);
             return fetch(`/api/checks?parent_check_id=${checkId}`).then(res => res.json());
           }
         }
@@ -197,6 +201,10 @@ export function CodeDetailPanel({
       })
       .then(childData => {
         if (childData && Array.isArray(childData)) {
+          console.log('CodeDetailPanel: Loaded child checks', {
+            count: childData.length,
+            sections: childData.map(c => c.code_section_number),
+          });
           // Sort by section number
           const sorted = childData.sort((a, b) =>
             (a.code_section_number || '').localeCompare(b.code_section_number || '')
@@ -206,12 +214,77 @@ export function CodeDetailPanel({
           if (sorted.length > 0) {
             setActiveChildCheckId(sorted[0].id);
           }
+        } else {
+          console.log('CodeDetailPanel: No child checks found');
         }
       })
       .catch(err => {
         console.error('Failed to load check:', err);
       });
   }, [checkId]);
+
+  // Check for in-progress analysis when checkId changes
+  useEffect(() => {
+    if (!checkId) return;
+
+    fetch(`/api/checks/${checkId}/assessment-progress`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.inProgress) {
+          setAssessing(true);
+          setAssessmentProgress(Math.round((data.completed / data.total) * 100));
+          setAssessmentMessage(`Analyzing... (${data.completed}/${data.total})`);
+        } else {
+          setAssessing(false);
+        }
+      })
+      .catch(() => setAssessing(false));
+  }, [checkId]);
+
+  // Poll for progress whenever assessing is true
+  useEffect(() => {
+    if (!assessing || !checkId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/checks/${checkId}/assessment-progress`);
+        const data = await res.json();
+
+        if (data.inProgress) {
+          setAssessmentProgress(Math.round((data.completed / data.total) * 100));
+          setAssessmentMessage(`Analyzing... (${data.completed}/${data.total})`);
+
+          // Update runs (only add new ones)
+          if (data.runs && data.runs.length > 0) {
+            setAnalysisRuns(prev => {
+              const existingIds = new Set(prev.map((r: any) => r.id));
+              const newRuns = data.runs.filter((r: any) => !existingIds.has(r.id));
+              if (newRuns.length > 0) {
+                setExpandedRuns(prevExpanded => {
+                  const updated = new Set(prevExpanded);
+                  newRuns.forEach((r: any) => updated.add(r.id));
+                  return updated;
+                });
+                return [...newRuns, ...prev];
+              }
+              return prev;
+            });
+          }
+        } else {
+          setAssessing(false);
+          setAssessmentMessage('Assessment complete!');
+          setExtraContext('');
+          setShowExtraContext(false);
+          if (onCheckUpdate) onCheckUpdate();
+        }
+      } catch (err) {
+        console.error('Poll error:', err);
+        setAssessing(false);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [assessing, checkId, onCheckUpdate]);
 
   // Load code sections
   useEffect(() => {
@@ -539,78 +612,9 @@ export function CodeDetailPanel({
       const { batchGroupId, totalBatches } = data;
       setCurrentBatchGroupId(batchGroupId);
 
-      // All batches are queued in background - start polling immediately
+      // Set assessing=true - the centralized polling useEffect will handle progress updates
       setAssessmentMessage(`Processing batch 0/${totalBatches}...`);
       setAssessmentProgress(0);
-
-      // Poll for progress from the start
-      const pollInterval = setInterval(async () => {
-        try {
-          const progressRes = await fetch(`/api/checks/${checkId}/assessment-progress`);
-          const progressData = await progressRes.json();
-
-          if (!progressRes.ok) {
-            clearInterval(pollInterval);
-            throw new Error(progressData.error || 'Failed to fetch progress');
-          }
-
-          const { completed, total, runs, inProgress } = progressData;
-
-          // Update progress
-          const progress = Math.round((completed / total) * 100);
-          setAssessmentProgress(progress);
-          setAssessmentMessage(
-            inProgress
-              ? `Processing batch ${completed}/${total}...`
-              : completed > 0
-                ? 'Assessment complete!'
-                : 'Starting assessment...'
-          );
-
-          // Update runs (only add new ones)
-          if (runs && runs.length > 0) {
-            setAnalysisRuns(prev => {
-              const existingIds = new Set(prev.map(r => r.id));
-              const newRuns = runs.filter((r: any) => !existingIds.has(r.id));
-              if (newRuns.length > 0) {
-                // Auto-expand new runs
-                setExpandedRuns(prevExpanded => {
-                  const updated = new Set(prevExpanded);
-                  newRuns.forEach((r: any) => updated.add(r.id));
-                  return updated;
-                });
-                return [...newRuns, ...prev];
-              }
-              return prev;
-            });
-          }
-
-          // Stop polling when complete
-          if (!inProgress && completed > 0) {
-            clearInterval(pollInterval);
-            setExtraContext('');
-            setShowExtraContext(false);
-            if (onCheckUpdate) {
-              onCheckUpdate();
-            }
-            setAssessing(false);
-          }
-        } catch (pollError: any) {
-          console.error('Polling error:', pollError);
-          clearInterval(pollInterval);
-          setAssessmentError(pollError.message);
-          setAssessing(false);
-        }
-      }, 2000); // Poll every 2 seconds
-
-      // Safety timeout after 10 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        if (assessing) {
-          setAssessmentError('Assessment timed out');
-          setAssessing(false);
-        }
-      }, 600000);
     } catch (err: any) {
       console.error('=== ASSESSMENT ERROR (Frontend) ===');
       console.error('Error type:', err?.constructor?.name);
@@ -716,6 +720,14 @@ export function CodeDetailPanel({
       </div>
 
       {/* Section Tabs for Element Checks */}
+      {(() => {
+        console.log('CodeDetailPanel: Rendering section tabs?', {
+          childChecksLength: childChecks.length,
+          willRender: childChecks.length > 0,
+          childChecks: childChecks.map(c => ({ id: c.id, section: c.code_section_number })),
+        });
+        return null;
+      })()}
       {childChecks.length > 0 && (
         <div className="border-b bg-gray-50 flex-shrink-0">
           {/* Toggle Button */}
