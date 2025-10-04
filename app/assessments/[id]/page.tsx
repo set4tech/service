@@ -25,18 +25,41 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   // Fetch latest analysis and screenshots for all checks
   const checkIds = (allChecks || []).map(c => c.id);
-  const [{ data: latestAnalysis }, { data: allScreenshots, error: screenshotsError }] =
+
+  // Fetch analysis
+  const { data: latestAnalysis } =
     checkIds.length > 0
-      ? await Promise.all([
-          supabase
-            .from('latest_analysis_runs')
-            .select(
-              'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
-            )
-            .in('check_id', checkIds),
-          supabase.from('screenshots').select('*').in('check_id', checkIds).order('created_at'),
-        ])
-      : [{ data: [] }, { data: [] }];
+      ? await supabase
+          .from('latest_analysis_runs')
+          .select(
+            'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+          )
+          .in('check_id', checkIds)
+      : { data: [] };
+
+  // Fetch screenshots - use alternative approach via join to avoid large IN clause
+  let allScreenshots: any[] = [];
+  let screenshotsError = null;
+
+  if (checkIds.length > 0) {
+    try {
+      // Fetch all screenshots for this assessment via checks join (avoids large IN clause)
+      const result = await supabase
+        .from('screenshots')
+        .select('*, checks!inner(assessment_id)')
+        .eq('checks.assessment_id', id)
+        .order('created_at');
+
+      allScreenshots = result.data || [];
+      screenshotsError = result.error;
+      console.warn(
+        `[Server] Screenshots query returned: ${allScreenshots.length} rows, error: ${screenshotsError ? 'YES' : 'NO'}`
+      );
+    } catch (err) {
+      console.error('[AssessmentPage] Screenshots fetch exception:', err);
+      screenshotsError = err;
+    }
+  }
 
   if (screenshotsError) {
     console.error('[AssessmentPage] Screenshots fetch error:', screenshotsError);
