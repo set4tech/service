@@ -11,12 +11,24 @@ export function ScreenshotGallery({ check, refreshKey }: { check: Check; refresh
   >({});
 
   useEffect(() => {
+    console.log('[ScreenshotGallery] Check object:', {
+      id: check.id,
+      hasScreenshots: !!(check as any).screenshots,
+      screenshotsCount: (check as any).screenshots?.length || 0,
+      instanceLabel: (check as any).instance_label,
+    });
+
     // Only fetch if screenshots not already in check object
     if ((check as any).screenshots?.length > 0) {
+      console.log(
+        '[ScreenshotGallery] Using screenshots from check prop:',
+        (check as any).screenshots.length
+      );
       setShots((check as any).screenshots);
       return;
     }
 
+    console.log('[ScreenshotGallery] Fetching screenshots from API for check:', check.id);
     (async () => {
       const res = await fetch(`/api/screenshots?check_id=${check.id}`);
       const { screenshots } = await res.json();
