@@ -2,6 +2,10 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 import { normalizeVariables } from '@/lib/variables';
 import AssessmentClient from './ui/AssessmentClient';
 
+// Force dynamic rendering - don't use static cache
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function AssessmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = supabaseAdmin();
