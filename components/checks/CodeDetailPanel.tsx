@@ -19,6 +19,7 @@ interface CodeSection {
   tables?: TableBlock[];
   figures?: string[];
   source_url?: string;
+  floorplan_relevant?: boolean;
   references?: Array<{
     key: string;
     number: string;
@@ -129,6 +130,9 @@ export function CodeDetailPanel({
 
   // Screenshots section toggle state
   const [showScreenshots, setShowScreenshots] = useState(true);
+
+  // Resizable section content height (percentage of available space)
+  const [sectionContentHeight, setSectionContentHeight] = useState(40); // 40% default
 
   // Load last selected model from localStorage
   useEffect(() => {
@@ -620,6 +624,30 @@ export function CodeDetailPanel({
     return colors[confidence as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
 
+  const handleSectionResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = sectionContentHeight;
+    const panelElement = (e.target as HTMLElement).closest('.h-full') as HTMLElement;
+    if (!panelElement) return;
+    const panelHeight = panelElement.clientHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      const deltaPercent = (deltaY / panelHeight) * 100;
+      const newHeight = Math.max(20, Math.min(80, startHeight + deltaPercent));
+      setSectionContentHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   if (!sectionKey && !check?.element_sections) return null;
 
   const isElementCheck = check?.check_type === 'element' && sections.length > 1;
@@ -743,16 +771,16 @@ export function CodeDetailPanel({
               </div>
             )}
 
-            {/* Three-button toggle */}
+            {/* Five-button toggle - all in one row */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-2">
                 Set Compliance Status
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="flex gap-1">
                 <button
                   onClick={() => setManualOverride('compliant')}
                   disabled={savingOverride}
-                  className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                  className={`flex-1 px-2 py-1.5 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
                     manualOverride === 'compliant'
                       ? 'bg-green-100 border-green-400 text-green-800'
                       : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -763,7 +791,7 @@ export function CodeDetailPanel({
                 <button
                   onClick={() => setManualOverride('non_compliant')}
                   disabled={savingOverride}
-                  className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                  className={`flex-1 px-2 py-1.5 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
                     manualOverride === 'non_compliant'
                       ? 'bg-red-100 border-red-400 text-red-800'
                       : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -774,13 +802,33 @@ export function CodeDetailPanel({
                 <button
                   onClick={() => setManualOverride('not_applicable')}
                   disabled={savingOverride}
-                  className={`px-3 py-2 text-sm font-medium rounded border transition-colors disabled:opacity-50 ${
+                  className={`flex-1 px-2 py-1.5 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
                     manualOverride === 'not_applicable'
                       ? 'bg-gray-100 border-gray-400 text-gray-800'
                       : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   Not Applicable
+                </button>
+                <button
+                  onClick={() => setShowFloorplanRelevantDialog(true)}
+                  disabled={savingOverride || markingFloorplanRelevant || !sectionKey}
+                  className={`flex-1 px-2 py-1.5 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
+                    section?.floorplan_relevant
+                      ? 'bg-blue-100 border-blue-400 text-blue-800'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                  title="Mark as floor-plan relevant"
+                >
+                  Not Relevant
+                </button>
+                <button
+                  onClick={() => setShowNeverRelevantDialog(true)}
+                  disabled={savingOverride || markingNeverRelevant || !sectionKey}
+                  className="flex-1 px-2 py-1.5 text-xs font-medium rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 transition-colors disabled:opacity-50"
+                  title="Mark as never relevant (permanent)"
+                >
+                  Never Relevant
                 </button>
               </div>
             </div>
@@ -831,42 +879,12 @@ export function CodeDetailPanel({
                 {overrideError}
               </div>
             )}
-
-            {/* Mark as Floorplan Relevant and Never Relevant Buttons */}
-            <div className="pt-2 border-t border-gray-200 space-y-3">
-              <div>
-                <button
-                  onClick={() => setShowFloorplanRelevantDialog(true)}
-                  disabled={savingOverride || markingFloorplanRelevant || !sectionKey}
-                  className="w-full px-3 py-2 text-sm font-medium rounded border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="If you press on this, this code section gets flagged as being specifically relevant to floorplan analysis"
-                >
-                  Mark as Floor-Plan Relevant
-                </button>
-                <p className="text-xs text-gray-500 mt-1">
-                  Flag this section as specifically relevant to floorplan analysis
-                </p>
-              </div>
-
-              <div>
-                <button
-                  onClick={() => setShowNeverRelevantDialog(true)}
-                  disabled={savingOverride || markingNeverRelevant || !sectionKey}
-                  className="w-full px-3 py-2 text-sm font-medium rounded border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Mark as Never Relevant
-                </button>
-                <p className="text-xs text-gray-500 mt-1">
-                  This will permanently exclude this section from all future projects
-                </p>
-              </div>
-            </div>
           </div>
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Content - Resizable Section */}
+      <div className="overflow-y-auto p-4" style={{ height: `${sectionContentHeight}%` }}>
         {loading && <div className="text-sm text-gray-500">Loading section details...</div>}
 
         {error && (
@@ -1016,9 +1034,19 @@ export function CodeDetailPanel({
         )}
       </div>
 
-      {/* Assessment Controls - Static */}
+      {/* Resize Handle */}
+      <div
+        onMouseDown={handleSectionResizeStart}
+        className="h-1 bg-gray-200 hover:bg-blue-500 cursor-row-resize flex-shrink-0 transition-colors"
+        style={{ touchAction: 'none' }}
+      />
+
+      {/* Assessment Controls - Takes remaining space */}
       {checkId && (
-        <div className="flex-shrink-0 border-t bg-gray-50 overflow-y-auto max-h-[50vh]">
+        <div
+          className="border-t bg-gray-50 overflow-y-auto"
+          style={{ height: `${100 - sectionContentHeight}%` }}
+        >
           <div className="p-4 space-y-6">
             {/* Screenshots Section */}
             {activeCheck && (
