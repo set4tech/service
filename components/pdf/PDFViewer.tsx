@@ -86,6 +86,7 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
 
 export function PDFViewer({
   pdfUrl,
+  assessmentId: propAssessmentId,
   activeCheck,
   onScreenshotSaved,
   onCheckAdded,
@@ -97,6 +98,7 @@ export function PDFViewer({
   onPageChange,
 }: {
   pdfUrl: string;
+  assessmentId?: string;
   activeCheck?: any;
   onScreenshotSaved?: () => void;
   onCheckAdded?: (check: any) => void;
@@ -107,7 +109,7 @@ export function PDFViewer({
   currentPage?: number;
   onPageChange?: (page: number) => void;
 }) {
-  const assessmentId = activeCheck?.assessment_id;
+  const assessmentId = propAssessmentId || activeCheck?.assessment_id;
   const viewportRef = useRef<HTMLDivElement>(null);
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
@@ -134,6 +136,7 @@ export function PDFViewer({
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [optionalContentConfig, setOptionalContentConfig] = useState<any>(null);
   const [layerVersion, setLayerVersion] = useState(0);
+  const capturingRef = useRef(false); // Prevent concurrent captures
 
   // Log render scale changes
   useEffect(() => {
@@ -382,16 +385,19 @@ export function PDFViewer({
         }
         if (key === 'b') {
           e.preventDefault();
+          console.log('[PDFViewer] b key pressed, calling capture(bathroom)');
           capture('bathroom');
           return;
         }
         if (key === 'd') {
           e.preventDefault();
+          console.log('[PDFViewer] d key pressed, calling capture(door)');
           capture('door');
           return;
         }
         if (key === 'k') {
           e.preventDefault();
+          console.log('[PDFViewer] k key pressed, calling capture(kitchen)');
           capture('kitchen');
           return;
         }
@@ -568,24 +574,46 @@ export function PDFViewer({
     };
 
     const elementGroupId = elementGroupIds[elementSlug];
-    if (!elementGroupId || !assessmentId) return null;
+    if (!elementGroupId) {
+      console.error(`[findElementTemplate] No element group ID for ${elementSlug}`);
+      return null;
+    }
+    if (!assessmentId) {
+      console.error(`[findElementTemplate] No assessment ID available for ${elementSlug}`);
+      return null;
+    }
 
     try {
       // Find the template check (instance_number = 0) for this element group
+      console.log(`[findElementTemplate] Fetching checks for assessment ${assessmentId}`);
       const res = await fetch(`/api/assessments/${assessmentId}/checks`);
 
-      if (!res.ok) return null;
+      if (!res.ok) {
+        console.error(`[findElementTemplate] API error: ${res.status} ${res.statusText}`);
+        return null;
+      }
 
       const checks = await res.json();
+      console.log(
+        `[findElementTemplate] Found ${checks.length} parent checks, searching for ${elementSlug} template`
+      );
 
       // Find template check for this element group
       const template = checks.find(
         (c: any) => c.element_group_id === elementGroupId && c.instance_number === 0
       );
 
+      if (template) {
+        console.log(`[findElementTemplate] Found template for ${elementSlug}: ${template.id}`);
+      } else {
+        console.error(
+          `[findElementTemplate] No template found for ${elementSlug} (element_group_id: ${elementGroupId})`
+        );
+      }
+
       return template?.id || null;
     } catch (error) {
-      console.error('Failed to find element template:', error);
+      console.error(`[findElementTemplate] Error finding ${elementSlug} template:`, error);
       return null;
     }
   };
@@ -594,10 +622,18 @@ export function PDFViewer({
     try {
       if (readOnly || !state.selection || !pageInstance) return;
 
+      // Prevent concurrent captures
+      if (capturingRef.current) {
+        console.log('[capture] Already capturing, ignoring duplicate call');
+        return;
+      }
+      capturingRef.current = true;
+
       let targetCheckId = activeCheck?.id;
 
       // If saving to new element, create instance first
       if (target !== 'current') {
+        console.log(`[capture] Creating new instance for target: ${target}`);
         const templateCheckId = await findElementTemplate(target);
         if (!templateCheckId) {
           alert(
@@ -606,6 +642,7 @@ export function PDFViewer({
           return;
         }
 
+        console.log(`[capture] Cloning template ${templateCheckId} for ${target}`);
         // Clone the template to create new instance
         const cloneRes = await fetch(`/api/checks/${templateCheckId}/clone`, {
           method: 'POST',
@@ -822,6 +859,8 @@ export function PDFViewer({
       alert(
         'Failed to save screenshot: ' + (error instanceof Error ? error.message : 'Unknown error')
       );
+    } finally {
+      capturingRef.current = false;
     }
   };
 

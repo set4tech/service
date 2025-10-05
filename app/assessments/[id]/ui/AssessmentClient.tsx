@@ -151,8 +151,8 @@ export default function AssessmentClient({
       const parentCheck = prevChecks.find(c => c.id === newCheck.parent_check_id);
 
       if (parentCheck) {
-        // Add the new check to main array AND update parent's instances
-        const updatedChecks = prevChecks.map(c => {
+        // Only add to parent's instances array, NOT as a top-level item
+        return prevChecks.map(c => {
           if (c.id === newCheck.parent_check_id) {
             return {
               ...c,
@@ -162,8 +162,6 @@ export default function AssessmentClient({
           }
           return c;
         });
-        // Add the new check as a top-level item
-        return [...updatedChecks, { ...newCheck, instances: [], instance_count: 0 }];
       }
 
       // If no parent, add as new check
@@ -658,6 +656,7 @@ export default function AssessmentClient({
         {pdfUrl ? (
           <PDFViewer
             pdfUrl={pdfUrl}
+            assessmentId={assessment.id}
             activeCheck={activeCheck || undefined}
             onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
             onCheckAdded={handleCheckAdded}
