@@ -210,49 +210,8 @@ export function PDFViewer({
     });
     dispatch({ type: 'SET_NUM_PAGES', payload: pdfProxy.numPages });
 
-    // Extract layers from the loaded document
-    console.log('[PDFViewer] Extracting layers from loaded document...');
-    try {
-      const ocConfig = await pdfProxy.getOptionalContentConfig();
-      console.log('[PDFViewer] Got optionalContentConfig:', ocConfig);
-
-      if (!ocConfig) {
-        console.log('[PDFViewer] No optionalContentConfig found');
-        setLayers([]);
-        return;
-      }
-
-      setOptionalContentConfig(ocConfig);
-
-      const order = ocConfig.getOrder();
-      console.log('[PDFViewer] Layer order:', order);
-
-      if (!order || order.length === 0) {
-        setLayers([]);
-        return;
-      }
-
-      const layerList: PDFLayer[] = [];
-      for (const id of order) {
-        try {
-          const group = ocConfig.getGroup(id);
-          console.log('[PDFViewer] Group', id, ':', group);
-          layerList.push({
-            id: id,
-            name: group?.name || `Layer ${id}`,
-            visible: ocConfig.isVisible(id),
-          });
-        } catch (err) {
-          console.error('[PDFViewer] Error getting group', id, err);
-        }
-      }
-
-      console.log('[PDFViewer] Extracted layers:', layerList);
-      setLayers(layerList);
-    } catch (err) {
-      console.error('[PDFViewer] Failed to extract PDF layers:', err);
-      setLayers([]);
-    }
+    // NOTE: We don't extract layers from pdfProxy because its optionalContentConfig
+    // doesn't support setVisibility() mutations. We'll extract from pdfInstance instead.
   };
 
   const onDocError = (error: Error) => {
@@ -478,10 +437,67 @@ export function PDFViewer({
     })();
   }, [presignedUrl]);
 
-  // Note: Layer extraction is now handled in onDocLoad callback, not here
-  // This ensures we use the correct optionalContentConfig from react-pdf
+  // Extract PDF layers from pdfInstance (not pdfProxy)
+  // pdfInstance uses raw pdfjs which has a mutable optionalContentConfig
+  useEffect(() => {
+    if (!pdfInstance) {
+      console.log('[PDFViewer] No pdfInstance yet, skipping layer extraction');
+      return;
+    }
+    (async () => {
+      try {
+        console.log('[PDFViewer] Extracting layers from pdfInstance...');
+        const ocConfig = await pdfInstance.getOptionalContentConfig();
+        console.log('[PDFViewer] Got optionalContentConfig from pdfInstance:', ocConfig);
+
+        if (!ocConfig) {
+          console.log('[PDFViewer] No optionalContentConfig found');
+          setLayers([]);
+          return;
+        }
+
+        setOptionalContentConfig(ocConfig);
+
+        const order = ocConfig.getOrder();
+        console.log('[PDFViewer] Layer order:', order);
+
+        if (!order || order.length === 0) {
+          setLayers([]);
+          return;
+        }
+
+        const layerList: PDFLayer[] = [];
+        for (const id of order) {
+          try {
+            const group = ocConfig.getGroup(id);
+            console.log('[PDFViewer] Group', id, ':', group);
+            layerList.push({
+              id: id,
+              name: group?.name || `Layer ${id}`,
+              visible: ocConfig.isVisible(id),
+            });
+          } catch (err) {
+            console.error('[PDFViewer] Error getting group', id, err);
+          }
+        }
+
+        console.log('[PDFViewer] Extracted layers:', layerList);
+        setLayers(layerList);
+      } catch (err) {
+        console.error('[PDFViewer] Failed to extract PDF layers:', err);
+        setLayers([]);
+      }
+    })();
+  }, [pdfInstance]);
 
   useEffect(() => {
+    // Cancel any active layer render when page changes
+    if (renderTaskRef.current) {
+      console.log('PDFViewer: Cancelling active render task due to page change');
+      renderTaskRef.current.cancel();
+      renderTaskRef.current = null;
+    }
+
     (async () => {
       if (!pdfInstance) return;
       console.log('PDFViewer: Loading page', state.pageNumber);
@@ -510,8 +526,62 @@ export function PDFViewer({
 
       setCappedRenderScale(safeScale);
       setPageInstance(p);
+
+      // Re-render layer canvas if layers are toggled
+      if (layerVersion > 0 && layerCanvasRef.current && optionalContentConfig) {
+        console.log('PDFViewer: Re-rendering layer canvas for new page');
+        renderLayerCanvas(p, safeScale);
+      }
     })();
   }, [pdfInstance, state.pageNumber, renderScale]);
+
+  const renderLayerCanvas = async (page: any, scale: number) => {
+    if (!layerCanvasRef.current || !optionalContentConfig) return;
+
+    const canvas = layerCanvasRef.current;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    // Cancel any existing render
+    if (renderTaskRef.current) {
+      renderTaskRef.current.cancel();
+      renderTaskRef.current = null;
+    }
+
+    const viewport = page.getViewport({ scale });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    // Set white background
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Set visibility for all layers based on React state
+    for (const layer of layers) {
+      try {
+        optionalContentConfig.setVisibility(layer.id, layer.visible);
+      } catch (err) {
+        console.error(`Failed to set layer ${layer.name}:`, err);
+      }
+    }
+
+    // Render
+    renderTaskRef.current = page.render({
+      canvasContext: context,
+      viewport: viewport,
+      optionalContentConfigPromise: Promise.resolve(optionalContentConfig),
+    });
+
+    try {
+      await renderTaskRef.current.promise;
+    } catch (err: any) {
+      if (err?.name !== 'RenderingCancelledException') {
+        console.error('Layer canvas render error:', err);
+      }
+    } finally {
+      renderTaskRef.current = null;
+    }
+  };
 
   const pickRenderScale = (page: any, desired: number) => {
     const base = page.getViewport({ scale: 1 });
@@ -563,71 +633,23 @@ export function PDFViewer({
 
     console.log('[toggleLayer] Toggling layer', layerId);
 
-    // Update the layer visibility in the config
-    const currentVisibility = optionalContentConfig.isVisible(layerId);
-    console.log(
-      '[toggleLayer] Current visibility:',
-      currentVisibility,
-      'setting to:',
-      !currentVisibility
-    );
-
-    await optionalContentConfig.setVisibility(layerId, !currentVisibility);
-
-    // Update our local state
+    // Update our local state (this is our source of truth for layer visibility)
     setLayers(prev =>
       prev.map(layer => (layer.id === layerId ? { ...layer, visible: !layer.visible } : layer))
     );
 
-    // Cancel any existing render task
-    if (renderTaskRef.current) {
-      console.log('[toggleLayer] Cancelling previous render task');
-      renderTaskRef.current.cancel();
-      renderTaskRef.current = null;
-    }
+    // Get updated layer states (need to read from closure since setState is async)
+    const updatedLayers = layers.map(layer =>
+      layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
+    );
 
-    // CRITICAL: We need to manually re-render to a separate canvas because react-pdf's Page
-    // component doesn't detect mutations to the optionalContentConfig object
-    console.log('[toggleLayer] Manually re-rendering page with updated layer config...');
-
-    const canvas = layerCanvasRef.current;
-    const context = canvas.getContext('2d');
-    if (!context) {
-      console.error('[toggleLayer] Cannot get canvas context');
-      return;
-    }
-
-    // Match the canvas size to the PDF render scale
-    const viewport = pageInstance.getViewport({ scale: cappedRenderScale });
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    // Clear canvas
-    context.clearRect(0, 0, canvas.width, canvas.height);
-
-    // White background
-    context.fillStyle = 'white';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Re-render with updated layer config
-    renderTaskRef.current = pageInstance.render({
-      canvasContext: context,
-      viewport: viewport,
-      optionalContentConfigPromise: Promise.resolve(optionalContentConfig),
+    console.log('[toggleLayer] Updated layer states:');
+    updatedLayers.forEach(layer => {
+      console.log(`  ${layer.name}: ${layer.visible}`);
     });
 
-    try {
-      await renderTaskRef.current.promise;
-      console.log('[toggleLayer] Manual re-render complete');
-    } catch (err: any) {
-      if (err?.name === 'RenderingCancelledException') {
-        console.log('[toggleLayer] Render was cancelled (expected)');
-      } else {
-        console.error('[toggleLayer] Render error:', err);
-      }
-    } finally {
-      renderTaskRef.current = null;
-    }
+    // Re-render the layer canvas with updated visibility
+    await renderLayerCanvas(pageInstance, cappedRenderScale);
 
     // Increment version for React reconciliation (UI state only)
     setLayerVersion(prev => {
