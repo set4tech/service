@@ -48,15 +48,24 @@ async function ensureConnected() {
 export const kv = {
   async rpop<T = string>(key: string): Promise<T | null> {
     if (!client) {
-      console.warn('Redis not configured, rpop returning null');
+      console.warn('[KV] Redis not configured, rpop returning null');
       return null;
     }
-    await ensureConnected();
-    const result = await client.rPop(key);
-    // eslint-disable-next-line no-console
-    console.log(`[KV] rpop('${key}'): ${result || 'null'}`);
-    // Return the string directly - no JSON parsing needed for string IDs
-    return (result as T) || null;
+    try {
+      await ensureConnected();
+      // Check queue length before pop
+      const queueLen = await client.lLen(key);
+      const result = await client.rPop(key);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[KV] rpop('${key}'): queue_length_before=${queueLen}, result=${result || 'null'}`
+      );
+      // Return the string directly - no JSON parsing needed for string IDs
+      return (result as T) || null;
+    } catch (error) {
+      console.error(`[KV] rpop('${key}') error:`, error);
+      return null;
+    }
   },
 
   async lpush(key: string, ...values: string[]): Promise<number> {
