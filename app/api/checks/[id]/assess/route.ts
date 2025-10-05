@@ -58,6 +58,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: checkId } = await params;
   const { aiProvider, customPrompt, extraContext } = await req.json();
 
+  console.log(`[Assess] POST received for check ${checkId}, provider: ${aiProvider}`);
+
   if (!aiProvider) {
     return NextResponse.json({ error: 'aiProvider required' }, { status: 400 });
   }
@@ -138,6 +140,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     for (let i = 0; i < codeSections.length; i += BATCH_SIZE) {
       batches.push(codeSections.slice(i, i + BATCH_SIZE));
     }
+
+    console.log(
+      `[Assess] Check ${checkId}: Found ${codeSections.length} sections, creating ${batches.length} batches`
+    );
 
     const batchGroupId = crypto.randomUUID();
 

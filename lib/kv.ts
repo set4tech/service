@@ -2,6 +2,7 @@ import { createClient } from 'redis';
 
 // Only create Redis client if connection URL is provided
 const REDIS_URL = process.env.KV_URL || process.env.REDIS_URL;
+console.log('[KV] Redis URL present:', !!REDIS_URL);
 const client = REDIS_URL ? createClient({ url: REDIS_URL }) : null;
 
 if (client) {
