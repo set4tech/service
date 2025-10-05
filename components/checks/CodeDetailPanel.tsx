@@ -490,6 +490,11 @@ export function CodeDetailPanel({
         throw new Error(data.error || 'Failed to save override');
       }
 
+      // Stop any ongoing analysis
+      setAssessing(false);
+      setAssessmentMessage('');
+      setAssessmentProgress(0);
+
       // Notify parent component
       if (onCheckUpdate) {
         onCheckUpdate();

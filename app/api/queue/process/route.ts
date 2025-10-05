@@ -25,12 +25,21 @@ export async function GET() {
   for (const id of jobs) {
     try {
       console.log(`[Queue] Processing job ${id}`);
-      const job = await kv.hgetall<{ type: string; payload: string; attempts: number }>(
-        `job:${id}`
-      );
+      const job = await kv.hgetall<{
+        type: string;
+        payload: string;
+        attempts: number;
+        status: string;
+      }>(`job:${id}`);
 
       if (!job) {
         console.error(`[Queue] Job ${id} not found in KV store`);
+        continue;
+      }
+
+      // Skip cancelled jobs
+      if (job.status === 'cancelled') {
+        console.log(`[Queue] Job ${id} was cancelled, skipping`);
         continue;
       }
 
@@ -64,6 +73,33 @@ export async function GET() {
           provider,
           modelName,
         } = payload;
+
+        // Check if manual override exists - if so, skip this job
+        const { data: checkData } = await supabase
+          .from('checks')
+          .select('manual_override, status')
+          .eq('id', checkId)
+          .single();
+
+        if (checkData?.manual_override) {
+          console.log(`[Queue] Check ${checkId} has manual override, skipping analysis job ${id}`);
+          await kv.hset(`job:${id}`, {
+            status: 'cancelled',
+            cancelledAt: Date.now(),
+            cancelReason: 'manual_override_set',
+          });
+          continue;
+        }
+
+        if (checkData?.status === 'cancelled') {
+          console.log(`[Queue] Check ${checkId} has been cancelled, skipping analysis job ${id}`);
+          await kv.hset(`job:${id}`, {
+            status: 'cancelled',
+            cancelledAt: Date.now(),
+            cancelReason: 'check_cancelled',
+          });
+          continue;
+        }
 
         // Build prompt
         const sectionsText = batch

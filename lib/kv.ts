@@ -103,4 +103,46 @@ export const kv = {
     }
     return client.hSet(key, serialized);
   },
+
+  async llen(key: string): Promise<number> {
+    if (!client) {
+      console.warn('[KV] Redis not configured, llen returning 0');
+      return 0;
+    }
+    try {
+      await ensureConnected();
+      return await client.lLen(key);
+    } catch (error) {
+      console.error(`[KV] llen('${key}') error:`, error);
+      return 0;
+    }
+  },
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    if (!client) {
+      console.warn('[KV] Redis not configured, lrange returning []');
+      return [];
+    }
+    try {
+      await ensureConnected();
+      return await client.lRange(key, start, stop);
+    } catch (error) {
+      console.error(`[KV] lrange('${key}', ${start}, ${stop}) error:`, error);
+      return [];
+    }
+  },
+
+  async lrem(key: string, count: number, value: string): Promise<number> {
+    if (!client) {
+      console.warn('[KV] Redis not configured, lrem returning 0');
+      return 0;
+    }
+    try {
+      await ensureConnected();
+      return await client.lRem(key, count, value);
+    } catch (error) {
+      console.error(`[KV] lrem('${key}', ${count}, '${value}') error:`, error);
+      return 0;
+    }
+  },
 };
