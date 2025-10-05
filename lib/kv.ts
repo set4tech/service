@@ -22,16 +22,17 @@ export const kv = {
       return null;
     }
     const result = await client.rPop(key);
-    return result ? (JSON.parse(result) as T) : null;
+    // Return the string directly - no JSON parsing needed for string IDs
+    return (result as T) || null;
   },
 
   async lpush(key: string, ...values: string[]): Promise<number> {
     if (!client) {
-      console.warn('Redis not configured, lpush returning 0');
-      return 0;
+      console.error('CRITICAL: Redis not configured - cannot queue jobs!');
+      throw new Error('Redis/KV not configured. Set REDIS_URL or KV_URL environment variable.');
     }
-    const serialized = values.map(v => JSON.stringify(v));
-    return client.lPush(key, serialized);
+    // Don't JSON.stringify strings - Redis lpush already handles strings
+    return client.lPush(key, values);
   },
 
   async hgetall<T = any>(key: string): Promise<T | null> {
