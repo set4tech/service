@@ -530,12 +530,12 @@ export function PDFViewer({
       // Re-render layer canvas if layers are toggled
       if (layerVersion > 0 && layerCanvasRef.current && optionalContentConfig) {
         console.log('PDFViewer: Re-rendering layer canvas for new page');
-        renderLayerCanvas(p, safeScale);
+        renderLayerCanvas(p, safeScale, layers);
       }
     })();
-  }, [pdfInstance, state.pageNumber, renderScale]);
+  }, [pdfInstance, state.pageNumber, renderScale, layers, layerVersion, optionalContentConfig]);
 
-  const renderLayerCanvas = async (page: any, scale: number) => {
+  const renderLayerCanvas = async (page: any, scale: number, layerStates: PDFLayer[]) => {
     if (!layerCanvasRef.current || !optionalContentConfig) return;
 
     const canvas = layerCanvasRef.current;
@@ -556,8 +556,8 @@ export function PDFViewer({
     context.fillStyle = 'white';
     context.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Set visibility for all layers based on React state
-    for (const layer of layers) {
+    // Set visibility for all layers based on provided layer states
+    for (const layer of layerStates) {
       try {
         optionalContentConfig.setVisibility(layer.id, layer.visible);
       } catch (err) {
@@ -633,12 +633,7 @@ export function PDFViewer({
 
     console.log('[toggleLayer] Toggling layer', layerId);
 
-    // Update our local state (this is our source of truth for layer visibility)
-    setLayers(prev =>
-      prev.map(layer => (layer.id === layerId ? { ...layer, visible: !layer.visible } : layer))
-    );
-
-    // Get updated layer states (need to read from closure since setState is async)
+    // Calculate updated layer states
     const updatedLayers = layers.map(layer =>
       layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
     );
@@ -648,8 +643,11 @@ export function PDFViewer({
       console.log(`  ${layer.name}: ${layer.visible}`);
     });
 
+    // Update React state
+    setLayers(updatedLayers);
+
     // Re-render the layer canvas with updated visibility
-    await renderLayerCanvas(pageInstance, cappedRenderScale);
+    await renderLayerCanvas(pageInstance, cappedRenderScale, updatedLayers);
 
     // Increment version for React reconciliation (UI state only)
     setLayerVersion(prev => {
