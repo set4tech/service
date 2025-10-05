@@ -182,37 +182,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         `[Assess] Queuing batch ${batchNum}/${batches.length} for check ${checkId}, jobId ${jobId}`
       );
 
-      try {
-        await kv.hset(`job:${jobId}`, {
-          id: jobId,
-          type: 'batch_analysis',
-          payload: JSON.stringify({
-            checkId,
-            batch,
-            batchNum,
-            totalBatches: batches.length,
-            batchGroupId,
-            runNumber: runNumber + batchIndex,
-            screenshotUrls,
-            screenshots,
-            check,
-            buildingContext,
-            customPrompt,
-            extraContext,
-            provider,
-            modelName,
-          }),
-          status: 'pending',
-          attempts: 0,
-          maxAttempts: 3,
-          createdAt: Date.now(),
-        });
-        const queueLength = await kv.lpush('queue:analysis', jobId);
-        console.log(`[Assess] Queued job ${jobId} to queue:analysis, queue length: ${queueLength}`);
-      } catch (error) {
-        console.error(`[Assess] FAILED to queue job ${jobId}:`, error);
-        throw error;
-      }
+      await kv.hset(`job:${jobId}`, {
+        id: jobId,
+        type: 'batch_analysis',
+        payload: JSON.stringify({
+          checkId,
+          batch,
+          batchNum,
+          totalBatches: batches.length,
+          batchGroupId,
+          runNumber: runNumber + batchIndex,
+          screenshotUrls,
+          screenshots,
+          check,
+          buildingContext,
+          customPrompt,
+          extraContext,
+          provider,
+          modelName,
+        }),
+        status: 'pending',
+        attempts: 0,
+        maxAttempts: 3,
+        createdAt: Date.now(),
+      });
+      await kv.lpush('queue:analysis', jobId);
     }
 
     console.log(

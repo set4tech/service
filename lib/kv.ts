@@ -53,14 +53,7 @@ export const kv = {
     }
     try {
       await ensureConnected();
-      // Check queue length before pop
-      const queueLen = await client.lLen(key);
       const result = await client.rPop(key);
-      // eslint-disable-next-line no-console
-      console.log(
-        `[KV] rpop('${key}'): queue_length_before=${queueLen}, result=${result || 'null'}`
-      );
-      // Return the string directly - no JSON parsing needed for string IDs
       return (result as T) || null;
     } catch (error) {
       console.error(`[KV] rpop('${key}') error:`, error);
@@ -74,11 +67,7 @@ export const kv = {
       throw new Error('Redis/KV not configured. Set REDIS_URL or KV_URL environment variable.');
     }
     await ensureConnected();
-    // Don't JSON.stringify strings - Redis lpush already handles strings
-    const count = await client.lPush(key, values);
-    // eslint-disable-next-line no-console
-    console.log(`[KV] lpush('${key}', ${values.length} values): queue length now ${count}`);
-    return count;
+    return client.lPush(key, values);
   },
 
   async hgetall<T = any>(key: string): Promise<T | null> {

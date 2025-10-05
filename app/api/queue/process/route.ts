@@ -11,18 +11,15 @@ export async function GET() {
   const jobs: string[] = [];
   for (let i = 0; i < 10; i++) {
     const id = await kv.rpop<string>('queue:analysis');
-    console.log(`[Queue] rpop attempt ${i + 1}: ${id || 'null'}`);
     if (!id) break;
     jobs.push(id);
   }
 
-  console.log(`[Queue] Found ${jobs.length} jobs to process`);
-
   if (jobs.length === 0) {
-    console.log('[Queue] No jobs found, returning');
     return NextResponse.json({ processed: 0 });
   }
 
+  console.log(`[Queue] Processing ${jobs.length} job(s)`);
   const supabase = supabaseAdmin();
 
   for (const id of jobs) {
