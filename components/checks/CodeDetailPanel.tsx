@@ -245,6 +245,7 @@ export function CodeDetailPanel({
   useEffect(() => {
     if (!assessing || !checkId) return;
 
+    console.log('[Poll] Starting polling for checkId:', checkId);
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/checks/${checkId}/assessment-progress`);
@@ -274,6 +275,7 @@ export function CodeDetailPanel({
             });
           }
         } else {
+          console.log('[Poll] Assessment complete detected');
           setAssessing(false);
           setAssessmentMessage('Assessment complete!');
           setExtraContext('');
@@ -281,18 +283,29 @@ export function CodeDetailPanel({
 
           // Fetch updated analysis runs
           if (checkId) {
+            console.log('[Poll] Fetching updated analysis runs for check:', checkId);
             fetch(`/api/checks/${checkId}/analysis-runs`)
-              .then(res => res.json())
+              .then(res => {
+                console.log('[Poll] Fetch response status:', res.status);
+                return res.json();
+              })
               .then(runsData => {
+                console.log('[Poll] Received runs data:', runsData);
                 if (runsData.runs) {
+                  console.log('[Poll] Setting analysis runs, count:', runsData.runs.length);
                   setAnalysisRuns(runsData.runs);
                   // Expand the newest run
                   if (runsData.runs.length > 0) {
+                    console.log('[Poll] Expanding newest run:', runsData.runs[0].id);
                     setExpandedRuns(new Set([runsData.runs[0].id]));
                   }
+                } else {
+                  console.log('[Poll] No runs in response');
                 }
               })
-              .catch(err => console.error('Failed to load updated analysis:', err));
+              .catch(err => console.error('[Poll] Failed to load updated analysis:', err));
+          } else {
+            console.log('[Poll] No checkId available for fetching runs');
           }
 
           if (onCheckUpdate) onCheckUpdate();
@@ -388,6 +401,7 @@ export function CodeDetailPanel({
 
   // Load analysis runs and manual override
   useEffect(() => {
+    console.log('[InitialLoad] effectiveCheckId changed:', effectiveCheckId);
     if (!effectiveCheckId) {
       setAnalysisRuns([]);
       setManualOverride(null);
@@ -395,13 +409,16 @@ export function CodeDetailPanel({
       return;
     }
 
+    console.log('[InitialLoad] Fetching analysis runs for:', effectiveCheckId);
     setLoadingRuns(true);
     Promise.all([
       fetch(`/api/checks/${effectiveCheckId}/analysis-runs`).then(res => res.json()),
       fetch(`/api/checks/${effectiveCheckId}`).then(res => res.json()),
     ])
       .then(([runsData, checkData]) => {
+        console.log('[InitialLoad] Received data:', { runsData, checkData });
         if (runsData.runs) {
+          console.log('[InitialLoad] Setting analysis runs, count:', runsData.runs.length);
           setAnalysisRuns(runsData.runs);
         }
         if (checkData.check) {
@@ -412,7 +429,7 @@ export function CodeDetailPanel({
         setLoadingRuns(false);
       })
       .catch(err => {
-        console.error('Failed to load check data:', err);
+        console.error('[InitialLoad] Failed to load check data:', err);
         setLoadingRuns(false);
       });
   }, [effectiveCheckId]);
@@ -593,6 +610,12 @@ export function CodeDetailPanel({
   const handleAssess = async () => {
     if (!checkId) return;
 
+    console.log(
+      '[Assess] Starting assessment for checkId:',
+      checkId,
+      'effectiveCheckId:',
+      effectiveCheckId
+    );
     setAssessing(true);
     setAssessmentError(null);
     setAssessmentProgress(0);
@@ -603,6 +626,7 @@ export function CodeDetailPanel({
 
     try {
       // 1. Start assessment (returns immediately with first batch)
+      console.log('[Assess] Calling /api/checks/' + checkId + '/assess');
       const response = await fetch(`/api/checks/${checkId}/assess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
