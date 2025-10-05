@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface SectionResult {
   section_key: string;
@@ -23,6 +23,62 @@ interface TriageModalProps {
 export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
   const [overrides, setOverrides] = useState<Record<string, { status: string; note: string }>>({});
   const [saving, setSaving] = useState(false);
+  const [enrichedSections, setEnrichedSections] = useState<SectionResult[]>(sections);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch section text and title for all sections
+  useEffect(() => {
+    const enrichSections = async () => {
+      setLoading(true);
+      try {
+        // Collect unique section keys
+        const sectionKeys = sections.map(s => s.section_key).filter(Boolean);
+
+        if (sectionKeys.length === 0) {
+          setEnrichedSections(sections);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch section data from database
+        const response = await fetch('/api/compliance/sections-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sectionKeys }),
+        });
+
+        if (!response.ok) {
+          console.error('Failed to fetch section details');
+          setEnrichedSections(sections);
+          setLoading(false);
+          return;
+        }
+
+        const sectionData: Array<{ key: string; text: string; title: string }> =
+          await response.json();
+        const sectionMap = new Map(sectionData.map(s => [s.key, s]));
+
+        // Enrich sections with text and title
+        const enriched = sections.map(section => {
+          const sectionInfo = sectionMap.get(section.section_key);
+          return {
+            ...section,
+            section_text: sectionInfo?.text,
+            section_title: sectionInfo?.title,
+          };
+        });
+
+        setEnrichedSections(enriched);
+      } catch (error) {
+        console.error('Error enriching sections:', error);
+        setEnrichedSections(sections);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    enrichSections();
+  }, [sections]);
 
   const handleStatusChange = (sectionKey: string, status: string) => {
     setOverrides(prev => ({
@@ -79,81 +135,85 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-4">
-            {sections.map(section => {
-              const override = overrides[section.section_key];
-              const isTriaged = override && override.status;
+          {loading ? (
+            <div className="text-center text-gray-500 py-8">Loading section details...</div>
+          ) : (
+            <div className="space-y-4">
+              {enrichedSections.map(section => {
+                const override = overrides[section.section_key];
+                const isTriaged = override && override.status;
 
-              return (
-                <div
-                  key={section.section_key}
-                  className={`border rounded-lg p-4 ${
-                    isTriaged ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
-                  }`}
-                >
-                  {/* Section Header */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h4 className="text-sm font-mono font-semibold text-gray-900">
-                        {section.section_number}
-                      </h4>
-                      {section.section_title && (
-                        <p className="text-xs text-gray-600 mt-0.5">{section.section_title}</p>
+                return (
+                  <div
+                    key={section.section_key}
+                    className={`border rounded-lg p-4 ${
+                      isTriaged ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                    }`}
+                  >
+                    {/* Section Header */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h4 className="text-sm font-mono font-semibold text-gray-900">
+                          {section.section_number}
+                        </h4>
+                        {section.section_title && (
+                          <p className="text-xs text-gray-600 mt-0.5">{section.section_title}</p>
+                        )}
+                        {section.section_text && (
+                          <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded">
+                            <p className="text-xs font-semibold text-gray-600 mb-1">CODE TEXT</p>
+                            <p className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap">
+                              {section.section_text}
+                            </p>
+                          </div>
+                        )}
+                        <p className="text-sm text-gray-700 mt-2 italic">{section.reasoning}</p>
+                      </div>
+                      {isTriaged && (
+                        <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-medium flex-shrink-0">
+                          Triaged
+                        </span>
                       )}
-                      {section.section_text && (
-                        <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded">
-                          <p className="text-xs font-semibold text-gray-600 mb-1">CODE TEXT</p>
-                          <p className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap">
-                            {section.section_text}
-                          </p>
-                        </div>
-                      )}
-                      <p className="text-sm text-gray-700 mt-2 italic">{section.reasoning}</p>
                     </div>
-                    {isTriaged && (
-                      <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-medium flex-shrink-0">
-                        Triaged
-                      </span>
-                    )}
-                  </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleStatusChange(section.section_key, 'compliant')}
-                      className={`flex-1 px-3 py-2 text-sm font-medium rounded border transition-colors ${
-                        override?.status === 'compliant'
-                          ? 'bg-green-100 border-green-400 text-green-800'
-                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      ✓ Compliant
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange(section.section_key, 'non_compliant')}
-                      className={`flex-1 px-3 py-2 text-sm font-medium rounded border transition-colors ${
-                        override?.status === 'non_compliant'
-                          ? 'bg-red-100 border-red-400 text-red-800'
-                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      ✗ Non-Compliant
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange(section.section_key, 'not_applicable')}
-                      className={`flex-1 px-3 py-2 text-sm font-medium rounded border transition-colors ${
-                        override?.status === 'not_applicable'
-                          ? 'bg-gray-100 border-gray-400 text-gray-800'
-                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      ⊘ Not Applicable
-                    </button>
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleStatusChange(section.section_key, 'compliant')}
+                        className={`flex-1 px-3 py-2 text-sm font-medium rounded border transition-colors ${
+                          override?.status === 'compliant'
+                            ? 'bg-green-100 border-green-400 text-green-800'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        ✓ Compliant
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange(section.section_key, 'non_compliant')}
+                        className={`flex-1 px-3 py-2 text-sm font-medium rounded border transition-colors ${
+                          override?.status === 'non_compliant'
+                            ? 'bg-red-100 border-red-400 text-red-800'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        ✗ Non-Compliant
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange(section.section_key, 'not_applicable')}
+                        className={`flex-1 px-3 py-2 text-sm font-medium rounded border transition-colors ${
+                          override?.status === 'not_applicable'
+                            ? 'bg-gray-100 border-gray-400 text-gray-800'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        ⊘ Not Applicable
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
