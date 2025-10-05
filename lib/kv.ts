@@ -2,18 +2,12 @@ import { createClient } from 'redis';
 
 // Only create Redis client if connection URL is provided
 const REDIS_URL = process.env.KV_URL || process.env.REDIS_URL;
-console.log('[KV] Redis URL present:', !!REDIS_URL);
 const client = REDIS_URL ? createClient({ url: REDIS_URL }) : null;
 
 let isConnecting = false;
-let isConnected = false;
 
 if (client) {
   client.on('error', err => console.error('Redis Client Error', err));
-  client.on('ready', () => {
-    isConnected = true;
-    console.log('[KV] Redis client connected and ready');
-  });
 
   // Start connection
   if (!client.isOpen) {
@@ -22,7 +16,6 @@ if (client) {
       .connect()
       .then(() => {
         isConnecting = false;
-        isConnected = true;
       })
       .catch(err => {
         console.error('Failed to connect to Redis:', err);
@@ -60,6 +53,7 @@ export const kv = {
     }
     await ensureConnected();
     const result = await client.rPop(key);
+    // eslint-disable-next-line no-console
     console.log(`[KV] rpop('${key}'): ${result || 'null'}`);
     // Return the string directly - no JSON parsing needed for string IDs
     return (result as T) || null;
@@ -73,6 +67,7 @@ export const kv = {
     await ensureConnected();
     // Don't JSON.stringify strings - Redis lpush already handles strings
     const count = await client.lPush(key, values);
+    // eslint-disable-next-line no-console
     console.log(`[KV] lpush('${key}', ${values.length} values): queue length now ${count}`);
     return count;
   },
