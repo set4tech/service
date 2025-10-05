@@ -10,6 +10,8 @@ interface SectionResult {
   reasoning: string;
   violations?: any[];
   recommendations?: string[];
+  section_text?: string;
+  section_title?: string;
 }
 
 interface TriageModalProps {
@@ -28,16 +30,6 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
       [sectionKey]: {
         status,
         note: prev[sectionKey]?.note || '',
-      },
-    }));
-  };
-
-  const handleNoteChange = (sectionKey: string, note: string) => {
-    setOverrides(prev => ({
-      ...prev,
-      [sectionKey]: {
-        status: prev[sectionKey]?.status || '',
-        note,
       },
     }));
   };
@@ -105,17 +97,28 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
                       <h4 className="text-sm font-mono font-semibold text-gray-900">
                         {section.section_number}
                       </h4>
-                      <p className="text-sm text-gray-700 mt-1">{section.reasoning}</p>
+                      {section.section_title && (
+                        <p className="text-xs text-gray-600 mt-0.5">{section.section_title}</p>
+                      )}
+                      {section.section_text && (
+                        <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded">
+                          <p className="text-xs font-semibold text-gray-600 mb-1">CODE TEXT</p>
+                          <p className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap">
+                            {section.section_text}
+                          </p>
+                        </div>
+                      )}
+                      <p className="text-sm text-gray-700 mt-2 italic">{section.reasoning}</p>
                     </div>
                     {isTriaged && (
-                      <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-medium">
+                      <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-medium flex-shrink-0">
                         Triaged
                       </span>
                     )}
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 mb-3">
+                  <div className="flex gap-2">
                     <button
                       onClick={() => handleStatusChange(section.section_key, 'compliant')}
                       className={`flex-1 px-3 py-2 text-sm font-medium rounded border transition-colors ${
@@ -147,22 +150,6 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
                       ⊘ Not Applicable
                     </button>
                   </div>
-
-                  {/* Optional Note */}
-                  {override?.status && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Note (optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={override.note || ''}
-                        onChange={e => handleNoteChange(section.section_key, e.target.value)}
-                        placeholder="Add a note about your assessment..."
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  )}
                 </div>
               );
             })}
