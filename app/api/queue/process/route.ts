@@ -6,21 +6,38 @@ import { runAI } from '@/lib/ai/analysis';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  console.log('[Queue] Processing started at', new Date().toISOString());
+
   const jobs: string[] = [];
   for (let i = 0; i < 10; i++) {
     const id = await kv.rpop<string>('queue:analysis');
     if (!id) break;
     jobs.push(id);
   }
-  if (jobs.length === 0) return NextResponse.json({ processed: 0 });
+
+  console.log(`[Queue] Found ${jobs.length} jobs to process`);
+
+  if (jobs.length === 0) {
+    console.log('[Queue] No jobs found, returning');
+    return NextResponse.json({ processed: 0 });
+  }
 
   const supabase = supabaseAdmin();
 
   for (const id of jobs) {
     try {
+      console.log(`[Queue] Processing job ${id}`);
       const job = await kv.hgetall<{ type: string; payload: string; attempts: number }>(
         `job:${id}`
       );
+
+      if (!job) {
+        console.error(`[Queue] Job ${id} not found in KV store`);
+        continue;
+      }
+
+      console.log(`[Queue] Job ${id} type: ${job.type}, attempt ${(job.attempts || 0) + 1}`);
+
       await kv.hset(`job:${id}`, {
         status: 'processing',
         startedAt: Date.now(),
@@ -80,20 +97,39 @@ Check: ${check.check_name || 'Compliance check'}${extraContextSection}
 ${screenshotsSection}
 
 # Your Task
-Analyze the evidence and determine compliance for ALL sections above:
-1. Compliance status: Must be one of: "compliant", "violation", "needs_more_info"
-2. Confidence level: "high", "medium", or "low"
-3. Reasoning for your determination across all sections
-4. Any violations found (if applicable)
-5. Recommendations (if applicable)
+Analyze the evidence and provide a compliance assessment for EACH section individually.
+
+For each section, determine:
+1. **compliance_status**: Must be one of:
+   - "compliant": Clear evidence that requirements are met
+   - "violation": Clear evidence of code violation
+   - "needs_more_info": Information that SHOULD be shown is missing (e.g., missing dimensions that should be on the plan)
+   - "not_applicable": Section is not relevant to this drawing type or project scope (e.g., signage details on floor plans, mounting heights not typically shown)
+
+2. **confidence**: "high", "medium", or "low" (use "n/a" for not_applicable sections)
+
+3. **reasoning**: Brief (1-2 sentences) explanation specific to THIS section
+
+Guidelines:
+- Use "not_applicable" generously for items not typically shown on architectural floor plans (signage, finish schedules, detailed mounting heights, etc.)
+- Use "needs_more_info" ONLY when information SHOULD be present but is missing
+- Be specific and concise in your reasoning
+- If you find violations, note them clearly with severity
 
 Return your response as a JSON object with this exact structure:
 {
-  "compliance_status": "compliant" | "violation" | "needs_more_info",
-  "confidence": "high" | "medium" | "low",
-  "reasoning": "your detailed reasoning here",
-  "violations": [{"description": "...", "severity": "minor"|"moderate"|"major"}],
-  "recommendations": ["recommendation 1", "recommendation 2"]
+  "sections": [
+    {
+      "section_key": "the section key exactly as provided",
+      "section_number": "the section number",
+      "compliance_status": "compliant" | "violation" | "needs_more_info" | "not_applicable",
+      "confidence": "high" | "medium" | "low" | "n/a",
+      "reasoning": "brief explanation",
+      "violations": [{"description": "...", "severity": "minor"|"moderate"|"major"}],
+      "recommendations": ["..."]
+    }
+  ],
+  "overall_summary": "brief summary of key findings across all sections"
 }`;
         }
 
@@ -107,6 +143,67 @@ Return your response as a JSON object with this exact structure:
         });
         const executionTimeMs = Date.now() - started;
 
+        // Parse section-level results if available
+        const sectionResults = parsed.sections || [];
+
+        // Calculate overall status from section results
+        let overallStatus = 'compliant';
+        let overallConfidence = 'high';
+        const allViolations: any[] = [];
+        const allRecommendations: any[] = [];
+
+        if (sectionResults.length > 0) {
+          // Determine overall status: violation > needs_more_info > compliant > not_applicable
+          const hasViolation = sectionResults.some((s: any) => s.compliance_status === 'violation');
+          const hasNeedsMoreInfo = sectionResults.some(
+            (s: any) => s.compliance_status === 'needs_more_info'
+          );
+          const allNotApplicable = sectionResults.every(
+            (s: any) => s.compliance_status === 'not_applicable'
+          );
+
+          if (hasViolation) {
+            overallStatus = 'violation';
+          } else if (hasNeedsMoreInfo) {
+            overallStatus = 'needs_more_info';
+          } else if (allNotApplicable) {
+            overallStatus = 'not_applicable';
+          } else {
+            overallStatus = 'compliant';
+          }
+
+          // Aggregate violations and recommendations
+          sectionResults.forEach((s: any) => {
+            if (s.violations && s.violations.length > 0) {
+              allViolations.push(
+                ...s.violations.map((v: any) => ({
+                  ...v,
+                  section_number: s.section_number,
+                }))
+              );
+            }
+            if (s.recommendations && s.recommendations.length > 0) {
+              allRecommendations.push(...s.recommendations);
+            }
+          });
+
+          // Set confidence based on section confidences
+          const confidenceLevels = sectionResults
+            .filter((s: any) => s.confidence !== 'n/a')
+            .map((s: any) => s.confidence);
+          if (confidenceLevels.includes('low')) {
+            overallConfidence = 'low';
+          } else if (confidenceLevels.includes('medium')) {
+            overallConfidence = 'medium';
+          }
+        } else {
+          // Fallback to old format if sections not provided
+          overallStatus = parsed.compliance_status || 'needs_more_info';
+          overallConfidence = parsed.confidence || 'medium';
+          if (parsed.violations) allViolations.push(...parsed.violations);
+          if (parsed.recommendations) allRecommendations.push(...parsed.recommendations);
+        }
+
         // Save analysis run with batch metadata
         const { error } = await supabase.from('analysis_runs').insert({
           check_id: checkId,
@@ -115,14 +212,15 @@ Return your response as a JSON object with this exact structure:
           batch_number: batchNum,
           total_batches: totalBatches,
           section_keys_in_batch: batch.map((s: any) => s.key),
-          compliance_status: parsed.compliance_status,
-          confidence: parsed.confidence,
+          section_results: sectionResults.length > 0 ? sectionResults : null,
+          compliance_status: overallStatus,
+          confidence: overallConfidence,
           ai_provider: provider,
           ai_model: model,
-          ai_reasoning: parsed.reasoning || null,
-          violations: parsed.violations || [],
+          ai_reasoning: parsed.overall_summary || parsed.reasoning || null,
+          violations: allViolations,
           compliant_aspects: parsed.compliant_aspects || [],
-          recommendations: parsed.recommendations || [],
+          recommendations: allRecommendations,
           additional_evidence_needed: parsed.additional_evidence_needed || [],
           raw_ai_response: raw,
           execution_time_ms: executionTimeMs,
@@ -181,18 +279,23 @@ Return your response as a JSON object with this exact structure:
       }
 
       await kv.hset(`job:${id}`, { status: 'completed', completedAt: Date.now() });
+      console.log(`[Queue] Job ${id} completed successfully`);
     } catch (e: any) {
+      console.error(`[Queue] Job ${id} failed:`, e?.message || e);
       const job = await kv.hgetall<{ attempts: number; maxAttempts: number }>(`job:${id}`);
       const attempts = job?.attempts || 1;
       const maxAttempts = job?.maxAttempts || 3;
       if (attempts < maxAttempts) {
+        console.log(`[Queue] Job ${id} retrying (attempt ${attempts}/${maxAttempts})`);
         await kv.hset(`job:${id}`, { status: 'pending' });
         await kv.lpush('queue:analysis', id);
       } else {
+        console.error(`[Queue] Job ${id} failed permanently after ${attempts} attempts`);
         await kv.hset(`job:${id}`, { status: 'failed', error: String(e?.message || e) });
       }
     }
   }
 
+  console.log(`[Queue] Processed ${jobs.length} jobs`);
   return NextResponse.json({ processed: jobs.length });
 }

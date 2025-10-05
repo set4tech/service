@@ -16,5 +16,5 @@
       "maxDuration": 120
     }
   },
-  "crons": [{ "path": "/api/queue/process", "schedule": "*/5 * * * *" }]
+  "crons": [{ "path": "/api/queue/process", "schedule": "* * * * *" }]
 }

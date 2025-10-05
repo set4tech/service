@@ -254,6 +254,9 @@ export function CodeDetailPanel({
           setAssessmentProgress(Math.round((data.completed / data.total) * 100));
           setAssessmentMessage(`Analyzing... (${data.completed}/${data.total})`);
 
+          // Trigger queue processing to ensure jobs are being processed
+          fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
+
           // Update runs (only add new ones)
           if (data.runs && data.runs.length > 0) {
             setAnalysisRuns(prev => {
