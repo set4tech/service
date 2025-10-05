@@ -226,13 +226,6 @@ export function PDFViewer({
       const prev = state.transform;
       const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
 
-      console.log('PDFViewer: Wheel zoom', {
-        prevScale: prev.scale,
-        newScale,
-        deltaY: e.deltaY,
-        scaleDelta,
-      });
-
       const rect = vp.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
