@@ -28,14 +28,14 @@ export interface Check {
   // Element check fields
   check_type?: 'section' | 'element';
   element_group_id?: string | null;
-  element_sections?: string[];  // Array of section_keys for element checks
+  element_sections?: string[]; // Array of section_keys for element checks
 
   // Virtual fields (populated by queries, not in DB)
   instances?: Check[];
   instance_count?: number;
   element_group_name?: string;
   element_group_slug?: string;
-  section_results?: SectionResult[];  // For element checks: per-section breakdown
+  section_results?: SectionResult[]; // For element checks: per-section breakdown
 }
 
 export interface PromptTemplate {
@@ -51,7 +51,7 @@ export interface PromptTemplate {
 
 export interface Screenshot {
   id: string;
-  check_id: string;
+  // check_id REMOVED - now in junction table (screenshot_check_assignments)
   page_number: number;
   crop_coordinates?: {
     x: number;
@@ -65,6 +65,22 @@ export interface Screenshot {
   caption?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface ScreenshotCheckAssignment {
+  id: string;
+  screenshot_id: string;
+  check_id: string;
+  is_original: boolean;
+  assigned_at: string;
+  assigned_by?: string;
+}
+
+// Extended type for UI with assignment metadata
+export interface ScreenshotWithAssignment extends Screenshot {
+  assignment?: ScreenshotCheckAssignment;
+  original_check_id?: string; // For displaying "From Check X"
+  is_original?: boolean; // Flattened from assignment for convenience
 }
 
 export interface CodeSection {

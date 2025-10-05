@@ -43,14 +43,29 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   if (checkIds.length > 0) {
     try {
-      // Fetch all screenshots for this assessment via checks join (avoids large IN clause)
+      // Fetch all screenshots for this assessment via junction table (avoids large IN clause)
       const result = await supabase
         .from('screenshots')
-        .select('*, checks!inner(assessment_id)')
-        .eq('checks.assessment_id', id)
+        .select(
+          `
+          *,
+          screenshot_check_assignments!inner(
+            check_id,
+            is_original,
+            checks!inner(assessment_id)
+          )
+        `
+        )
+        .eq('screenshot_check_assignments.checks.assessment_id', id)
         .order('created_at');
 
-      allScreenshots = result.data || [];
+      // Flatten the nested structure
+      allScreenshots = (result.data || []).map((item: any) => ({
+        ...item,
+        check_id: item.screenshot_check_assignments?.[0]?.check_id,
+        is_original: item.screenshot_check_assignments?.[0]?.is_original,
+        screenshot_check_assignments: undefined, // Remove nested structure
+      }));
       screenshotsError = result.error;
       console.warn(
         `[Server] Screenshots query returned: ${allScreenshots.length} rows, error: ${screenshotsError ? 'YES' : 'NO'}`

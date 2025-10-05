@@ -112,11 +112,28 @@ export async function getProjectViolations(
     }
 
     // Get screenshots
-    const { data: screenshots } = await supabase
+    const { data: screenshotData } = await supabase
       .from('screenshots')
-      .select('id, screenshot_url, thumbnail_url, page_number, crop_coordinates')
-      .eq('check_id', check.id)
+      .select(
+        `
+        id,
+        screenshot_url,
+        thumbnail_url,
+        page_number,
+        crop_coordinates,
+        screenshot_check_assignments!inner(check_id)
+      `
+      )
+      .eq('screenshot_check_assignments.check_id', check.id)
       .order('created_at', { ascending: true });
+
+    const screenshots = screenshotData?.map((s: any) => ({
+      id: s.id,
+      screenshot_url: s.screenshot_url,
+      thumbnail_url: s.thumbnail_url,
+      page_number: s.page_number,
+      crop_coordinates: s.crop_coordinates,
+    }));
 
     // Parse violations from AI response
     let violationDetails: Array<{

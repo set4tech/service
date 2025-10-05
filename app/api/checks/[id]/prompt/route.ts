@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // 4. Fetch screenshot count
     const { count: screenshotCount } = await supabase
-      .from('screenshots')
+      .from('screenshot_check_assignments')
       .select('*', { count: 'exact', head: true })
       .eq('check_id', checkId);
 

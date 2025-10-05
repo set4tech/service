@@ -393,6 +393,36 @@ export function CheckList({
                           <button
                             type="button"
                             onClick={() => onSelect(check.id)}
+                            onDragOver={e => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = 'copy';
+                            }}
+                            onDrop={async e => {
+                              e.preventDefault();
+                              const screenshotId = e.dataTransfer.getData('screenshot-id');
+
+                              if (!screenshotId) return;
+
+                              try {
+                                const res = await fetch(`/api/screenshots/${screenshotId}/assign`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ checkIds: [check.id] }),
+                                });
+
+                                if (res.ok) {
+                                  console.log(
+                                    'Screenshot assigned successfully to check:',
+                                    check.id
+                                  );
+                                  // Could show a toast notification here
+                                } else {
+                                  console.error('Failed to assign screenshot');
+                                }
+                              } catch (error) {
+                                console.error('Failed to assign screenshot:', error);
+                              }
+                            }}
                             className={clsx(
                               'flex-1 px-4 py-2 flex items-start text-left hover:bg-gray-100 cursor-pointer transition-colors',
                               activeCheckId === check.id &&
@@ -577,6 +607,39 @@ export function CheckList({
                                 <button
                                   type="button"
                                   onClick={() => onSelect(instance.id)}
+                                  onDragOver={e => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'copy';
+                                  }}
+                                  onDrop={async e => {
+                                    e.preventDefault();
+                                    const screenshotId = e.dataTransfer.getData('screenshot-id');
+
+                                    if (!screenshotId) return;
+
+                                    try {
+                                      const res = await fetch(
+                                        `/api/screenshots/${screenshotId}/assign`,
+                                        {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ checkIds: [instance.id] }),
+                                        }
+                                      );
+
+                                      if (res.ok) {
+                                        console.log(
+                                          'Screenshot assigned successfully to instance:',
+                                          instance.id
+                                        );
+                                        // Could show a toast notification here
+                                      } else {
+                                        console.error('Failed to assign screenshot');
+                                      }
+                                    } catch (error) {
+                                      console.error('Failed to assign screenshot:', error);
+                                    }
+                                  }}
                                   className={clsx(
                                     'flex-1 pl-12 pr-4 py-2 flex items-start text-left cursor-pointer',
                                     activeCheckId === instance.id && 'hover:bg-blue-100'

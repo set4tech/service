@@ -11,6 +11,7 @@ export async function GET() {
   const jobs: string[] = [];
   for (let i = 0; i < 10; i++) {
     const id = await kv.rpop<string>('queue:analysis');
+    console.log(`[Queue] rpop attempt ${i + 1}: ${id || 'null'}`);
     if (!id) break;
     jobs.push(id);
   }

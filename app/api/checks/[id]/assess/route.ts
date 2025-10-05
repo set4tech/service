@@ -120,11 +120,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // 4. Fetch all screenshots with presigned URLs
-    const { data: screenshots, error: screenshotsError } = await supabase
+    const { data: screenshotData, error: screenshotsError } = await supabase
       .from('screenshots')
-      .select('screenshot_url, caption')
-      .eq('check_id', checkId)
+      .select(
+        `
+        screenshot_url,
+        caption,
+        screenshot_check_assignments!inner(check_id)
+      `
+      )
+      .eq('screenshot_check_assignments.check_id', checkId)
       .order('created_at', { ascending: true });
+
+    const screenshots = screenshotData?.map((s: any) => ({
+      screenshot_url: s.screenshot_url,
+      caption: s.caption,
+    }));
 
     if (screenshotsError) {
       return NextResponse.json({ error: 'Failed to fetch screenshots' }, { status: 500 });

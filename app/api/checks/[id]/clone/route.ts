@@ -70,24 +70,60 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     : null;
 
-  // Optionally copy screenshots
-  if (copyScreenshots && flattenedData) {
-    const { data: screenshots, error: screenshotsError } = await supabase
-      .from('screenshots')
-      .select('*')
-      .eq('check_id', id);
+  // If this is an element check, create child checks for each section
+  if (flattenedData && flattenedData.check_type === 'element' && flattenedData.element_sections) {
+    const sectionKeys = flattenedData.element_sections as string[];
 
-    if (!screenshotsError && screenshots && screenshots.length > 0) {
-      const newScreenshots = screenshots.map(screenshot => ({
-        check_id: flattenedData.id,
-        page_number: screenshot.page_number,
-        crop_coordinates: screenshot.crop_coordinates,
-        screenshot_url: screenshot.screenshot_url,
-        thumbnail_url: screenshot.thumbnail_url,
-        caption: screenshot.caption,
+    // Fetch section details
+    const { data: sections, error: sectionsError } = await supabase
+      .from('sections')
+      .select('key, number, title')
+      .in('key', sectionKeys);
+
+    if (!sectionsError && sections) {
+      const sectionChecks = sections.map(section => ({
+        assessment_id: flattenedData.assessment_id,
+        parent_check_id: flattenedData.id,
+        check_type: 'section',
+        check_name: `${flattenedData.instance_label} - ${section.title}`,
+        code_section_key: section.key,
+        code_section_number: section.number,
+        code_section_title: section.title,
+        element_group_id: flattenedData.element_group_id,
+        instance_number: 0,
+        instance_label: flattenedData.instance_label,
+        status: 'pending',
       }));
 
-      await supabase.from('screenshots').insert(newScreenshots);
+      const { error: insertError } = await supabase.from('checks').insert(sectionChecks);
+
+      if (insertError) {
+        console.error('Error creating section checks:', insertError);
+      }
+    }
+  }
+
+  // Optionally copy screenshots (via assignments, not duplication)
+  if (copyScreenshots && flattenedData) {
+    const { data: assignments, error: assignmentsError } = await supabase
+      .from('screenshot_check_assignments')
+      .select('screenshot_id')
+      .eq('check_id', id);
+
+    if (!assignmentsError && assignments && assignments.length > 0) {
+      const newAssignments = assignments.map(assignment => ({
+        screenshot_id: assignment.screenshot_id,
+        check_id: flattenedData.id,
+        is_original: false, // NOT original, this is a reused screenshot
+      }));
+
+      const { error: insertError } = await supabase
+        .from('screenshot_check_assignments')
+        .insert(newAssignments);
+
+      if (insertError) {
+        console.error('Error creating screenshot assignments:', insertError);
+      }
     }
   }
 
