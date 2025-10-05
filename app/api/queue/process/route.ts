@@ -44,7 +44,8 @@ export async function GET() {
         attempts: (job?.attempts || 0) + 1,
       });
 
-      const payload = JSON.parse(job!.payload);
+      // payload is already parsed by hgetall
+      const payload = typeof job!.payload === 'string' ? JSON.parse(job!.payload) : job!.payload;
       const jobType = job?.type || 'analysis';
 
       if (jobType === 'batch_analysis') {
