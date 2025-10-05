@@ -172,26 +172,41 @@ export default function AssessmentClient({
   const handleCheckDeleted = (checkId: string) => {
     // Remove the check from the state
     setChecks(prevChecks => {
-      // Find the deleted check to get its parent_check_id
-      const deletedCheck = prevChecks.find(c => c.id === checkId);
+      // First check if it's a top-level check
+      let deletedCheck = prevChecks.find(c => c.id === checkId);
 
-      if (!deletedCheck) return prevChecks;
-
-      // Remove from main array and update parent's instances if it has a parent
-      const updatedChecks = prevChecks
-        .filter(c => c.id !== checkId)
-        .map(c => {
-          if (deletedCheck.parent_check_id && c.id === deletedCheck.parent_check_id) {
-            return {
-              ...c,
-              instances: (c.instances || []).filter((inst: any) => inst.id !== checkId),
-              instance_count: Math.max((c.instance_count || 0) - 1, 0),
-            };
+      // If not found in top-level, search in instances
+      if (!deletedCheck) {
+        for (const parentCheck of prevChecks) {
+          const instance = (parentCheck.instances || []).find((inst: any) => inst.id === checkId);
+          if (instance) {
+            deletedCheck = instance;
+            break;
           }
-          return c;
-        });
+        }
+      }
 
-      return updatedChecks;
+      if (!deletedCheck) {
+        console.error('[handleCheckDeleted] Check not found:', checkId);
+        return prevChecks;
+      }
+
+      // If it's a top-level check, remove it from main array
+      if (!deletedCheck.parent_check_id) {
+        return prevChecks.filter(c => c.id !== checkId);
+      }
+
+      // If it's an instance, remove from parent's instances array
+      return prevChecks.map(c => {
+        if (c.id === deletedCheck.parent_check_id) {
+          return {
+            ...c,
+            instances: (c.instances || []).filter((inst: any) => inst.id !== checkId),
+            instance_count: Math.max((c.instance_count || 0) - 1, 0),
+          };
+        }
+        return c;
+      });
     });
 
     // If the deleted check was active, clear the active check
