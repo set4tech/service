@@ -98,8 +98,11 @@ export function AssignScreenshotModal({
   // Flatten all checks for "specific" mode
   const flattenedChecks = allChecks.flatMap(check => [check, ...(check.instances || [])]);
 
+  // For instance groups mode, only show parent checks that have instances
+  const checksWithInstances = allChecks.filter(check => (check.instances?.length || 0) > 0);
+
   // Determine which checks to display based on mode
-  const checksToDisplay = mode === 'specific' ? flattenedChecks : allChecks;
+  const checksToDisplay = mode === 'specific' ? flattenedChecks : checksWithInstances;
 
   const filteredChecks = checksToDisplay.filter(
     check =>
@@ -217,44 +220,91 @@ export function AssignScreenshotModal({
                     </label>
                   );
                 })
-              : // Instance mode: show parent checks with instance counts
+              : // Instance mode: show parent checks with expandable instances
                 filteredChecks.map(check => {
                   const instanceCount = (check.instances || []).length;
-                  const totalChecks = instanceCount + 1; // parent + instances
                   const isGroupSelected = isInstanceGroupSelected(check);
                   const isPartial = isInstanceGroupPartial(check);
 
                   return (
-                    <label
-                      key={check.id}
-                      className="flex items-center gap-3 p-3 border rounded cursor-pointer hover:bg-gray-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isGroupSelected}
-                        ref={input => {
-                          if (input) {
-                            input.indeterminate = isPartial;
-                          }
-                        }}
-                        onChange={e => handleInstanceGroupToggle(check, e.target.checked)}
-                        className="w-4 h-4"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">
-                          {check.code_section_number}
-                          {check.instance_label && ` - ${check.instance_label}`}
-                        </div>
-                        <div className="text-xs text-gray-600">{check.check_name}</div>
-                        {instanceCount > 0 && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            {totalChecks} check{totalChecks > 1 ? 's' : ''} (1 parent +{' '}
-                            {instanceCount} instance
-                            {instanceCount > 1 ? 's' : ''})
+                    <div key={check.id} className="border rounded overflow-hidden">
+                      {/* Parent check with "select all" checkbox */}
+                      <div className="flex items-center gap-3 p-3 bg-gray-50 border-b">
+                        <input
+                          type="checkbox"
+                          checked={isGroupSelected}
+                          ref={input => {
+                            if (input) {
+                              input.indeterminate = isPartial;
+                            }
+                          }}
+                          onChange={e => handleInstanceGroupToggle(check, e.target.checked)}
+                          className="w-4 h-4"
+                          title="Select all"
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium text-sm">
+                            {check.code_section_number}
+                            {check.instance_label && ` - ${check.instance_label}`}
                           </div>
-                        )}
+                          <div className="text-xs text-gray-600">{check.check_name}</div>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {instanceCount} instance{instanceCount !== 1 ? 's' : ''}
+                        </span>
                       </div>
-                    </label>
+
+                      {/* Individual instances */}
+                      <div className="bg-white">
+                        {/* Parent as first item */}
+                        <label className="flex items-center gap-3 p-3 pl-8 hover:bg-gray-50 cursor-pointer border-b border-gray-100">
+                          <input
+                            type="checkbox"
+                            checked={selectedCheckIds.has(check.id)}
+                            onChange={e => {
+                              const newSelected = new Set(selectedCheckIds);
+                              if (e.target.checked) {
+                                newSelected.add(check.id);
+                              } else {
+                                newSelected.delete(check.id);
+                              }
+                              setSelectedCheckIds(newSelected);
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <div className="flex-1 text-sm">{check.instance_label || 'Original'}</div>
+                        </label>
+
+                        {/* Instance children */}
+                        {(check.instances || []).map(instance => {
+                          const isSelected = selectedCheckIds.has(instance.id);
+                          return (
+                            <label
+                              key={instance.id}
+                              className="flex items-center gap-3 p-3 pl-8 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={e => {
+                                  const newSelected = new Set(selectedCheckIds);
+                                  if (e.target.checked) {
+                                    newSelected.add(instance.id);
+                                  } else {
+                                    newSelected.delete(instance.id);
+                                  }
+                                  setSelectedCheckIds(newSelected);
+                                }}
+                                className="w-4 h-4"
+                              />
+                              <div className="flex-1 text-sm">
+                                {instance.instance_label || 'Unnamed'}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
           </div>
