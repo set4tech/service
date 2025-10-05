@@ -13,29 +13,43 @@ export function ScreenshotGallery({ check, refreshKey }: { check: Check; refresh
   >({});
 
   useEffect(() => {
-    console.log('[ScreenshotGallery] Check object:', {
-      id: check.id,
+    console.log('[ScreenshotGallery] 🔍 Check object:', {
+      checkId: check.id,
+      instanceLabel: (check as any).instance_label || '(parent)',
+      parentCheckId: (check as any).parent_check_id || null,
       hasScreenshots: !!(check as any).screenshots,
       screenshotsCount: (check as any).screenshots?.length || 0,
-      instanceLabel: (check as any).instance_label,
+      refreshKey,
     });
 
     // Only fetch if screenshots not already in check object
     if ((check as any).screenshots?.length > 0) {
       console.log(
-        '[ScreenshotGallery] Using screenshots from check prop:',
-        (check as any).screenshots.length
+        '[ScreenshotGallery] ✅ Using screenshots from check prop:',
+        (check as any).screenshots.length,
+        'screenshots'
+      );
+      console.log(
+        '[ScreenshotGallery] Screenshot details:',
+        (check as any).screenshots.map((s: any) => ({
+          id: s.id,
+          caption: s.caption,
+          isOriginal: s.is_original,
+        }))
       );
       setShots((check as any).screenshots);
       return;
     }
 
-    console.log('[ScreenshotGallery] Fetching screenshots from API for check:', check.id);
+    console.log(
+      '[ScreenshotGallery] ⚠️ No screenshots in prop, fetching from API for check:',
+      check.id
+    );
     (async () => {
       const res = await fetch(`/api/screenshots?check_id=${check.id}`);
       const { screenshots } = await res.json();
       console.log(
-        '[ScreenshotGallery] Fetched screenshots:',
+        '[ScreenshotGallery] ✅ Fetched screenshots from API:',
         screenshots?.length,
         'for check:',
         check.id

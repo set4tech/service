@@ -75,6 +75,13 @@ export function AssignScreenshotModal({
         id => !existingAssignments.has(id)
       );
 
+      console.log('[AssignModal] 📋 Submitting assignment:', {
+        screenshotId,
+        totalSelected: selectedCheckIds.size,
+        newAssignments: newAssignments.length,
+        newAssignmentIds: newAssignments,
+      });
+
       if (newAssignments.length > 0) {
         const res = await fetch(`/api/screenshots/${screenshotId}/assign`, {
           method: 'POST',
@@ -82,13 +89,23 @@ export function AssignScreenshotModal({
           body: JSON.stringify({ checkIds: newAssignments }),
         });
 
-        if (!res.ok) throw new Error('Failed to assign screenshots');
+        if (!res.ok) {
+          const error = await res.json();
+          console.error('[AssignModal] ❌ Assignment failed:', error);
+          throw new Error('Failed to assign screenshots');
+        }
+
+        const result = await res.json();
+        console.log('[AssignModal] ✅ Assignment successful:', result);
+      } else {
+        console.log('[AssignModal] ⚠️ No new assignments to create');
       }
 
+      console.log('[AssignModal] 🔄 Calling onAssigned callback');
       onAssigned();
       onClose();
     } catch (error) {
-      console.error('Failed to assign screenshot:', error);
+      console.error('[AssignModal] ❌ Failed to assign screenshot:', error);
       alert('Failed to assign screenshot');
     } finally {
       setSubmitting(false);

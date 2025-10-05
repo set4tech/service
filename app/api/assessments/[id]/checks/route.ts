@@ -206,7 +206,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Fetch screenshots for all checks via junction table
-    const { data: allScreenshots } = await supabase
+    const checkIds = (allChecks || []).map((c: any) => c.id);
+    console.log('[CHECKS API] Fetching screenshots for', checkIds.length, 'checks');
+
+    const { data: allScreenshots, error: screenshotsError } = await supabase
       .from('screenshot_check_assignments')
       .select(
         `
@@ -215,11 +218,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         screenshots (*)
       `
       )
-      .in(
-        'check_id',
-        (allChecks || []).map((c: any) => c.id)
-      )
+      .in('check_id', checkIds)
       .order('screenshots(created_at)', { ascending: true });
+
+    if (screenshotsError) {
+      console.error('[CHECKS API] ❌ Error fetching screenshots:', screenshotsError);
+    } else {
+      console.log('[CHECKS API] ✅ Fetched screenshot assignments:', {
+        totalAssignments: allScreenshots?.length || 0,
+        uniqueChecks: new Set(allScreenshots?.map((a: any) => a.check_id)).size,
+      });
+
+      // Log a sample of assignments
+      if (allScreenshots && allScreenshots.length > 0) {
+        console.log('[CHECKS API] Sample assignments:', allScreenshots.slice(0, 3));
+      }
+    }
 
     // Sort by floorplan_relevant first (true comes first), then by code_section_number
     const sortedChecks = (allChecks || []).sort((a: any, b: any) => {
@@ -235,8 +249,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return (a.code_section_number || '').localeCompare(b.code_section_number || '');
     });
 
-    // Fetch latest analysis runs for all checks
-    const checkIds = (sortedChecks || []).map((c: any) => c.id);
+    // Fetch latest analysis runs for all checks (reusing checkIds from above)
     const { data: latestAnalysis } = await supabase
       .from('latest_analysis_runs')
       .select('check_id, compliance_status, confidence, ai_reasoning, violations, recommendations')
@@ -258,6 +271,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           is_original: assignment.is_original,
         });
       }
+    });
+
+    console.log('[CHECKS API] Screenshots map created:', {
+      checksWithScreenshots: screenshotsMap.size,
+      totalScreenshots: Array.from(screenshotsMap.values()).flat().length,
     });
 
     // Map element_groups.name to element_group_name and add analysis data and screenshots
@@ -295,6 +313,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
       return acc;
     }, []);
+
+    // Log detailed screenshot info for checks with instances
+    const checksWithInstances = checks.filter((c: any) => c.instances && c.instances.length > 0);
+    console.log('[CHECKS API] Checks with instances:', checksWithInstances.length);
+    checksWithInstances.slice(0, 3).forEach((check: any) => {
+      console.log(`[CHECKS API] Parent check ${check.code_section_number}:`, {
+        parentScreenshots: check.screenshots?.length || 0,
+        instances: check.instances.map((i: any) => ({
+          label: i.instance_label,
+          screenshots: i.screenshots?.length || 0,
+        })),
+      });
+    });
 
     return NextResponse.json(checks);
   } catch (error) {
