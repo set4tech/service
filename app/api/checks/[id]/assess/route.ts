@@ -222,23 +222,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Mark check as processing
     await supabase.from('checks').update({ status: 'processing' }).eq('id', checkId);
 
-    // Immediately trigger queue processing (non-blocking)
-    // Use VERCEL_URL in production/preview, or construct from request
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
-
-    console.log(`[Assess] Triggering queue processor at ${baseUrl}/api/queue/process`);
-
-    fetch(`${baseUrl}/api/queue/process`, {
-      method: 'GET',
-    })
-      .then(res => {
-        console.log(`[Assess] Queue trigger response: ${res.status}`);
-        return res.text();
-      })
-      .then(body => console.log(`[Assess] Queue trigger body:`, body))
-      .catch(err => console.error('[Assess] Failed to trigger queue processing:', err));
+    // Note: Queue processing happens via cron job (runs every minute)
+    console.log('[Assess] Jobs queued - cron will process within 60 seconds');
 
     // Return immediately - all batches are queued
     return NextResponse.json({
