@@ -205,15 +205,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    // Fetch screenshots for all checks
+    // Fetch screenshots for all checks via junction table
     const { data: allScreenshots } = await supabase
-      .from('screenshots')
-      .select('*')
+      .from('screenshot_check_assignments')
+      .select(
+        `
+        check_id,
+        is_original,
+        screenshots (*)
+      `
+      )
       .in(
         'check_id',
         (allChecks || []).map((c: any) => c.id)
       )
-      .order('created_at', { ascending: true });
+      .order('screenshots(created_at)', { ascending: true });
 
     // Sort by floorplan_relevant first (true comes first), then by code_section_number
     const sortedChecks = (allChecks || []).sort((a: any, b: any) => {
@@ -241,11 +247,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Create screenshots map
     const screenshotsMap = new Map<string, any[]>();
-    (allScreenshots || []).forEach((screenshot: any) => {
-      if (!screenshotsMap.has(screenshot.check_id)) {
-        screenshotsMap.set(screenshot.check_id, []);
+    (allScreenshots || []).forEach((assignment: any) => {
+      if (!screenshotsMap.has(assignment.check_id)) {
+        screenshotsMap.set(assignment.check_id, []);
       }
-      screenshotsMap.get(screenshot.check_id)!.push(screenshot);
+      // Flatten the screenshot with assignment metadata
+      if (assignment.screenshots) {
+        screenshotsMap.get(assignment.check_id)!.push({
+          ...assignment.screenshots,
+          is_original: assignment.is_original,
+        });
+      }
     });
 
     // Map element_groups.name to element_group_name and add analysis data and screenshots
