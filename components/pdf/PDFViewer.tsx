@@ -428,40 +428,65 @@ export function PDFViewer({
   useEffect(() => {
     if (!presignedUrl) return;
     (async () => {
+      console.log('[PDFViewer] Loading PDF instance from presigned URL...');
       const loadingTask = pdfjs.getDocument(presignedUrl);
       const pdf = await loadingTask.promise;
+      console.log('[PDFViewer] PDF instance loaded, setting state');
       setPdfInstance(pdf);
     })();
   }, [presignedUrl]);
 
   // Extract PDF layers (Optional Content Groups)
   useEffect(() => {
-    if (!pdfInstance) return;
+    console.log('[PDFViewer] Layer extraction effect running, pdfInstance:', pdfInstance);
+    if (!pdfInstance) {
+      console.log('[PDFViewer] No pdfInstance yet, skipping layer extraction');
+      return;
+    }
     (async () => {
       try {
+        console.log('[PDFViewer] Attempting to extract layers from PDF...');
         const ocConfig = await pdfInstance.getOptionalContentConfig();
+        console.log('[PDFViewer] Got optionalContentConfig:', ocConfig);
+
         if (!ocConfig) {
+          console.log('[PDFViewer] No optionalContentConfig found');
           setLayers([]);
           return;
         }
 
         setOptionalContentConfig(ocConfig);
 
-        const groups = ocConfig.getOrder();
-        if (!groups || groups.length === 0) {
+        console.log(
+          '[PDFViewer] optionalContentConfig methods:',
+          Object.getOwnPropertyNames(Object.getPrototypeOf(ocConfig))
+        );
+
+        // Try getOrder() which returns array of IDs
+        const order = ocConfig.getOrder();
+        console.log('[PDFViewer] Layer order:', order);
+
+        if (!order || order.length === 0) {
           setLayers([]);
           return;
         }
 
-        const layerList: PDFLayer[] = groups.map((groupId: string) => {
-          const group = ocConfig.getGroup(groupId);
-          return {
-            id: groupId,
-            name: group.name,
-            visible: ocConfig.isVisible(groupId),
-          };
-        });
+        const layerList: PDFLayer[] = [];
+        for (const id of order) {
+          try {
+            const group = ocConfig.getGroup(id);
+            console.log('[PDFViewer] Group', id, ':', group);
+            layerList.push({
+              id: id,
+              name: group?.name || `Layer ${id}`,
+              visible: ocConfig.isVisible(id),
+            });
+          } catch (err) {
+            console.error('[PDFViewer] Error getting group', id, err);
+          }
+        }
 
+        console.log('[PDFViewer] Extracted layers:', layerList);
         setLayers(layerList);
       } catch (err) {
         console.error('Failed to extract PDF layers:', err);
@@ -629,6 +654,10 @@ export function PDFViewer({
       }
       capturingRef.current = true;
 
+      // Clear selection immediately for better UX (optimistic update)
+      const savedSelection = { ...state.selection };
+      dispatch({ type: 'CLEAR_SELECTION' });
+
       let targetCheckId = activeCheck?.id;
 
       // If saving to new element, create instance first
@@ -694,10 +723,11 @@ export function PDFViewer({
       });
 
       // Selection coordinates are relative to the pageContainer (in CSS pixels)
-      const sx = Math.min(state.selection.startX, state.selection.endX);
-      const sy = Math.min(state.selection.startY, state.selection.endY);
-      const sw = Math.abs(state.selection.endX - state.selection.startX);
-      const sh = Math.abs(state.selection.endY - state.selection.startY);
+      // Use savedSelection since we cleared state.selection early
+      const sx = Math.min(savedSelection.startX, savedSelection.endX);
+      const sy = Math.min(savedSelection.startY, savedSelection.endY);
+      const sw = Math.abs(savedSelection.endX - savedSelection.startX);
+      const sh = Math.abs(savedSelection.endY - savedSelection.startY);
 
       console.log('capture() selection in CSS pixels:', { sx, sy, sw, sh });
 
@@ -732,7 +762,11 @@ export function PDFViewer({
       offscreenCanvas.height = Math.ceil(viewport.height);
       const ctx = offscreenCanvas.getContext('2d')!;
 
+      console.log('capture() rendering PDF page at high resolution...');
+      const renderStart = performance.now();
       await pageInstance.render({ canvasContext: ctx, viewport }).promise;
+      const renderEnd = performance.now();
+      console.log('capture() PDF render complete in', (renderEnd - renderStart).toFixed(0), 'ms');
 
       // Map from canvas pixels to render pixels
       // Both the displayed canvas and the offscreen render are at different scales from the natural PDF
@@ -791,13 +825,18 @@ export function PDFViewer({
       const tctx = tcanvas.getContext('2d')!;
       tctx.drawImage(out, 0, 0, tw, th);
 
+      console.log('capture() converting canvases to PNG blobs...');
+      const blobStart = performance.now();
       const [blob, thumb] = await Promise.all([
         new Promise<Blob>(resolve => out.toBlob(b => resolve(b!), 'image/png')),
         new Promise<Blob>(resolve => tcanvas.toBlob(b => resolve(b!), 'image/png')),
       ]);
+      const blobEnd = performance.now();
+      console.log('capture() blob conversion complete in', (blobEnd - blobStart).toFixed(0), 'ms');
 
       // Get presigned upload targets
       console.log('capture() fetching presigned URLs...');
+      const presignStart = performance.now();
       const res = await fetch('/api/screenshots/presign', {
         method: 'POST',
         body: JSON.stringify({
@@ -811,23 +850,29 @@ export function PDFViewer({
         throw new Error('Failed to get presigned URLs');
       }
       const { _screenshotId, uploadUrl, key, thumbUploadUrl, thumbKey } = await res.json();
-      console.log('capture() got presigned URLs');
+      const presignEnd = performance.now();
+      console.log('capture() got presigned URLs in', (presignEnd - presignStart).toFixed(0), 'ms');
 
-      console.log('capture() uploading to S3...');
-      await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'image/png' },
-        body: blob,
-      });
-      await fetch(thumbUploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'image/png' },
-        body: thumb,
-      });
-      console.log('capture() S3 upload complete');
+      console.log('capture() uploading to S3 in parallel...');
+      const uploadStart = performance.now();
+      await Promise.all([
+        fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/png' },
+          body: blob,
+        }),
+        fetch(thumbUploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/png' },
+          body: thumb,
+        }),
+      ]);
+      const uploadEnd = performance.now();
+      console.log('capture() S3 upload complete in', (uploadEnd - uploadStart).toFixed(0), 'ms');
 
       // Persist metadata in DB
       console.log('capture() saving to database...');
+      const dbStart = performance.now();
       const dbRes = await fetch('/api/screenshots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -846,13 +891,15 @@ export function PDFViewer({
           caption: '',
         }),
       });
+      const dbEnd = performance.now();
       if (!dbRes.ok) {
         console.error('capture() database save failed:', dbRes.status, await dbRes.text());
         throw new Error('Failed to save screenshot to database');
       }
+      console.log('capture() database save complete in', (dbEnd - dbStart).toFixed(0), 'ms');
       console.log('capture() complete!');
 
-      dispatch({ type: 'CLEAR_SELECTION' });
+      // Selection already cleared at start for better UX
       if (onScreenshotSaved) onScreenshotSaved();
     } catch (error) {
       console.error('capture() failed with error:', error);
