@@ -278,6 +278,23 @@ export function CodeDetailPanel({
           setAssessmentMessage('Assessment complete!');
           setExtraContext('');
           setShowExtraContext(false);
+
+          // Fetch updated analysis runs
+          if (checkId) {
+            fetch(`/api/checks/${checkId}/analysis-runs`)
+              .then(res => res.json())
+              .then(runsData => {
+                if (runsData.runs) {
+                  setAnalysisRuns(runsData.runs);
+                  // Expand the newest run
+                  if (runsData.runs.length > 0) {
+                    setExpandedRuns(new Set([runsData.runs[0].id]));
+                  }
+                }
+              })
+              .catch(err => console.error('Failed to load updated analysis:', err));
+          }
+
           if (onCheckUpdate) onCheckUpdate();
         }
       } catch (err) {
