@@ -2,382 +2,303 @@
 
 ## Overview
 
-This database stores building code documents (e.g., California Building Code, ICC A117.1) and their hierarchical section structure in PostgreSQL/Supabase.
+This database stores building code documents (e.g., California Building Code, ICC A117.1) and their hierarchical section structure in PostgreSQL/Supabase. It also manages compliance assessments, AI analysis runs, and screenshot evidence.
 
-## Entity Relationship Diagram
-
-```
-┌─────────────────────────────────────────────┐
-│                   codes                     │
-├─────────────────────────────────────────────┤
-│ id TEXT PK                                  │  (e.g., "ICC+CBC_Chapter11A_11B+2025+CA")
-│ provider TEXT                               │  (e.g., "ICC", "NYSBC")
-│ source_id TEXT                              │  (e.g., "A117.1", "CBC_Chapter11A_11B")
-│ version TEXT                                │  (e.g., "2025", "2017")
-│ jurisdiction TEXT                           │  (e.g., "CA", "NY", NULL)
-│ title TEXT                                  │
-│ source_url TEXT                             │
-│ created_at TIMESTAMPTZ                      │
-│ updated_at TIMESTAMPTZ                      │
-└─────────────────────────────────────────────┘
-                    │
-                    │ 1:N (code has many sections)
-                    ▼
-┌─────────────────────────────────────────────┐
-│                 sections                    │
-├─────────────────────────────────────────────┤
-│ id SERIAL PK                                │
-│ key TEXT UNIQUE                             │  (e.g., "ICC:CBC_Chapter11A_11B:2025:CA:11B-401.1")
-│ code_id TEXT FK → codes.id                 │
-│ parent_key TEXT FK → sections.key          │  (NULL for top-level sections)
-│ number TEXT                                 │  (e.g., "401", "401.1", "401.1.1")
-│ title TEXT                                  │
-│ text TEXT                                   │
-│ item_type TEXT                              │  ("section" or "subsection")
-│ code_type TEXT                              │  ("accessibility", "building", "fire", etc.)
-│ paragraphs JSONB                            │  (array of paragraph strings)
-│ source_url TEXT                             │
-│ source_page INTEGER                         │
-│ hash TEXT                                   │
-│ created_at TIMESTAMPTZ                      │
-│ updated_at TIMESTAMPTZ                      │
-└─────────────────────────────────────────────┘
-         │                      │
-         │                      │ Self-referencing (parent-child hierarchy)
-         │                      └─────────────┐
-         │                                    │
-         │ M:N (sections reference each other)│
-         ▼                                    ▼
-┌─────────────────────────────────────────────┐
-│           section_references                │
-├─────────────────────────────────────────────┤
-│ id SERIAL PK                                │
-│ source_section_key TEXT FK → sections.key  │
-│ target_section_key TEXT FK → sections.key  │
-│ explicit BOOLEAN                            │  (TRUE = explicit citation, FALSE = inferred)
-│ citation_text TEXT                          │  (e.g., "See Section 401.1")
-│ created_at TIMESTAMPTZ                      │
-└─────────────────────────────────────────────┘
-```
-
-## Table Descriptions
+## Core Tables
 
 ### `codes`
 
 Master building code documents table. Each row represents one version of a building code.
 
-**Example rows:**
+**Schema:**
 
-- `ICC+A117.1+2017` - ICC A117.1 (2017 edition, national)
-- `ICC+CBC_Chapter11A_11B+2025+CA` - California Building Code Chapter 11 (2025, CA-specific)
+| Column         | Type          | Description                                                        |
+| -------------- | ------------- | ------------------------------------------------------------------ |
+| `id`           | TEXT PK       | Composite key: `{provider}+{source_id}+{version}[+{jurisdiction}]` |
+| `provider`     | TEXT NOT NULL | Provider (e.g., "ICC", "NYSBC")                                    |
+| `source_id`    | TEXT NOT NULL | Source ID (e.g., "A117.1", "CBC_Chapter11A_11B")                   |
+| `version`      | TEXT NOT NULL | Version year (e.g., "2025", "2017")                                |
+| `jurisdiction` | TEXT          | State code (e.g., "CA", "NY") or NULL for national                 |
+| `title`        | TEXT NOT NULL | Full code title                                                    |
+| `source_url`   | TEXT          | URL to official code document                                      |
+| `created_at`   | TIMESTAMPTZ   | Creation timestamp                                                 |
+| `updated_at`   | TIMESTAMPTZ   | Last update timestamp                                              |
 
-**Key columns:**
-
-- `id`: Composite key format: `{provider}+{source_id}+{version}[+{jurisdiction}]`
-- `jurisdiction`: NULL for national codes, state code (e.g., "CA", "NY") for state-specific
-
-### `sections`
-
-Hierarchical storage of all sections and subsections within building codes.
-
-**Hierarchy structure:**
-
-```
-Section 401 (parent_key = NULL)
-  └─ Subsection 401.1 (parent_key = "ICC:A117.1:2017:401")
-       └─ Subsection 401.1.1 (parent_key = "ICC:A117.1:2017:401.1")
-```
-
-**Key columns:**
-
-- `key`: Unique identifier format: `{provider}:{source_id}:{version}[:{jurisdiction}]:{number}`
-- `parent_key`: References `sections.key` for parent section (NULL for top-level sections)
-- `item_type`: Either `"section"` (top-level) or `"subsection"` (child)
-- `code_type`: Category like `"accessibility"`, `"building"`, `"fire"`, `"plumbing"`, etc.
-- `paragraphs`: JSON array of text paragraphs within the section
-
-**Example data:**
-
-```json
-{
-  "key": "ICC:CBC_Chapter11A_11B:2025:CA:11B-401.1",
-  "code_id": "ICC+CBC_Chapter11A_11B+2025+CA",
-  "parent_key": "ICC:CBC_Chapter11A_11B:2025:CA:11B-401",
-  "number": "11B-401.1",
-  "title": "General",
-  "item_type": "subsection",
-  "code_type": "accessibility",
-  "paragraphs": ["All spaces and elements...", "Exception: ..."]
-}
-```
-
-### `section_references`
-
-Cross-references between sections (e.g., "See Section 401.1" citations).
-
-**Key columns:**
-
-- `source_section_key`: The section containing the reference
-- `target_section_key`: The section being referenced
-- `explicit`: TRUE for explicit citations in the text, FALSE for inferred relationships
-- `citation_text`: Original citation text from the code document
-
-## Indexes
-
-### `codes` table
+**Indexes:**
 
 - `idx_codes_provider` on `provider`
 - `idx_codes_source_id` on `source_id`
 - `idx_codes_version` on `version`
 - `idx_codes_jurisdiction` on `jurisdiction`
+- `unique_code_version` UNIQUE on `(provider, source_id, version, jurisdiction)`
 
-### `sections` table
+**Example:**
+
+- `ICC+CBC_Chapter11A_11B+2025+CA` - California Building Code Chapter 11 (2025)
+- `ICC+A117.1+2017` - ICC A117.1 (2017 edition, national)
+
+---
+
+### `sections`
+
+Hierarchical storage of all sections and subsections within building codes.
+
+**Schema:**
+
+| Column        | Type                   | Description                                                              |
+| ------------- | ---------------------- | ------------------------------------------------------------------------ |
+| `id`          | SERIAL PK              | Auto-incrementing integer primary key                                    |
+| `key`         | TEXT UNIQUE NOT NULL   | Unique key: `{provider}:{source_id}:{version}[:{jurisdiction}]:{number}` |
+| `code_id`     | TEXT FK → codes.id     | Parent code document                                                     |
+| `parent_key`  | TEXT FK → sections.key | Parent section (NULL for top-level)                                      |
+| `number`      | TEXT NOT NULL          | Section number (e.g., "11B-401.1")                                       |
+| `title`       | TEXT NOT NULL          | Section title                                                            |
+| `text`        | TEXT                   | Full section text content                                                |
+| `item_type`   | TEXT NOT NULL          | "section" or "subsection"                                                |
+| `code_type`   | TEXT NOT NULL          | "accessibility", "building", "fire", "plumbing", "mechanical", "energy"  |
+| `paragraphs`  | JSONB                  | Array of paragraph strings (default `[]`)                                |
+| `source_url`  | TEXT                   | URL to this specific section                                             |
+| `source_page` | INTEGER                | Page number in source document                                           |
+| `hash`        | TEXT NOT NULL          | Content hash for change detection                                        |
+| `tables`      | JSONB                  | Array of table objects with number, title, CSV data (default `[]`)       |
+| `figures`     | JSONB                  | Array of figure URLs (default `[]`)                                      |
+| `chapter`     | TEXT                   | Chapter identifier (e.g., "11A", "11B") - denormalized from number       |
+| `created_at`  | TIMESTAMPTZ            | Creation timestamp                                                       |
+| `updated_at`  | TIMESTAMPTZ            | Last update timestamp                                                    |
+
+**Applicability Metadata:**
+
+| Column                           | Type    | Description                                                          |
+| -------------------------------- | ------- | -------------------------------------------------------------------- |
+| `always_include`                 | BOOLEAN | TRUE for scoping/definitions/administrative sections (default FALSE) |
+| `applicable_occupancies`         | TEXT[]  | Occupancy letters [A,B,E,...]; NULL means no restriction             |
+| `requires_parking`               | BOOLEAN | TRUE if section only applies when site has parking                   |
+| `requires_elevator`              | BOOLEAN | TRUE if section only applies when elevator required                  |
+| `min_building_size`              | INTEGER | Minimum per-story gross floor area (sq ft) threshold                 |
+| `max_building_size`              | INTEGER | Maximum per-story gross floor area (sq ft) threshold                 |
+| `applicable_work_types`          | TEXT[]  | Work type strings matching project variables                         |
+| `applicable_facility_categories` | TEXT[]  | Facility category strings                                            |
+| `applicability_notes`            | TEXT    | Maintainer notes about applicability logic                           |
+
+**Assessability Metadata:**
+
+| Column               | Type             | Description                                                                                   |
+| -------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
+| `drawing_assessable` | BOOLEAN          | Whether section can be assessed from drawings (default TRUE)                                  |
+| `assessability_tags` | TEXT[]           | Tags: too_short, placeholder, definitional, administrative, procedural, summary, not_physical |
+| `never_relevant`     | BOOLEAN NOT NULL | Global exclusion flag (default FALSE)                                                         |
+| `floorplan_relevant` | BOOLEAN NOT NULL | Prioritize for floorplan analysis (default FALSE)                                             |
+
+**Indexes:**
 
 - `idx_sections_code_id` on `code_id`
 - `idx_sections_key` on `key`
 - `idx_sections_number` on `number`
-- `idx_sections_parent_key` on `parent_key`
-- `idx_sections_item_type` on `item_type`
-- `idx_sections_code_type` on `code_type`
-- `idx_sections_hash` on `hash`
+- `idx_sections_chapter` on `chapter`
+- `idx_sections_app_occ` GIN on `applicable_occupancies`
+- `idx_sections_app_work` GIN on `applicable_work_types`
+- `idx_sections_app_fac` GIN on `applicable_facility_categories`
+- `idx_sections_parking` on `requires_parking`
+- `idx_sections_elevator` on `requires_elevator`
+- `idx_sections_min_size` on `min_building_size`
+- `idx_sections_max_size` on `max_building_size`
+- `idx_sections_drawing_assessable` on `drawing_assessable`
+- `idx_sections_assessability_tags` GIN on `assessability_tags`
+- `idx_sections_never_relevant` on `never_relevant` (partial WHERE TRUE)
+- `idx_sections_floorplan_relevant` on `floorplan_relevant` (partial WHERE TRUE)
+- `idx_sections_tables` GIN on `tables`
+- `idx_sections_figures` GIN on `figures`
+- `unique_section_number_per_code` UNIQUE on `(code_id, number)`
 
-### `section_references` table
+**Constraints:**
+
+- `sections_code_type_check`: code_type must be one of allowed values
+- `sections_item_type_check`: item_type must be "section" or "subsection"
+- `chk_sections_work_types_values`: validates work types against allowed values
+
+---
+
+### `section_references`
+
+Cross-references between sections (e.g., "See Section 401.1" citations).
+
+**Schema:**
+
+| Column               | Type                   | Description                                                    |
+| -------------------- | ---------------------- | -------------------------------------------------------------- |
+| `id`                 | SERIAL PK              | Auto-incrementing integer primary key                          |
+| `source_section_key` | TEXT FK → sections.key | Section containing the reference                               |
+| `target_section_key` | TEXT FK → sections.key | Section being referenced                                       |
+| `explicit`           | BOOLEAN                | TRUE for explicit citations, FALSE for inferred (default TRUE) |
+| `citation_text`      | TEXT                   | Original citation text from the code                           |
+| `created_at`         | TIMESTAMPTZ            | Creation timestamp                                             |
+
+**Indexes:**
 
 - `idx_section_refs_source` on `source_section_key`
 - `idx_section_refs_target` on `target_section_key`
+- `unique_section_reference` UNIQUE on `(source_section_key, target_section_key)`
 
-## Common Queries
+**Constraints:**
 
-### Get all top-level sections for a code
+- `no_self_reference`: Prevents a section from referencing itself
 
-```sql
-SELECT * FROM sections
-WHERE code_id = 'ICC+CBC_Chapter11A_11B+2025+CA'
-  AND parent_key IS NULL
-ORDER BY number;
-```
+---
 
-### Get all subsections of a specific section
-
-```sql
-SELECT * FROM sections
-WHERE parent_key = 'ICC:CBC_Chapter11A_11B:2025:CA:11B-401'
-ORDER BY number;
-```
-
-### Get section with all its ancestors (breadcrumb trail)
-
-```sql
-WITH RECURSIVE ancestors AS (
-  -- Base: start with target section
-  SELECT * FROM sections WHERE key = 'ICC:CBC_Chapter11A_11B:2025:CA:11B-401.1'
-  UNION ALL
-  -- Recursive: get parent
-  SELECT s.* FROM sections s
-  INNER JOIN ancestors a ON s.key = a.parent_key
-)
-SELECT * FROM ancestors ORDER BY number;
-```
-
-### Get all sections that reference a specific section
-
-```sql
-SELECT s.* FROM sections s
-INNER JOIN section_references sr ON sr.source_section_key = s.key
-WHERE sr.target_section_key = 'ICC:CBC_Chapter11A_11B:2025:CA:11B-401'
-  AND sr.explicit = TRUE;
-```
-
-## Data Loading
-
-Use the upload script to load code data from JSON files:
-
-```bash
-python scripts/load_db/unified_code_upload_supabase.py --file path/to/code.json
-```
-
-**JSON format:**
-
-```json
-{
-  "provider": "ICC",
-  "version": 2025,
-  "jurisdiction": "CA",
-  "source_id": "CBC_Chapter11A_11B",
-  "title": "California Building Code - Chapters 11A & 11B Accessibility",
-  "source_url": "https://...",
-  "sections": [
-    {
-      "number": "401",
-      "title": "General",
-      "subsections": [
-        {
-          "number": "401.1",
-          "title": "Scope",
-          "paragraphs": ["Text content..."],
-          "refers_to": ["401.2", "402.1"]
-        }
-      ]
-    }
-  ]
-}
-```
-
-## Compliance Assessment Tables
+## Assessment Tables
 
 ### `customers`
 
 Customer/client organizations.
 
-**Key columns:**
+**Schema:**
 
-- `id`: UUID primary key
-- `name`: Customer name
-- `contact_email`: Primary contact email
-- `contact_phone`: Contact phone number
-- `address`: Physical address
-- `created_at`, `updated_at`: Timestamps
+| Column          | Type                  | Description           |
+| --------------- | --------------------- | --------------------- |
+| `id`            | UUID PK               | Primary key           |
+| `name`          | VARCHAR(255) NOT NULL | Customer name         |
+| `contact_email` | VARCHAR(255)          | Primary contact email |
+| `contact_phone` | VARCHAR(50)           | Contact phone number  |
+| `address`       | TEXT                  | Physical address      |
+| `created_at`    | TIMESTAMPTZ           | Creation timestamp    |
+| `updated_at`    | TIMESTAMPTZ           | Last update timestamp |
+
+---
 
 ### `projects`
 
 Individual building projects for customers.
 
-**Key columns:**
+**Schema:**
 
-- `id`: UUID primary key
-- `customer_id`: Foreign key to `customers`
-- `name`: Project name
-- `description`: Project description
-- `building_address`: Building location
-- `building_type`: Type of building (e.g., "Commercial", "Residential")
-- `pdf_url`: S3 URL to architectural drawings PDF
-- `selected_code_ids`: Array of code IDs to assess against
-- `status`: Project status ('in_progress', 'completed', etc.)
-- `extracted_variables`: JSONB of building metadata extracted from drawings
-- `extraction_status`: Status of AI extraction ('pending', 'in_progress', 'completed', 'failed')
-- `created_at`, `updated_at`: Timestamps
+| Column                    | Type                   | Description                                                        |
+| ------------------------- | ---------------------- | ------------------------------------------------------------------ |
+| `id`                      | UUID PK                | Primary key                                                        |
+| `customer_id`             | UUID FK → customers.id | Customer reference (CASCADE delete)                                |
+| `name`                    | VARCHAR(255) NOT NULL  | Project name                                                       |
+| `description`             | TEXT                   | Project description                                                |
+| `building_address`        | TEXT                   | Building location                                                  |
+| `building_type`           | VARCHAR(100)           | Type of building                                                   |
+| `code_assembly_id`        | VARCHAR(255)           | Legacy code assembly identifier                                    |
+| `pdf_url`                 | TEXT                   | S3 URL to architectural drawings PDF                               |
+| `selected_code_ids`       | TEXT[]                 | Array of code IDs to assess against                                |
+| `status`                  | VARCHAR(50)            | Project status (default 'in_progress')                             |
+| `extracted_variables`     | JSONB                  | Building metadata extracted from drawings                          |
+| `extraction_status`       | VARCHAR(50)            | Status: pending, processing, completed, failed (default 'pending') |
+| `extraction_progress`     | JSONB                  | Progress: {current: number, total: number, category: string}       |
+| `extraction_started_at`   | TIMESTAMPTZ            | When extraction started                                            |
+| `extraction_completed_at` | TIMESTAMPTZ            | When extraction completed                                          |
+| `extraction_error`        | TEXT                   | Error message if extraction failed                                 |
+| `created_at`              | TIMESTAMPTZ            | Creation timestamp                                                 |
+| `updated_at`              | TIMESTAMPTZ            | Last update timestamp                                              |
 
-**Workflow:**
+**Indexes:**
 
-1. Create customer
-2. Create project with PDF upload to S3
-3. Optionally extract building variables via AI
-4. Create assessment from project
+- `idx_projects_extraction_status` on `extraction_status`
+
+---
 
 ### `assessments`
 
 Code compliance assessment instances for a project.
 
-**Key columns:**
+**Schema:**
 
-- `id`: UUID primary key
-- `project_id`: Foreign key to `projects`
-- `started_at`: Assessment start time
-- `completed_at`: When assessment was completed
-- `status`: Overall status ('in_progress', 'completed', etc.)
-- `seeding_status`: Check seeding status ('not_started', 'in_progress', 'completed')
-- `sections_processed`: Number of sections processed during seeding
-- `sections_total`: Total sections to process during seeding
-- `total_sections`: Total checks created
-- `assessed_sections`: Number of checks completed
-- `pdf_scale`: PDF rendering scale (default 2.0)
+| Column               | Type                  | Description                                          |
+| -------------------- | --------------------- | ---------------------------------------------------- |
+| `id`                 | UUID PK               | Primary key                                          |
+| `project_id`         | UUID FK → projects.id | Project reference (CASCADE delete)                   |
+| `started_at`         | TIMESTAMPTZ           | Assessment start time (default now())                |
+| `completed_at`       | TIMESTAMPTZ           | When assessment was completed                        |
+| `total_sections`     | INTEGER               | Total checks created                                 |
+| `assessed_sections`  | INTEGER               | Number of checks completed (default 0)               |
+| `status`             | VARCHAR(50)           | Overall status (default 'in_progress')               |
+| `seeding_status`     | TEXT                  | Check seeding status (default 'not_started')         |
+| `sections_processed` | INTEGER               | Sections processed during seeding (default 0)        |
+| `sections_total`     | INTEGER               | Total sections to process during seeding (default 0) |
+| `pdf_scale`          | NUMERIC(3,1)          | PDF rendering scale multiplier 1.0-6.0 (default 2.0) |
 
-**Seeding Process:**
+**Indexes:**
 
-1. Assessment created with `seeding_status = 'not_started'`
-2. `/api/assessments/[id]/seed` starts seeding → `seeding_status = 'in_progress'`
-3. AI filters sections for applicability → Creates checks in batches
-4. Updates `sections_processed`, `sections_total` as it progresses
-5. When done → `seeding_status = 'completed'`
+- `idx_assessments_seeding_status` on `seeding_status`
 
-**Progress Calculation:**
+**Description:**
+The `pdf_scale` column stores the user's preferred rendering scale for viewing floorplan details. Higher values provide more detail but use more memory.
 
-- Progress = `assessed_sections / total_sections`
-- A check is "assessed" if it has an AI analysis OR manual override
+---
 
 ### `checks`
 
 Individual compliance checks for code sections within an assessment.
 
-**Key columns:**
+**Schema:**
 
-- `id`: UUID primary key
-- `assessment_id`: Foreign key to `assessments` table
-- `code_section_key`: Reference to `sections.key` for which code section is being checked
-- `code_section_number`: The section number (e.g., "11B-401.1")
-- `code_section_title`: The section title
-- `status`: Current status (e.g., 'pending', 'in_progress', 'completed')
-- `check_type`: 'section' (traditional) or 'element' (grouped by building element)
-- `parent_check_id`: For instances, references parent template check
-- `instance_number`: Instance number (0 = template, 1+ = instances)
-- `instance_label`: Custom label (e.g., "Main Entrance Door", "Door 2")
-- `element_group_id`: For element checks, references `element_groups`
-- `element_sections`: Array of section keys covered by this element check
-- `prompt_template_id`: Reference to prompt template used
-- `actual_prompt_used`: Final prompt sent to AI (with variables substituted)
-- `manual_override`: TEXT - Manual human judgment
-  - `'compliant'`: Manually marked as compliant
-  - `'non_compliant'`: Manually marked as non-compliant
-  - `'not_applicable'`: Manually marked as not applicable
-  - `NULL`: No manual override (use AI assessment)
-- `manual_override_note`: Optional text explanation for the manual decision
-- `manual_override_at`: Timestamp when manual override was set
-- `manual_override_by`: User who set the manual override
-- `created_at`: When the check was created
-- `updated_at`: Last modification timestamp (auto-updated by trigger)
+| Column                 | Type                           | Description                                                        |
+| ---------------------- | ------------------------------ | ------------------------------------------------------------------ |
+| `id`                   | UUID PK                        | Primary key                                                        |
+| `assessment_id`        | UUID FK → assessments.id       | Assessment reference (CASCADE delete)                              |
+| `code_section_key`     | VARCHAR(255) FK → sections.key | Code section reference (RESTRICT delete)                           |
+| `code_section_number`  | VARCHAR(100)                   | Section number (e.g., "11B-401.1")                                 |
+| `code_section_title`   | TEXT                           | Section title                                                      |
+| `check_name`           | VARCHAR(255)                   | Custom check name                                                  |
+| `check_location`       | VARCHAR(255)                   | Location identifier                                                |
+| `parent_check_id`      | UUID FK → checks.id            | Parent template check                                              |
+| `instance_number`      | INTEGER                        | Instance number (0=template, 1+=instances) (default 1)             |
+| `instance_label`       | TEXT                           | Human-readable label (e.g., "Door 2 - North Entrance")             |
+| `check_type`           | TEXT                           | 'section' or 'element' (default 'section')                         |
+| `element_group_id`     | UUID FK → element_groups.id    | Element group reference (SET NULL delete)                          |
+| `element_sections`     | TEXT[]                         | Array of section_keys for element checks                           |
+| `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                          |
+| `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                       |
+| `status`               | VARCHAR(50)                    | Current status (default 'pending')                                 |
+| `requires_review`      | BOOLEAN                        | Requires human review (default FALSE)                              |
+| `manual_override`      | TEXT                           | Manual judgment: compliant, non_compliant, not_applicable, or NULL |
+| `manual_override_note` | TEXT                           | Explanation for manual override                                    |
+| `manual_override_at`   | TIMESTAMPTZ                    | When manual override was set                                       |
+| `manual_override_by`   | TEXT                           | User who set the manual override                                   |
+| `created_at`           | TIMESTAMPTZ                    | Creation timestamp                                                 |
+| `updated_at`           | TIMESTAMPTZ                    | Last update timestamp (auto-updated by trigger)                    |
 
-**Check Types:**
+**Indexes:**
 
-1. **Section Check** (`check_type = 'section'`):
-   - Traditional 1:1 mapping to code section
-   - One section assessed per check
-
-2. **Element Check** (`check_type = 'element'`):
-   - Groups multiple related sections (e.g., all door requirements)
-   - `element_sections` array contains all section keys
-   - Batch AI assessment of all sections together
-
-**Template & Instance Pattern:**
-
-- `parent_check_id = NULL` → Template or standalone check
-- `parent_check_id` set → Instance of a template
-- `instance_number = 0` → Template (shows "Click + to add first...")
-- `instance_number >= 1` → Actual instances
-- Instances inherit `element_sections` from parent
-
-**Manual Override Pattern:**
-The `manual_override` field allows human reviewers to override AI assessments. When set:
-
-1. The manual judgment takes precedence over any AI analysis
-2. The `manual_override_at` timestamp tracks when the decision was made
-3. The `manual_override_note` provides audit trail and reasoning
-4. Setting to `NULL` clears the override and reverts to AI assessment
+- `idx_assessment_section` on `(assessment_id, code_section_key)`
+- `idx_checks_code_section_key` on `code_section_key`
+- `idx_checks_parent_check_id` on `parent_check_id`
+- `idx_checks_instance_number` on `instance_number`
+- `idx_checks_type` on `check_type`
+- `idx_checks_element_group` on `element_group_id`
+- `idx_checks_element_sections` GIN on `element_sections`
+- `idx_checks_manual_override` on `manual_override` (partial WHERE NOT NULL)
+- `unique_check_per_section` UNIQUE on `(assessment_id, code_section_number, parent_check_id, instance_number) NULLS NOT DISTINCT`
 
 **Constraints:**
 
-- `unique_check_per_section`: Prevents duplicate checks per assessment/section/instance
-- `check_type` must be 'section' or 'element'
-- `manual_override` must be 'compliant', 'non_compliant', 'not_applicable', or NULL
+- `checks_check_type_check`: check_type must be 'section' or 'element'
+- `checks_manual_override_check`: manual_override must be 'compliant', 'non_compliant', or 'not_applicable'
+
+**Trigger:**
+
+- `update_checks_updated_at`: Auto-updates `updated_at` on modification
+
+---
 
 ### `element_groups`
 
 Reusable groupings of related code sections by building element.
 
-**Key columns:**
+**Schema:**
 
-- `id`: UUID primary key
-- `name`: Element name (e.g., "Doors", "Ramps", "Parking Spaces")
-- `slug`: URL-friendly identifier (e.g., "doors", "ramps")
-- `description`: Element description
-- `icon`: Optional icon identifier
-- `sort_order`: Display order
-- `created_at`: Timestamp
+| Column        | Type                 | Description                             |
+| ------------- | -------------------- | --------------------------------------- |
+| `id`          | UUID PK              | Primary key                             |
+| `name`        | TEXT NOT NULL        | Element name (e.g., "Doors", "Ramps")   |
+| `slug`        | TEXT UNIQUE NOT NULL | URL-friendly identifier (e.g., "doors") |
+| `description` | TEXT                 | Element description                     |
+| `icon`        | TEXT                 | Optional icon identifier                |
+| `sort_order`  | INTEGER              | Display order (default 0)               |
+| `created_at`  | TIMESTAMPTZ          | Creation timestamp                      |
 
-**Usage:**
-
-- Predefined element groups created once
-- Mapped to code sections via `element_section_mappings`
-- Referenced by checks via `element_group_id`
+---
 
 ### `element_section_mappings`
 
@@ -385,143 +306,111 @@ Maps element groups to applicable code sections.
 
 **Schema:**
 
-```sql
-CREATE TABLE element_section_mappings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  element_group_id UUID REFERENCES element_groups(id) ON DELETE CASCADE,
-  section_key TEXT REFERENCES sections(key),
-  sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+| Column             | Type                        | Description                              |
+| ------------------ | --------------------------- | ---------------------------------------- |
+| `id`               | UUID PK                     | Primary key                              |
+| `element_group_id` | UUID FK → element_groups.id | Element group reference (CASCADE delete) |
+| `section_key`      | TEXT FK → sections.key      | Section reference (CASCADE delete)       |
+| `created_at`       | TIMESTAMPTZ                 | Creation timestamp                       |
+
+**Indexes:**
+
+- `idx_element_mappings_group` on `element_group_id`
+- `idx_element_mappings_section` on `section_key`
+- `element_section_mappings_element_group_id_section_key_key` UNIQUE on `(element_group_id, section_key)`
 
 **Example:**
-Element "Doors" might map to:
+Element "Doors" maps to sections like 11B-404.2.6, 11B-404.2.7, etc.
 
-- `11B-404.2.6` (Door maneuvering clearance)
-- `11B-404.2.7` (Door opening force)
-- `11B-404.2.9` (Door closing time)
-- etc.
+---
 
 ### `analysis_runs`
 
 Historical record of AI assessments for each check.
 
-**Key columns:**
+**Schema:**
 
-- `id`: UUID primary key
-- `check_id`: Foreign key to `checks` table
-- `run_number`: Sequential run number for this check (auto-incremented)
-- `compliance_status`: AI-determined status ('compliant', 'non_compliant', 'needs_review', 'unclear')
-- `confidence`: AI confidence level ('high', 'medium', 'low')
-- `ai_provider`: Which AI service was used ('gemini', 'openai', 'anthropic')
-- `ai_model`: Specific model (e.g., 'gemini-2.5-pro', 'gpt-4o', 'claude-opus-4-20250514')
-- `ai_reasoning`: Text explanation from the AI
-- `violations`: JSONB array of identified violations
-- `compliant_aspects`: JSONB array of aspects that are compliant
-- `recommendations`: JSONB array of suggested fixes
-- `additional_evidence_needed`: JSONB array of additional info needed
-- `raw_ai_response`: Full raw AI response text
-- `section_results`: JSONB - For element checks, individual section assessments
-- `batch_group_id`: UUID grouping related batch analyses
-- `batch_number`: Batch number within group
-- `total_batches`: Total batches in group
-- `section_keys_in_batch`: Array of section keys assessed in this batch
-- `executed_at`: When the analysis was run
-- `execution_time_ms`: How long the analysis took
-- `human_override`: Boolean (deprecated, use `checks.manual_override` instead)
-- `human_notes`: Text (deprecated)
+| Column                       | Type                | Description                                                |
+| ---------------------------- | ------------------- | ---------------------------------------------------------- |
+| `id`                         | UUID PK             | Primary key                                                |
+| `check_id`                   | UUID FK → checks.id | Check reference (CASCADE delete)                           |
+| `run_number`                 | INTEGER NOT NULL    | Sequential run number (default 1)                          |
+| `compliance_status`          | VARCHAR(50)         | AI status: compliant, non_compliant, needs_review, unclear |
+| `confidence`                 | VARCHAR(50)         | Confidence: high, medium, low                              |
+| `ai_provider`                | VARCHAR(50)         | AI service: gemini, openai, anthropic                      |
+| `ai_model`                   | VARCHAR(100)        | Model name (e.g., 'gemini-2.5-pro')                        |
+| `ai_reasoning`               | TEXT                | AI explanation                                             |
+| `violations`                 | JSONB               | Array of identified violations                             |
+| `compliant_aspects`          | JSONB               | Array of compliant aspects                                 |
+| `recommendations`            | JSONB               | Array of suggested fixes                                   |
+| `additional_evidence_needed` | JSONB               | Array of additional info needed                            |
+| `raw_ai_response`            | TEXT                | Full raw AI response                                       |
+| `section_results`            | JSONB               | For element checks: per-section results                    |
+| `batch_group_id`             | UUID                | Links batched analyses together                            |
+| `batch_number`               | INTEGER             | Batch number (1-indexed)                                   |
+| `total_batches`              | INTEGER             | Total batches in group                                     |
+| `section_keys_in_batch`      | TEXT[]              | Section keys assessed in this batch                        |
+| `human_override`             | BOOLEAN             | Deprecated (use checks.manual_override) (default FALSE)    |
+| `human_notes`                | TEXT                | Deprecated                                                 |
+| `executed_at`                | TIMESTAMPTZ         | When analysis was run (default now())                      |
+| `execution_time_ms`          | INTEGER             | Analysis duration in milliseconds                          |
 
-**Analysis Patterns:**
+**Indexes:**
 
-1. **Single Check Analysis** (`/api/checks/[id]/assess`):
-   - One check, one section
-   - Simple assessment flow
-   - No batching
+- `idx_analysis_runs_batch_group_id` on `batch_group_id`
+- `idx_analysis_runs_section_results` GIN on `section_results`
+- `analysis_runs_check_id_run_number_key` UNIQUE on `(check_id, run_number)`
 
-2. **Batch Analysis** (`/api/analysis/batch`):
-   - Multiple checks analyzed together
-   - Shares `batch_group_id`
-   - Each run has `batch_number` and `total_batches`
-
-3. **Element Check Analysis** (`check_type = 'element'`):
-   - One check, multiple sections
-   - `section_results` contains per-section assessments
-   - Overall `compliance_status` is aggregate
-
-**Audit Trail:**
-
-- Each check can have multiple analysis runs (allowing re-assessment)
-- `run_number` auto-increments for each check
-- Latest run is used for display unless manual override is set
-- Full history preserved for compliance audit
-
-**Unique Constraint:**
-
-- `(check_id, run_number)` ensures sequential numbering
+---
 
 ### `screenshots`
 
 Screenshots captured from PDF drawings for compliance evidence.
 
-**Key columns:**
+**Schema:**
 
-- `id`: UUID primary key
-- `check_id`: Foreign key to `checks` - which check this screenshot supports
-- `analysis_run_id`: Foreign key to `analysis_runs` - which AI run used this screenshot (nullable)
-- `page_number`: PDF page number where screenshot was taken
-- `crop_coordinates`: JSONB with x, y, width, height of crop area
-- `screenshot_url`: S3 URL to full screenshot image
-- `thumbnail_url`: S3 URL to thumbnail (optional)
-- `caption`: User-added caption/description
-- `created_at`: When screenshot was captured
-- `created_by`: User who captured it (UUID, optional)
+| Column             | Type                       | Description                              |
+| ------------------ | -------------------------- | ---------------------------------------- |
+| `id`               | UUID PK                    | Primary key                              |
+| `analysis_run_id`  | UUID FK → analysis_runs.id | Analysis run reference (SET NULL delete) |
+| `page_number`      | INTEGER NOT NULL           | PDF page number                          |
+| `crop_coordinates` | JSONB                      | {x, y, width, height, zoom_level}        |
+| `screenshot_url`   | TEXT NOT NULL              | S3 URL to full screenshot                |
+| `thumbnail_url`    | TEXT                       | S3 URL to thumbnail                      |
+| `caption`          | TEXT                       | User caption/description                 |
+| `created_at`       | TIMESTAMPTZ                | Creation timestamp                       |
+| `created_by`       | UUID                       | User who captured it                     |
 
-**Screenshot Flow:**
+**Note:** Screenshots are linked to checks via the `screenshot_check_assignments` junction table (many-to-many relationship).
 
-1. User captures screenshot in PDF viewer
-2. Frontend uploads to S3 via presigned URL (`/api/screenshots/presign`)
-3. Frontend calls `/api/screenshots` with S3 URL and metadata
-4. Screenshot record created, linked to check
-5. When AI analysis runs, screenshots fetched and passed to AI
-6. AI analysis links to screenshots via `analysis_run_id`
+---
 
-**S3 Presigning:**
+### `screenshot_check_assignments`
 
-- Upload: `POST /api/screenshots/presign` → Returns presigned PUT URL
-- Download: `GET /api/screenshots/presign-view?url=...` → Returns presigned GET URL
-- Presigned URLs expire after 1 hour
-
-**Storage Pattern:**
-
-- S3 bucket: `set4-data` or configured bucket
-- Path: `screenshots/{assessment_id}/{check_id}/{uuid}.png`
-- Thumbnails: `screenshots/{assessment_id}/{check_id}/thumb_{uuid}.png`
-
-### `prompt_templates`
-
-Reusable prompt templates for AI analysis.
+Junction table linking screenshots to checks (many-to-many).
 
 **Schema:**
 
-```sql
-CREATE TABLE prompt_templates (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  description TEXT,
-  template_text TEXT NOT NULL,
-  variables JSONB,  -- Array of variable names used in template
-  is_default BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+| Column          | Type                     | Description                                                               |
+| --------------- | ------------------------ | ------------------------------------------------------------------------- |
+| `id`            | UUID PK                  | Primary key                                                               |
+| `screenshot_id` | UUID FK → screenshots.id | Screenshot reference (CASCADE delete)                                     |
+| `check_id`      | UUID FK → checks.id      | Check reference (CASCADE delete)                                          |
+| `is_original`   | BOOLEAN                  | TRUE if screenshot was originally captured for this check (default FALSE) |
+| `assigned_at`   | TIMESTAMPTZ              | When assignment was made (default now())                                  |
+| `assigned_by`   | UUID                     | User who made the assignment                                              |
 
-**Usage:**
+**Indexes:**
 
-- Templates contain variables like `{{code_section}}`, `{{building_type}}`
-- Variables substituted at analysis time with project/check data
-- `checks.actual_prompt_used` stores the final substituted prompt
+- `idx_screenshot_assignments_screenshot` on `screenshot_id`
+- `idx_screenshot_assignments_check` on `check_id`
+- `idx_screenshot_assignments_original` on `is_original` (partial WHERE TRUE)
+- `screenshot_check_assignments_screenshot_id_check_id_key` UNIQUE on `(screenshot_id, check_id)`
+
+**Purpose:**
+Allows screenshots to be reused across multiple checks (e.g., one door photo used for multiple door-related code sections).
+
+---
 
 ### `section_applicability_log`
 
@@ -529,50 +418,81 @@ Logs AI filtering decisions during assessment seeding.
 
 **Schema:**
 
-```sql
-CREATE TABLE section_applicability_log (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  assessment_id UUID REFERENCES assessments(id) ON DELETE CASCADE,
-  section_key TEXT REFERENCES sections(key),
-  is_applicable BOOLEAN NOT NULL,
-  ai_reasoning TEXT,
-  confidence TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+| Column                 | Type                     | Description                                                 |
+| ---------------------- | ------------------------ | ----------------------------------------------------------- |
+| `id`                   | UUID PK                  | Primary key                                                 |
+| `assessment_id`        | UUID FK → assessments.id | Assessment reference (CASCADE delete)                       |
+| `section_key`          | TEXT FK → sections.key   | Section reference (CASCADE delete)                          |
+| `decision`             | BOOLEAN NOT NULL         | TRUE=included, FALSE=excluded                               |
+| `decision_source`      | TEXT NOT NULL            | 'rule' (deterministic) or 'ai' (LLM-based) (default 'rule') |
+| `decision_confidence`  | TEXT                     | Confidence level                                            |
+| `reasons`              | TEXT[] NOT NULL          | Human-readable explanation bullets                          |
+| `details`              | JSONB                    | Structured dimension-by-dimension evaluation                |
+| `building_params_hash` | TEXT NOT NULL            | SHA256 of normalized variables                              |
+| `variables_snapshot`   | JSONB NOT NULL           | Full normalized variables used                              |
+| `created_at`           | TIMESTAMPTZ NOT NULL     | Creation timestamp (default now())                          |
+
+**Indexes:**
+
+- `idx_applicability_log_assessment` on `assessment_id`
+- `idx_applicability_log_section` on `section_key`
+- `idx_applicability_log_decision` on `decision`
+- `section_applicability_log_assessment_id_section_key_decisio_key` UNIQUE on `(assessment_id, section_key, decision_source, building_params_hash)`
 
 **Purpose:**
 
-- Track which sections were filtered out and why
-- Debugging applicability filtering logic
 - Audit trail of AI filtering decisions
+- Debugging applicability filtering logic
+- Cache filtering results per building parameter combination
 
-### Indexes
+---
 
-#### `checks` table
+### `check_tags`
 
-- `idx_assessment_section` on `(assessment_id, code_section_key)`
-- `idx_checks_manual_override` on `manual_override` (partial, WHERE not NULL)
+Tags applied to checks for categorization.
 
-#### `analysis_runs` table
+**Schema:**
 
-- `idx_analysis_runs_check` on `check_id`
+| Column     | Type                  | Description                      |
+| ---------- | --------------------- | -------------------------------- |
+| `id`       | UUID PK               | Primary key                      |
+| `check_id` | UUID FK → checks.id   | Check reference (CASCADE delete) |
+| `tag`      | VARCHAR(100) NOT NULL | Tag value                        |
 
-## Triggers
+**Indexes:**
 
-### `update_checks_updated_at`
+- `check_tags_check_id_tag_key` UNIQUE on `(check_id, tag)`
 
-Automatically updates `checks.updated_at` timestamp on any modification.
+---
 
-```sql
-CREATE TRIGGER update_checks_updated_at
-  BEFORE UPDATE ON checks
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-```
+### `prompt_templates`
 
-## Data Model Relationships
+Reusable prompt templates for AI analysis.
 
-### Entity Relationship Diagram (Extended)
+**Schema:**
+
+| Column                 | Type                  | Description                               |
+| ---------------------- | --------------------- | ----------------------------------------- |
+| `id`                   | UUID PK               | Primary key                               |
+| `name`                 | VARCHAR(255) NOT NULL | Template name                             |
+| `version`              | INTEGER NOT NULL      | Version number                            |
+| `system_prompt`        | TEXT                  | System-level instructions                 |
+| `user_prompt_template` | TEXT                  | User message template                     |
+| `instruction_template` | TEXT                  | Additional instructions template          |
+| `is_active`            | BOOLEAN               | Whether template is active (default TRUE) |
+| `created_at`           | TIMESTAMPTZ           | Creation timestamp                        |
+| `created_by`           | UUID                  | User who created it                       |
+
+**Indexes:**
+
+- `prompt_templates_name_version_key` UNIQUE on `(name, version)`
+
+**Usage:**
+Templates contain variables like `{{code_section}}`, `{{building_type}}` that are substituted at analysis time.
+
+---
+
+## Entity Relationship Diagram
 
 ```
 ┌─────────────┐
@@ -583,114 +503,183 @@ CREATE TRIGGER update_checks_updated_at
 ┌─────────────┐       ┌──────────────┐
 │  projects   │──────▶│    codes     │
 └──────┬──────┘  N:M  └──────┬───────┘
-       │                      │ 1:N
-       │ 1:N                  ▼
-       ▼               ┌──────────────┐
-┌──────────────┐       │   sections   │
-│ assessments  │       └──────┬───────┘
-└──────┬───────┘              │
-       │ 1:N                  │
-       ▼                      │
-┌──────────────┐              │
-│   checks     │◀─────────────┘
-└──────┬───────┘      references
-       │              code_section_key
+       │ (via          │ 1:N
+       │  selected_    ▼
+       │  code_ids)   ┌──────────────────────┐
+       │              │      sections        │
+       │ 1:N          └──────┬───────────────┘
+       ▼                     │ (self-join parent-child)
+┌──────────────┐             │
+│ assessments  │             │ M:N (references)
+└──────┬───────┘             │      ▼
+       │ 1:N          ┌──────────────────────┐
+       ▼              │ section_references   │
+┌──────────────┐      └──────────────────────┘
+│   checks     │◀──── references section via code_section_key
+└──────┬───────┘
        │
-       ├─────────┐ 1:N (parent-child instances)
+       ├─────────┐ Self-join (parent-child instances)
        │         │
        │         ▼
        │    ┌─────────────────┐
        │    │ checks (child)  │
        │    └─────────────────┘
        │
-       ├─────────┐ N:1 (element grouping)
+       ├─────────┐ N:1
        │         ▼
-       │    ┌──────────────────┐       ┌────────────────────────┐
-       │    │ element_groups   │──────▶│ element_section_mappings│
-       │    └──────────────────┘  1:N  └────────────────────────┘
-       │
+       │    ┌──────────────────┐       ┌────────────────────────────┐
+       │    │ element_groups   │──────▶│ element_section_mappings   │
+       │    └──────────────────┘  1:N  └────────────────────────────┘
+       │                                        │
+       │                                        │ N:1
+       │                                        ▼
+       │                                  ┌──────────┐
+       │                                  │ sections │
+       │                                  └──────────┘
        │ 1:N
        ▼
-┌──────────────┐       ┌──────────────┐
-│analysis_runs │──────▶│ screenshots  │
-└──────────────┘  1:N  └──────────────┘
-                        (also N:1 to checks)
+┌──────────────┐
+│analysis_runs │
+└──────┬───────┘
+       │ 1:N (via analysis_run_id)
+       ▼
+┌──────────────┐       ┌────────────────────────────┐
+│ screenshots  │◀─────▶│screenshot_check_assignments│
+└──────────────┘  N:M  └────────────────────────────┘
+                              │
+                              │ N:1
+                              ▼
+                        ┌──────────┐
+                        │  checks  │
+                        └──────────┘
+
+┌──────────────┐       ┌──────────────────────────┐
+│ assessments  │──────▶│section_applicability_log │
+└──────────────┘  1:N  └──────────────────────────┘
+                              │
+                              │ N:1
+                              ▼
+                        ┌──────────┐
+                        │ sections │
+                        └──────────┘
 ```
 
-### Key Relationships
+## Key Patterns
 
-**Customer → Project → Assessment → Checks**
+### Check Cloning (Template & Instances)
 
-- Hierarchical workflow from customer to individual compliance checks
-- Cascade deletes: Deleting customer removes all projects, assessments, checks
-
-**Checks ↔ Sections**
-
-- `checks.code_section_key` references `sections.key`
-- Many checks can reference same section (across different assessments)
-
-**Checks → Element Groups**
-
-- Element checks (`check_type = 'element'`) link to `element_groups`
-- Element group defines which sections are assessed together
-- `element_sections` array stores the specific section keys
-
-**Checks → Analysis Runs → Screenshots**
-
-- One check can have multiple analysis runs (re-assessment)
-- One analysis run can reference multiple screenshots
-- Screenshots also directly link to checks (for manual capture)
-
-**Parent-Child Checks (Instances)**
-
-- Template check has `parent_check_id = NULL`, `instance_number = 0`
-- Instance checks have `parent_check_id` set, `instance_number >= 1`
+- **Template**: `parent_check_id = NULL`, `instance_number = 0`
+- **Instances**: `parent_check_id` set, `instance_number >= 1`
 - Instances inherit `element_sections` from parent
+- Used for multiple instances of same element (e.g., Door 1, Door 2)
 
-### Views
+### Manual Override System
 
-**`check_summary`** - Materialized view joining checks with latest analysis
+The `checks.manual_override` field allows human reviewers to override AI:
+
+- Takes precedence over any `analysis_runs` results
+- Values: 'compliant', 'non_compliant', 'not_applicable', or NULL
+- Includes timestamp (`manual_override_at`) and user tracking
+- Setting to NULL reverts to AI assessment
+
+### Screenshot Assignment
+
+Screenshots have a many-to-many relationship with checks:
+
+1. Screenshot captured and uploaded to S3
+2. Record created in `screenshots` table
+3. Assignment created in `screenshot_check_assignments` linking to check(s)
+4. `is_original = TRUE` for the check it was originally captured for
+5. Same screenshot can be reused for multiple checks
+
+### Progress Calculation
+
+Assessment progress = `assessed_sections / total_sections`
+
+A check is considered "assessed" if:
+
+- It has a `manual_override` value (excluding 'not_applicable'), OR
+- It has at least one `analysis_run` with a `compliance_status`
+
+Checks marked as `not_applicable` are excluded from the total count.
+
+## Common Queries
+
+### Get assessment with progress
 
 ```sql
-CREATE MATERIALIZED VIEW check_summary AS
+SELECT
+  a.*,
+  COUNT(c.id) FILTER (WHERE c.manual_override != 'not_applicable' OR c.manual_override IS NULL) as total_checks,
+  COUNT(c.id) FILTER (
+    WHERE (ar.compliance_status IS NOT NULL OR
+           (c.manual_override IS NOT NULL AND c.manual_override != 'not_applicable'))
+  ) as completed_checks
+FROM assessments a
+LEFT JOIN checks c ON c.assessment_id = a.id
+LEFT JOIN LATERAL (
+  SELECT compliance_status
+  FROM analysis_runs
+  WHERE check_id = c.id
+  ORDER BY run_number DESC
+  LIMIT 1
+) ar ON true
+WHERE a.id = $1
+GROUP BY a.id;
+```
+
+### Get check with latest AI analysis
+
+```sql
 SELECT
   c.*,
   ar.compliance_status as latest_status,
   ar.confidence as latest_confidence,
-  ar.ai_reasoning as latest_reasoning
+  ar.ai_reasoning
 FROM checks c
 LEFT JOIN LATERAL (
-  SELECT * FROM analysis_runs
+  SELECT *
+  FROM analysis_runs
   WHERE check_id = c.id
   ORDER BY run_number DESC
   LIMIT 1
-) ar ON true;
+) ar ON true
+WHERE c.id = $1;
 ```
 
-**`latest_analysis_runs`** - View of most recent analysis per check
+### Get screenshots for a check
 
 ```sql
-CREATE VIEW latest_analysis_runs AS
-SELECT DISTINCT ON (check_id) *
-FROM analysis_runs
-ORDER BY check_id, run_number DESC;
+SELECT s.*
+FROM screenshots s
+INNER JOIN screenshot_check_assignments sca ON sca.screenshot_id = s.id
+WHERE sca.check_id = $1
+ORDER BY s.created_at;
 ```
 
-## Current Data
+### Get element sections for element check
 
-**Loaded codes:**
+```sql
+SELECT s.*
+FROM sections s
+WHERE s.key = ANY(
+  SELECT unnest(element_sections)
+  FROM checks
+  WHERE id = $1
+)
+ORDER BY s.number;
+```
 
-- California Building Code 2025 - Chapters 11A & 11B Accessibility
-  - 682 sections/subsections
-  - 343 cross-references
+## Data Loading
 
-**Element Groups:**
+Use the upload script to load code data:
 
-- Doors, Ramps, Parking Spaces, Accessible Routes, Restrooms, etc.
-- Each mapped to 5-20 related code sections
+```bash
+python scripts/load_db/unified_code_upload_supabase.py --file path/to/code.json
+```
 
-**Assessment Stats (example):**
+For element-section mappings:
 
-- Average assessment: 80-120 checks (after AI filtering)
-- Section mode: 1 check per section
-- Element mode: 6-8 element groups with 1-5 instances each
+```bash
+python scripts/tag_element_sections.py
+```

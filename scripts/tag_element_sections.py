@@ -24,7 +24,7 @@ from supabase import create_client, Client
 # Config
 # ---------------------------
 
-USE_LLM_SWEEP = False  # flip to False to disable Stage B LLM sweep; requires OPENAI_API_KEY
+USE_LLM_SWEEP = True  # flip to False to disable Stage B LLM sweep; requires OPENAI_API_KEY
 
 # Anchors by section number prefix (strongest rules).
 # We treat any clause whose `number` begins with one of these prefixes as in scope.
