@@ -182,32 +182,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         `[Assess] Queuing batch ${batchNum}/${batches.length} for check ${checkId}, jobId ${jobId}`
       );
 
-      await kv.hset(`job:${jobId}`, {
-        id: jobId,
-        type: 'batch_analysis',
-        payload: JSON.stringify({
-          checkId,
-          batch,
-          batchNum,
-          totalBatches: batches.length,
-          batchGroupId,
-          runNumber: runNumber + batchIndex,
-          screenshotUrls,
-          screenshots,
-          check,
-          buildingContext,
-          customPrompt,
-          extraContext,
-          provider,
-          modelName,
-        }),
-        status: 'pending',
-        attempts: 0,
-        maxAttempts: 3,
-        createdAt: Date.now(),
-      });
-      await kv.lpush('queue:analysis', jobId);
-      console.log(`[Assess] Queued job ${jobId} to queue:analysis`);
+      try {
+        await kv.hset(`job:${jobId}`, {
+          id: jobId,
+          type: 'batch_analysis',
+          payload: JSON.stringify({
+            checkId,
+            batch,
+            batchNum,
+            totalBatches: batches.length,
+            batchGroupId,
+            runNumber: runNumber + batchIndex,
+            screenshotUrls,
+            screenshots,
+            check,
+            buildingContext,
+            customPrompt,
+            extraContext,
+            provider,
+            modelName,
+          }),
+          status: 'pending',
+          attempts: 0,
+          maxAttempts: 3,
+          createdAt: Date.now(),
+        });
+        const queueLength = await kv.lpush('queue:analysis', jobId);
+        console.log(`[Assess] Queued job ${jobId} to queue:analysis, queue length: ${queueLength}`);
+      } catch (error) {
+        console.error(`[Assess] FAILED to queue job ${jobId}:`, error);
+        throw error;
+      }
     }
 
     console.log(
@@ -223,9 +228,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? `https://${process.env.VERCEL_URL}`
       : process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
 
+    console.log(`[Assess] Triggering queue processor at ${baseUrl}/api/queue/process`);
+
     fetch(`${baseUrl}/api/queue/process`, {
       method: 'GET',
-    }).catch(err => console.error('Failed to trigger queue processing:', err));
+    })
+      .then(res => {
+        console.log(`[Assess] Queue trigger response: ${res.status}`);
+        return res.text();
+      })
+      .then(body => console.log(`[Assess] Queue trigger body:`, body))
+      .catch(err => console.error('[Assess] Failed to trigger queue processing:', err));
 
     // Return immediately - all batches are queued
     return NextResponse.json({
