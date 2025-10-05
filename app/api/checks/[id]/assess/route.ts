@@ -218,7 +218,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await supabase.from('checks').update({ status: 'processing' }).eq('id', checkId);
 
     // Immediately trigger queue processing (non-blocking)
-    fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/queue/process`, {
+    // Use VERCEL_URL in production/preview, or construct from request
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
+
+    fetch(`${baseUrl}/api/queue/process`, {
       method: 'GET',
     }).catch(err => console.error('Failed to trigger queue processing:', err));
 
