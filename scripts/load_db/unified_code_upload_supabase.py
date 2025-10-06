@@ -357,8 +357,21 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
                 provider, version, jurisdiction, source_id, subsection_number
             )
 
-            # Parent key is the section key
-            parent_key = section_key
+            # Determine parent key based on subsection depth
+            # For multi-level subsections like 11B-216.5.3.1, parent should be 11B-216.5.3
+            # For single-level subsections like 11B-216.5, parent should be 11B-216 (the section)
+            parts = subsection_number.split('.')
+            if len(parts) > 2:
+                # Multi-level subsection (e.g., 11B-216.5.3.1)
+                # Parent is everything except the last part
+                parent_number = '.'.join(parts[:-1])
+                parent_key = section_key_func(
+                    provider, version, jurisdiction, source_id, parent_number
+                )
+            else:
+                # Single-level subsection (e.g., 11B-216.5)
+                # Parent is the section
+                parent_key = section_key
 
             all_items.append(
                 {
