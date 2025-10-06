@@ -1,7 +1,7 @@
 'use client';
 
-import { Document, Page, pdfjs } from 'react-pdf';
-import { useCallback, useEffect, useRef, useReducer, useState } from 'react';
+import { pdfjs } from 'react-pdf';
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { ViolationMarker as ViolationMarkerType } from '@/lib/reports/get-violations';
 import { ViolationMarker } from '../reports/ViolationMarker';
 
@@ -10,8 +10,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 10;
+const MAX_CANVAS_SIDE = 8192;
+const MAX_CANVAS_PIXELS = 140_000_000;
+const TRANSFORM_SAVE_DEBOUNCE_MS = 500;
 
-// Consolidated viewer state
 interface ViewerState {
   transform: { tx: number; ty: number; scale: number };
   pageNumber: number;
@@ -32,7 +34,7 @@ type ViewerAction =
   | { type: 'SET_TRANSFORM'; payload: ViewerState['transform'] }
   | { type: 'SET_PAGE'; payload: number }
   | { type: 'SET_NUM_PAGES'; payload: number }
-  | { type: 'START_DRAG'; payload: { x: number; y: number } }
+  | { type: 'START_DRAG' }
   | { type: 'END_DRAG' }
   | { type: 'TOGGLE_SCREENSHOT_MODE' }
   | { type: 'START_SELECTION'; payload: { x: number; y: number } }
@@ -110,35 +112,35 @@ export function PDFViewer({
   onPageChange?: (page: number) => void;
 }) {
   const assessmentId = propAssessmentId || activeCheck?.assessment_id;
+
   const viewportRef = useRef<HTMLDivElement>(null);
   const pageContainerRef = useRef<HTMLDivElement>(null);
-  const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<any>(null);
+  const dragRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+  const transformSaveTimer = useRef<number | null>(null);
+  const capturingRef = useRef(false);
 
-  // Load saved page number from localStorage
-  const getSavedPageNumber = useCallback(() => {
-    if (typeof window === 'undefined' || !assessmentId) return 1;
-    const saved = localStorage.getItem(`pdf-page-${assessmentId}`);
-    return saved ? parseInt(saved, 10) : 1;
-  }, [assessmentId]);
-
-  // Load saved transform from localStorage
-  const getSavedTransform = useCallback(() => {
-    if (typeof window === 'undefined' || !assessmentId) return { tx: 0, ty: 0, scale: 1 };
-    const saved = localStorage.getItem(`pdf-transform-${assessmentId}`);
-    if (saved) {
+  const getSaved = useCallback(
+    <T,>(key: string, fallback: T, parser: (s: string) => T) => {
+      if (typeof window === 'undefined' || !assessmentId) return fallback;
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
       try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse saved transform:', e);
+        return parser(raw);
+      } catch {
+        return fallback;
       }
-    }
-    return { tx: 0, ty: 0, scale: 1 };
-  }, [assessmentId]);
+    },
+    [assessmentId]
+  );
 
-  // Consolidated state management
+  // Initial state from storage
   const [state, dispatch] = useReducer(viewerReducer, {
-    transform: getSavedTransform(),
-    pageNumber: getSavedPageNumber(),
+    transform: getSaved(`pdf-transform-${assessmentId}`, { tx: 0, ty: 0, scale: 1 }, s =>
+      JSON.parse(s)
+    ),
+    pageNumber: getSaved(`pdf-page-${assessmentId}`, 1, s => parseInt(s, 10) || 1),
     numPages: 0,
     isDragging: false,
     screenshotMode: false,
@@ -146,192 +148,406 @@ export function PDFViewer({
     selection: null,
   });
 
-  const [pdfInstance, setPdfInstance] = useState<any>(null);
-  const [pageInstance, setPageInstance] = useState<any>(null);
+  // Core PDF state
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
-  const [renderScale, setRenderScale] = useState(2.0); // Safe default that won't exceed canvas limits
-  const [savingScale, setSavingScale] = useState(false);
-  const [cappedRenderScale, setCappedRenderScale] = useState(2.0); // Actually safe scale to use
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [page, setPage] = useState<any>(null);
+  const [ocConfig, setOcConfig] = useState<any>(null);
+
+  // UI state
   const [layers, setLayers] = useState<PDFLayer[]>([]);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [optionalContentConfig, setOptionalContentConfig] = useState<any>(null);
-  const [layerVersion, setLayerVersion] = useState(0);
-  const capturingRef = useRef(false); // Prevent concurrent captures
-  const layerCanvasRef = useRef<HTMLCanvasElement>(null);
-  const renderTaskRef = useRef<any>(null); // Track active render task
+  const [renderScale, setRenderScale] = useState(2);
+  const [savingScale, setSavingScale] = useState(false);
 
-  // Log render scale changes
-  useEffect(() => {
-    console.log('PDFViewer: Render scale changed to', renderScale);
-  }, [renderScale]);
+  const dpr = typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1;
 
-  // Sync external page number with internal state
+  // External page control → internal
   useEffect(() => {
     if (externalCurrentPage && externalCurrentPage !== state.pageNumber) {
       dispatch({ type: 'SET_PAGE', payload: externalCurrentPage });
     }
-  }, [externalCurrentPage]);
+  }, [externalCurrentPage, state.pageNumber]);
 
-  // Notify parent of page changes and save to localStorage
+  // Notify parent + persist page number
   useEffect(() => {
-    if (onPageChange) {
-      onPageChange(state.pageNumber);
-    }
-    // Save current page to localStorage
+    onPageChange?.(state.pageNumber);
     if (assessmentId && typeof window !== 'undefined') {
-      localStorage.setItem(`pdf-page-${assessmentId}`, state.pageNumber.toString());
-      console.log('PDFViewer: Saved page number to localStorage:', state.pageNumber);
+      localStorage.setItem(`pdf-page-${assessmentId}`, String(state.pageNumber));
     }
   }, [state.pageNumber, onPageChange, assessmentId]);
 
-  // Save transform to localStorage when it changes
+  // Debounced transform persistence
   useEffect(() => {
-    if (assessmentId && typeof window !== 'undefined') {
-      localStorage.setItem(`pdf-transform-${assessmentId}`, JSON.stringify(state.transform));
-      console.log('PDFViewer: Saved transform to localStorage:', state.transform);
+    if (!assessmentId || typeof window === 'undefined') return;
+    if (transformSaveTimer.current) {
+      window.clearTimeout(transformSaveTimer.current);
     }
+    transformSaveTimer.current = window.setTimeout(() => {
+      localStorage.setItem(`pdf-transform-${assessmentId}`, JSON.stringify(state.transform));
+      transformSaveTimer.current = null;
+    }, TRANSFORM_SAVE_DEBOUNCE_MS);
+    return () => {
+      if (transformSaveTimer.current) {
+        window.clearTimeout(transformSaveTimer.current);
+        transformSaveTimer.current = null;
+      }
+    };
   }, [state.transform, assessmentId]);
 
-  // Save layer visibility to localStorage when it changes
+  // Persist layer visibility
   useEffect(() => {
-    if (assessmentId && typeof window !== 'undefined' && layers.length > 0) {
-      const visibilityMap: Record<string, boolean> = {};
-      layers.forEach(layer => {
-        visibilityMap[layer.id] = layer.visible;
-      });
-      localStorage.setItem(`pdf-layers-${assessmentId}`, JSON.stringify(visibilityMap));
-      console.log('PDFViewer: Saved layer visibility to localStorage:', visibilityMap);
-    }
+    if (!assessmentId || typeof window === 'undefined' || layers.length === 0) return;
+    const map: Record<string, boolean> = {};
+    for (const l of layers) map[l.id] = l.visible;
+    localStorage.setItem(`pdf-layers-${assessmentId}`, JSON.stringify(map));
   }, [layers, assessmentId]);
 
-  // Fetch presigned URL for private S3 PDFs and load saved scale preference
+  // Fetch presigned URL and saved render scale
   useEffect(() => {
-    async function fetchPresignedUrl() {
-      console.log('PDFViewer: Fetching presigned URL for', pdfUrl);
+    let cancelled = false;
+    (async () => {
       setLoadingUrl(true);
-      const res = await fetch('/api/pdf/presign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pdfUrl }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        console.log('PDFViewer: Presigned URL obtained');
-        setPresignedUrl(data.url);
-      } else {
-        console.error('PDFViewer: Failed to get presigned URL', res.status);
-        setPresignedUrl(null);
+      try {
+        const presign = await fetch('/api/pdf/presign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdfUrl }),
+        });
+        if (!presign.ok) throw new Error(`presign ${presign.status}`);
+        const { url } = await presign.json();
+        if (!cancelled) setPresignedUrl(url);
+      } catch {
+        if (!cancelled) setPresignedUrl(null);
+      } finally {
+        if (!cancelled) setLoadingUrl(false);
       }
-      setLoadingUrl(false);
-    }
 
-    async function loadSavedScale() {
       if (!assessmentId || readOnly) return;
       try {
         const res = await fetch(`/api/assessments/${assessmentId}/pdf-scale`);
         if (res.ok) {
           const data = await res.json();
-          if (data.pdf_scale) {
-            console.log('PDFViewer: Loading saved scale', data.pdf_scale);
-            setRenderScale(data.pdf_scale);
-          } else {
-            console.log('PDFViewer: No saved scale, using default', 2.0);
-          }
+          if (data?.pdf_scale) setRenderScale(data.pdf_scale);
         }
-      } catch (err) {
-        console.error('Failed to load saved PDF scale:', err);
+      } catch {
+        // ignore
       }
-    }
-
-    fetchPresignedUrl();
-    loadSavedScale();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [pdfUrl, assessmentId, readOnly]);
 
-  const onDocLoad = async (pdfProxy: any) => {
-    console.log('[PDFViewer] Document loaded successfully', {
-      numPages: pdfProxy.numPages,
-      renderScale,
-    });
-    dispatch({ type: 'SET_NUM_PAGES', payload: pdfProxy.numPages });
-
-    // NOTE: We don't extract layers from pdfProxy because its optionalContentConfig
-    // doesn't support setVisibility() mutations. We'll extract from pdfInstance instead.
-  };
-
-  const onDocError = (error: Error) => {
-    console.error('PDFViewer: Document loading error:', error);
-  };
-
-  // Native wheel handler for reliable zoom (prevents page scroll)
+  // Load PDF document via pdfjs directly
   useEffect(() => {
-    const vp = viewportRef.current;
-    if (!vp) return;
+    if (!presignedUrl) return;
+    let cancelled = false;
+    (async () => {
+      const loadingTask = pdfjs.getDocument(presignedUrl);
+      try {
+        const doc = await loadingTask.promise;
+        if (cancelled) return;
+        setPdfDoc(doc);
+        setPage(null);
+        setOcConfig(null);
+        setLayers([]);
+        dispatch({ type: 'SET_NUM_PAGES', payload: doc.numPages });
+      } catch {
+        if (!cancelled) setPdfDoc(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [presignedUrl]);
 
+  // Load current page proxy
+  useEffect(() => {
+    if (!pdfDoc) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = await pdfDoc.getPage(state.pageNumber);
+        if (cancelled) return;
+        setPage(p);
+      } catch {
+        if (!cancelled) setPage(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfDoc, state.pageNumber]);
+
+  // Extract optional content config and layers, restore visibility before first paint
+  useEffect(() => {
+    if (!pdfDoc) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await pdfDoc.getOptionalContentConfig();
+        if (cancelled) return;
+
+        // No OCGs: still render through our canvas path
+        if (!cfg) {
+          setOcConfig(null);
+          setLayers([]);
+          return;
+        }
+
+        // Build layer list
+        const order = cfg.getOrder?.() || [];
+        const initialLayers: PDFLayer[] = [];
+        for (const id of order) {
+          const group = cfg.getGroup?.(id);
+          initialLayers.push({
+            id: String(id),
+            name: group?.name || `Layer ${id}`,
+            visible: cfg.isVisible?.(id),
+          });
+        }
+
+        // Restore saved visibility (if any)
+        if (assessmentId && typeof window !== 'undefined') {
+          const raw = localStorage.getItem(`pdf-layers-${assessmentId}`);
+          if (raw) {
+            try {
+              const saved = JSON.parse(raw) as Record<string, boolean>;
+              for (const layer of initialLayers) {
+                if (Object.prototype.hasOwnProperty.call(saved, layer.id)) {
+                  layer.visible = !!saved[layer.id];
+                  try {
+                    cfg.setVisibility?.(layer.id, layer.visible);
+                  } catch {
+                    // ignore per-id errors
+                  }
+                }
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
+
+        setOcConfig(cfg);
+        setLayers(initialLayers);
+      } catch {
+        // No layers or error: fall back to default render via our canvas
+        setOcConfig(null);
+        setLayers([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfDoc, assessmentId]);
+
+  // DPR-aware safe scale selection
+  const pickRenderScale = useCallback((p: any, desired: number, devicePixelRatio: number) => {
+    const base = p.getViewport({ scale: 1 });
+    const bySide = Math.min(
+      MAX_CANVAS_SIDE / (base.width * devicePixelRatio),
+      MAX_CANVAS_SIDE / (base.height * devicePixelRatio)
+    );
+    const byPixels = Math.sqrt(
+      MAX_CANVAS_PIXELS / (base.width * base.height * devicePixelRatio * devicePixelRatio)
+    );
+    const cap = Math.max(1, Math.min(bySide, byPixels));
+    return Math.min(desired, cap);
+  }, []);
+
+  // Core render function (single path)
+  const renderPage = useCallback(
+    async (why: string) => {
+      const c = canvasRef.current;
+      if (!c || !page) return;
+
+      // Cancel any in-flight render
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {
+          // ignore
+        }
+        renderTaskRef.current = null;
+      }
+
+      const scale = pickRenderScale(page, renderScale, dpr);
+
+      const viewport = page.getViewport({ scale });
+      // Device-pixel sized backing store with CSS sized element
+      const widthCSS = Math.ceil(viewport.width);
+      const heightCSS = Math.ceil(viewport.height);
+      c.style.width = `${widthCSS}px`;
+      c.style.height = `${heightCSS}px`;
+      c.width = Math.ceil(widthCSS * dpr);
+      c.height = Math.ceil(heightCSS * dpr);
+
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+
+      // White background to avoid transparency over gray app background
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.restore();
+
+      // Paint with DPR transform so PDF.js draws crisp pixels
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Ensure ocConfig reflects our current layer state
+      if (ocConfig && layers.length > 0) {
+        for (const layer of layers) {
+          try {
+            ocConfig.setVisibility?.(layer.id, layer.visible);
+          } catch {
+            // ignore per-layer failure and keep going
+          }
+        }
+      }
+
+      const task = page.render({
+        canvasContext: ctx,
+        viewport,
+        optionalContentConfigPromise: Promise.resolve(ocConfig || undefined),
+      });
+      renderTaskRef.current = task;
+
+      try {
+        await task.promise;
+      } catch (err: any) {
+        if (err?.name !== 'RenderingCancelledException') {
+          console.error('[PDFViewer] render error:', err, 'why:', why);
+        }
+      } finally {
+        if (renderTaskRef.current === task) renderTaskRef.current = null;
+      }
+    },
+    [page, renderScale, dpr, ocConfig, layers, pickRenderScale]
+  );
+
+  // Kick renders when inputs change
+  useEffect(() => {
+    if (page) renderPage('initial/changed deps');
+  }, [page, renderScale, layers, ocConfig, dpr, renderPage]);
+
+  // Wheel zoom centred at pointer
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (state.screenshotMode) return;
-
       e.preventDefault();
-      e.stopPropagation();
-
-      const scaleSpeed = 0.003;
-      const scaleDelta = -e.deltaY * scaleSpeed;
       const prev = state.transform;
-      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 + scaleDelta)));
+      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 - e.deltaY * 0.003)));
 
-      const rect = vp.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
 
       const cx = (sx - prev.tx) / prev.scale;
       const cy = (sy - prev.ty) / prev.scale;
 
-      const tx = sx - cx * newScale;
-      const ty = sy - cy * newScale;
-
-      dispatch({ type: 'SET_TRANSFORM', payload: { tx, ty, scale: newScale } });
+      const tx = sx - cx * next;
+      const ty = sy - cy * next;
+      dispatch({ type: 'SET_TRANSFORM', payload: { tx, ty, scale: next } });
     };
+    el.addEventListener('wheel', onWheel, { passive: false });
 
-    // Non-passive is the whole point
-    vp.addEventListener('wheel', onWheel, { passive: false });
-
-    // Safari pinch zoom emits gesture*; cancel it so it doesn't zoom the page
-    const cancel = (e: Event) => e.preventDefault();
-    vp.addEventListener('gesturestart', cancel as EventListener, { passive: false });
-    vp.addEventListener('gesturechange', cancel as EventListener, { passive: false });
-    vp.addEventListener('gestureend', cancel as EventListener, { passive: false });
+    const cancel = (ev: Event) => ev.preventDefault();
+    el.addEventListener('gesturestart', cancel as EventListener, { passive: false });
+    el.addEventListener('gesturechange', cancel as EventListener, { passive: false });
+    el.addEventListener('gestureend', cancel as EventListener, { passive: false });
 
     return () => {
-      vp.removeEventListener('wheel', onWheel as EventListener);
-      vp.removeEventListener('gesturestart', cancel as EventListener);
-      vp.removeEventListener('gesturechange', cancel as EventListener);
-      vp.removeEventListener('gestureend', cancel as EventListener);
+      el.removeEventListener('wheel', onWheel as EventListener);
+      el.removeEventListener('gesturestart', cancel as EventListener);
+      el.removeEventListener('gesturechange', cancel as EventListener);
+      el.removeEventListener('gestureend', cancel as EventListener);
     };
   }, [state.screenshotMode, state.transform]);
 
+  // Toolbar zoom buttons
+  const zoom = useCallback(
+    (dir: 'in' | 'out') => {
+      const factor = dir === 'in' ? 1.2 : 1 / 1.2;
+      const prev = state.transform;
+      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
+      const el = viewportRef.current;
+      if (!el) {
+        dispatch({ type: 'SET_TRANSFORM', payload: { ...prev, scale: next } });
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const sx = rect.width / 2;
+      const sy = rect.height / 2;
+      const cx = (sx - prev.tx) / prev.scale;
+      const cy = (sy - prev.ty) / prev.scale;
+      const tx = sx - cx * next;
+      const ty = sy - cy * next;
+      dispatch({ type: 'SET_TRANSFORM', payload: { tx, ty, scale: next } });
+    },
+    [state.transform]
+  );
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (state.screenshotMode && state.selection && !e.repeat) {
+        const k = e.key.toLowerCase();
+        if (k === 'c') {
+          e.preventDefault();
+          capture('current');
+          return;
+        }
+        if (k === 'b') {
+          e.preventDefault();
+          capture('bathroom');
+          return;
+        }
+        if (k === 'd') {
+          e.preventDefault();
+          capture('door');
+          return;
+        }
+        if (k === 'k') {
+          e.preventDefault();
+          capture('kitchen');
+          return;
+        }
+      }
+
+      if (e.key === 'ArrowLeft')
+        dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) });
+      if (e.key === 'ArrowRight')
+        dispatch({
+          type: 'SET_PAGE',
+          payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
+        });
+      if (e.key === '-' || e.key === '_') zoom('out');
+      if (e.key === '=' || e.key === '+') zoom('in');
+      if (e.key === '0') dispatch({ type: 'RESET_ZOOM' });
+      if (!readOnly && e.key.toLowerCase() === 's') dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
+      if (!readOnly && e.key === 'Escape' && state.screenshotMode)
+        dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
+    };
+    el.addEventListener('keydown', onKey);
+    return () => el.removeEventListener('keydown', onKey);
+  }, [state.screenshotMode, state.selection, state.numPages, state.pageNumber, readOnly, zoom]);
+
+  // Mouse handlers for pan / selection
   const screenToContent = useCallback(
     (clientX: number, clientY: number) => {
-      if (!pageContainerRef.current || !viewportRef.current) return { x: 0, y: 0 };
-
-      const viewportRect = viewportRef.current.getBoundingClientRect();
-
-      // Account for the transform's translation when converting to content coordinates
-      const x = (clientX - viewportRect.left - state.transform.tx) / state.transform.scale;
-      const y = (clientY - viewportRect.top - state.transform.ty) / state.transform.scale;
-
-      console.log('screenToContent:', {
-        clientX,
-        clientY,
-        viewportLeft: viewportRect.left,
-        viewportTop: viewportRect.top,
-        tx: state.transform.tx,
-        ty: state.transform.ty,
-        scale: state.transform.scale,
-        contentX: x,
-        contentY: y,
-      });
-
+      if (!viewportRef.current) return { x: 0, y: 0 };
+      const r = viewportRef.current.getBoundingClientRect();
+      const x = (clientX - r.left - state.transform.tx) / state.transform.scale;
+      const y = (clientY - r.top - state.transform.ty) / state.transform.scale;
       return { x, y };
     },
     [state.transform]
@@ -346,8 +562,8 @@ export function PDFViewer({
       return;
     }
     if (e.button !== 0) return;
-    dispatch({ type: 'START_DRAG', payload: { x: e.clientX, y: e.clientY } });
-    dragStart.current = {
+    dispatch({ type: 'START_DRAG' });
+    dragRef.current = {
       x: e.clientX,
       y: e.clientY,
       tx: state.transform.tx,
@@ -366,690 +582,240 @@ export function PDFViewer({
       return;
     }
     if (!state.isDragging) return;
-    const dx = e.clientX - dragStart.current.x;
-    const dy = e.clientY - dragStart.current.y;
+    const dx = e.clientX - dragRef.current.x;
+    const dy = e.clientY - dragRef.current.y;
     dispatch({
       type: 'SET_TRANSFORM',
-      payload: {
-        ...state.transform,
-        tx: dragStart.current.tx + dx,
-        ty: dragStart.current.ty + dy,
-      },
+      payload: { ...state.transform, tx: dragRef.current.tx + dx, ty: dragRef.current.ty + dy },
     });
   };
 
-  const onMouseUp = (e: React.MouseEvent) => {
-    if (state.screenshotMode && state.selection) {
-      e.preventDefault();
-      e.stopPropagation();
-      dispatch({ type: 'END_SELECTION' });
-    }
+  const onMouseUp = () => {
+    if (state.screenshotMode && state.selection) dispatch({ type: 'END_SELECTION' });
     dispatch({ type: 'END_DRAG' });
   };
 
-  const zoom = (dir: 'in' | 'out') => {
-    const factor = dir === 'in' ? 1.2 : 1 / 1.2;
-    const prev = state.transform;
-    const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
-
-    console.log('PDFViewer: Button zoom', {
-      direction: dir,
-      prevScale: prev.scale,
-      newScale,
-      factor,
-    });
-
-    // Zoom toward center
-    const vp = viewportRef.current;
-    if (!vp) {
-      dispatch({ type: 'SET_TRANSFORM', payload: { ...prev, scale: newScale } });
-      return;
-    }
-
-    const rect = vp.getBoundingClientRect();
-    const sx = rect.width / 2;
-    const sy = rect.height / 2;
-    const cx = (sx - prev.tx) / prev.scale;
-    const cy = (sy - prev.ty) / prev.scale;
-    const tx = sx - cx * newScale;
-    const ty = sy - cy * newScale;
-
-    dispatch({ type: 'SET_TRANSFORM', payload: { tx, ty, scale: newScale } });
-  };
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const onKey = (e: KeyboardEvent) => {
-      // Screenshot mode shortcuts (when selection is active)
-      if (state.screenshotMode && state.selection && !e.repeat) {
-        const key = e.key.toLowerCase();
-        if (key === 'c') {
-          e.preventDefault();
-          capture('current');
-          return;
-        }
-        if (key === 'b') {
-          e.preventDefault();
-          console.log('[PDFViewer] b key pressed, calling capture(bathroom)');
-          capture('bathroom');
-          return;
-        }
-        if (key === 'd') {
-          e.preventDefault();
-          console.log('[PDFViewer] d key pressed, calling capture(door)');
-          capture('door');
-          return;
-        }
-        if (key === 'k') {
-          e.preventDefault();
-          console.log('[PDFViewer] k key pressed, calling capture(kitchen)');
-          capture('kitchen');
-          return;
-        }
-      }
-
-      // Navigation shortcuts
-      if (e.key === 'ArrowLeft')
-        dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) });
-      if (e.key === 'ArrowRight')
-        dispatch({
-          type: 'SET_PAGE',
-          payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
+  // User-facing controls
+  const updateRenderScale = useCallback(
+    async (newScale: number) => {
+      setRenderScale(newScale);
+      if (!assessmentId) return;
+      setSavingScale(true);
+      try {
+        await fetch(`/api/assessments/${assessmentId}/pdf-scale`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdf_scale: newScale }),
         });
-      if (e.key === '-' || e.key === '_') zoom('out');
-      if (e.key === '=' || e.key === '+') zoom('in');
-      if (e.key === '0') dispatch({ type: 'RESET_ZOOM' });
-      if (!readOnly && e.key.toLowerCase() === 's') dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
-      if (!readOnly && e.key === 'Escape' && state.screenshotMode)
-        dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
-    };
-    el.addEventListener('keydown', onKey);
-    return () => el.removeEventListener('keydown', onKey);
-  }, [state.screenshotMode, state.selection, state.numPages, state.pageNumber, readOnly]);
-
-  // Clear selection on page change happens in reducer via SET_PAGE action
-
-  // Advanced: access raw pdf via pdfjs for cropping
-  useEffect(() => {
-    if (!presignedUrl) return;
-    (async () => {
-      console.log('[PDFViewer] Loading PDF instance from presigned URL...');
-      const loadingTask = pdfjs.getDocument(presignedUrl);
-      const pdf = await loadingTask.promise;
-      console.log('[PDFViewer] PDF instance loaded, setting state');
-      setPdfInstance(pdf);
-    })();
-  }, [presignedUrl]);
-
-  // Extract PDF layers from pdfInstance (not pdfProxy)
-  // pdfInstance uses raw pdfjs which has a mutable optionalContentConfig
-  useEffect(() => {
-    if (!pdfInstance) {
-      console.log('[PDFViewer] No pdfInstance yet, skipping layer extraction');
-      return;
-    }
-    (async () => {
-      try {
-        console.log('[PDFViewer] Extracting layers from pdfInstance...');
-        const ocConfig = await pdfInstance.getOptionalContentConfig();
-        console.log('[PDFViewer] Got optionalContentConfig from pdfInstance:', ocConfig);
-
-        if (!ocConfig) {
-          console.log('[PDFViewer] No optionalContentConfig found');
-          setLayers([]);
-          return;
-        }
-
-        setOptionalContentConfig(ocConfig);
-
-        const order = ocConfig.getOrder();
-        console.log('[PDFViewer] Layer order:', order);
-
-        if (!order || order.length === 0) {
-          setLayers([]);
-          return;
-        }
-
-        const layerList: PDFLayer[] = [];
-        for (const id of order) {
-          try {
-            const group = ocConfig.getGroup(id);
-            console.log('[PDFViewer] Group', id, ':', group);
-            layerList.push({
-              id: id,
-              name: group?.name || `Layer ${id}`,
-              visible: ocConfig.isVisible(id),
-            });
-          } catch (err) {
-            console.error('[PDFViewer] Error getting group', id, err);
-          }
-        }
-
-        console.log('[PDFViewer] Extracted layers:', layerList);
-
-        // Restore saved layer visibility from localStorage
-        if (assessmentId && typeof window !== 'undefined') {
-          const savedVisibility = localStorage.getItem(`pdf-layers-${assessmentId}`);
-          if (savedVisibility) {
-            try {
-              const visibilityMap = JSON.parse(savedVisibility);
-              console.log('[PDFViewer] Restoring saved layer visibility:', visibilityMap);
-
-              // Apply saved visibility to layers and optionalContentConfig
-              layerList.forEach(layer => {
-                if (layer.id in visibilityMap) {
-                  layer.visible = visibilityMap[layer.id];
-                  try {
-                    ocConfig.setVisibility(layer.id, layer.visible);
-                  } catch (err) {
-                    console.error('[PDFViewer] Error setting layer visibility:', err);
-                  }
-                }
-              });
-            } catch (e) {
-              console.error('[PDFViewer] Failed to parse saved layer visibility:', e);
-            }
-          }
-        }
-
-        setLayers(layerList);
-      } catch (err) {
-        console.error('[PDFViewer] Failed to extract PDF layers:', err);
-        setLayers([]);
+      } catch {
+        // ignore
+      } finally {
+        setSavingScale(false);
       }
-    })();
-  }, [pdfInstance]);
+    },
+    [assessmentId]
+  );
 
-  useEffect(() => {
-    // Cancel any active layer render when page changes
-    if (renderTaskRef.current) {
-      console.log('PDFViewer: Cancelling active render task due to page change');
-      renderTaskRef.current.cancel();
-      renderTaskRef.current = null;
-    }
-
-    (async () => {
-      if (!pdfInstance) return;
-      console.log('PDFViewer: Loading page', state.pageNumber);
-      const p = await pdfInstance.getPage(state.pageNumber);
-      console.log('PDFViewer: Page loaded', state.pageNumber);
-
-      // Calculate safe render scale that won't exceed canvas limits
-      const base = p.getViewport({ scale: 1 });
-      const maxSide = 8192;
-      const maxPixels = 140_000_000;
-
-      const bySide = Math.min(maxSide / base.width, maxSide / base.height);
-      const byPixels = Math.sqrt(maxPixels / (base.width * base.height));
-      const cap = Math.max(1, Math.min(bySide, byPixels));
-      const safeScale = Math.min(renderScale, cap);
-
-      console.log('PDFViewer: Render dimensions check', {
-        baseWidth: base.width,
-        baseHeight: base.height,
-        requestedScale: renderScale,
-        cappedScale: safeScale,
-        finalWidth: base.width * safeScale,
-        finalHeight: base.height * safeScale,
-        wasCapped: renderScale > cap,
+  const toggleLayer = useCallback(
+    async (layerId: string) => {
+      if (!page) return;
+      setLayers(prev => {
+        const next = prev.map(l => (l.id === layerId ? { ...l, visible: !l.visible } : l));
+        // render immediately with new visibility; ocConfig is mutated in renderPage()
+        renderPage('toggleLayer');
+        return next;
       });
+    },
+    [page, renderPage]
+  );
 
-      setCappedRenderScale(safeScale);
-      setPageInstance(p);
-
-      // Re-render layer canvas if layers are toggled
-      if (layerVersion > 0 && layerCanvasRef.current && optionalContentConfig) {
-        console.log('PDFViewer: Re-rendering layer canvas for new page');
-        renderLayerCanvas(p, safeScale, layers);
-      }
-    })();
-  }, [pdfInstance, state.pageNumber, renderScale, layers, layerVersion, optionalContentConfig]);
-
-  const renderLayerCanvas = async (page: any, scale: number, layerStates: PDFLayer[]) => {
-    if (!layerCanvasRef.current || !optionalContentConfig) return;
-
-    const canvas = layerCanvasRef.current;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-
-    // Cancel any existing render
-    if (renderTaskRef.current) {
-      renderTaskRef.current.cancel();
-      renderTaskRef.current = null;
-    }
-
-    const viewport = page.getViewport({ scale });
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    // Set white background
-    context.fillStyle = 'white';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Set visibility for all layers based on provided layer states
-    for (const layer of layerStates) {
-      try {
-        optionalContentConfig.setVisibility(layer.id, layer.visible);
-      } catch (err) {
-        console.error(`Failed to set layer ${layer.name}:`, err);
-      }
-    }
-
-    // Render
-    renderTaskRef.current = page.render({
-      canvasContext: context,
-      viewport: viewport,
-      optionalContentConfigPromise: Promise.resolve(optionalContentConfig),
-    });
-
-    try {
-      await renderTaskRef.current.promise;
-    } catch (err: any) {
-      if (err?.name !== 'RenderingCancelledException') {
-        console.error('Layer canvas render error:', err);
-      }
-    } finally {
-      renderTaskRef.current = null;
-    }
-  };
-
-  const pickRenderScale = (page: any, desired: number) => {
-    const base = page.getViewport({ scale: 1 });
-    const maxSide = 8192;
-    const maxPixels = 140_000_000;
-
-    const bySide = Math.min(maxSide / base.width, maxSide / base.height);
-    const byPixels = Math.sqrt(maxPixels / (base.width * base.height));
-    const cap = Math.max(1, Math.min(bySide, byPixels));
-
-    const finalScale = Math.min(desired, cap);
-
-    console.log('PDFViewer: pickRenderScale', {
-      baseWidth: base.width,
-      baseHeight: base.height,
-      desired,
-      cap,
-      finalScale,
-      wouldExceedLimit: desired > cap,
-    });
-
-    return finalScale;
-  };
-
-  const updateRenderScale = async (newScale: number) => {
-    console.log('PDFViewer: Updating render scale', {
-      oldScale: renderScale,
-      newScale,
-    });
-    setRenderScale(newScale);
-    if (!assessmentId) return;
-
-    setSavingScale(true);
-    try {
-      await fetch(`/api/assessments/${assessmentId}/pdf-scale`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pdf_scale: newScale }),
-      });
-    } catch (err) {
-      console.error('Failed to save PDF scale:', err);
-    } finally {
-      setSavingScale(false);
-    }
-  };
-
-  const toggleLayer = async (layerId: string) => {
-    if (!optionalContentConfig || !pageInstance || !layerCanvasRef.current) return;
-
-    console.log('[toggleLayer] Toggling layer', layerId);
-
-    // Calculate updated layer states
-    const updatedLayers = layers.map(layer =>
-      layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
-    );
-
-    console.log('[toggleLayer] Updated layer states:');
-    updatedLayers.forEach(layer => {
-      console.log(`  ${layer.name}: ${layer.visible}`);
-    });
-
-    // Update React state
-    setLayers(updatedLayers);
-
-    // Re-render the layer canvas with updated visibility
-    await renderLayerCanvas(pageInstance, cappedRenderScale, updatedLayers);
-
-    // Increment version for React reconciliation (UI state only)
-    setLayerVersion(prev => {
-      console.log('[toggleLayer] Incrementing layer version from', prev, 'to', prev + 1);
-      return prev + 1;
-    });
-  };
-
+  // Screenshot capture reusing DPR + ocConfig for fidelity
   const findElementTemplate = async (
     elementSlug: 'bathroom' | 'door' | 'kitchen'
   ): Promise<string | null> => {
-    // Element groups mapped to their IDs from database
     const elementGroupIds: Record<string, string> = {
       bathroom: 'f9557ba0-1cf6-41b2-a030-984cfe0c8c15',
       door: '3cf23143-d9cc-436c-885e-fa6391c20caf',
       kitchen: '709e704b-35d8-47f1-8ba0-92c22fdf3008',
     };
-
     const elementGroupId = elementGroupIds[elementSlug];
-    if (!elementGroupId) {
-      console.error(`[findElementTemplate] No element group ID for ${elementSlug}`);
-      return null;
-    }
-    if (!assessmentId) {
-      console.error(`[findElementTemplate] No assessment ID available for ${elementSlug}`);
-      return null;
-    }
-
+    if (!elementGroupId || !assessmentId) return null;
     try {
-      // Find the template check (instance_number = 0) for this element group
-      console.log(`[findElementTemplate] Fetching checks for assessment ${assessmentId}`);
       const res = await fetch(`/api/assessments/${assessmentId}/checks`);
-
-      if (!res.ok) {
-        console.error(`[findElementTemplate] API error: ${res.status} ${res.statusText}`);
-        return null;
-      }
-
+      if (!res.ok) return null;
       const checks = await res.json();
-      console.log(
-        `[findElementTemplate] Found ${checks.length} parent checks, searching for ${elementSlug} template`
-      );
-
-      // Find template check for this element group
       const template = checks.find(
         (c: any) => c.element_group_id === elementGroupId && c.instance_number === 0
       );
-
-      if (template) {
-        console.log(`[findElementTemplate] Found template for ${elementSlug}: ${template.id}`);
-      } else {
-        console.error(
-          `[findElementTemplate] No template found for ${elementSlug} (element_group_id: ${elementGroupId})`
-        );
-      }
-
       return template?.id || null;
-    } catch (error) {
-      console.error(`[findElementTemplate] Error finding ${elementSlug} template:`, error);
+    } catch {
       return null;
     }
   };
 
-  const capture = async (target: 'current' | 'bathroom' | 'door' | 'kitchen' = 'current') => {
-    try {
-      if (readOnly || !state.selection || !pageInstance) return;
+  const capture = useCallback(
+    async (target: 'current' | 'bathroom' | 'door' | 'kitchen' = 'current') => {
+      try {
+        if (readOnly || !state.selection || !page) return;
+        if (capturingRef.current) return;
+        capturingRef.current = true;
 
-      // Prevent concurrent captures
-      if (capturingRef.current) {
-        console.log('[capture] Already capturing, ignoring duplicate call');
-        return;
-      }
-      capturingRef.current = true;
+        const savedSelection = { ...state.selection };
+        dispatch({ type: 'CLEAR_SELECTION' });
 
-      // Clear selection immediately for better UX (optimistic update)
-      const savedSelection = { ...state.selection };
-      dispatch({ type: 'CLEAR_SELECTION' });
-
-      let targetCheckId = activeCheck?.id;
-
-      // If saving to new element, create instance first
-      if (target !== 'current') {
-        console.log(`[capture] Creating new instance for target: ${target}`);
-        const templateCheckId = await findElementTemplate(target);
-        if (!templateCheckId) {
-          alert(
-            `Could not find ${target} template check. Please ensure ${target}s are enabled for this assessment.`
-          );
+        let targetCheckId = activeCheck?.id;
+        if (target !== 'current') {
+          const templateId = await findElementTemplate(target);
+          if (!templateId) {
+            alert(`Could not find ${target} template check.`);
+            return;
+          }
+          const cloneRes = await fetch(`/api/checks/${templateId}/clone`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instanceLabel: undefined, copyScreenshots: false }),
+          });
+          if (!cloneRes.ok) {
+            const e = await cloneRes.json().catch(() => ({}));
+            alert(`Failed to create new ${target} instance: ${e.error || 'Unknown error'}`);
+            return;
+          }
+          const { check: newCheck } = await cloneRes.json();
+          targetCheckId = newCheck.id;
+          onCheckAdded?.(newCheck);
+          onCheckSelect?.(newCheck.id);
+        }
+        if (!targetCheckId) {
+          alert('No check selected. Please select a check first.');
           return;
         }
 
-        console.log(`[capture] Cloning template ${templateCheckId} for ${target}`);
-        // Clone the template to create new instance
-        const cloneRes = await fetch(`/api/checks/${templateCheckId}/clone`, {
+        const canvas = canvasRef.current!;
+        const cssToCanvas = canvas.width / canvas.clientWidth; // this is ≈ dpr
+        const sx = Math.min(savedSelection.startX, savedSelection.endX);
+        const sy = Math.min(savedSelection.startY, savedSelection.endY);
+        const sw = Math.abs(savedSelection.endX - savedSelection.startX);
+        const sh = Math.abs(savedSelection.endY - savedSelection.startY);
+
+        const canvasSx = Math.floor(sx * cssToCanvas);
+        const canvasSy = Math.floor(sy * cssToCanvas);
+        const canvasSw = Math.max(1, Math.ceil(sw * cssToCanvas));
+        const canvasSh = Math.max(1, Math.ceil(sh * cssToCanvas));
+
+        // High-res offscreen render with the same ocConfig, scale and DPR caps
+        const scale = pickRenderScale(page, renderScale, dpr);
+        const viewport = page.getViewport({ scale });
+        const off = document.createElement('canvas');
+        off.width = Math.ceil(viewport.width * dpr);
+        off.height = Math.ceil(viewport.height * dpr);
+        const octx = off.getContext('2d')!;
+        octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        octx.fillStyle = 'white';
+        octx.fillRect(0, 0, off.width, off.height);
+
+        await page.render({
+          canvasContext: octx,
+          viewport,
+          optionalContentConfigPromise: Promise.resolve(ocConfig || undefined),
+        }).promise;
+
+        // Map selection from on-screen canvas pixels to offscreen pixels (both include DPR)
+        const renderToDisplayedRatio = (viewport.width * dpr) / canvas.width;
+        const rx = Math.max(0, Math.floor(canvasSx * renderToDisplayedRatio));
+        const ry = Math.max(0, Math.floor(canvasSy * renderToDisplayedRatio));
+        const rw = Math.max(1, Math.ceil(canvasSw * renderToDisplayedRatio));
+        const rh = Math.max(1, Math.ceil(canvasSh * renderToDisplayedRatio));
+
+        const cx = Math.min(rx, off.width - 1);
+        const cy = Math.min(ry, off.height - 1);
+        const cw = Math.min(rw, off.width - cx);
+        const ch = Math.min(rh, off.height - cy);
+
+        const out = document.createElement('canvas');
+        out.width = cw;
+        out.height = ch;
+        out.getContext('2d')!.drawImage(off, cx, cy, cw, ch, 0, 0, cw, ch);
+
+        // Thumbnail
+        const thumbMax = 240;
+        const r = Math.min(1, thumbMax / Math.max(cw, ch));
+        const tw = Math.max(1, Math.round(cw * r));
+        const th = Math.max(1, Math.round(ch * r));
+        const t = document.createElement('canvas');
+        t.width = tw;
+        t.height = th;
+        t.getContext('2d')!.drawImage(out, 0, 0, tw, th);
+
+        const [blob, thumb] = await Promise.all([
+          new Promise<Blob>(resolve => out.toBlob(b => resolve(b!), 'image/png')),
+          new Promise<Blob>(resolve => t.toBlob(b => resolve(b!), 'image/png')),
+        ]);
+
+        const res = await fetch('/api/screenshots/presign', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            instanceLabel: undefined, // Auto-generate
-            copyScreenshots: false,
+            projectId: activeCheck?.project_id || assessmentId,
+            checkId: targetCheckId,
+          }),
+        });
+        if (!res.ok) throw new Error('Failed to get presigned URLs');
+        const { _screenshotId, uploadUrl, key, thumbUploadUrl, thumbKey } = await res.json();
+
+        await Promise.all([
+          fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: blob }),
+          fetch(thumbUploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'image/png' },
+            body: thumb,
+          }),
+        ]);
+
+        await fetch('/api/screenshots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            check_id: targetCheckId,
+            page_number: state.pageNumber,
+            crop_coordinates: {
+              x: sx,
+              y: sy,
+              width: sw,
+              height: sh,
+              zoom_level: state.transform.scale,
+            },
+            screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
+            thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
+            caption: '',
           }),
         });
 
-        if (!cloneRes.ok) {
-          const errorData = await cloneRes.json();
-          alert(`Failed to create new ${target} instance: ${errorData.error || 'Unknown error'}`);
-          return;
-        }
+        onScreenshotSaved?.();
+      } catch (err) {
+        alert('Failed to save screenshot.');
 
-        const { check: newCheck } = await cloneRes.json();
-        targetCheckId = newCheck.id;
-
-        // Add check to state and select it (reuse CheckList pattern)
-        if (onCheckAdded) {
-          onCheckAdded(newCheck);
-        }
-
-        // Select the new check
-        if (onCheckSelect) {
-          onCheckSelect(newCheck.id);
-        }
+        console.error('[PDFViewer] capture failed:', err);
+      } finally {
+        capturingRef.current = false;
       }
-
-      if (!targetCheckId) {
-        alert('No check selected. Please select a check first.');
-        return;
-      }
-
-      // Get the actual canvas element to understand its coordinate system
-      const canvas = pageContainerRef.current?.querySelector('canvas') as HTMLCanvasElement | null;
-      if (!canvas) {
-        console.error('capture() cannot find canvas element');
-        return;
-      }
-
-      console.log('capture() canvas info:', {
-        clientWidth: canvas.clientWidth,
-        clientHeight: canvas.clientHeight,
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height,
-        ratio: canvas.width / canvas.clientWidth,
-      });
-
-      // Selection coordinates are relative to the pageContainer (in CSS pixels)
-      // Use savedSelection since we cleared state.selection early
-      const sx = Math.min(savedSelection.startX, savedSelection.endX);
-      const sy = Math.min(savedSelection.startY, savedSelection.endY);
-      const sw = Math.abs(savedSelection.endX - savedSelection.startX);
-      const sh = Math.abs(savedSelection.endY - savedSelection.startY);
-
-      console.log('capture() selection in CSS pixels:', { sx, sy, sw, sh });
-
-      // The canvas internal resolution is higher than CSS pixels
-      // Convert CSS pixels to canvas pixels
-      const canvasScale = canvas.width / canvas.clientWidth;
-      const canvasSx = sx * canvasScale;
-      const canvasSy = sy * canvasScale;
-      const canvasSw = sw * canvasScale;
-      const canvasSh = sh * canvasScale;
-
-      console.log('capture() selection in canvas pixels:', {
-        canvasSx,
-        canvasSy,
-        canvasSw,
-        canvasSh,
-        canvasScale,
-      });
-
-      // Render page offscreen at high resolution
-      const screenshotRenderScale = pickRenderScale(pageInstance, renderScale);
-      const viewport = pageInstance.getViewport({ scale: screenshotRenderScale });
-
-      console.log('capture() render viewport:', {
-        width: viewport.width,
-        height: viewport.height,
-        renderScale: screenshotRenderScale,
-      });
-
-      const offscreenCanvas = document.createElement('canvas');
-      offscreenCanvas.width = Math.ceil(viewport.width);
-      offscreenCanvas.height = Math.ceil(viewport.height);
-      const ctx = offscreenCanvas.getContext('2d')!;
-
-      console.log('capture() rendering PDF page at high resolution...');
-      const renderStart = performance.now();
-      await pageInstance.render({ canvasContext: ctx, viewport }).promise;
-      const renderEnd = performance.now();
-      console.log('capture() PDF render complete in', (renderEnd - renderStart).toFixed(0), 'ms');
-
-      // Map from canvas pixels to render pixels
-      // Both the displayed canvas and the offscreen render are at different scales from the natural PDF
-      // We need to find the ratio between them
-      const renderToDisplayedRatio = viewport.width / canvas.width;
-
-      const rx = Math.max(0, Math.floor(canvasSx * renderToDisplayedRatio));
-      const ry = Math.max(0, Math.floor(canvasSy * renderToDisplayedRatio));
-      const rw = Math.max(1, Math.ceil(canvasSw * renderToDisplayedRatio));
-      const rh = Math.max(1, Math.ceil(canvasSh * renderToDisplayedRatio));
-
-      console.log('capture() render coords:', {
-        rx,
-        ry,
-        rw,
-        rh,
-        renderToDisplayedRatio,
-      });
-
-      // Clamp to page bounds
-      const cx = Math.min(rx, offscreenCanvas.width - 1);
-      const cy = Math.min(ry, offscreenCanvas.height - 1);
-      const cw = Math.min(rw, offscreenCanvas.width - cx);
-      const ch = Math.min(rh, offscreenCanvas.height - cy);
-
-      console.log('capture() clamped coords:', {
-        cx,
-        cy,
-        cw,
-        ch,
-        offscreenW: offscreenCanvas.width,
-        offscreenH: offscreenCanvas.height,
-      });
-
-      if (cw < 5 || ch < 5) {
-        console.warn('capture() WARNING: selection was clamped to tiny size:', { cw, ch });
-        console.warn('This usually means coordinates are outside the page bounds');
-      }
-
-      const crop = { x: cx, y: cy, w: cw, h: ch };
-      console.log('capture() final crop:', crop);
-      const out = document.createElement('canvas');
-      out.width = crop.w;
-      out.height = crop.h;
-      const octx = out.getContext('2d')!;
-      octx.drawImage(offscreenCanvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
-
-      // Thumbnail
-      const thumbMax = 240;
-      const ratio = Math.min(1, thumbMax / Math.max(crop.w, crop.h));
-      const tw = Math.max(1, Math.round(crop.w * ratio));
-      const th = Math.max(1, Math.round(crop.h * ratio));
-      const tcanvas = document.createElement('canvas');
-      tcanvas.width = tw;
-      tcanvas.height = th;
-      const tctx = tcanvas.getContext('2d')!;
-      tctx.drawImage(out, 0, 0, tw, th);
-
-      console.log('capture() converting canvases to PNG blobs...');
-      const blobStart = performance.now();
-      const [blob, thumb] = await Promise.all([
-        new Promise<Blob>(resolve => out.toBlob(b => resolve(b!), 'image/png')),
-        new Promise<Blob>(resolve => tcanvas.toBlob(b => resolve(b!), 'image/png')),
-      ]);
-      const blobEnd = performance.now();
-      console.log('capture() blob conversion complete in', (blobEnd - blobStart).toFixed(0), 'ms');
-
-      // Get presigned upload targets
-      console.log('capture() fetching presigned URLs...');
-      const presignStart = performance.now();
-      const res = await fetch('/api/screenshots/presign', {
-        method: 'POST',
-        body: JSON.stringify({
-          projectId: activeCheck?.project_id || assessmentId,
-          checkId: targetCheckId,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!res.ok) {
-        console.error('capture() presign failed:', res.status, await res.text());
-        throw new Error('Failed to get presigned URLs');
-      }
-      const { _screenshotId, uploadUrl, key, thumbUploadUrl, thumbKey } = await res.json();
-      const presignEnd = performance.now();
-      console.log('capture() got presigned URLs in', (presignEnd - presignStart).toFixed(0), 'ms');
-
-      console.log('capture() uploading to S3 in parallel...');
-      const uploadStart = performance.now();
-      await Promise.all([
-        fetch(uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'image/png' },
-          body: blob,
-        }),
-        fetch(thumbUploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'image/png' },
-          body: thumb,
-        }),
-      ]);
-      const uploadEnd = performance.now();
-      console.log('capture() S3 upload complete in', (uploadEnd - uploadStart).toFixed(0), 'ms');
-
-      // Persist metadata in DB
-      console.log('capture() saving to database...');
-      const dbStart = performance.now();
-      const dbRes = await fetch('/api/screenshots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          check_id: targetCheckId,
-          page_number: state.pageNumber,
-          crop_coordinates: {
-            x: sx,
-            y: sy,
-            width: sw,
-            height: sh,
-            zoom_level: state.transform.scale,
-          },
-          screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
-          thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
-          caption: '',
-        }),
-      });
-      const dbEnd = performance.now();
-      if (!dbRes.ok) {
-        console.error('capture() database save failed:', dbRes.status, await dbRes.text());
-        throw new Error('Failed to save screenshot to database');
-      }
-      console.log('capture() database save complete in', (dbEnd - dbStart).toFixed(0), 'ms');
-      console.log('capture() complete!');
-
-      // Selection already cleared at start for better UX
-      if (onScreenshotSaved) onScreenshotSaved();
-    } catch (error) {
-      console.error('capture() failed with error:', error);
-      alert(
-        'Failed to save screenshot: ' + (error instanceof Error ? error.message : 'Unknown error')
-      );
-    } finally {
-      capturingRef.current = false;
-    }
-  };
+    },
+    [
+      readOnly,
+      state.selection,
+      state.pageNumber,
+      state.transform.scale,
+      page,
+      activeCheck,
+      assessmentId,
+      renderScale,
+      dpr,
+      ocConfig,
+      pickRenderScale,
+      onCheckAdded,
+      onCheckSelect,
+      onScreenshotSaved,
+    ]
+  );
 
   if (loadingUrl) {
     return (
@@ -1092,7 +858,7 @@ export function PDFViewer({
       {state.screenshotMode && state.selection && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
           <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-blue-500 font-mono">
-            C - Current Check
+            C - Current
           </kbd>
           <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
             B - Bathroom
@@ -1158,7 +924,7 @@ export function PDFViewer({
             <button
               aria-pressed={state.screenshotMode}
               aria-label="Toggle screenshot mode (S)"
-              title="Capture a portion of the plan to be checked against a code section or saved as an instance of an element"
+              title="Capture a portion of the plan"
               className={`btn-icon shadow-md ${state.screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
               onClick={() => dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' })}
             >
@@ -1173,7 +939,6 @@ export function PDFViewer({
         )}
       </div>
 
-      {/* Layer Panel */}
       {showLayerPanel && layers.length > 0 && (
         <div className="absolute top-16 right-3 z-50 bg-white border rounded shadow-lg p-3 w-64 pointer-events-auto">
           <div className="flex items-center justify-between mb-2">
@@ -1230,80 +995,36 @@ export function PDFViewer({
             top: 0,
           }}
         >
-          <Document
-            file={presignedUrl}
-            onLoadSuccess={onDocLoad}
-            onLoadError={onDocError}
-            loading={<div className="text-sm text-gray-500">Loading PDF…</div>}
-            error={<div className="text-sm text-red-500">Failed to load PDF document</div>}
-          >
-            <div ref={pageContainerRef} style={{ position: 'relative' }}>
-              <Page
-                key={`page-${state.pageNumber}-layers-${layerVersion}-scale-${cappedRenderScale}`}
-                pageNumber={state.pageNumber}
-                scale={cappedRenderScale}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-                onRenderSuccess={() => {
-                  console.log('PDFViewer: Page rendered successfully', {
-                    pageNumber: state.pageNumber,
-                    requestedScale: renderScale,
-                    actualScale: cappedRenderScale,
-                    viewportScale: state.transform.scale,
-                    layerVersion,
-                  });
-                }}
-                onRenderError={(error: Error) => {
-                  console.error('PDFViewer: Page render error', {
-                    pageNumber: state.pageNumber,
-                    requestedScale: renderScale,
-                    actualScale: cappedRenderScale,
-                    error,
-                  });
+          <div ref={pageContainerRef} style={{ position: 'relative' }}>
+            <canvas ref={canvasRef} />
+            {state.screenshotMode && state.selection && (
+              <div
+                className="pointer-events-none"
+                style={{
+                  position: 'absolute',
+                  left: Math.min(state.selection.startX, state.selection.endX),
+                  top: Math.min(state.selection.startY, state.selection.endY),
+                  width: Math.abs(state.selection.endX - state.selection.startX),
+                  height: Math.abs(state.selection.endY - state.selection.startY),
+                  border: '2px solid rgba(37, 99, 235, 0.8)',
+                  backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                  zIndex: 40,
                 }}
               />
-              {/* Layer-controlled canvas overlay - only visible when layers are toggled */}
-              {layers.length > 0 && (
-                <canvas
-                  ref={layerCanvasRef}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    pointerEvents: 'none',
-                    display: layerVersion > 0 ? 'block' : 'none', // Only show after first layer toggle
-                  }}
-                />
-              )}
-              {state.screenshotMode && state.selection && (
-                <div
-                  className="pointer-events-none"
-                  style={{
-                    position: 'absolute',
-                    left: Math.min(state.selection.startX, state.selection.endX),
-                    top: Math.min(state.selection.startY, state.selection.endY),
-                    width: Math.abs(state.selection.endX - state.selection.startX),
-                    height: Math.abs(state.selection.endY - state.selection.startY),
-                    border: '2px solid rgba(37, 99, 235, 0.8)',
-                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                    zIndex: 40,
-                  }}
-                />
-              )}
-              {/* Violation Markers */}
-              {readOnly &&
-                violationMarkers
-                  .filter(marker => marker.pageNumber === state.pageNumber)
-                  .map((marker, idx) => (
-                    <ViolationMarker
-                      key={`${marker.checkId}-${marker.screenshotId}-${idx}`}
-                      marker={marker}
-                      onClick={onMarkerClick || (() => {})}
-                      isVisible={true}
-                    />
-                  ))}
-            </div>
-          </Document>
+            )}
+
+            {readOnly &&
+              violationMarkers
+                .filter(m => m.pageNumber === state.pageNumber)
+                .map((marker, idx) => (
+                  <ViolationMarker
+                    key={`${marker.checkId}-${marker.screenshotId}-${idx}`}
+                    marker={marker}
+                    onClick={onMarkerClick || (() => {})}
+                    isVisible={true}
+                  />
+                ))}
+          </div>
         </div>
       </div>
 
