@@ -9,10 +9,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = supabaseAdmin();
 
   try {
-    // Join with element_groups to get element_group_name and sections to get floorplan_relevant
+    // Join with element_groups to get element_group_name and sections to get floorplan_relevant and never_relevant
     let query = supabase
       .from('checks')
-      .select('*, element_groups(name), sections!code_section_key(floorplan_relevant)')
+      .select(
+        '*, element_groups(name), sections!code_section_key(floorplan_relevant, never_relevant)'
+      )
       .eq('assessment_id', id);
 
     // Filter by element group if specified
@@ -37,7 +39,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Build base query for checks with element_groups and sections joins
       let checksQuery = supabase
         .from('checks')
-        .select('*, element_groups(name), sections!code_section_key(floorplan_relevant)')
+        .select(
+          '*, element_groups(name), sections!code_section_key(floorplan_relevant, never_relevant)'
+        )
         .eq('assessment_id', id);
 
       // Apply element group filter to search as well
@@ -61,10 +65,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         throw checksError;
       }
 
-      console.log('[SEARCH] Found checks:', allChecksData?.length);
+      // Filter out checks for sections marked as never_relevant
+      const filteredChecksData = (allChecksData || []).filter((check: any) => {
+        return check.sections?.never_relevant !== true;
+      });
+
+      if (filteredChecksData.length < (allChecksData?.length || 0)) {
+        console.log(
+          '[SEARCH] Filtered out',
+          (allChecksData?.length || 0) - filteredChecksData.length,
+          'never_relevant checks'
+        );
+      }
 
       // Fetch latest analysis runs and screenshots for all checks
-      const checkIds = (allChecksData || []).map((c: any) => c.id);
+      const checkIds = filteredChecksData.map((c: any) => c.id);
       const [{ data: latestAnalysis }, { data: allScreenshots }] = await Promise.all([
         supabase
           .from('latest_analysis_runs')
@@ -104,7 +119,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       });
 
       // Sort by floorplan_relevant first (true comes first), then by code_section_number
-      const sortedAllChecksData = (allChecksData || []).sort((a: any, b: any) => {
+      const sortedAllChecksData = filteredChecksData.sort((a: any, b: any) => {
         const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
         const bFloorplanRelevant = b.sections?.floorplan_relevant ?? false;
 
@@ -205,8 +220,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
+    // Filter out checks for sections marked as never_relevant
+    const filteredChecks = (allChecks || []).filter((check: any) => {
+      return check.sections?.never_relevant !== true;
+    });
+
+    if (filteredChecks.length < (allChecks?.length || 0)) {
+      console.log(
+        '[CHECKS API] Filtered out',
+        (allChecks?.length || 0) - filteredChecks.length,
+        'never_relevant checks'
+      );
+    }
+
     // Fetch screenshots for all checks via junction table
-    const checkIds = (allChecks || []).map((c: any) => c.id);
+    const checkIds = filteredChecks.map((c: any) => c.id);
     console.log('[CHECKS API] Fetching screenshots for', checkIds.length, 'checks');
 
     const { data: allScreenshots, error: screenshotsError } = await supabase
@@ -236,7 +264,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Sort by floorplan_relevant first (true comes first), then by code_section_number
-    const sortedChecks = (allChecks || []).sort((a: any, b: any) => {
+    const sortedChecks = filteredChecks.sort((a: any, b: any) => {
       const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
       const bFloorplanRelevant = b.sections?.floorplan_relevant ?? false;
 

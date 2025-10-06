@@ -18,13 +18,26 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       .single(),
     supabase
       .from('checks')
-      .select('*, element_groups(name, slug)')
+      .select('*, element_groups(name, slug), sections!code_section_key(never_relevant)')
       .eq('assessment_id', id)
       .order('code_section_number', { ascending: true }),
   ]);
 
-  // Fetch latest analysis and screenshots for all checks
-  const checkIds = (allChecks || []).map(c => c.id);
+  // Filter out checks for sections marked as never_relevant
+  const filteredChecks = (allChecks || []).filter((check: any) => {
+    return check.sections?.never_relevant !== true;
+  });
+
+  if (filteredChecks.length < (allChecks?.length || 0)) {
+    console.log(
+      '[Server] Filtered out',
+      (allChecks?.length || 0) - filteredChecks.length,
+      'never_relevant checks'
+    );
+  }
+
+  // Fetch latest analysis and screenshots for filtered checks
+  const checkIds = filteredChecks.map(c => c.id);
 
   // Fetch analysis
   const { data: latestAnalysis } =
@@ -102,10 +115,10 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   });
 
   // Group checks by parent - instances will be nested under their parent
-  const checks = (allChecks || []).reduce((acc: any[], check: any) => {
+  const checks = filteredChecks.reduce((acc: any[], check: any) => {
     if (!check.parent_check_id) {
       // This is a parent check - find all its instances
-      const rawInstances = (allChecks || []).filter((c: any) => c.parent_check_id === check.id);
+      const rawInstances = filteredChecks.filter((c: any) => c.parent_check_id === check.id);
 
       // Add analysis data and screenshots to instances
       const instances = rawInstances.map((instance: any) => {
