@@ -114,10 +114,17 @@ export function PDFViewer({
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
+  // Load saved page number from localStorage
+  const getSavedPageNumber = useCallback(() => {
+    if (typeof window === 'undefined' || !assessmentId) return 1;
+    const saved = localStorage.getItem(`pdf-page-${assessmentId}`);
+    return saved ? parseInt(saved, 10) : 1;
+  }, [assessmentId]);
+
   // Consolidated state management
   const [state, dispatch] = useReducer(viewerReducer, {
     transform: { tx: 0, ty: 0, scale: 1 },
-    pageNumber: 1,
+    pageNumber: getSavedPageNumber(),
     numPages: 0,
     isDragging: false,
     screenshotMode: false,
@@ -152,12 +159,17 @@ export function PDFViewer({
     }
   }, [externalCurrentPage]);
 
-  // Notify parent of page changes
+  // Notify parent of page changes and save to localStorage
   useEffect(() => {
     if (onPageChange) {
       onPageChange(state.pageNumber);
     }
-  }, [state.pageNumber, onPageChange]);
+    // Save current page to localStorage
+    if (assessmentId && typeof window !== 'undefined') {
+      localStorage.setItem(`pdf-page-${assessmentId}`, state.pageNumber.toString());
+      console.log('PDFViewer: Saved page number to localStorage:', state.pageNumber);
+    }
+  }, [state.pageNumber, onPageChange, assessmentId]);
 
   // Fetch presigned URL for private S3 PDFs and load saved scale preference
   useEffect(() => {
