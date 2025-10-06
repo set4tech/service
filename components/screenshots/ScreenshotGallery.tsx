@@ -4,7 +4,15 @@ import type { Check, Screenshot } from '@/types/database';
 import Modal from '@/components/ui/Modal';
 import { AssignScreenshotModal } from './AssignScreenshotModal';
 
-export function ScreenshotGallery({ check, refreshKey }: { check: Check; refreshKey: number }) {
+export function ScreenshotGallery({
+  check,
+  refreshKey,
+  onScreenshotAssigned,
+}: {
+  check: Check;
+  refreshKey: number;
+  onScreenshotAssigned?: () => void;
+}) {
   const [shots, setShots] = useState<Screenshot[]>((check as any).screenshots || []);
   const [preview, setPreview] = useState<Screenshot | null>(null);
   const [assigningScreenshot, setAssigningScreenshot] = useState<Screenshot | null>(null);
@@ -181,8 +189,10 @@ export function ScreenshotGallery({ check, refreshKey }: { check: Check; refresh
           assessmentId={check.assessment_id}
           onAssigned={() => {
             setAssigningScreenshot(null);
-            // Refresh screenshots
-            window.location.reload();
+            // Refresh screenshots without reloading the page
+            if (onScreenshotAssigned) {
+              onScreenshotAssigned();
+            }
           }}
         />
       )}
