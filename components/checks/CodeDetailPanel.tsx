@@ -81,6 +81,7 @@ interface CodeDetailPanelProps {
   onCheckUpdate?: () => void; // Callback when check is updated
   activeCheck?: any; // Active check object (for screenshots)
   screenshotsRefreshKey?: number; // Key to trigger screenshot refresh
+  onScreenshotAssigned?: () => void; // Callback when screenshot is assigned to other checks
 }
 
 export function CodeDetailPanel({
@@ -90,6 +91,7 @@ export function CodeDetailPanel({
   onCheckUpdate,
   activeCheck,
   screenshotsRefreshKey,
+  onScreenshotAssigned,
 }: CodeDetailPanelProps) {
   const [check, setCheck] = useState<Check | null>(null);
   const [sections, setSections] = useState<CodeSection[]>([]);
@@ -145,6 +147,11 @@ export function CodeDetailPanel({
   // Floorplan relevant state
   const [showFloorplanRelevantDialog, setShowFloorplanRelevantDialog] = useState(false);
   const [markingFloorplanRelevant, setMarkingFloorplanRelevant] = useState(false);
+
+  // Project exclusion state
+  const [showExcludeDialog, setShowExcludeDialog] = useState(false);
+  const [excludingSection, setExcludingSection] = useState(false);
+  const [excludeReason, setExcludeReason] = useState('');
 
   // Section tabs toggle state
   const [showSectionTabs, setShowSectionTabs] = useState(false);
@@ -612,6 +619,53 @@ export function CodeDetailPanel({
     }
   };
 
+  const handleExcludeFromProject = async () => {
+    if (!sectionKey) return;
+
+    setExcludingSection(true);
+    setOverrideError(null);
+
+    try {
+      // Get assessment_id from activeCheck
+      const assessmentId = activeCheck?.assessment_id;
+      if (!assessmentId) {
+        throw new Error('Assessment ID not found');
+      }
+
+      const response = await fetch(`/api/assessments/${assessmentId}/exclude-section`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectionKey,
+          reason: excludeReason.trim() || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to exclude section from project');
+      }
+
+      // Close dialog
+      setShowExcludeDialog(false);
+      setExcludeReason('');
+
+      // Close the panel since this section is now excluded
+      onClose();
+
+      // Notify parent to refresh
+      if (onCheckUpdate) {
+        onCheckUpdate();
+      }
+    } catch (err: any) {
+      console.error('Exclude section error:', err);
+      setOverrideError(err.message);
+    } finally {
+      setExcludingSection(false);
+    }
+  };
+
   const handleAssess = async () => {
     if (!checkId) return;
 
@@ -956,6 +1010,18 @@ export function CodeDetailPanel({
               </div>
             )}
 
+            {/* Exclude from project button */}
+            <div className="pt-2 border-t border-gray-200">
+              <button
+                onClick={() => setShowExcludeDialog(true)}
+                disabled={excludingSection || !sectionKey}
+                className="w-full px-3 py-2 text-sm text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Exclude this section from the current project (all instances)"
+              >
+                🚫 Exclude Section from Project
+              </button>
+            </div>
+
             {/* Save button */}
             {manualOverride && (
               <button
@@ -1194,6 +1260,7 @@ export function CodeDetailPanel({
                     <ScreenshotGallery
                       check={activeCheck}
                       refreshKey={screenshotsRefreshKey || 0}
+                      onScreenshotAssigned={onScreenshotAssigned}
                     />
                   </div>
                 )}
@@ -1625,6 +1692,56 @@ export function CodeDetailPanel({
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exclude from Project Confirmation Dialog */}
+      {showExcludeDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-3">Exclude Section from Project?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This will exclude section <strong>{section?.number}</strong> from this project only.
+              All checks for this section (section-by-section AND element instances) will be
+              removed.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reason (optional)
+              </label>
+              <input
+                type="text"
+                value={excludeReason}
+                onChange={e => setExcludeReason(e.target.value)}
+                placeholder="e.g., 20% construction cost rule applies"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+            {overrideError && (
+              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                {overrideError}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowExcludeDialog(false);
+                  setExcludeReason('');
+                }}
+                disabled={excludingSection}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExcludeFromProject}
+                disabled={excludingSection}
+                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
+              >
+                {excludingSection ? 'Excluding...' : 'Exclude from Project'}
+              </button>
             </div>
           </div>
         </div>
