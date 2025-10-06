@@ -34,7 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const nextInstanceNumber =
     siblings && siblings.length > 0 && siblings[0].instance_number != null
       ? siblings[0].instance_number + 1
-      : 2;
+      : 1;
 
   // Create the new check instance
   const clone = {

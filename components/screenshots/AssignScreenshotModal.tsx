@@ -128,10 +128,10 @@ export function AssignScreenshotModal({
       check.instance_label?.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Handle instance group selection - select parent + all instances
+  // Handle instance group selection - select all instances (not parent)
   const handleInstanceGroupToggle = (parentCheck: Check, isChecked: boolean) => {
     const newSelected = new Set(selectedCheckIds);
-    const allCheckIds = [parentCheck.id, ...(parentCheck.instances || []).map(i => i.id)];
+    const allCheckIds = (parentCheck.instances || []).map(i => i.id);
 
     if (isChecked) {
       allCheckIds.forEach(id => newSelected.add(id));
@@ -144,13 +144,13 @@ export function AssignScreenshotModal({
 
   // Check if an instance group is fully selected
   const isInstanceGroupSelected = (parentCheck: Check) => {
-    const allCheckIds = [parentCheck.id, ...(parentCheck.instances || []).map(i => i.id)];
-    return allCheckIds.every(id => selectedCheckIds.has(id));
+    const allCheckIds = (parentCheck.instances || []).map(i => i.id);
+    return allCheckIds.length > 0 && allCheckIds.every(id => selectedCheckIds.has(id));
   };
 
   // Check if an instance group is partially selected
   const isInstanceGroupPartial = (parentCheck: Check) => {
-    const allCheckIds = [parentCheck.id, ...(parentCheck.instances || []).map(i => i.id)];
+    const allCheckIds = (parentCheck.instances || []).map(i => i.id);
     const selectedCount = allCheckIds.filter(id => selectedCheckIds.has(id)).length;
     return selectedCount > 0 && selectedCount < allCheckIds.length;
   };
@@ -273,25 +273,6 @@ export function AssignScreenshotModal({
 
                       {/* Individual instances */}
                       <div className="bg-white">
-                        {/* Parent as first item */}
-                        <label className="flex items-center gap-3 p-3 pl-8 hover:bg-gray-50 cursor-pointer border-b border-gray-100">
-                          <input
-                            type="checkbox"
-                            checked={selectedCheckIds.has(check.id)}
-                            onChange={e => {
-                              const newSelected = new Set(selectedCheckIds);
-                              if (e.target.checked) {
-                                newSelected.add(check.id);
-                              } else {
-                                newSelected.delete(check.id);
-                              }
-                              setSelectedCheckIds(newSelected);
-                            }}
-                            className="w-4 h-4"
-                          />
-                          <div className="flex-1 text-sm">{check.instance_label || 'Original'}</div>
-                        </label>
-
                         {/* Instance children */}
                         {(check.instances || []).map(instance => {
                           const isSelected = selectedCheckIds.has(instance.id);
