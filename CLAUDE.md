@@ -271,3 +271,4 @@ PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21
   - Direct connection won't work
     (IPv6-only)
     this is show to conet to thedb
+- never git reset --hard origin/mai

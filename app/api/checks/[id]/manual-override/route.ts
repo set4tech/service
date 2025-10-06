@@ -85,15 +85,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .from('checks')
       .update(updateData)
       .eq('id', id)
-      .select('*')
-      .single();
+      .select('*');
 
     if (error) {
       console.error('Error updating manual override:', error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ check: data });
+    // Check if the check was found and updated
+    if (!data || data.length === 0) {
+      console.warn(`Check ${id} not found - may have been deleted or excluded`);
+      return NextResponse.json(
+        { error: 'Check not found - it may have been deleted or excluded' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ check: data[0] });
   } catch (error: any) {
     console.error('Manual override API error:', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });

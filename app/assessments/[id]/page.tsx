@@ -24,7 +24,9 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   ]);
 
   // Filter out checks for sections marked as never_relevant
+  // Exception: Don't filter element checks since they cover multiple sections
   const filteredChecks = (allChecks || []).filter((check: any) => {
+    if (check.check_type === 'element') return true;
     return check.sections?.never_relevant !== true;
   });
 
