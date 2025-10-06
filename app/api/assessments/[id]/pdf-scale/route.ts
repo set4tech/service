@@ -30,9 +30,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json();
     const { pdf_scale } = body;
 
-    if (typeof pdf_scale !== 'number' || pdf_scale < 1 || pdf_scale > 6) {
+    if (typeof pdf_scale !== 'number' || pdf_scale < 2 || pdf_scale > 8) {
       return NextResponse.json(
-        { error: 'pdf_scale must be a number between 1 and 6' },
+        { error: 'pdf_scale must be a number between 2 and 8' },
         { status: 400 }
       );
     }

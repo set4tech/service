@@ -10,8 +10,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 10;
-const MAX_CANVAS_SIDE = 8192;
-const MAX_CANVAS_PIXELS = 140_000_000;
+const MAX_CANVAS_SIDE = 16384; // Sweet spot: 5.4x multiplier without crashing
+const MAX_CANVAS_PIXELS = 268_000_000; // 16384^2
 const TRANSFORM_SAVE_DEBOUNCE_MS = 500;
 
 interface ViewerState {
@@ -135,11 +135,21 @@ export function PDFViewer({
     [assessmentId]
   );
 
-  // Initial state from storage
+  // Initial state from storage with validation
+  const savedTransform = getSaved(`pdf-transform-${assessmentId}`, { tx: 0, ty: 0, scale: 1 }, s =>
+    JSON.parse(s)
+  );
+
+  // Viewport is now always at 1x (renderScale only affects canvas quality)
+  // Old saved transforms from when viewport scaled to 6-10x are invalid
+  // Valid scale should be 0.5-2.0 for reasonable zoom levels
+  const validatedTransform =
+    savedTransform.scale < 0.5 || savedTransform.scale > 2.0
+      ? { tx: 0, ty: 0, scale: 1 }
+      : savedTransform;
+
   const [state, dispatch] = useReducer(viewerReducer, {
-    transform: getSaved(`pdf-transform-${assessmentId}`, { tx: 0, ty: 0, scale: 1 }, s =>
-      JSON.parse(s)
-    ),
+    transform: validatedTransform,
     pageNumber: getSaved(`pdf-page-${assessmentId}`, 1, s => parseInt(s, 10) || 1),
     numPages: 0,
     isDragging: false,
@@ -158,7 +168,7 @@ export function PDFViewer({
   // UI state
   const [layers, setLayers] = useState<PDFLayer[]>([]);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [renderScale, setRenderScale] = useState(2);
+  const [renderScale, setRenderScale] = useState(2); // Quality multiplier, NOT viewport scale
   const [savingScale, setSavingScale] = useState(false);
 
   const dpr = typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1;
@@ -229,7 +239,8 @@ export function PDFViewer({
         const res = await fetch(`/api/assessments/${assessmentId}/pdf-scale`);
         if (res.ok) {
           const data = await res.json();
-          if (data?.pdf_scale) setRenderScale(data.pdf_scale);
+          // Cap loaded scale to 2-8 range (renderScale is quality multiplier, not viewport scale)
+          if (data?.pdf_scale) setRenderScale(Math.min(8, Math.max(2, data.pdf_scale)));
         }
       } catch {
         // ignore
@@ -344,25 +355,54 @@ export function PDFViewer({
     };
   }, [pdfDoc, assessmentId]);
 
-  // DPR-aware safe scale selection
-  const pickRenderScale = useCallback((p: any, desired: number, devicePixelRatio: number) => {
-    const base = p.getViewport({ scale: 1 });
-    const bySide = Math.min(
-      MAX_CANVAS_SIDE / (base.width * devicePixelRatio),
-      MAX_CANVAS_SIDE / (base.height * devicePixelRatio)
+  // Calculate safe rendering multiplier that respects canvas limits
+  const getSafeRenderMultiplier = useCallback((baseViewport: any, desiredMultiplier: number) => {
+    // desiredMultiplier is the renderScale value (e.g., 2.0-8.0)
+    const maxBySide = Math.min(
+      MAX_CANVAS_SIDE / baseViewport.width,
+      MAX_CANVAS_SIDE / baseViewport.height
     );
-    const byPixels = Math.sqrt(
-      MAX_CANVAS_PIXELS / (base.width * base.height * devicePixelRatio * devicePixelRatio)
-    );
-    const cap = Math.max(1, Math.min(bySide, byPixels));
-    return Math.min(desired, cap);
+    const maxByPixels = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
+    const cap = Math.min(maxBySide, maxByPixels);
+    const safeMultiplier = Math.max(1, Math.min(desiredMultiplier, cap));
+    console.log('[PDFViewer] getSafeRenderMultiplier:', {
+      baseWidth: baseViewport.width,
+      baseHeight: baseViewport.height,
+      desiredMultiplier,
+      maxBySide,
+      maxByPixels,
+      cap,
+      safeMultiplier,
+      isCapped: safeMultiplier < desiredMultiplier,
+      finalPixels:
+        Math.ceil(baseViewport.width * safeMultiplier) *
+        Math.ceil(baseViewport.height * safeMultiplier),
+    });
+    return safeMultiplier;
   }, []);
 
   // Core render function (single path)
   const renderPage = useCallback(
     async (why: string) => {
+      console.log('[PDFViewer] renderPage START:', {
+        why,
+        hasCanvas: !!canvasRef.current,
+        hasPage: !!page,
+      });
       const c = canvasRef.current;
-      if (!c || !page) return;
+      if (!c || !page) {
+        console.log('[PDFViewer] renderPage ABORT: missing canvas or page');
+        return;
+      }
+
+      // Validate page object has required methods
+      if (typeof page.getViewport !== 'function' || typeof page.render !== 'function') {
+        console.error('[PDFViewer] Invalid page object:', {
+          hasGetViewport: typeof page.getViewport,
+          hasRender: typeof page.render,
+        });
+        return;
+      }
 
       // Cancel any in-flight render
       if (renderTaskRef.current) {
@@ -374,16 +414,48 @@ export function PDFViewer({
         renderTaskRef.current = null;
       }
 
-      const scale = pickRenderScale(page, renderScale, dpr);
+      // Calculate safe multiplier for rendering quality
+      const baseViewport = page.getViewport({ scale: 1 });
+      if (!baseViewport) {
+        console.error('[PDFViewer] Failed to get base viewport from page');
+        return;
+      }
 
-      const viewport = page.getViewport({ scale });
-      // Device-pixel sized backing store with CSS sized element
-      const widthCSS = Math.ceil(viewport.width);
-      const heightCSS = Math.ceil(viewport.height);
+      // renderScale IS the quality multiplier (don't multiply by DPR - that causes immediate capping)
+      const desiredMultiplier = renderScale;
+      const safeMultiplier = getSafeRenderMultiplier(baseViewport, desiredMultiplier);
+
+      // Create viewport at safe scale for PDF.js rendering
+      const viewport = page.getViewport({ scale: safeMultiplier });
+      if (!viewport) {
+        console.error('[PDFViewer] Failed to get viewport at scale', safeMultiplier);
+        return;
+      }
+
+      console.log('[PDFViewer] renderPage:', {
+        why,
+        renderScale,
+        dpr,
+        desiredMultiplier,
+        safeMultiplier,
+        hasOcConfig: !!ocConfig,
+        layerCount: layers.length,
+      });
+
+      // CSS size at 1x (base PDF dimensions), canvas at safeMultiplier for quality
+      const widthCSS = Math.ceil(baseViewport.width);
+      const heightCSS = Math.ceil(baseViewport.height);
       c.style.width = `${widthCSS}px`;
       c.style.height = `${heightCSS}px`;
-      c.width = Math.ceil(widthCSS * dpr);
-      c.height = Math.ceil(heightCSS * dpr);
+      c.width = Math.ceil(viewport.width);
+      c.height = Math.ceil(viewport.height);
+      console.log('[PDFViewer] Canvas dimensions:', {
+        cssWidth: widthCSS,
+        cssHeight: heightCSS,
+        canvasWidth: c.width,
+        canvasHeight: c.height,
+        totalPixels: c.width * c.height,
+      });
 
       const ctx = c.getContext('2d');
       if (!ctx) return;
@@ -396,38 +468,73 @@ export function PDFViewer({
       ctx.fillRect(0, 0, c.width, c.height);
       ctx.restore();
 
-      // Paint with DPR transform so PDF.js draws crisp pixels
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // No transform needed - viewport scale already matches canvas
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
 
       // Ensure ocConfig reflects our current layer state
       if (ocConfig && layers.length > 0) {
+        console.log(
+          '[PDFViewer] Setting layer visibility:',
+          layers.map(l => ({ id: l.id, name: l.name, visible: l.visible }))
+        );
         for (const layer of layers) {
           try {
             ocConfig.setVisibility?.(layer.id, layer.visible);
-          } catch {
-            // ignore per-layer failure and keep going
+          } catch (err) {
+            console.error('[PDFViewer] Error setting layer visibility:', err);
           }
         }
       }
 
-      const task = page.render({
-        canvasContext: ctx,
-        viewport,
-        optionalContentConfigPromise: Promise.resolve(ocConfig || undefined),
+      console.log('[PDFViewer] About to call page.render with:', {
+        hasContext: !!ctx,
+        hasViewport: !!viewport,
+        viewportWidth: viewport?.width,
+        viewportHeight: viewport?.height,
+        hasOcConfig: !!ocConfig,
       });
+
+      // Validate render parameters
+      if (!ctx) {
+        console.error('[PDFViewer] Missing canvas context');
+        return;
+      }
+      if (!viewport || !viewport.width || !viewport.height) {
+        console.error('[PDFViewer] Invalid viewport:', viewport);
+        return;
+      }
+
+      const renderParams = {
+        canvasContext: ctx,
+        viewport: viewport,
+        ...(ocConfig && { optionalContentConfigPromise: Promise.resolve(ocConfig) }),
+      };
+
+      console.log('[PDFViewer] Render params:', {
+        hasCanvasContext: !!renderParams.canvasContext,
+        hasViewport: !!renderParams.viewport,
+        hasOptionalContent: !!renderParams.optionalContentConfigPromise,
+      });
+
+      const task = page.render(renderParams);
       renderTaskRef.current = task;
+      console.log('[PDFViewer] Render task created, awaiting...');
 
       try {
         await task.promise;
+        console.log('[PDFViewer] Render completed successfully');
       } catch (err: any) {
-        if (err?.name !== 'RenderingCancelledException') {
-          console.error('[PDFViewer] render error:', err, 'why:', why);
+        if (err?.name === 'RenderingCancelledException') {
+          // Expected when changing pages/settings quickly - ignore
+          console.log('[PDFViewer] Render cancelled (expected):', why);
+        } else {
+          console.error('[PDFViewer] Unexpected render error:', err, 'why:', why);
         }
       } finally {
         if (renderTaskRef.current === task) renderTaskRef.current = null;
       }
     },
-    [page, renderScale, dpr, ocConfig, layers, pickRenderScale]
+    [page, renderScale, dpr, ocConfig, layers, getSafeRenderMultiplier]
   );
 
   // Kick renders when inputs change
@@ -598,22 +705,27 @@ export function PDFViewer({
   // User-facing controls
   const updateRenderScale = useCallback(
     async (newScale: number) => {
+      console.log('[PDFViewer] updateRenderScale called:', { oldScale: renderScale, newScale });
       setRenderScale(newScale);
       if (!assessmentId) return;
       setSavingScale(true);
       try {
-        await fetch(`/api/assessments/${assessmentId}/pdf-scale`, {
+        const response = await fetch(`/api/assessments/${assessmentId}/pdf-scale`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pdf_scale: newScale }),
         });
-      } catch {
-        // ignore
+        if (!response.ok) {
+          const error = await response.json();
+          console.error('[PDFViewer] Failed to save scale:', error);
+        }
+      } catch (err) {
+        console.error('[PDFViewer] Error saving scale:', err);
       } finally {
         setSavingScale(false);
       }
     },
-    [assessmentId]
+    [assessmentId, renderScale]
   );
 
   const toggleLayer = useCallback(
@@ -691,7 +803,9 @@ export function PDFViewer({
         }
 
         const canvas = canvasRef.current!;
-        const cssToCanvas = canvas.width / canvas.clientWidth; // this is ≈ dpr
+        // cssToCanvas is the safeMultiplier (canvas backing store pixels per CSS pixel)
+        const baseViewportForCalc = page.getViewport({ scale: 1 });
+        const cssToCanvas = canvas.width / Math.ceil(baseViewportForCalc.width);
         const sx = Math.min(savedSelection.startX, savedSelection.endX);
         const sy = Math.min(savedSelection.startY, savedSelection.endY);
         const sw = Math.abs(savedSelection.endX - savedSelection.startX);
@@ -702,25 +816,29 @@ export function PDFViewer({
         const canvasSw = Math.max(1, Math.ceil(sw * cssToCanvas));
         const canvasSh = Math.max(1, Math.ceil(sh * cssToCanvas));
 
-        // High-res offscreen render with the same ocConfig, scale and DPR caps
-        const scale = pickRenderScale(page, renderScale, dpr);
-        const viewport = page.getViewport({ scale });
+        // High-res offscreen render with the same ocConfig and multiplier
+        const baseViewport = page.getViewport({ scale: 1 });
+        const desiredMultiplier = renderScale;
+        const safeMultiplier = getSafeRenderMultiplier(baseViewport, desiredMultiplier);
+        const viewport = page.getViewport({ scale: safeMultiplier });
         const off = document.createElement('canvas');
-        off.width = Math.ceil(viewport.width * dpr);
-        off.height = Math.ceil(viewport.height * dpr);
+        off.width = Math.ceil(viewport.width);
+        off.height = Math.ceil(viewport.height);
         const octx = off.getContext('2d')!;
-        octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        octx.setTransform(1, 0, 0, 1, 0, 0);
         octx.fillStyle = 'white';
         octx.fillRect(0, 0, off.width, off.height);
 
-        await page.render({
+        const screenshotRenderParams = {
           canvasContext: octx,
-          viewport,
-          optionalContentConfigPromise: Promise.resolve(ocConfig || undefined),
-        }).promise;
+          viewport: viewport,
+          ...(ocConfig && { optionalContentConfigPromise: Promise.resolve(ocConfig) }),
+        };
 
-        // Map selection from on-screen canvas pixels to offscreen pixels (both include DPR)
-        const renderToDisplayedRatio = (viewport.width * dpr) / canvas.width;
+        await page.render(screenshotRenderParams).promise;
+
+        // Map selection from on-screen canvas pixels to offscreen pixels
+        const renderToDisplayedRatio = viewport.width / canvas.width;
         const rx = Math.max(0, Math.floor(canvasSx * renderToDisplayedRatio));
         const ry = Math.max(0, Math.floor(canvasSy * renderToDisplayedRatio));
         const rw = Math.max(1, Math.ceil(canvasSw * renderToDisplayedRatio));
@@ -810,7 +928,7 @@ export function PDFViewer({
       renderScale,
       dpr,
       ocConfig,
-      pickRenderScale,
+      getSafeRenderMultiplier,
       onCheckAdded,
       onCheckSelect,
       onScreenshotSaved,
@@ -893,8 +1011,8 @@ export function PDFViewer({
           <button
             aria-label="Decrease resolution"
             className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.max(1, renderScale - 0.5))}
-            disabled={savingScale || renderScale <= 1}
+            onClick={() => updateRenderScale(Math.max(2, renderScale - 0.5))}
+            disabled={savingScale || renderScale <= 2}
           >
             −
           </button>
@@ -902,8 +1020,8 @@ export function PDFViewer({
           <button
             aria-label="Increase resolution"
             className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.min(10, renderScale + 0.5))}
-            disabled={savingScale || renderScale >= 10}
+            onClick={() => updateRenderScale(Math.min(8, renderScale + 0.5))}
+            disabled={savingScale || renderScale >= 8}
           >
             +
           </button>
