@@ -198,10 +198,22 @@ export function CodeDetailPanel({
           });
           setCheck(data.check);
 
-          // If this is an element check, fetch child section checks
+          // If this is an element check AND it's a parent (not an instance), fetch child section checks
+          // Element instances (with parent_check_id or instance_number > 0) should NOT fetch children
           if (data.check.check_type === 'element') {
-            console.log('CodeDetailPanel: Fetching child checks for element check', checkId);
-            return fetch(`/api/checks?parent_check_id=${checkId}`).then(res => res.json());
+            const isElementInstance =
+              data.check.parent_check_id ||
+              (data.check.instance_number != null && data.check.instance_number > 0);
+
+            if (!isElementInstance) {
+              console.log('CodeDetailPanel: Fetching child checks for element check', checkId);
+              return fetch(`/api/checks?parent_check_id=${checkId}`).then(res => res.json());
+            } else {
+              console.log(
+                'CodeDetailPanel: Element instance detected, not fetching child checks',
+                checkId
+              );
+            }
           }
         }
         return null;
