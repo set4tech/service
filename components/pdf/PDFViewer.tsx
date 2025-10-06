@@ -121,9 +121,23 @@ export function PDFViewer({
     return saved ? parseInt(saved, 10) : 1;
   }, [assessmentId]);
 
+  // Load saved transform from localStorage
+  const getSavedTransform = useCallback(() => {
+    if (typeof window === 'undefined' || !assessmentId) return { tx: 0, ty: 0, scale: 1 };
+    const saved = localStorage.getItem(`pdf-transform-${assessmentId}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved transform:', e);
+      }
+    }
+    return { tx: 0, ty: 0, scale: 1 };
+  }, [assessmentId]);
+
   // Consolidated state management
   const [state, dispatch] = useReducer(viewerReducer, {
-    transform: { tx: 0, ty: 0, scale: 1 },
+    transform: getSavedTransform(),
     pageNumber: getSavedPageNumber(),
     numPages: 0,
     isDragging: false,
@@ -170,6 +184,26 @@ export function PDFViewer({
       console.log('PDFViewer: Saved page number to localStorage:', state.pageNumber);
     }
   }, [state.pageNumber, onPageChange, assessmentId]);
+
+  // Save transform to localStorage when it changes
+  useEffect(() => {
+    if (assessmentId && typeof window !== 'undefined') {
+      localStorage.setItem(`pdf-transform-${assessmentId}`, JSON.stringify(state.transform));
+      console.log('PDFViewer: Saved transform to localStorage:', state.transform);
+    }
+  }, [state.transform, assessmentId]);
+
+  // Save layer visibility to localStorage when it changes
+  useEffect(() => {
+    if (assessmentId && typeof window !== 'undefined' && layers.length > 0) {
+      const visibilityMap: Record<string, boolean> = {};
+      layers.forEach(layer => {
+        visibilityMap[layer.id] = layer.visible;
+      });
+      localStorage.setItem(`pdf-layers-${assessmentId}`, JSON.stringify(visibilityMap));
+      console.log('PDFViewer: Saved layer visibility to localStorage:', visibilityMap);
+    }
+  }, [layers, assessmentId]);
 
   // Fetch presigned URL for private S3 PDFs and load saved scale preference
   useEffect(() => {
@@ -494,6 +528,32 @@ export function PDFViewer({
         }
 
         console.log('[PDFViewer] Extracted layers:', layerList);
+
+        // Restore saved layer visibility from localStorage
+        if (assessmentId && typeof window !== 'undefined') {
+          const savedVisibility = localStorage.getItem(`pdf-layers-${assessmentId}`);
+          if (savedVisibility) {
+            try {
+              const visibilityMap = JSON.parse(savedVisibility);
+              console.log('[PDFViewer] Restoring saved layer visibility:', visibilityMap);
+
+              // Apply saved visibility to layers and optionalContentConfig
+              layerList.forEach(layer => {
+                if (layer.id in visibilityMap) {
+                  layer.visible = visibilityMap[layer.id];
+                  try {
+                    ocConfig.setVisibility(layer.id, layer.visible);
+                  } catch (err) {
+                    console.error('[PDFViewer] Error setting layer visibility:', err);
+                  }
+                }
+              });
+            } catch (e) {
+              console.error('[PDFViewer] Failed to parse saved layer visibility:', e);
+            }
+          }
+        }
+
         setLayers(layerList);
       } catch (err) {
         console.error('[PDFViewer] Failed to extract PDF layers:', err);
@@ -1179,7 +1239,7 @@ export function PDFViewer({
           >
             <div ref={pageContainerRef} style={{ position: 'relative' }}>
               <Page
-                key={`page-${state.pageNumber}-layers-${layerVersion}`}
+                key={`page-${state.pageNumber}-layers-${layerVersion}-scale-${cappedRenderScale}`}
                 pageNumber={state.pageNumber}
                 scale={cappedRenderScale}
                 renderTextLayer={false}
