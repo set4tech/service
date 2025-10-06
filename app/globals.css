@@ -2,6 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --hairline: 0.5px;
+}
+
+/* "paper" noise texture for report viewer */
+.bg-paper {
+  background-image:
+    radial-gradient(closest-side, rgba(0,0,0,0.015), rgba(0,0,0,0) 90%),
+    linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px);
+  background-size: 240px 240px, 100% 100%;
+  background-position: -40px -40px, 0 0;
+}
+
+/* Motion defaults with reduced-motion support */
+* {
+  transition: color .12s cubic-bezier(0.2,0,0,1),
+              background-color .12s cubic-bezier(0.2,0,0,1),
+              border-color .12s cubic-bezier(0.2,0,0,1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 @layer components {
   /* Spacing convention: default to 4/8/16px rhythm */
   .stack-sm > * + * { @apply mt-2; }   /* 8px */

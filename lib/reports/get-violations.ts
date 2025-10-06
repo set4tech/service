@@ -15,6 +15,8 @@ export interface ViolationMarker {
   reasoning?: string;
   recommendations?: string[];
   confidence?: string;
+  sourceUrl?: string;
+  sourceLabel?: string;
 }
 
 export interface ProjectViolationsData {
@@ -59,7 +61,7 @@ export async function getProjectViolations(
     return null;
   }
 
-  // Get all checks for this assessment
+  // Get all checks for this assessment with their latest analysis (batch query)
   const { data: allChecks, error: checksError } = await supabase
     .from('checks')
     .select(
@@ -68,7 +70,13 @@ export async function getProjectViolations(
       check_name,
       code_section_key,
       code_section_number,
-      manual_override
+      manual_override,
+      latest_analysis_runs(
+        compliance_status,
+        ai_reasoning,
+        confidence,
+        raw_ai_response
+      )
     `
     )
     .eq('assessment_id', assessment.id);
@@ -88,52 +96,90 @@ export async function getProjectViolations(
     };
   }
 
-  // For each check, get latest analysis to determine if it's non-compliant
+  // Filter to only non-compliant checks
+  const nonCompliantChecks = allChecks.filter((check: any) => {
+    const latestAnalysis = Array.isArray(check.latest_analysis_runs)
+      ? check.latest_analysis_runs[0]
+      : check.latest_analysis_runs;
+
+    return (
+      check.manual_override === 'non_compliant' ||
+      latestAnalysis?.compliance_status === 'non_compliant'
+    );
+  });
+
+  if (nonCompliantChecks.length === 0) {
+    return {
+      projectId: project.id,
+      projectName: project.name,
+      assessmentId: assessment.id,
+      pdfUrl: project.pdf_url,
+      violations: [],
+    };
+  }
+
+  // Batch fetch sections for all unique keys
+  const uniqueSectionKeys = Array.from(
+    new Set(nonCompliantChecks.map((c: any) => c.code_section_key).filter(Boolean))
+  );
+
+  const { data: sectionsData } = await supabase
+    .from('sections')
+    .select('key, source_url, number')
+    .in('key', uniqueSectionKeys);
+
+  const sectionsMap = new Map(sectionsData?.map(s => [s.key, s]) || []);
+
+  // Batch fetch all screenshots for non-compliant checks
+  const checkIds = nonCompliantChecks.map((c: any) => c.id);
+  const { data: allScreenshots } = await supabase
+    .from('screenshots')
+    .select(
+      `
+      id,
+      screenshot_url,
+      thumbnail_url,
+      page_number,
+      crop_coordinates,
+      screenshot_check_assignments!inner(check_id)
+    `
+    )
+    .in('screenshot_check_assignments.check_id', checkIds)
+    .order('created_at', { ascending: true });
+
+  // Group screenshots by check_id
+  const screenshotsByCheck = new Map<string, any[]>();
+  allScreenshots?.forEach((s: any) => {
+    const checkId = s.screenshot_check_assignments?.check_id;
+    if (checkId) {
+      if (!screenshotsByCheck.has(checkId)) {
+        screenshotsByCheck.set(checkId, []);
+      }
+      screenshotsByCheck.get(checkId)!.push({
+        id: s.id,
+        screenshot_url: s.screenshot_url,
+        thumbnail_url: s.thumbnail_url,
+        page_number: s.page_number,
+        crop_coordinates: s.crop_coordinates,
+      });
+    }
+  });
+
+  // Build violations from non-compliant checks
   const violations: ViolationMarker[] = [];
 
-  for (const check of allChecks) {
-    // Get latest analysis run for this check
-    const { data: analysisRuns } = await supabase
-      .from('analysis_runs')
-      .select('compliance_status, ai_reasoning, ai_confidence, raw_ai_response')
-      .eq('check_id', check.id)
-      .order('executed_at', { ascending: false })
-      .limit(1);
+  for (const check of nonCompliantChecks) {
+    const latestAnalysis = Array.isArray(check.latest_analysis_runs)
+      ? check.latest_analysis_runs[0]
+      : check.latest_analysis_runs;
 
-    const latestAnalysis = analysisRuns?.[0];
+    // Get source URL from pre-fetched sections
+    const section = sectionsMap.get(check.code_section_key);
+    const sourceUrl = section?.source_url || '';
+    const sourceLabel = section?.number ? `CBC ${section.number}` : '';
 
-    // Skip if not non-compliant (either by manual override or AI analysis)
-    const isNonCompliant =
-      check.manual_override === 'non_compliant' ||
-      latestAnalysis?.compliance_status === 'non_compliant';
-
-    if (!isNonCompliant) {
-      continue;
-    }
-
-    // Get screenshots
-    const { data: screenshotData } = await supabase
-      .from('screenshots')
-      .select(
-        `
-        id,
-        screenshot_url,
-        thumbnail_url,
-        page_number,
-        crop_coordinates,
-        screenshot_check_assignments!inner(check_id)
-      `
-      )
-      .eq('screenshot_check_assignments.check_id', check.id)
-      .order('created_at', { ascending: true });
-
-    const screenshots = screenshotData?.map((s: any) => ({
-      id: s.id,
-      screenshot_url: s.screenshot_url,
-      thumbnail_url: s.thumbnail_url,
-      page_number: s.page_number,
-      crop_coordinates: s.crop_coordinates,
-    }));
+    // Get screenshots from pre-fetched map
+    const screenshots = screenshotsByCheck.get(check.id) || [];
 
     // Parse violations from AI response
     let violationDetails: Array<{
@@ -146,13 +192,21 @@ export async function getProjectViolations(
 
     if (latestAnalysis) {
       reasoning = latestAnalysis.ai_reasoning || '';
-      confidence = latestAnalysis.ai_confidence || '';
+      confidence = latestAnalysis.confidence || '';
 
       try {
-        const aiResponse =
-          typeof latestAnalysis.raw_ai_response === 'string'
-            ? JSON.parse(latestAnalysis.raw_ai_response)
-            : latestAnalysis.raw_ai_response;
+        let aiResponse = latestAnalysis.raw_ai_response;
+
+        if (typeof aiResponse === 'string') {
+          // Strip markdown code fences if present (```json ... ```)
+          let cleaned = aiResponse.trim();
+          if (cleaned.startsWith('```json')) {
+            cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+          } else if (cleaned.startsWith('```')) {
+            cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+          }
+          aiResponse = JSON.parse(cleaned);
+        }
 
         if (aiResponse?.violations && Array.isArray(aiResponse.violations)) {
           violationDetails = aiResponse.violations;
@@ -198,6 +252,8 @@ export async function getProjectViolations(
             reasoning,
             recommendations,
             confidence,
+            sourceUrl,
+            sourceLabel,
           });
         }
       });
@@ -224,6 +280,8 @@ export async function getProjectViolations(
         reasoning,
         recommendations,
         confidence,
+        sourceUrl,
+        sourceLabel,
       });
     }
   }

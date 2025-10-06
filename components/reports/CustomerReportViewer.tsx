@@ -64,29 +64,35 @@ export function CustomerReportViewer({ data }: Props) {
   );
 
   return (
-    <div className="fixed inset-0 flex overflow-hidden bg-gray-50">
+    <div className="fixed inset-0 flex overflow-hidden bg-paper">
       {/* Left Sidebar - Always visible */}
-      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden">
+      <div className="w-96 flex-shrink-0 bg-white border-r border-line flex flex-col h-screen overflow-hidden">
         {/* Header */}
-        <div className="px-4 py-4 border-b bg-gray-50">
-          <h1 className="text-xl font-semibold text-gray-900 mb-1">{data.projectName}</h1>
-          <p className="text-sm text-gray-600">Code Compliance Report</p>
+        <div className="px-6 py-5 border-b border-line bg-white">
+          <h1 className="text-xl font-medium text-ink-900 mb-1">{data.projectName}</h1>
+          <p className="text-sm text-ink-500">Code Compliance Report</p>
 
           {/* Violation Summary */}
           <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
-              <div className="text-2xl font-bold text-red-700">{violationStats.major || 0}</div>
-              <div className="text-xs text-red-600 uppercase font-medium">Major</div>
+            <div className="bg-white border border-line rounded-lg px-3 py-2.5 text-center">
+              <div className="text-2xl font-semibold text-danger-600 font-mono">
+                {violationStats.major || 0}
+              </div>
+              <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">Major</div>
             </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-center">
-              <div className="text-2xl font-bold text-yellow-700">
+            <div className="bg-white border border-line rounded-lg px-3 py-2.5 text-center">
+              <div className="text-2xl font-semibold text-yellow-700 font-mono">
                 {violationStats.moderate || 0}
               </div>
-              <div className="text-xs text-yellow-600 uppercase font-medium">Moderate</div>
+              <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
+                Moderate
+              </div>
             </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-center">
-              <div className="text-2xl font-bold text-blue-700">{violationStats.minor || 0}</div>
-              <div className="text-xs text-blue-600 uppercase font-medium">Minor</div>
+            <div className="bg-white border border-line rounded-lg px-3 py-2.5 text-center">
+              <div className="text-2xl font-semibold text-accent-600 font-mono">
+                {violationStats.minor || 0}
+              </div>
+              <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">Minor</div>
             </div>
           </div>
         </div>

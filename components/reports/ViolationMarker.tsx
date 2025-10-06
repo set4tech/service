@@ -1,7 +1,7 @@
 'use client';
 
+import { memo, useState } from 'react';
 import { ViolationMarker as ViolationMarkerType } from '@/lib/reports/get-violations';
-import clsx from 'clsx';
 
 interface Props {
   marker: ViolationMarkerType;
@@ -9,7 +9,13 @@ interface Props {
   isVisible: boolean;
 }
 
-export function ViolationMarker({ marker, onClick, isVisible }: Props) {
+export const ViolationMarker = memo(function ViolationMarker({
+  marker,
+  onClick,
+  isVisible,
+}: Props) {
+  const [hover, setHover] = useState(false);
+
   if (!isVisible || !marker.bounds.width || !marker.bounds.height) {
     return null;
   }
@@ -18,31 +24,27 @@ export function ViolationMarker({ marker, onClick, isVisible }: Props) {
     switch (severity) {
       case 'major':
         return {
-          border: 'border-red-500',
-          bg: 'bg-red-500/20',
-          pin: 'bg-red-500',
-          text: 'text-white',
+          dot: 'bg-danger-600',
+          ring: 'rgba(185, 28, 28, 0.45)',
+          ringHover: 'var(--tw-color-danger-500)',
         };
       case 'moderate':
         return {
-          border: 'border-yellow-500',
-          bg: 'bg-yellow-500/20',
-          pin: 'bg-yellow-500',
-          text: 'text-white',
+          dot: 'bg-yellow-600',
+          ring: 'rgba(217, 119, 6, 0.45)',
+          ringHover: 'rgb(234, 179, 8)',
         };
       case 'minor':
         return {
-          border: 'border-blue-500',
-          bg: 'bg-blue-500/20',
-          pin: 'bg-blue-500',
-          text: 'text-white',
+          dot: 'bg-accent-600',
+          ring: 'rgba(15, 118, 110, 0.45)',
+          ringHover: 'var(--tw-color-accent-500)',
         };
       default:
         return {
-          border: 'border-gray-500',
-          bg: 'bg-gray-500/20',
-          pin: 'bg-gray-500',
-          text: 'text-white',
+          dot: 'bg-gray-600',
+          ring: 'rgba(75, 85, 99, 0.45)',
+          ringHover: 'rgb(107, 114, 128)',
         };
     }
   };
@@ -50,45 +52,68 @@ export function ViolationMarker({ marker, onClick, isVisible }: Props) {
   const colors = getSeverityColors(marker.severity);
 
   return (
-    <button
-      onClick={() => onClick(marker)}
-      className={clsx(
-        'absolute border-2 transition-all cursor-pointer group',
-        colors.border,
-        colors.bg,
-        'hover:border-4'
-      )}
+    <div
+      className="absolute"
       style={{
         left: `${marker.bounds.x}px`,
         top: `${marker.bounds.y}px`,
         width: `${marker.bounds.width}px`,
         height: `${marker.bounds.height}px`,
-        pointerEvents: 'auto',
       }}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
+      onClick={() => onClick(marker)}
+      role="button"
       aria-label={`Violation: ${marker.description}`}
     >
-      {/* Pin/Badge in top-right corner */}
-      <div
-        className={clsx(
-          'absolute -top-3 -right-3 w-6 h-6 rounded-full flex items-center justify-center shadow-lg transition-transform group-hover:scale-110',
-          colors.pin,
-          colors.text
-        )}
+      {/* Precise marker dot */}
+      <span
+        className="block rounded-full border"
+        style={{
+          width: 10,
+          height: 10,
+          borderWidth: 'var(--hairline)',
+          borderColor: hover ? colors.ringHover : colors.ring,
+          boxShadow: '0 0 0 2px rgba(0,0,0,.06)',
+          transition: 'transform 120ms cubic-bezier(0.2,0,0,1), box-shadow 120ms',
+          transform: hover ? 'scale(1.08)' : 'scale(1)',
+          background: hover ? colors.ringHover : 'white',
+        }}
       >
-        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24" className="drop-shadow">
-          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-        </svg>
-      </div>
+        <span className={`block w-full h-full rounded-full ${colors.dot}`} />
+      </span>
 
-      {/* Tooltip on hover */}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-        <div className="font-semibold">{marker.codeSectionNumber}</div>
-        <div className="text-gray-300 capitalize">{marker.severity} violation</div>
-        {/* Arrow */}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
-          <div className="border-4 border-transparent border-t-gray-900" />
+      {/* Hover tooltip with source link */}
+      {hover && (
+        <div className="absolute z-10 translate-x-3 -translate-y-2 select-none pointer-events-auto">
+          <div className="rounded border border-line bg-white/95 shadow-md p-2 min-w-[220px]">
+            <div className="text-xs font-medium font-mono text-ink-700">
+              {marker.codeSectionNumber}
+            </div>
+            <div className="text-[11px] text-ink-500 mt-0.5 line-clamp-2">{marker.description}</div>
+            {marker.sourceUrl && (
+              <a
+                href={marker.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-[11px] text-accent-600 underline hover:text-accent-500"
+                onClick={e => e.stopPropagation()}
+              >
+                {marker.sourceLabel || marker.codeSectionNumber}
+                <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M14 3h7v7M21 3l-9 9"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    fill="none"
+                  />
+                  <path d="M21 14v7H3V3h7" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                </svg>
+              </a>
+            )}
+          </div>
         </div>
-      </div>
-    </button>
+      )}
+    </div>
   );
-}
+});

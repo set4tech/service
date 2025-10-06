@@ -541,16 +541,36 @@ export default function AssessmentClient({
             <h2 className="text-base font-semibold text-gray-900">
               {(assessment.projects as any)?.name || 'Compliance Checks'}
             </h2>
-            <Link href="/" className="text-gray-400 hover:text-gray-600 transition-colors">
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
-              </svg>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/projects/${assessment.project_id}/report`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-accent-600 hover:text-accent-500 bg-white border border-line rounded-lg hover:border-accent-400 transition-colors"
+                title="View Compliance Report (opens in new tab)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M14 3h7v7M21 3l-9 9"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    fill="none"
+                  />
+                  <path d="M21 14v7H3V3h7" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                </svg>
+                Report
+              </Link>
+              <Link href="/" className="text-gray-400 hover:text-gray-600 transition-colors">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                  />
+                </svg>
+              </Link>
+            </div>
           </div>
 
           {/* Mode Toggle */}
