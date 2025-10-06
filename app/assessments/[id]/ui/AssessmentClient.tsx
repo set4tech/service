@@ -85,6 +85,21 @@ export default function AssessmentClient({
   // Filter checks by mode (skip filtering for summary mode)
   const displayedChecks = useMemo(() => {
     if (checkMode === 'summary') return checks;
+
+    // Debug: log element checks
+    if (checkMode === 'element') {
+      const elementChecks = checks.filter(c => c.check_type === 'element');
+      console.log(
+        '[AssessmentClient] Element checks:',
+        elementChecks.map(c => ({
+          name: c.element_group_name,
+          title: c.code_section_title,
+          instance: c.instance_number,
+          type: c.check_type,
+        }))
+      );
+    }
+
     return checks.filter(c => {
       const type = c.check_type || 'section';
       return type === checkMode;
@@ -665,6 +680,23 @@ export default function AssessmentClient({
                 } catch (error) {
                   console.error('Failed to refetch check:', error);
                 }
+              }
+            }}
+            onChecksRefresh={async () => {
+              // Refetch all checks (used after exclusion)
+              try {
+                const res = await fetch(`/api/assessments/${assessment.id}/checks`);
+                if (res.ok) {
+                  const updatedChecks = await res.json();
+                  setChecks(updatedChecks);
+                  // Close the detail panel if the active check was deleted
+                  if (!updatedChecks.find((c: any) => c.id === activeCheck?.id)) {
+                    setShowDetailPanel(false);
+                    setActiveCheckId(null);
+                  }
+                }
+              } catch (error) {
+                console.error('Failed to refetch checks:', error);
               }
             }}
           />

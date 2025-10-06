@@ -20,6 +20,7 @@ interface CodeDetailPanelProps {
   sectionKey: string | null;
   onClose: () => void;
   onCheckUpdate?: () => void; // Callback when check is updated
+  onChecksRefresh?: () => void; // Callback to refetch all checks (for exclusions)
   activeCheck?: any; // Active check object (for screenshots)
   screenshotsRefreshKey?: number; // Key to trigger screenshot refresh
   onScreenshotAssigned?: () => void; // Callback when screenshot is assigned to other checks
@@ -30,6 +31,7 @@ export function CodeDetailPanel({
   sectionKey,
   onClose,
   onCheckUpdate,
+  onChecksRefresh,
   activeCheck,
   screenshotsRefreshKey,
   onScreenshotAssigned,
@@ -550,12 +552,15 @@ export function CodeDetailPanel({
             }
           })
           .catch(err => console.error('Failed to reload child checks:', err));
-      } else {
-        // For section checks, close the panel
-        onClose();
       }
 
-      // Notify parent to refresh
+      // Refresh all checks to remove marked section from list
+      if (onChecksRefresh) {
+        console.log('Refreshing all checks after marking section never relevant');
+        onChecksRefresh();
+      }
+
+      // Notify parent to refresh (for progress updates)
       if (onCheckUpdate) {
         onCheckUpdate();
       }
@@ -654,12 +659,15 @@ export function CodeDetailPanel({
             }
           })
           .catch(err => console.error('Failed to reload child checks:', err));
-      } else {
-        // For section checks, close the panel
-        onClose();
       }
 
-      // Notify parent to refresh
+      // Refresh all checks to remove excluded section from list
+      if (onChecksRefresh) {
+        console.log('Refreshing all checks after excluding section');
+        onChecksRefresh();
+      }
+
+      // Notify parent to refresh (for progress updates)
       if (onCheckUpdate) {
         onCheckUpdate();
       }
