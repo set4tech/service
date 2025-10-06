@@ -50,18 +50,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // Delete all checks for this section in this assessment
-    // This includes:
-    // 1. Direct section checks where code_section_key = sectionKey
-    // 2. Child section checks (part of element instances) where code_section_key = sectionKey
-    const { error: deleteError } = await supabase
+    // Need to delete in order to avoid foreign key constraint violations:
+    // 1. First delete child checks (where parent_check_id references a check we're about to delete)
+    // 2. Then delete parent checks
+
+    // Find all checks that will be deleted (those with code_section_key = sectionKey)
+    const { data: checksToDelete } = await supabase
       .from('checks')
-      .delete()
+      .select('id')
       .eq('assessment_id', assessmentId)
       .eq('code_section_key', sectionKey);
 
-    if (deleteError) {
-      console.error('Error deleting checks for excluded section:', deleteError);
-      // Don't fail the request - the exclusion is logged, checks can be cleaned up later
+    if (checksToDelete && checksToDelete.length > 0) {
+      const checkIdsToDelete = checksToDelete.map(c => c.id);
+
+      // First, delete any child checks that reference these checks
+      const { error: deleteChildrenError } = await supabase
+        .from('checks')
+        .delete()
+        .in('parent_check_id', checkIdsToDelete);
+
+      if (deleteChildrenError) {
+        console.error('Error deleting child checks for excluded section:', deleteChildrenError);
+      }
+
+      // Now delete the parent checks
+      const { error: deleteError } = await supabase
+        .from('checks')
+        .delete()
+        .eq('assessment_id', assessmentId)
+        .eq('code_section_key', sectionKey);
+
+      if (deleteError) {
+        console.error('Error deleting checks for excluded section:', deleteError);
+        // Don't fail the request - the exclusion is logged, checks can be cleaned up later
+      }
     }
 
     // Update element checks to remove this section from their element_sections array
