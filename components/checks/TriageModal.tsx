@@ -23,6 +23,19 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
         // Collect unique section keys
         const sectionKeys = sections.map(s => s.section_key).filter(Boolean);
 
+        console.log('[TriageModal] Section keys to fetch:', JSON.stringify(sectionKeys, null, 2));
+        console.log(
+          '[TriageModal] Full sections:',
+          JSON.stringify(
+            sections.map(s => ({
+              section_key: s.section_key,
+              section_number: s.section_number,
+            })),
+            null,
+            2
+          )
+        );
+
         if (sectionKeys.length === 0) {
           setEnrichedSections(sections);
           setLoading(false);
@@ -43,9 +56,11 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
           return;
         }
 
-        const sectionData: Array<{ key: string; text: string; title: string }> =
+        const sectionData: Array<{ key: string; number: string; text: string; title: string }> =
           await response.json();
-        const sectionMap = new Map(sectionData.map(s => [s.key, s]));
+        console.log('[TriageModal] Fetched section data:', sectionData);
+        // Map by number since section_key is the section number
+        const sectionMap = new Map(sectionData.map(s => [s.number, s]));
 
         // Enrich sections with text and title
         const enriched = sections.map(section => {
@@ -142,21 +157,33 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
                     {/* Section Header */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
-                        <h4 className="text-sm font-mono font-semibold text-gray-900">
+                        <h4 className="text-base font-mono font-bold text-gray-900">
                           {section.section_number}
                         </h4>
                         {section.section_title && (
-                          <p className="text-xs text-gray-600 mt-0.5">{section.section_title}</p>
+                          <p className="text-sm font-medium text-gray-700 mt-1">
+                            {section.section_title}
+                          </p>
                         )}
-                        {section.section_text && (
-                          <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded">
-                            <p className="text-xs font-semibold text-gray-600 mb-1">CODE TEXT</p>
-                            <p className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap">
+                        {section.section_text ? (
+                          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                            <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">
                               {section.section_text}
                             </p>
                           </div>
+                        ) : (
+                          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                            <p className="text-sm text-yellow-800">No code text available</p>
+                          </div>
                         )}
-                        <p className="text-sm text-gray-700 mt-2 italic">{section.reasoning}</p>
+                        {section.reasoning && (
+                          <details className="mt-2">
+                            <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                              AI Note
+                            </summary>
+                            <p className="text-xs text-gray-600 mt-1 ml-4">{section.reasoning}</p>
+                          </details>
+                        )}
                       </div>
                       {isTriaged && (
                         <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-medium flex-shrink-0">

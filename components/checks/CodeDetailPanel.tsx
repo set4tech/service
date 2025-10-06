@@ -127,6 +127,10 @@ export function CodeDetailPanel({
     // Don't reset assessment state immediately - check if analysis is in progress first
     // We'll check progress status after loading check data
 
+    // Reset child check state when loading a new check to prevent stale data
+    setActiveChildCheckId(null);
+    setChildChecks([]);
+
     fetch(`/api/checks/${checkId}`)
       .then(res => res.json())
       .then(data => {
@@ -161,9 +165,14 @@ export function CodeDetailPanel({
           // Set first child as active
           if (sorted.length > 0) {
             setActiveChildCheckId(sorted[0].id);
+          } else {
+            // Explicitly set to null if no child checks found
+            setActiveChildCheckId(null);
           }
         } else {
           console.log('CodeDetailPanel: No child checks found');
+          // Explicitly set to null if no child checks found
+          setActiveChildCheckId(null);
         }
       })
       .catch(err => {
@@ -1343,11 +1352,48 @@ export function CodeDetailPanel({
             {!loadingRuns && analysisRuns.length > 0 && analysisRuns[0].section_results && (
               <div className="border-t pt-6">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  Latest Analysis Summary
+                  {(() => {
+                    const latestRun = analysisRuns[0];
+                    const batchGroupId = latestRun.batch_group_id;
+
+                    // If this is a batched run, show combined results from all completed batches
+                    if (batchGroupId && latestRun.total_batches && latestRun.total_batches > 1) {
+                      const completedInGroup = analysisRuns.filter(
+                        (r: any) => r.batch_group_id === batchGroupId
+                      ).length;
+                      return `Analysis Summary (${completedInGroup}/${latestRun.total_batches} batches completed)`;
+                    }
+                    return 'Latest Analysis Summary';
+                  })()}
                 </div>
                 {(() => {
                   const latestRun = analysisRuns[0];
-                  const sectionResults = latestRun.section_results || [];
+                  const batchGroupId = latestRun.batch_group_id;
+
+                  // Aggregate results from all completed batches in the same batch group
+                  let sectionResults: SectionResult[] = [];
+                  if (batchGroupId && latestRun.total_batches && latestRun.total_batches > 1) {
+                    // Get all runs from this batch group
+                    const batchGroupRuns = analysisRuns.filter(
+                      (r: any) => r.batch_group_id === batchGroupId
+                    );
+                    console.log(
+                      '[Analysis Summary] Aggregating from',
+                      batchGroupRuns.length,
+                      'completed batches'
+                    );
+
+                    // Combine all section results
+                    batchGroupRuns.forEach((run: any) => {
+                      if (run.section_results) {
+                        sectionResults = sectionResults.concat(run.section_results);
+                      }
+                    });
+                  } else {
+                    // Single batch or legacy run - use latest run's results
+                    sectionResults = latestRun.section_results || [];
+                  }
+
                   const violationCount = sectionResults.filter(
                     (s: SectionResult) => s.compliance_status === 'violation'
                   ).length;
@@ -1406,6 +1452,9 @@ export function CodeDetailPanel({
                           className="w-full px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500"
                         >
                           Review & Triage ({needsMoreInfoCount} sections)
+                          {assessing && (
+                            <span className="ml-1 text-xs">(more batches running...)</span>
+                          )}
                         </button>
                       )}
                     </div>

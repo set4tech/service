@@ -15,15 +15,27 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = supabaseAdmin();
 
+    console.log('[sections-batch] Fetching sections for keys:', sectionKeys);
+
+    // section_key is actually the section number, not the full key
     const { data: sections, error: sectionError } = await supabase
       .from('sections')
       .select('key, number, title, text')
-      .in('key', sectionKeys);
+      .in('number', sectionKeys);
 
     if (sectionError) {
-      console.error('Error fetching sections:', sectionError);
+      console.error('[sections-batch] Error fetching sections:', sectionError);
       return NextResponse.json({ error: sectionError.message }, { status: 500 });
     }
+
+    console.log(
+      '[sections-batch] Found sections:',
+      sections?.length || 0,
+      'of',
+      sectionKeys.length,
+      'requested'
+    );
+    console.log('[sections-batch] Sections data:', sections);
 
     return NextResponse.json(sections || []);
   } catch (error) {
