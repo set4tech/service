@@ -176,6 +176,17 @@ export function ManualJudgmentPanel({
           </div>
         )}
 
+        {/* Save button */}
+        {manualOverride && (
+          <button
+            onClick={handleSaveOverride}
+            disabled={savingOverride}
+            className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+          >
+            {savingOverride ? 'Saving...' : 'Save Manual Override'}
+          </button>
+        )}
+
         {/* Exclude from project button */}
         <div className="pt-2 border-t border-gray-200">
           <button
@@ -187,17 +198,6 @@ export function ManualJudgmentPanel({
             🚫 Exclude Section from Project
           </button>
         </div>
-
-        {/* Save button */}
-        {manualOverride && (
-          <button
-            onClick={handleSaveOverride}
-            disabled={savingOverride}
-            className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
-          >
-            {savingOverride ? 'Saving...' : 'Save Manual Override'}
-          </button>
-        )}
 
         {/* Error message */}
         {overrideError && (
