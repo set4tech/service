@@ -30,8 +30,18 @@ export function ViolationsSummary({ checks, onCheckSelect, buildingInfo, codeboo
 
   // Calculate stats
   const stats = useMemo(() => {
+    // Flatten checks to include instances
+    const allChecks: any[] = [];
+    checks.forEach(check => {
+      allChecks.push(check);
+      // Add instances if they exist
+      if (check.instances && Array.isArray(check.instances)) {
+        allChecks.push(...check.instances);
+      }
+    });
+
     // Exclude not_applicable from totals
-    const applicableChecks = checks.filter(c => c.manual_override !== 'not_applicable');
+    const applicableChecks = allChecks.filter(c => c.manual_override !== 'not_applicable');
     const totalSections = applicableChecks.length;
 
     // Count assessed (has AI result OR manual override)
@@ -53,7 +63,19 @@ export function ViolationsSummary({ checks, onCheckSelect, buildingInfo, codeboo
   const violations = useMemo(() => {
     const result: ViolationMarker[] = [];
 
+    // Flatten checks to include instances
+    const allChecks: any[] = [];
     checks.forEach(check => {
+      allChecks.push(check);
+      // Add instances if they exist
+      if (check.instances && Array.isArray(check.instances)) {
+        allChecks.push(...check.instances);
+      }
+    });
+
+    console.log('[ViolationsSummary] Processing', allChecks.length, 'checks (including instances)');
+
+    allChecks.forEach(check => {
       // Determine if non-compliant (check both 'non_compliant' and 'violation' statuses)
       const isNonCompliant =
         check.manual_override === 'non_compliant' ||
