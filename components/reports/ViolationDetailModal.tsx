@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { ViolationMarker } from '@/lib/reports/get-violations';
+import { CodeSection } from '@/types/analysis';
+import { SectionContentDisplay } from '@/components/checks/panels/SectionContentDisplay';
 import clsx from 'clsx';
 
 interface Props {
@@ -23,6 +25,40 @@ export function ViolationDetailModal({
 }: Props) {
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [section, setSection] = useState<CodeSection | null>(null);
+  const [sectionLoading, setSectionLoading] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+
+  // Fetch section content
+  useEffect(() => {
+    if (!violation.codeSectionKey) return;
+
+    const fetchSection = async () => {
+      setSectionLoading(true);
+      setSectionError(null);
+      try {
+        const res = await fetch('/api/compliance/sections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sectionKey: violation.codeSectionKey }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setSection(data);
+        } else {
+          setSectionError('Failed to load section details');
+        }
+      } catch (err) {
+        console.error('Failed to fetch section:', err);
+        setSectionError('Failed to load section details');
+      } finally {
+        setSectionLoading(false);
+      }
+    };
+
+    fetchSection();
+  }, [violation.codeSectionKey]);
 
   // Fetch presigned URL for screenshot
   useEffect(() => {
@@ -78,7 +114,7 @@ export function ViolationDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -149,6 +185,18 @@ export function ViolationDetailModal({
             {violation.checkName && (
               <div className="text-sm text-ink-500 mt-1">{violation.checkName}</div>
             )}
+          </div>
+
+          {/* Code Section Content */}
+          <div className="mb-6 pb-6 border-b border-gray-200">
+            <SectionContentDisplay
+              section={section}
+              loading={sectionLoading}
+              error={sectionError}
+              isElementCheck={false}
+              sections={section ? [section] : []}
+              check={null}
+            />
           </div>
 
           {/* Screenshot */}

@@ -66,8 +66,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       // Filter out checks for sections marked as never_relevant
+      // BUT keep element templates (instance_number = 0) even if never_relevant, since they're used for cloning
       const filteredChecksData = (allChecksData || []).filter((check: any) => {
-        return check.sections?.never_relevant !== true;
+        return check.sections?.never_relevant !== true || check.instance_number === 0;
       });
 
       if (filteredChecksData.length < (allChecksData?.length || 0)) {
@@ -251,8 +252,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Filter out checks for sections marked as never_relevant
+    // BUT keep element templates (instance_number = 0) even if never_relevant, since they're used for cloning
     const filteredChecks = (allChecks || []).filter((check: any) => {
-      return check.sections?.never_relevant !== true;
+      return check.sections?.never_relevant !== true || check.instance_number === 0;
     });
 
     if (filteredChecks.length < (allChecks?.length || 0)) {

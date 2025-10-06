@@ -137,7 +137,7 @@ Analyze the evidence and provide a compliance assessment for EACH section indivi
 For each section, determine:
 1. **compliance_status**: Must be one of:
    - "compliant": Clear evidence that requirements are met
-   - "violation": Clear evidence of code violation
+   - "non_compliant": Clear evidence of code violation
    - "needs_more_info": Information that SHOULD be shown is missing (e.g., missing dimensions that should be on the plan)
    - "not_applicable": Section is not relevant to this drawing type or project scope (e.g., signage details on floor plans, mounting heights not typically shown)
 
@@ -157,7 +157,7 @@ Return your response as a JSON object with this exact structure:
     {
       "section_key": "the section key exactly as provided",
       "section_number": "the section number",
-      "compliance_status": "compliant" | "violation" | "needs_more_info" | "not_applicable",
+      "compliance_status": "compliant" | "non_compliant" | "needs_more_info" | "not_applicable",
       "confidence": "high" | "medium" | "low" | "n/a",
       "reasoning": "brief explanation",
       "violations": [{"description": "...", "severity": "minor"|"moderate"|"major"}],
@@ -188,8 +188,10 @@ Return your response as a JSON object with this exact structure:
         const allRecommendations: any[] = [];
 
         if (sectionResults.length > 0) {
-          // Determine overall status: violation > needs_more_info > compliant > not_applicable
-          const hasViolation = sectionResults.some((s: any) => s.compliance_status === 'violation');
+          // Determine overall status: non_compliant > needs_more_info > compliant > not_applicable
+          const hasViolation = sectionResults.some(
+            (s: any) => s.compliance_status === 'non_compliant'
+          );
           const hasNeedsMoreInfo = sectionResults.some(
             (s: any) => s.compliance_status === 'needs_more_info'
           );
@@ -198,7 +200,7 @@ Return your response as a JSON object with this exact structure:
           );
 
           if (hasViolation) {
-            overallStatus = 'violation';
+            overallStatus = 'non_compliant';
           } else if (hasNeedsMoreInfo) {
             overallStatus = 'needs_more_info';
           } else if (allNotApplicable) {

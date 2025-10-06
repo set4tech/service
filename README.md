@@ -171,6 +171,51 @@ npm run test:coverage    # With coverage
    - Each instance assessed independently
    - Reuse section mappings from template
 
+### 4. Client Compliance Viewer
+
+**Simplified client-facing compliance review interface:**
+
+The compliance viewer provides a streamlined interface for clients to review code sections and compliance status without access to the full assessment tools.
+
+**Access:**
+
+- Navigate to `/compliance/[projectId]`
+- Example: `http://localhost:3000/compliance/1ae95ee4-dc31-401a-8bb0-8778aa5cd7be`
+
+**Features:**
+
+1. **Section Navigation**
+   - Browse all applicable code sections
+   - Visual status indicators (pending, captured, complete, etc.)
+   - Section list with completion status
+
+2. **Section Details**
+   - View requirements and referenced sections
+   - See consolidated code information
+   - Clear presentation of compliance criteria
+
+3. **Multiple Items Mode**
+   - Enable for sections with multiple instances (doors, windows, etc.)
+   - Name and track each instance separately
+   - Individual screenshot capture per instance
+
+4. **Actions**
+   - Screenshot capture (when not in multiple items mode)
+   - Analyze compliance button
+   - Skip section or mark not applicable
+   - Previous/Next navigation
+
+5. **Results Display**
+   - Compliance status with color coding
+   - Pass/Fail/Review Needed indicators
+   - AI reasoning for decisions
+
+**Use Case:**
+
+- Share with clients for review without granting edit access
+- Provide read-only view of compliance status
+- Enable stakeholder review of section applicability
+
 ## Application Architecture
 
 ### Directory Structure
@@ -184,6 +229,7 @@ app/
 │   ├── screenshots/     # Upload, presigning
 │   └── projects/        # Project management
 ├── assessments/[id]/    # Main assessment UI
+├── compliance/[projectId]/  # Client-facing compliance viewer
 ├── projects/            # Project list & creation
 └── customers/           # Customer management
 

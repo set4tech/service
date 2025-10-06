@@ -82,7 +82,7 @@ ${screenshotsSection}
 
 # Your Task
 Analyze the evidence and determine:
-1. Compliance status: Must be one of: "compliant", "violation", "needs_more_info"
+1. Compliance status: Must be one of: "compliant", "non_compliant", "needs_more_info"
 2. Confidence level: "high", "medium", or "low"
 3. Reasoning for your determination
 4. Any violations found (if applicable)
@@ -90,7 +90,7 @@ Analyze the evidence and determine:
 
 Return your response as a JSON object with this exact structure:
 {
-  "compliance_status": "compliant" | "violation" | "needs_more_info",
+  "compliance_status": "compliant" | "non_compliant" | "needs_more_info",
   "confidence": "high" | "medium" | "low",
   "reasoning": "your detailed reasoning here",
   "violations": [{"description": "...", "severity": "minor"|"moderate"|"major"}],

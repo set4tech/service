@@ -4,7 +4,6 @@ export type ComplianceStatus =
   | 'partially_compliant'
   | 'unclear'
   | 'not_applicable'
-  | 'violation'
   | 'needs_more_info';
 export type Confidence = 'high' | 'medium' | 'low';
 
