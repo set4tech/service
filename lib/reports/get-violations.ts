@@ -118,17 +118,32 @@ export async function getProjectViolations(
     };
   }
 
-  // Batch fetch sections for all unique keys
+  // Batch fetch sections for all unique keys (including parent info for URL fallback)
   const uniqueSectionKeys = Array.from(
     new Set(nonCompliantChecks.map((c: any) => c.code_section_key).filter(Boolean))
   );
 
   const { data: sectionsData } = await supabase
     .from('sections')
-    .select('key, source_url, number')
+    .select('key, source_url, number, parent_key')
     .in('key', uniqueSectionKeys);
 
   const sectionsMap = new Map(sectionsData?.map(s => [s.key, s]) || []);
+
+  // Batch fetch parent sections for URL fallback
+  const parentKeys = Array.from(
+    new Set(sectionsData?.map(s => s.parent_key).filter(Boolean) || [])
+  );
+
+  let parentSectionsMap = new Map();
+  if (parentKeys.length > 0) {
+    const { data: parentSections } = await supabase
+      .from('sections')
+      .select('key, source_url')
+      .in('key', parentKeys);
+
+    parentSectionsMap = new Map(parentSections?.map(p => [p.key, p]) || []);
+  }
 
   // Batch fetch all screenshots for non-compliant checks
   const checkIds = nonCompliantChecks.map((c: any) => c.id);
@@ -173,9 +188,16 @@ export async function getProjectViolations(
       ? check.latest_analysis_runs[0]
       : check.latest_analysis_runs;
 
-    // Get source URL from pre-fetched sections
+    // Get source URL from pre-fetched sections (with parent fallback)
     const section = sectionsMap.get(check.code_section_key);
-    const sourceUrl = section?.source_url || '';
+    let sourceUrl = section?.source_url || '';
+
+    // Fallback to parent section's source_url if child doesn't have one
+    if (!sourceUrl && section?.parent_key) {
+      const parentSection = parentSectionsMap.get(section.parent_key);
+      sourceUrl = parentSection?.source_url || '';
+    }
+
     const sourceLabel = section?.number ? `CBC ${section.number}` : '';
 
     // Get screenshots from pre-fetched map

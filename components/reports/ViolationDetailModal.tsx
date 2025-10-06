@@ -117,29 +117,37 @@ export function ViolationDetailModal({
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Code Section */}
           <div className="mb-4">
-            <h3 className="text-sm font-medium text-ink-700 mb-1">Code Section</h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-medium text-ink-700">Code Section</h3>
+              {violation.sourceUrl && (
+                <a
+                  href={violation.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+                >
+                  See Original Code
+                  <svg
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    className="flex-shrink-0"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
+                  </svg>
+                </a>
+              )}
+            </div>
             <div className="text-lg font-mono text-ink-900">{violation.codeSectionNumber}</div>
             {violation.checkName && (
               <div className="text-sm text-ink-500 mt-1">{violation.checkName}</div>
-            )}
-            {violation.sourceUrl && (
-              <a
-                href={violation.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-2 text-sm text-accent-600 hover:text-accent-500 underline transition-colors"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M14 3h7v7M21 3l-9 9"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    fill="none"
-                  />
-                  <path d="M21 14v7H3V3h7" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                </svg>
-                {violation.sourceLabel || 'View Code Reference'}
-              </a>
             )}
           </div>
 
