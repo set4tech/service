@@ -49,19 +49,53 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
-    // Delete all checks for this section in this assessment (both section and element checks)
+    // Delete all checks for this section in this assessment
     // This includes:
     // 1. Direct section checks where code_section_key = sectionKey
-    // 2. Element checks where sectionKey is in element_sections array
+    // 2. Child section checks (part of element instances) where code_section_key = sectionKey
     const { error: deleteError } = await supabase
       .from('checks')
       .delete()
       .eq('assessment_id', assessmentId)
-      .or(`code_section_key.eq.${sectionKey},element_sections.cs.{${sectionKey}}`);
+      .eq('code_section_key', sectionKey);
 
     if (deleteError) {
       console.error('Error deleting checks for excluded section:', deleteError);
       // Don't fail the request - the exclusion is logged, checks can be cleaned up later
+    }
+
+    // Update element checks to remove this section from their element_sections array
+    const { data: elementChecks, error: fetchError } = await supabase
+      .from('checks')
+      .select('id, element_sections, code_section_key')
+      .eq('assessment_id', assessmentId)
+      .eq('check_type', 'element')
+      .contains('element_sections', [sectionKey]);
+
+    if (!fetchError && elementChecks) {
+      console.log(
+        `Found ${elementChecks.length} element checks containing section ${sectionKey}, updating...`
+      );
+      for (const check of elementChecks) {
+        const updatedSections = (check.element_sections || []).filter(
+          (s: string) => s !== sectionKey
+        );
+
+        // If the excluded section was the code_section_key, update it to the first remaining section
+        const updates: any = { element_sections: updatedSections };
+        if (check.code_section_key === sectionKey && updatedSections.length > 0) {
+          updates.code_section_key = updatedSections[0];
+        }
+
+        const { error: updateError } = await supabase
+          .from('checks')
+          .update(updates)
+          .eq('id', check.id);
+
+        if (updateError) {
+          console.error(`Error updating element check ${check.id}:`, updateError);
+        }
+      }
     }
 
     return NextResponse.json({

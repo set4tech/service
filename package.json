@@ -50,6 +50,7 @@
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^4.6.82",
     "pg": "^8.16.3",
+    "playwright": "^1.55.1",
     "postgres": "^3.4.7",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

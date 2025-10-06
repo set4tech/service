@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Layer Extractor</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 {
+            color: #4ec9b0;
+        }
+        .controls {
+            background: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .file-input {
+            margin-bottom: 15px;
+        }
+        input[type="file"] {
+            padding: 10px;
+            background: #3c3c3c;
+            border: 1px solid #555;
+            color: #d4d4d4;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        #log {
+            background: #1e1e1e;
+            border: 1px solid #3c3c3c;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .log-line {
+            margin: 2px 0;
+        }
+        .log-success {
+            color: #4ec9b0;
+        }
+        .log-error {
+            color: #f48771;
+        }
+        .log-info {
+            color: #569cd6;
+        }
+        .log-warn {
+            color: #ce9178;
+        }
+        #preview {
+            margin-top: 20px;
+            border: 1px solid #3c3c3c;
+            padding: 10px;
+            background: #252526;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        #preview img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #555;
+        }
+        .layers-list {
+            margin: 15px 0;
+            padding: 10px;
+            background: #2d2d30;
+            border-radius: 4px;
+        }
+        .layer-item {
+            padding: 5px;
+            margin: 2px 0;
+            background: #3c3c3c;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>📄 PDF Layer Extractor (Browser-Based)</h1>
+
+    <div class="controls">
+        <div class="file-input">
+            <label for="pdfFile">Select PDF file:</label><br>
+            <input type="file" id="pdfFile" accept=".pdf">
+        </div>
+        <button id="extractBtn" disabled>Extract Layers</button>
+        <button id="downloadBtn" disabled style="margin-left: 10px;">Download Result</button>
+    </div>
+
+    <div id="log"></div>
+    <div id="preview"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.mjs" type="module"></script>
+
+    <script type="module">
+        // Import PDF.js
+        import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.mjs';
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.mjs';
+
+        const logDiv = document.getElementById('log');
+        const extractBtn = document.getElementById('extractBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const pdfFileInput = document.getElementById('pdfFile');
+        const previewDiv = document.getElementById('preview');
+
+        let resultImageUrl = null;
+
+        function log(message, type = 'info') {
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = message;
+            logDiv.appendChild(line);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLog() {
+            logDiv.innerHTML = '';
+        }
+
+        pdfFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                extractBtn.disabled = false;
+                log(`✓ Selected file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, 'success');
+            }
+        });
+
+        extractBtn.addEventListener('click', async () => {
+            clearLog();
+            log('='.repeat(80), 'info');
+            log('PDF LAYER EXTRACTION TOOL (BROWSER)', 'info');
+            log('='.repeat(80), 'info');
+            log('', 'info');
+
+            const file = pdfFileInput.files[0];
+            if (!file) {
+                log('✗ No file selected', 'error');
+                return;
+            }
+
+            extractBtn.disabled = true;
+            downloadBtn.disabled = true;
+            previewDiv.innerHTML = '';
+
+            try {
+                log('Loading PDF...', 'info');
+                const arrayBuffer = await file.arrayBuffer();
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                const pdfDoc = await loadingTask.promise;
+
+                log(`✓ PDF loaded successfully`, 'success');
+                log(`  - Number of pages: ${pdfDoc.numPages}`, 'info');
+                log('', 'info');
+
+                // Get optional content configuration
+                log('Analyzing Optional Content (Layers)...', 'info');
+                const optionalContentConfig = await pdfDoc.getOptionalContentConfig();
+
+                const layers = [];
+                try {
+                    const groups = optionalContentConfig.getGroups();
+                    log(`✓ Found ${Object.keys(groups).length} optional content groups`, 'success');
+
+                    for (const [id, group] of Object.entries(groups)) {
+                        const layerInfo = {
+                            id: id,
+                            name: group.name || `Layer ${id}`,
+                            visible: optionalContentConfig.isVisible(id),
+                        };
+                        layers.push(layerInfo);
+                        log(`  - Layer: "${layerInfo.name}" (ID: ${id})`, 'info');
+                    }
+                    log('', 'info');
+                } catch (error) {
+                    log('⚠ Error accessing layers: ' + error.message, 'warn');
+                    log('', 'info');
+                }
+
+                if (layers.length === 0) {
+                    log('✗ No layers found in PDF', 'error');
+                    extractBtn.disabled = false;
+                    return;
+                }
+
+                // Render layers
+                log('='.repeat(80), 'info');
+                log('RENDERING LAYERS SIDE-BY-SIDE', 'info');
+                log('='.repeat(80), 'info');
+                log('', 'info');
+
+                const scale = 1.5;
+                const pageNumber = 4;
+                const page = await pdfDoc.getPage(pageNumber);
+                const viewport = page.getViewport({ scale });
+
+                log(`Rendering page ${pageNumber}`, 'info');
+                log(`Page dimensions: ${Math.floor(viewport.width)}x${Math.floor(viewport.height)} (scale: ${scale})`, 'info');
+                log(`Will create ${layers.length + 1} renders (each layer + all combined)`, 'info');
+                log('', 'info');
+
+                const layerCanvases = [];
+
+                // Render each layer
+                for (const layer of layers) {
+                    log(`Rendering layer: "${layer.name}"`, 'info');
+
+                    // Hide all layers
+                    for (const l of layers) {
+                        await optionalContentConfig.setVisibility(l.id, false);
+                    }
+
+                    // Show only current layer
+                    await optionalContentConfig.setVisibility(layer.id, true);
+
+                    // Create canvas
+                    const canvas = document.createElement('canvas');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    const context = canvas.getContext('2d');
+
+                    // White background
+                    context.fillStyle = 'white';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Render
+                    await page.render({
+                        canvasContext: context,
+                        viewport: viewport,
+                        optionalContentConfigPromise: Promise.resolve(optionalContentConfig),
+                    }).promise;
+
+                    log(`  ✓ Rendered "${layer.name}"`, 'success');
+                    layerCanvases.push(canvas);
+                }
+
+                // Render all layers combined
+                log('Rendering all layers combined', 'info');
+                for (const l of layers) {
+                    await optionalContentConfig.setVisibility(l.id, true);
+                }
+
+                const allCanvas = document.createElement('canvas');
+                allCanvas.width = viewport.width;
+                allCanvas.height = viewport.height;
+                const allContext = allCanvas.getContext('2d');
+                allContext.fillStyle = 'white';
+                allContext.fillRect(0, 0, allCanvas.width, allCanvas.height);
+
+                await page.render({
+                    canvasContext: allContext,
+                    viewport: viewport,
+                    optionalContentConfigPromise: Promise.resolve(optionalContentConfig),
+                }).promise;
+
+                log(`  ✓ Rendered all layers combined`, 'success');
+                layerCanvases.push(allCanvas);
+
+                log('', 'info');
+                log('='.repeat(80), 'info');
+                log('COMPOSITING SIDE-BY-SIDE IMAGE', 'info');
+                log('='.repeat(80), 'info');
+                log('', 'info');
+
+                // Create composite canvas
+                const totalWidth = viewport.width * layerCanvases.length;
+                const compositeCanvas = document.createElement('canvas');
+                compositeCanvas.width = totalWidth;
+                compositeCanvas.height = viewport.height;
+                const compositeContext = compositeCanvas.getContext('2d');
+
+                // White background
+                compositeContext.fillStyle = 'white';
+                compositeContext.fillRect(0, 0, totalWidth, viewport.height);
+
+                // Draw each layer side-by-side
+                layerCanvases.forEach((canvas, idx) => {
+                    compositeContext.drawImage(canvas, viewport.width * idx, 0);
+                });
+
+                log(`✓ Created composite image: ${totalWidth}x${viewport.height}`, 'success');
+                log('', 'info');
+
+                // Convert to blob
+                const blob = await new Promise(resolve => compositeCanvas.toBlob(resolve, 'image/png'));
+                resultImageUrl = URL.createObjectURL(blob);
+
+                log('='.repeat(80), 'info');
+                log('SUMMARY', 'info');
+                log('='.repeat(80), 'info');
+                log(`Layers found: ${layers.length}`, 'info');
+                log('', 'info');
+                log('Layers:', 'info');
+                layers.forEach((l, i) => {
+                    log(`  ${i + 1}. "${l.name}" (ID: ${l.id})`, 'info');
+                });
+                log('', 'info');
+                log(`✓ Image size: ${(blob.size / 1024).toFixed(2)} KB`, 'success');
+                log('='.repeat(80), 'info');
+                log('', 'info');
+                log('✓ Process completed successfully!', 'success');
+                log('Click "Download Result" to save the image', 'info');
+
+                // Show preview
+                const img = document.createElement('img');
+                img.src = resultImageUrl;
+                img.style.maxWidth = '100%';
+                previewDiv.innerHTML = '<h3 style="color: #4ec9b0;">Preview (scroll horizontally):</h3>';
+                previewDiv.appendChild(img);
+
+                downloadBtn.disabled = false;
+                extractBtn.disabled = false;
+
+            } catch (error) {
+                log('', 'info');
+                log('✗ Error: ' + error.message, 'error');
+                console.error(error);
+                extractBtn.disabled = false;
+            }
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            if (resultImageUrl) {
+                const a = document.createElement('a');
+                a.href = resultImageUrl;
+                a.download = 'layers-side-by-side.png';
+                a.click();
+                log('✓ Download started', 'success');
+            }
+        });
+    </script>
+</body>
+</html>

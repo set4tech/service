@@ -10,14 +10,34 @@ export async function GET(req: NextRequest) {
 
   // If querying by parent_check_id, use checks table directly
   if (parentCheckId) {
-    const { data, error } = await supabase
+    const { data: checks, error } = await supabase
       .from('checks')
-      .select('*')
+      .select('*, assessment_id')
       .eq('parent_check_id', parentCheckId)
       .order('code_section_number');
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data);
+
+    // Filter out any sections that have been manually excluded from the assessment
+    if (checks && checks.length > 0) {
+      const assessmentId = checks[0].assessment_id;
+      const { data: excludedSections } = await supabase
+        .from('section_applicability_log')
+        .select('section_key')
+        .eq('assessment_id', assessmentId)
+        .eq('decision_source', 'manual')
+        .eq('decision', false);
+
+      const excludedKeys = new Set(excludedSections?.map(s => s.section_key) || []);
+      const filteredChecks = checks.filter(check => !excludedKeys.has(check.code_section_key));
+
+      console.log(
+        `Filtered ${checks.length - filteredChecks.length} excluded sections from child checks`
+      );
+      return NextResponse.json(filteredChecks);
+    }
+
+    return NextResponse.json(checks);
   }
 
   // Otherwise use check_summary view

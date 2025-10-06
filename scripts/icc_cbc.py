@@ -25,7 +25,9 @@ from schema import Code, Section, Subsection, TableBlock
 # Supports both 11B-XXX and XXXXXA formats
 SECTION_NUMBER_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)(?!\.\d)"
 # subsection number is like 11B-101.1 or 1102A.3
-SUBSECTION_NUMBER_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)\.\d+"
+# Updated to support multi-level subsections: (?:\.\d+)+ matches one or more levels
+# Examples: 11B-213.3 (1 level), 11B-213.3.1 (2 levels), 11B-228.3.2.1 (3 levels)
+SUBSECTION_NUMBER_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)(?:\.\d+)+"
 
 
 def find_section_links(text: str) -> list[str]:

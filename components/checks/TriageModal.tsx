@@ -1,18 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-
-interface SectionResult {
-  section_key: string;
-  section_number: string;
-  compliance_status: string;
-  confidence: string;
-  reasoning: string;
-  violations?: any[];
-  recommendations?: string[];
-  section_text?: string;
-  section_title?: string;
-}
+import type { SectionResult } from '@/types/analysis';
 
 interface TriageModalProps {
   sections: SectionResult[];

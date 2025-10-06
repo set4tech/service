@@ -4,67 +4,8 @@ import { useEffect, useState } from 'react';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 import { TableRenderer } from '@/components/ui/TableRenderer';
 import { TriageModal } from './TriageModal';
-
-interface TableBlock {
-  number: string;
-  title: string;
-  csv: string;
-}
-
-interface IntroSection {
-  key: string;
-  number: string;
-  title: string;
-  text?: string;
-}
-
-interface CodeSection {
-  key: string;
-  number: string;
-  title: string;
-  text?: string;
-  requirements?: Array<string | { text: string; [key: string]: any }>;
-  tables?: TableBlock[];
-  figures?: string[];
-  source_url?: string;
-  floorplan_relevant?: boolean;
-  intro_section?: IntroSection;
-  references?: Array<{
-    key: string;
-    number: string;
-    title: string;
-    text?: string;
-  }>;
-}
-
-interface SectionResult {
-  section_key: string;
-  section_number: string;
-  compliance_status: string;
-  confidence: string;
-  reasoning: string;
-  violations?: any[];
-  recommendations?: string[];
-}
-
-interface AnalysisRun {
-  id: string;
-  run_number: number;
-  compliance_status: string;
-  confidence: string;
-  ai_provider: string;
-  ai_model: string;
-  ai_reasoning?: string;
-  violations?: any[];
-  recommendations?: string[];
-  executed_at: string;
-  execution_time_ms?: number;
-  batch_group_id?: string;
-  batch_number?: number;
-  total_batches?: number;
-  section_keys_in_batch?: string[];
-  section_results?: SectionResult[];
-}
+import { AnalysisHistory } from './AnalysisHistory';
+import type { SectionResult, AnalysisRun, CodeSection } from '@/types/analysis';
 
 interface Check {
   id: string;
@@ -198,22 +139,10 @@ export function CodeDetailPanel({
           });
           setCheck(data.check);
 
-          // If this is an element check AND it's a parent (not an instance), fetch child section checks
-          // Element instances (with parent_check_id or instance_number > 0) should NOT fetch children
+          // If this is an element check, fetch child section checks
           if (data.check.check_type === 'element') {
-            const isElementInstance =
-              data.check.parent_check_id ||
-              (data.check.instance_number != null && data.check.instance_number > 0);
-
-            if (!isElementInstance) {
-              console.log('CodeDetailPanel: Fetching child checks for element check', checkId);
-              return fetch(`/api/checks?parent_check_id=${checkId}`).then(res => res.json());
-            } else {
-              console.log(
-                'CodeDetailPanel: Element instance detected, not fetching child checks',
-                checkId
-              );
-            }
+            console.log('CodeDetailPanel: Fetching child checks for element check', checkId);
+            return fetch(`/api/checks?parent_check_id=${checkId}`).then(res => res.json());
           }
         }
         return null;
@@ -663,8 +592,11 @@ export function CodeDetailPanel({
       setShowExcludeDialog(false);
       setExcludeReason('');
 
-      // Close the panel since this section is now excluded
-      onClose();
+      // Only close the panel if this is a section check (which gets deleted)
+      // For element checks, keep the panel open since the instance is still valid
+      if (check?.check_type !== 'element') {
+        onClose();
+      }
 
       // Notify parent to refresh
       if (onCheckUpdate) {
@@ -752,28 +684,6 @@ export function CodeDetailPanel({
     setExpandedRuns(newExpanded);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'compliant':
-        return 'text-green-700 bg-green-50 border-green-200';
-      case 'violation':
-      case 'non_compliant':
-        return 'text-red-700 bg-red-50 border-red-200';
-      case 'needs_more_info':
-        return 'text-yellow-700 bg-yellow-50 border-yellow-200';
-      default:
-        return 'text-gray-700 bg-gray-50 border-gray-200';
-    }
-  };
-
-  const getConfidenceBadge = (confidence: string) => {
-    const colors = {
-      high: 'bg-green-100 text-green-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      low: 'bg-red-100 text-red-800',
-    };
-    return colors[confidence as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-  };
 
   const handleSectionResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1511,199 +1421,12 @@ export function CodeDetailPanel({
                 Assessment History
               </div>
 
-              {loadingRuns && <div className="text-sm text-gray-500">Loading history...</div>}
-
-              {!loadingRuns && analysisRuns.length === 0 && (
-                <div className="text-sm text-gray-500 italic">
-                  No assessments yet. Click &ldquo;Assess Compliance&rdquo; to run your first
-                  analysis.
-                </div>
-              )}
-
-              {!loadingRuns && analysisRuns.length > 0 && (
-                <div className="space-y-3">
-                  {analysisRuns.map(run => {
-                    const isExpanded = expandedRuns.has(run.id);
-                    const statusColors = getStatusColor(run.compliance_status);
-                    const isBatchedRun = run.batch_group_id && (run.total_batches ?? 0) > 1;
-
-                    return (
-                      <div key={run.id} className="border border-gray-200 rounded overflow-hidden">
-                        {/* Run Header */}
-                        <button
-                          onClick={() => toggleRunExpanded(run.id)}
-                          className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left"
-                        >
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="text-xs font-mono text-gray-500">
-                              #{run.run_number}
-                              {isBatchedRun && (
-                                <span className="ml-1 text-blue-600">
-                                  (Batch {run.batch_number}/{run.total_batches})
-                                </span>
-                              )}
-                            </span>
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded border font-medium ${statusColors}`}
-                            >
-                              {run.compliance_status.replace('_', ' ')}
-                            </span>
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded font-medium ${getConfidenceBadge(run.confidence)}`}
-                            >
-                              {run.confidence}
-                            </span>
-                            <span className="text-xs text-gray-500 truncate">{run.ai_model}</span>
-                          </div>
-                          <svg
-                            className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 9l-7 7-7-7"
-                            />
-                          </svg>
-                        </button>
-
-                        {/* Run Details */}
-                        {isExpanded && (
-                          <div className="px-3 py-3 space-y-3 bg-white">
-                            {/* Timestamp */}
-                            <div className="text-xs text-gray-500">
-                              {new Date(run.executed_at).toLocaleString()}
-                              {run.execution_time_ms && (
-                                <span className="ml-2">
-                                  ({(run.execution_time_ms / 1000).toFixed(1)}s)
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Reasoning */}
-                            {run.ai_reasoning && (
-                              <div>
-                                <div className="text-xs font-semibold text-gray-700 mb-1">
-                                  {run.section_results ? 'Summary' : 'Reasoning'}
-                                </div>
-                                <div className="text-sm text-gray-800 leading-relaxed bg-gray-50 p-2 rounded border border-gray-200">
-                                  {run.ai_reasoning}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Section-Level Results */}
-                            {run.section_results && run.section_results.length > 0 && (
-                              <div>
-                                <div className="text-xs font-semibold text-gray-700 mb-2">
-                                  Section Results ({run.section_results.length})
-                                </div>
-                                <div className="space-y-2 max-h-96 overflow-y-auto">
-                                  {run.section_results.map(
-                                    (sectionResult: SectionResult, idx: number) => (
-                                      <div
-                                        key={idx}
-                                        className={`p-2 rounded border ${
-                                          sectionResult.compliance_status === 'violation'
-                                            ? 'bg-red-50 border-red-200'
-                                            : sectionResult.compliance_status === 'needs_more_info'
-                                              ? 'bg-yellow-50 border-yellow-200'
-                                              : sectionResult.compliance_status === 'not_applicable'
-                                                ? 'bg-gray-50 border-gray-200'
-                                                : 'bg-green-50 border-green-200'
-                                        }`}
-                                      >
-                                        <div className="flex items-start gap-2">
-                                          <span className="text-xs font-mono font-semibold text-gray-700 flex-shrink-0">
-                                            {sectionResult.section_number}
-                                          </span>
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-1 mb-1">
-                                              <span
-                                                className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                                                  sectionResult.compliance_status === 'violation'
-                                                    ? 'bg-red-100 text-red-800'
-                                                    : sectionResult.compliance_status ===
-                                                        'needs_more_info'
-                                                      ? 'bg-yellow-100 text-yellow-800'
-                                                      : sectionResult.compliance_status ===
-                                                          'not_applicable'
-                                                        ? 'bg-gray-100 text-gray-600'
-                                                        : 'bg-green-100 text-green-800'
-                                                }`}
-                                              >
-                                                {sectionResult.compliance_status.replace('_', ' ')}
-                                              </span>
-                                              {sectionResult.confidence !== 'n/a' && (
-                                                <span
-                                                  className={`text-xs px-1.5 py-0.5 rounded font-medium ${getConfidenceBadge(sectionResult.confidence)}`}
-                                                >
-                                                  {sectionResult.confidence}
-                                                </span>
-                                              )}
-                                            </div>
-                                            <p className="text-xs text-gray-700 leading-relaxed">
-                                              {sectionResult.reasoning}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Violations */}
-                            {run.violations && run.violations.length > 0 && (
-                              <div>
-                                <div className="text-xs font-semibold text-red-700 mb-1">
-                                  Violations
-                                </div>
-                                <ul className="space-y-1">
-                                  {run.violations.map((v: any, idx: number) => (
-                                    <li
-                                      key={idx}
-                                      className="text-sm text-gray-800 pl-3 border-l-2 border-red-300"
-                                    >
-                                      <span className="font-medium text-red-700">
-                                        [{v.severity}]
-                                      </span>{' '}
-                                      {v.description}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-
-                            {/* Recommendations */}
-                            {run.recommendations && run.recommendations.length > 0 && (
-                              <div>
-                                <div className="text-xs font-semibold text-blue-700 mb-1">
-                                  Recommendations
-                                </div>
-                                <ul className="space-y-1">
-                                  {run.recommendations.map((rec: string, idx: number) => (
-                                    <li
-                                      key={idx}
-                                      className="text-sm text-gray-800 pl-3 border-l-2 border-blue-300"
-                                    >
-                                      {rec}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <AnalysisHistory
+                runs={analysisRuns}
+                loading={loadingRuns}
+                expandedRuns={expandedRuns}
+                onToggleRun={toggleRunExpanded}
+              />
             </div>
           </div>
         </div>
