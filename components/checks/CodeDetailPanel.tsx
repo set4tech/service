@@ -96,6 +96,13 @@ export function CodeDetailPanel({
   const [excludingSection, setExcludingSection] = useState(false);
   const [excludeReason, setExcludeReason] = useState('');
 
+  // Project group exclusion state
+  const [showExcludeGroupDialog, setShowExcludeGroupDialog] = useState(false);
+  const [excludingGroup, setExcludingGroup] = useState(false);
+  const [groupSections, setGroupSections] = useState<any[]>([]);
+  const [selectedSectionKeys, setSelectedSectionKeys] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
   // Section tabs toggle state (auto-expand for element checks with multiple sections)
   const [showSectionTabs, setShowSectionTabs] = useState(false);
 
@@ -687,6 +694,125 @@ export function CodeDetailPanel({
     }
   };
 
+  const handlePreviewGroupExclusion = async () => {
+    if (!section?.parent_key) return;
+
+    setOverrideError(null);
+
+    try {
+      const assessmentId = activeCheck?.assessment_id;
+      if (!assessmentId) {
+        throw new Error('Assessment ID not found');
+      }
+
+      const response = await fetch(
+        `/api/assessments/${assessmentId}/exclude-section-group?sectionKey=${encodeURIComponent(section.parent_key)}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to preview section group');
+      }
+
+      const sections = data.sections || [];
+      setGroupSections(sections);
+
+      // Select all sections by default (except already excluded ones)
+      const defaultSelected = new Set<string>(
+        sections.filter((s: any) => !s.alreadyExcluded).map((s: any) => s.key as string)
+      );
+      setSelectedSectionKeys(defaultSelected);
+      setExpandedSections(new Set<string>());
+
+      setShowExcludeGroupDialog(true);
+    } catch (err: any) {
+      console.error('Preview group exclusion error:', err);
+      setOverrideError(err.message);
+    }
+  };
+
+  const handleExcludeGroup = async () => {
+    if (selectedSectionKeys.size === 0) {
+      setOverrideError('Please select at least one section to exclude');
+      return;
+    }
+
+    setExcludingGroup(true);
+    setOverrideError(null);
+
+    try {
+      const assessmentId = activeCheck?.assessment_id;
+      if (!assessmentId) {
+        throw new Error('Assessment ID not found');
+      }
+
+      const response = await fetch(`/api/assessments/${assessmentId}/exclude-section-group`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectionKeys: Array.from(selectedSectionKeys),
+          reason: excludeReason.trim() || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to exclude section group');
+      }
+
+      // Close dialog
+      setShowExcludeGroupDialog(false);
+      setExcludeReason('');
+      setGroupSections([]);
+      setSelectedSectionKeys(new Set());
+      setExpandedSections(new Set());
+
+      console.log(`Excluded ${data.excluded?.length || 0} sections, skipped ${data.skipped || 0}`);
+
+      // Close panel and refresh
+      onClose();
+
+      if (onChecksRefresh) {
+        onChecksRefresh();
+      }
+
+      if (onCheckUpdate) {
+        onCheckUpdate();
+      }
+    } catch (err: any) {
+      console.error('Exclude group error:', err);
+      setOverrideError(err.message);
+    } finally {
+      setExcludingGroup(false);
+    }
+  };
+
+  const toggleSectionSelection = (sectionKey: string) => {
+    setSelectedSectionKeys(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionKey)) {
+        newSet.delete(sectionKey);
+      } else {
+        newSet.add(sectionKey);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSectionExpanded = (sectionKey: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionKey)) {
+        newSet.delete(sectionKey);
+      } else {
+        newSet.add(sectionKey);
+      }
+      return newSet;
+    });
+  };
+
   const handleAssess = async () => {
     if (!checkId) return;
 
@@ -1008,8 +1134,8 @@ export function CodeDetailPanel({
               </div>
             )}
 
-            {/* Exclude from project button */}
-            <div className="pt-2 border-t border-gray-200">
+            {/* Exclude from project buttons */}
+            <div className="pt-2 border-t border-gray-200 space-y-2">
               <button
                 onClick={() => setShowExcludeDialog(true)}
                 disabled={excludingSection || !sectionKey}
@@ -1018,6 +1144,17 @@ export function CodeDetailPanel({
               >
                 🚫 Exclude Section from Project
               </button>
+
+              {section?.parent_section && (
+                <button
+                  onClick={handlePreviewGroupExclusion}
+                  disabled={excludingGroup || !section.parent_key}
+                  className="w-full px-3 py-2 text-sm text-red-700 bg-red-50 hover:bg-red-100 border border-red-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={`Exclude entire section group ${section.parent_section.number} and all its subsections`}
+                >
+                  🚫 Exclude Section Group ({section.parent_section.number})
+                </button>
+              )}
             </div>
 
             {/* Save button */}
@@ -1592,6 +1729,167 @@ export function CodeDetailPanel({
                 className="flex-1 px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
               >
                 {excludingSection ? 'Excluding...' : 'Exclude from Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exclude Section Group Confirmation Dialog */}
+      {showExcludeGroupDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+            <h3 className="text-lg font-semibold mb-3">Exclude Section Group from Project?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This will exclude <strong>{section?.parent_section?.number}</strong> and all its
+              subsections from this project. All checks for these sections will be removed.
+            </p>
+
+            {/* Parent section header */}
+            {section?.parent_section && (
+              <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                <p className="text-sm font-semibold text-blue-900">
+                  {section.parent_section.number} - {section.parent_section.title}
+                </p>
+              </div>
+            )}
+
+            {/* Sections to be excluded list */}
+            <div className="mb-4 flex-1 overflow-y-auto border border-gray-300 rounded max-h-96">
+              <div className="bg-gray-50 px-3 py-2 border-b border-gray-300 sticky top-0 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-700 uppercase">
+                  {selectedSectionKeys.size} of{' '}
+                  {groupSections.filter(s => !s.alreadyExcluded).length} Selected
+                </p>
+                <button
+                  onClick={() => {
+                    const selectableKeys = groupSections
+                      .filter(s => !s.alreadyExcluded)
+                      .map(s => s.key);
+                    if (selectedSectionKeys.size === selectableKeys.length) {
+                      setSelectedSectionKeys(new Set());
+                    } else {
+                      setSelectedSectionKeys(new Set(selectableKeys));
+                    }
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  {selectedSectionKeys.size === groupSections.filter(s => !s.alreadyExcluded).length
+                    ? 'Deselect All'
+                    : 'Select All'}
+                </button>
+              </div>
+              <ul className="divide-y divide-gray-200">
+                {groupSections.map(s => {
+                  const isExpanded = expandedSections.has(s.key);
+                  const isSelected = selectedSectionKeys.has(s.key);
+                  const hasContent = s.text || (s.paragraphs && s.paragraphs.length > 0);
+
+                  return (
+                    <li key={s.key} className={s.alreadyExcluded ? 'bg-gray-50' : ''}>
+                      <div className="flex items-start px-3 py-2 gap-2">
+                        {/* Checkbox */}
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={s.alreadyExcluded}
+                          onChange={() => toggleSectionSelection(s.key)}
+                          className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+
+                        {/* Section info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-mono text-sm font-semibold ${s.alreadyExcluded ? 'text-gray-400' : 'text-gray-900'}`}
+                            >
+                              {s.number}
+                            </span>
+                            <span
+                              className={`text-sm ${s.alreadyExcluded ? 'text-gray-400' : 'text-gray-700'}`}
+                            >
+                              {s.title}
+                            </span>
+                            {s.alreadyExcluded && (
+                              <span className="text-xs text-gray-500">(already excluded)</span>
+                            )}
+                          </div>
+
+                          {/* Expanded content */}
+                          {isExpanded && hasContent && (
+                            <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
+                              {s.paragraphs && s.paragraphs.length > 0 ? (
+                                <ul className="list-disc list-inside space-y-1">
+                                  {s.paragraphs.map((p: string, i: number) => (
+                                    <li key={i}>{p}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p>{s.text}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Expand/collapse button */}
+                        {hasContent && (
+                          <button
+                            onClick={() => toggleSectionExpanded(s.key)}
+                            className="text-blue-600 hover:text-blue-700 text-xs font-medium shrink-0"
+                          >
+                            {isExpanded ? '▲ Hide' : '▼ Show'}
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reason (optional)
+              </label>
+              <input
+                type="text"
+                value={excludeReason}
+                onChange={e => setExcludeReason(e.target.value)}
+                placeholder="e.g., entire play area section not applicable"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+            </div>
+
+            {overrideError && (
+              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                {overrideError}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowExcludeGroupDialog(false);
+                  setExcludeReason('');
+                  setGroupSections([]);
+                  setSelectedSectionKeys(new Set());
+                  setExpandedSections(new Set());
+                }}
+                disabled={excludingGroup}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExcludeGroup}
+                disabled={excludingGroup || selectedSectionKeys.size === 0}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                {excludingGroup
+                  ? 'Excluding...'
+                  : selectedSectionKeys.size === 0
+                    ? 'Select sections to exclude'
+                    : `Exclude ${selectedSectionKeys.size} Section${selectedSectionKeys.size !== 1 ? 's' : ''}`}
               </button>
             </div>
           </div>

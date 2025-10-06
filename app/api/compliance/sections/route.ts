@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = supabaseAdmin();
 
-    // Get section data (including parent_key for URL fallback)
+    // Get section data (including parent_key for URL fallback and group exclusion)
     const { data: section, error: sectionError } = await supabase
       .from('sections')
       .select(
@@ -182,15 +182,23 @@ export async function POST(request: NextRequest) {
 
     // If section doesn't have source_url, try to get it from parent
     let sourceUrl = section.source_url;
-    if (!sourceUrl && section.parent_key) {
+    let parentSection = null;
+    if (section.parent_key) {
       const { data: parent } = await supabase
         .from('sections')
-        .select('source_url')
+        .select('key, number, title, source_url')
         .eq('key', section.parent_key)
         .single();
 
-      if (parent?.source_url) {
-        sourceUrl = parent.source_url;
+      if (parent) {
+        parentSection = {
+          key: parent.key,
+          number: parent.number,
+          title: parent.title,
+        };
+        if (!sourceUrl && parent.source_url) {
+          sourceUrl = parent.source_url;
+        }
       }
     }
 
@@ -260,6 +268,8 @@ export async function POST(request: NextRequest) {
       source_url: sourceUrl,
       hasContent: !!(paragraphs && paragraphs.length > 0),
       intro_section: introSection || undefined,
+      parent_key: section.parent_key,
+      parent_section: parentSection || undefined,
     });
   } catch (error) {
     return NextResponse.json(

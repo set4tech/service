@@ -50,6 +50,12 @@ export interface CodeSection {
     title: string;
     text?: string;
   }>;
+  parent_key?: string;
+  parent_section?: {
+    key: string;
+    number: string;
+    title: string;
+  };
 }
 
 export interface TableBlock {

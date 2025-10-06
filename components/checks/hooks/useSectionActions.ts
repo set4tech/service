@@ -28,6 +28,11 @@ export function useSectionActions(
   const [excludingSection, setExcludingSection] = useState(false);
   const [excludeReason, setExcludeReason] = useState('');
 
+  // Project group exclusion state
+  const [showExcludeGroupDialog, setShowExcludeGroupDialog] = useState(false);
+  const [excludingGroup, setExcludingGroup] = useState(false);
+  const [groupSections, setGroupSections] = useState<any[]>([]);
+
   const handleMarkNeverRelevant = async () => {
     if (!sectionKey) return;
 
@@ -156,6 +161,79 @@ export function useSectionActions(
     }
   };
 
+  const handlePreviewGroupExclusion = async (parentSectionKey: string) => {
+    if (setOverrideError) setOverrideError(null);
+
+    try {
+      const assessmentId = activeCheck?.assessment_id;
+      if (!assessmentId) {
+        throw new Error('Assessment ID not found');
+      }
+
+      const response = await fetch(
+        `/api/assessments/${assessmentId}/exclude-section-group?sectionKey=${encodeURIComponent(parentSectionKey)}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to preview section group');
+      }
+
+      setGroupSections(data.sections || []);
+      setShowExcludeGroupDialog(true);
+    } catch (err: any) {
+      console.error('Preview group exclusion error:', err);
+      if (setOverrideError) setOverrideError(err.message);
+    }
+  };
+
+  const handleExcludeGroup = async (parentSectionKey: string) => {
+    setExcludingGroup(true);
+    if (setOverrideError) setOverrideError(null);
+
+    try {
+      const assessmentId = activeCheck?.assessment_id;
+      if (!assessmentId) {
+        throw new Error('Assessment ID not found');
+      }
+
+      const response = await fetch(`/api/assessments/${assessmentId}/exclude-section-group`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectionKey: parentSectionKey,
+          reason: excludeReason.trim() || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to exclude section group');
+      }
+
+      // Close dialog
+      setShowExcludeGroupDialog(false);
+      setExcludeReason('');
+      setGroupSections([]);
+
+      console.log(`Excluded ${data.excluded?.length || 0} sections, skipped ${data.skipped || 0}`);
+
+      // Close panel and refresh
+      onClose();
+
+      if (onCheckUpdate) {
+        onCheckUpdate();
+      }
+    } catch (err: any) {
+      console.error('Exclude group error:', err);
+      if (setOverrideError) setOverrideError(err.message);
+    } finally {
+      setExcludingGroup(false);
+    }
+  };
+
   return {
     showNeverRelevantDialog,
     setShowNeverRelevantDialog,
@@ -171,5 +249,11 @@ export function useSectionActions(
     excludeReason,
     setExcludeReason,
     handleExcludeFromProject,
+    showExcludeGroupDialog,
+    setShowExcludeGroupDialog,
+    excludingGroup,
+    groupSections,
+    handlePreviewGroupExclusion,
+    handleExcludeGroup,
   };
 }
