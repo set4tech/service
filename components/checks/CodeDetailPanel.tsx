@@ -482,6 +482,11 @@ export function CodeDetailPanel({
       if (onCheckUpdate) {
         onCheckUpdate();
       }
+
+      // Auto-advance to next check if marked as not applicable
+      if (manualOverride === 'not_applicable' && onMoveToNextCheck) {
+        onMoveToNextCheck();
+      }
     } catch (err: any) {
       console.error('Override save error:', err);
       setOverrideError(err.message);
