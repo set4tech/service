@@ -78,30 +78,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         );
       }
 
-      // Fetch latest analysis runs and screenshots for all checks
+      // Fetch latest analysis runs, screenshots, and section overrides for all checks
       const checkIds = filteredChecksData.map((c: any) => c.id);
-      const [{ data: latestAnalysis }, { data: allScreenshots }] = await Promise.all([
-        supabase
-          .from('latest_analysis_runs')
-          .select(
-            'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
-          )
-          .in('check_id', checkIds),
-        supabase
-          .from('screenshot_check_assignments')
-          .select(
-            `
+      const [{ data: latestAnalysis }, { data: allScreenshots }, { data: sectionOverrides }] =
+        await Promise.all([
+          supabase
+            .from('latest_analysis_runs')
+            .select(
+              'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+            )
+            .in('check_id', checkIds),
+          supabase
+            .from('screenshot_check_assignments')
+            .select(
+              `
             check_id,
             is_original,
             screenshots (*)
           `
-          )
-          .in('check_id', checkIds)
-          .order('screenshots(created_at)', { ascending: true }),
-      ]);
+            )
+            .in('check_id', checkIds)
+            .order('screenshots(created_at)', { ascending: true }),
+          supabase
+            .from('section_overrides')
+            .select('check_id, section_key')
+            .in('check_id', checkIds),
+        ]);
 
       // Create analysis map
       const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
+
+      // Create section overrides map (check_id -> set of section_keys with overrides)
+      const overridesMap = new Map<string, Set<string>>();
+      (sectionOverrides || []).forEach((override: any) => {
+        if (!overridesMap.has(override.check_id)) {
+          overridesMap.set(override.check_id, new Set());
+        }
+        overridesMap.get(override.check_id)!.add(override.section_key);
+      });
 
       // Create screenshots map
       const screenshotsMap = new Map<string, any[]>();
@@ -136,6 +150,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const mappedChecks = (sortedAllChecksData || []).map((check: any) => {
         const analysis = analysisMap.get(check.id);
         const screenshots = screenshotsMap.get(check.id) || [];
+        const sectionOverridesSet = overridesMap.get(check.id);
+
+        // For element checks, check if all sections have overrides
+        let allSectionsOverridden = false;
+        if (
+          check.element_sections &&
+          Array.isArray(check.element_sections) &&
+          sectionOverridesSet
+        ) {
+          const allOverridden = check.element_sections.every((sectionKey: string) =>
+            sectionOverridesSet.has(sectionKey)
+          );
+          allSectionsOverridden = allOverridden && check.element_sections.length > 0;
+        }
+
         return {
           ...check,
           element_group_name: check.element_groups?.name || null,
@@ -151,6 +180,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               }
             : null,
           screenshots,
+          has_section_overrides: allSectionsOverridden,
         };
       });
 
@@ -277,14 +307,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return (a.code_section_number || '').localeCompare(b.code_section_number || '');
     });
 
-    // Fetch latest analysis runs for all checks (reusing checkIds from above)
-    const { data: latestAnalysis } = await supabase
-      .from('latest_analysis_runs')
-      .select('check_id, compliance_status, confidence, ai_reasoning, violations, recommendations')
-      .in('check_id', checkIds);
+    // Fetch latest analysis runs and section overrides for all checks (reusing checkIds from above)
+    const [{ data: latestAnalysis }, { data: sectionOverrides }] = await Promise.all([
+      supabase
+        .from('latest_analysis_runs')
+        .select(
+          'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+        )
+        .in('check_id', checkIds),
+      supabase.from('section_overrides').select('check_id, section_key').in('check_id', checkIds),
+    ]);
 
     // Create analysis map
     const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
+
+    // Create section overrides map (check_id -> set of section_keys with overrides)
+    const overridesMap = new Map<string, Set<string>>();
+    (sectionOverrides || []).forEach((override: any) => {
+      if (!overridesMap.has(override.check_id)) {
+        overridesMap.set(override.check_id, new Set());
+      }
+      overridesMap.get(override.check_id)!.add(override.section_key);
+    });
 
     // Create screenshots map
     const screenshotsMap = new Map<string, any[]>();
@@ -310,6 +354,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const mappedChecks = (sortedChecks || []).map((check: any) => {
       const analysis = analysisMap.get(check.id);
       const screenshots = screenshotsMap.get(check.id) || [];
+      const sectionOverridesSet = overridesMap.get(check.id);
+
+      // For element checks, check if all sections have overrides
+      let allSectionsOverridden = false;
+      if (check.element_sections && Array.isArray(check.element_sections) && sectionOverridesSet) {
+        const allOverridden = check.element_sections.every((sectionKey: string) =>
+          sectionOverridesSet.has(sectionKey)
+        );
+        allSectionsOverridden = allOverridden && check.element_sections.length > 0;
+      }
+
       return {
         ...check,
         element_group_name: check.element_groups?.name || null,
@@ -325,6 +380,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
           : null,
         screenshots,
+        has_section_overrides: allSectionsOverridden,
       };
     });
 

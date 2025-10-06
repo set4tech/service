@@ -96,12 +96,13 @@ export default function AssessmentClient({
     // Exclude checks marked as not_applicable from total count
     const applicableChecks = checks.filter(c => c.manual_override !== 'not_applicable');
     const totalChecks = applicableChecks.length;
-    // Count checks with AI assessment OR manual override (but not not_applicable)
+    // Count checks with AI assessment OR manual override OR section overrides (but not not_applicable)
     const completed = applicableChecks.filter(
       c =>
         c.latest_status ||
         c.status === 'completed' ||
-        (c.manual_override && c.manual_override !== 'not_applicable')
+        (c.manual_override && c.manual_override !== 'not_applicable') ||
+        c.has_section_overrides
     ).length;
     const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
     return { totalChecks, completed, pct };
