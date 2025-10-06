@@ -94,7 +94,7 @@ export function CodeDetailPanel({
   const [excludingSection, setExcludingSection] = useState(false);
   const [excludeReason, setExcludeReason] = useState('');
 
-  // Section tabs toggle state
+  // Section tabs toggle state (auto-expand for element checks with multiple sections)
   const [showSectionTabs, setShowSectionTabs] = useState(false);
 
   // Triage modal state
@@ -114,6 +114,13 @@ export function CodeDetailPanel({
       setSelectedModel(lastModel);
     }
   }, []);
+
+  // Auto-expand section tabs for element checks with multiple sections
+  useEffect(() => {
+    if (childChecks.length > 1) {
+      setShowSectionTabs(true);
+    }
+  }, [childChecks.length]);
 
   // Load check data and determine if it's an element check
   useEffect(() => {
@@ -521,8 +528,32 @@ export function CodeDetailPanel({
       // Close dialog
       setShowNeverRelevantDialog(false);
 
-      // Close the panel since this section is now hidden
-      onClose();
+      // For element checks, refresh the child checks to remove the marked section
+      if (check?.check_type === 'element' && checkId) {
+        console.log('Refreshing child checks after marking section never relevant');
+        // Optimistically remove from child checks
+        setChildChecks(prev => prev.filter(c => c.code_section_key !== sectionKey));
+
+        // Reload child checks from server
+        fetch(`/api/checks?parent_check_id=${checkId}`)
+          .then(res => res.json())
+          .then(childData => {
+            if (Array.isArray(childData)) {
+              const sorted = childData.sort((a, b) =>
+                (a.code_section_number || '').localeCompare(b.code_section_number || '')
+              );
+              setChildChecks(sorted);
+              // If current child was removed, switch to first available
+              if (sorted.length > 0 && !sorted.find(c => c.id === activeChildCheckId)) {
+                setActiveChildCheckId(sorted[0].id);
+              }
+            }
+          })
+          .catch(err => console.error('Failed to reload child checks:', err));
+      } else {
+        // For section checks, close the panel
+        onClose();
+      }
 
       // Notify parent to refresh
       if (onCheckUpdate) {
@@ -601,9 +632,30 @@ export function CodeDetailPanel({
       setShowExcludeDialog(false);
       setExcludeReason('');
 
-      // Only close the panel if this is a section check (which gets deleted)
-      // For element checks, keep the panel open since the instance is still valid
-      if (check?.check_type !== 'element') {
+      // For element checks, refresh the child checks to remove the excluded section
+      if (check?.check_type === 'element' && checkId) {
+        console.log('Refreshing child checks after excluding section');
+        // Optimistically remove from child checks
+        setChildChecks(prev => prev.filter(c => c.code_section_key !== sectionKey));
+
+        // Reload child checks from server
+        fetch(`/api/checks?parent_check_id=${checkId}`)
+          .then(res => res.json())
+          .then(childData => {
+            if (Array.isArray(childData)) {
+              const sorted = childData.sort((a, b) =>
+                (a.code_section_number || '').localeCompare(b.code_section_number || '')
+              );
+              setChildChecks(sorted);
+              // If current child was removed, switch to first available
+              if (sorted.length > 0 && !sorted.find(c => c.id === activeChildCheckId)) {
+                setActiveChildCheckId(sorted[0].id);
+              }
+            }
+          })
+          .catch(err => console.error('Failed to reload child checks:', err));
+      } else {
+        // For section checks, close the panel
         onClose();
       }
 
@@ -1619,10 +1671,11 @@ export function CodeDetailPanel({
           sections={triageSections}
           onClose={() => setShowTriageModal(false)}
           onSave={async overrides => {
-            if (!effectiveCheckId) return;
+            if (!checkId) return;
 
             try {
-              const res = await fetch(`/api/checks/${effectiveCheckId}/section-overrides`, {
+              // Always use parent checkId for section overrides and runs (not effectiveCheckId/child check)
+              const res = await fetch(`/api/checks/${checkId}/section-overrides`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ overrides }),
@@ -1633,8 +1686,8 @@ export function CodeDetailPanel({
                 throw new Error(error.error || 'Failed to save overrides');
               }
 
-              // Refresh analysis runs to show updated data
-              const runsRes = await fetch(`/api/checks/${effectiveCheckId}/analysis-runs`);
+              // Refresh analysis runs to show updated data (use parent checkId)
+              const runsRes = await fetch(`/api/checks/${checkId}/analysis-runs`);
               const runsData = await runsRes.json();
               setAnalysisRuns(runsData.runs || []);
 
