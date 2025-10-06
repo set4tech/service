@@ -660,6 +660,9 @@ export default function AssessmentClient({
               onCheckSelect={handleCheckSelect}
               buildingInfo={buildingInfo}
               codebooks={codebooks}
+              pdfUrl={assessment.pdf_url}
+              projectName={assessment.projects?.name}
+              assessmentId={assessment.id}
             />
           ) : (
             <CheckList
