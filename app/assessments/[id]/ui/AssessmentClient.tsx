@@ -642,11 +642,24 @@ export default function AssessmentClient({
                   if (res.ok) {
                     const { check: updatedCheck } = await res.json();
                     setChecks(prev =>
-                      prev.map(c =>
-                        c.id === updatedCheck.id
-                          ? { ...c, ...updatedCheck, instances: c.instances }
-                          : c
-                      )
+                      prev.map(c => {
+                        // Update top-level check if it matches
+                        if (c.id === updatedCheck.id) {
+                          return { ...c, ...updatedCheck, instances: c.instances };
+                        }
+                        // Update instance within check if it matches
+                        if (c.instances?.length > 0) {
+                          const updatedInstances = c.instances.map((instance: any) =>
+                            instance.id === updatedCheck.id
+                              ? { ...instance, ...updatedCheck }
+                              : instance
+                          );
+                          if (updatedInstances !== c.instances) {
+                            return { ...c, instances: updatedInstances };
+                          }
+                        }
+                        return c;
+                      })
                     );
                   }
                 } catch (error) {

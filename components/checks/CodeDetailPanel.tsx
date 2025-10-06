@@ -684,7 +684,6 @@ export function CodeDetailPanel({
     setExpandedRuns(newExpanded);
   };
 
-
   const handleSectionResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
@@ -1587,8 +1586,8 @@ export function CodeDetailPanel({
 
               // Refresh analysis runs to show updated data
               const runsRes = await fetch(`/api/checks/${effectiveCheckId}/analysis-runs`);
-              const runs = await runsRes.json();
-              setAnalysisRuns(runs);
+              const runsData = await runsRes.json();
+              setAnalysisRuns(runsData.runs || []);
 
               // Optionally trigger check update callback
               if (onCheckUpdate) {
