@@ -13,7 +13,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const [{ data: assessment }, { data: allChecks }] = await Promise.all([
     supabase
       .from('assessments')
-      .select('*, projects(pdf_url, selected_code_ids, extracted_variables)')
+      .select('*, projects(name, pdf_url, selected_code_ids, extracted_variables)')
       .eq('id', id)
       .single(),
     supabase

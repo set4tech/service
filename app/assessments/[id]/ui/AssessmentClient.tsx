@@ -160,6 +160,32 @@ export default function AssessmentClient({
     setShowDetailPanel(true);
   };
 
+  const handleMoveToNextCheck = () => {
+    // Flatten all checks and instances into a single list
+    const allCheckIds: string[] = [];
+    checks.forEach(check => {
+      allCheckIds.push(check.id);
+      if (check.instances?.length > 0) {
+        check.instances.forEach((instance: any) => {
+          allCheckIds.push(instance.id);
+        });
+      }
+    });
+
+    // Find current check index
+    const currentIndex = allCheckIds.indexOf(activeCheckId || '');
+
+    if (currentIndex === -1 || currentIndex === allCheckIds.length - 1) {
+      // No current check or at end of list - close panel
+      setShowDetailPanel(false);
+      setActiveCheckId(null);
+    } else {
+      // Move to next check
+      const nextCheckId = allCheckIds[currentIndex + 1];
+      setActiveCheckId(nextCheckId);
+    }
+  };
+
   const handleCheckAdded = (newCheck: any) => {
     // Add the new check to the state
     setChecks(prevChecks => {
@@ -512,7 +538,9 @@ export default function AssessmentClient({
         {/* Header */}
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-gray-900">Compliance Checks</h2>
+            <h2 className="text-base font-semibold text-gray-900">
+              {(assessment.projects as any)?.name || 'Compliance Checks'}
+            </h2>
             <Link href="/" className="text-gray-400 hover:text-gray-600 transition-colors">
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -650,6 +678,7 @@ export default function AssessmentClient({
             activeCheck={activeCheck}
             screenshotsRefreshKey={screenshotsChanged}
             onClose={() => setShowDetailPanel(false)}
+            onMoveToNextCheck={handleMoveToNextCheck}
             onCheckUpdate={async () => {
               if (activeCheck?.id) {
                 try {

@@ -19,6 +19,7 @@ interface CodeDetailPanelProps {
   checkId: string | null;
   sectionKey: string | null;
   onClose: () => void;
+  onMoveToNextCheck?: () => void; // Callback to move to next check in list
   onCheckUpdate?: () => void; // Callback when check is updated
   onChecksRefresh?: () => void; // Callback to refetch all checks (for exclusions)
   activeCheck?: any; // Active check object (for screenshots)
@@ -30,6 +31,7 @@ export function CodeDetailPanel({
   checkId,
   sectionKey,
   onClose,
+  onMoveToNextCheck,
   onCheckUpdate,
   onChecksRefresh,
   activeCheck,
@@ -674,6 +676,11 @@ export function CodeDetailPanel({
             }
           })
           .catch(err => console.error('Failed to reload child checks:', err));
+      } else {
+        // For non-element section checks, move to next check
+        if (onMoveToNextCheck) {
+          onMoveToNextCheck();
+        }
       }
 
       // Refresh all checks to remove excluded section from list
@@ -771,8 +778,10 @@ export function CodeDetailPanel({
 
       console.log(`Excluded ${data.excluded?.length || 0} sections, skipped ${data.skipped || 0}`);
 
-      // Close panel and refresh
-      onClose();
+      // Move to next check and refresh
+      if (onMoveToNextCheck) {
+        onMoveToNextCheck();
+      }
 
       if (onChecksRefresh) {
         onChecksRefresh();
