@@ -20,10 +20,13 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
     const enrichSections = async () => {
       setLoading(true);
       try {
-        // Collect unique section keys
-        const sectionKeys = sections.map(s => s.section_key).filter(Boolean);
+        // Collect unique section numbers (not full keys)
+        const sectionKeys = sections.map(s => s.section_number).filter(Boolean);
 
-        console.log('[TriageModal] Section keys to fetch:', JSON.stringify(sectionKeys, null, 2));
+        console.log(
+          '[TriageModal] Section numbers to fetch:',
+          JSON.stringify(sectionKeys, null, 2)
+        );
         console.log(
           '[TriageModal] Full sections:',
           JSON.stringify(
@@ -59,12 +62,12 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
         const sectionData: Array<{ key: string; number: string; text: string; title: string }> =
           await response.json();
         console.log('[TriageModal] Fetched section data:', sectionData);
-        // Map by number since section_key is the section number
+        // Map by number for lookup
         const sectionMap = new Map(sectionData.map(s => [s.number, s]));
 
         // Enrich sections with text and title
         const enriched = sections.map(section => {
-          const sectionInfo = sectionMap.get(section.section_key);
+          const sectionInfo = sectionMap.get(section.section_number);
           return {
             ...section,
             section_text: sectionInfo?.text,
