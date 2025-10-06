@@ -145,8 +145,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       (screenshots || []).map(async s => await getPresignedUrl(s.screenshot_url))
     );
 
-    // 5. Batch sections (30 per batch)
-    const BATCH_SIZE = 30;
+    // 5. Batch sections (5 per batch)
+    const BATCH_SIZE = 5;
     const batches: any[][] = [];
     for (let i = 0; i < codeSections.length; i += BATCH_SIZE) {
       batches.push(codeSections.slice(i, i + BATCH_SIZE));
