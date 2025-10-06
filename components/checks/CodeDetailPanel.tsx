@@ -453,6 +453,14 @@ export function CodeDetailPanel({
       const data = await response.json();
 
       if (!response.ok) {
+        // Handle 404 - check was deleted/excluded
+        if (response.status === 404) {
+          console.warn('Check was deleted or excluded, refreshing check list');
+          if (onCheckUpdate) {
+            onCheckUpdate();
+          }
+          throw new Error('This check has been deleted or excluded. The list will refresh.');
+        }
         throw new Error(data.error || 'Failed to save override');
       }
 
