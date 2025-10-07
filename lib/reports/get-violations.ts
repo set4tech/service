@@ -25,6 +25,7 @@ export interface ProjectViolationsData {
   assessmentId: string;
   pdfUrl: string;
   violations: ViolationMarker[];
+  buildingParams?: any; // extracted_variables from projects table
 }
 
 /**
@@ -38,7 +39,7 @@ export async function getProjectViolations(
   // Get project info
   const { data: project, error: projectError } = await supabase
     .from('projects')
-    .select('id, name, pdf_url')
+    .select('id, name, pdf_url, extracted_variables')
     .eq('id', projectId)
     .single();
 
@@ -93,6 +94,7 @@ export async function getProjectViolations(
       assessmentId: assessment.id,
       pdfUrl: project.pdf_url,
       violations: [],
+      buildingParams: project.extracted_variables,
     };
   }
 
@@ -115,6 +117,7 @@ export async function getProjectViolations(
       assessmentId: assessment.id,
       pdfUrl: project.pdf_url,
       violations: [],
+      buildingParams: project.extracted_variables,
     };
   }
 
@@ -314,5 +317,6 @@ export async function getProjectViolations(
     assessmentId: assessment.id,
     pdfUrl: project.pdf_url,
     violations,
+    buildingParams: project.extracted_variables,
   };
 }

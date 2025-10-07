@@ -1,8 +1,22 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { ViolationListSidebar } from '@/components/reports/ViolationListSidebar';
 import { ViolationMarker } from '@/lib/reports/get-violations';
+
+// Dynamically load PDF viewer (client-side only)
+const PDFViewer = dynamic(
+  () => import('@/components/pdf/PDFViewer').then(mod => ({ default: mod.PDFViewer })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center">
+        <div className="text-sm text-gray-500">Loading PDF viewer...</div>
+      </div>
+    ),
+  }
+);
 
 interface BuildingInfo {
   occupancy: string;
@@ -39,6 +53,11 @@ export function ViolationsSummary({
 }: Props) {
   const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [severityFilter, setSeverityFilter] = useState<Set<string>>(
+    new Set(['major', 'moderate', 'minor'])
+  );
+  const [highlightedViolationId, setHighlightedViolationId] = useState<string | null>(null);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -198,9 +217,21 @@ export function ViolationsSummary({
   }, [checks]);
 
   const handleViolationClick = (violation: ViolationMarker) => {
+    console.log('[ViolationsSummary] handleViolationClick:', violation);
     setSelectedViolation(violation);
+    setCurrentPage(violation.pageNumber);
     onCheckSelect(violation.checkId);
+
+    // Trigger highlight pulse
+    const highlightId = `${violation.checkId}-${violation.screenshotId}`;
+    setHighlightedViolationId(highlightId);
+    setTimeout(() => setHighlightedViolationId(null), 2000);
   };
+
+  // Filter violations by severity
+  const filteredViolations = useMemo(() => {
+    return violations.filter(v => severityFilter.has(v.severity));
+  }, [violations, severityFilter]);
 
   const handleExportPDF = async () => {
     if (!pdfUrl || !projectName || !assessmentId) {
@@ -238,10 +269,12 @@ export function ViolationsSummary({
     return 'text-yellow-700 bg-yellow-50 border-yellow-200';
   };
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Stats Header */}
-      <div className="px-4 py-4 border-b bg-white space-y-3">
+  // If no PDF URL, show sidebar-only view
+  if (!pdfUrl) {
+    return (
+      <div className="flex flex-col h-full">
+        {/* Stats Header */}
+        <div className="px-4 py-4 border-b bg-white space-y-3">
         <div className={`px-4 py-3 rounded-lg border ${getSeverityColor()}`}>
           <div className="flex items-center gap-3">
             <span className="text-2xl">{getSeverityIcon()}</span>
@@ -455,13 +488,112 @@ export function ViolationsSummary({
         )}
       </div>
 
-      {/* Violations List */}
-      <ViolationListSidebar
-        violations={violations}
-        selectedViolation={selectedViolation}
-        onViolationClick={handleViolationClick}
-        currentPage={1}
-      />
+        {/* Violations List */}
+        <ViolationListSidebar
+          violations={violations}
+          selectedViolation={selectedViolation}
+          onViolationClick={handleViolationClick}
+          currentPage={1}
+          assessmentId={assessmentId}
+          onSeverityFilterChange={setSeverityFilter}
+        />
+      </div>
+    );
+  }
+
+  // Full view with PDF and sidebar
+  return (
+    <div className="fixed inset-0 flex overflow-hidden bg-gray-100">
+      {/* Left Sidebar - Violations List */}
+      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden">
+        {/* Stats Header */}
+        <div className="px-4 py-4 border-b bg-white space-y-3">
+          <div className={`px-4 py-3 rounded-lg border ${getSeverityColor()}`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{getSeverityIcon()}</span>
+              <div className="flex-1">
+                <div className="font-semibold text-sm">
+                  {violations.length === 0 ? (
+                    'No Violations Found'
+                  ) : (
+                    <>
+                      {violations.length} Violation{violations.length === 1 ? '' : 's'} Found
+                    </>
+                  )}
+                </div>
+                <div className="text-xs mt-1">
+                  {stats.assessed} of {stats.totalSections} sections assessed ({stats.pct}%)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Export Button */}
+          {violations.length > 0 && (
+            <button
+              onClick={handleExportPDF}
+              disabled={exporting}
+              className="w-full px-4 py-3 rounded-lg border-2 border-blue-600 bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 hover:border-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {exporting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Generating PDF...
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  Export Report
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Violations List */}
+        <ViolationListSidebar
+          violations={violations}
+          selectedViolation={selectedViolation}
+          onViolationClick={handleViolationClick}
+          currentPage={currentPage}
+          assessmentId={assessmentId}
+          onSeverityFilterChange={setSeverityFilter}
+        />
+      </div>
+
+      {/* Main Content - PDF Viewer with Bounding Boxes */}
+      <div className="flex-1 overflow-hidden h-screen">
+        <PDFViewer
+          pdfUrl={pdfUrl}
+          readOnly={true}
+          violationMarkers={filteredViolations}
+          onMarkerClick={handleViolationClick}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          highlightedViolationId={highlightedViolationId}
+        />
+      </div>
     </div>
   );
 }

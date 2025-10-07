@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { ViolationMarker } from '@/lib/reports/get-violations';
 import clsx from 'clsx';
 
@@ -9,6 +9,8 @@ interface Props {
   selectedViolation: ViolationMarker | null;
   onViolationClick: (violation: ViolationMarker) => void;
   currentPage: number;
+  assessmentId?: string;
+  onSeverityFilterChange?: (severities: Set<string>) => void;
 }
 
 type GroupBy = 'page' | 'severity' | 'section';
@@ -18,21 +20,83 @@ export function ViolationListSidebar({
   selectedViolation,
   onViolationClick,
   currentPage: _currentPage,
+  assessmentId,
+  onSeverityFilterChange,
 }: Props) {
   const [groupBy, setGroupBy] = useState<GroupBy>('page');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter violations by search query
+  // Severity filter state with localStorage persistence
+  const [severityFilter, setSeverityFilter] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined' || !assessmentId) {
+      return new Set(['major', 'moderate', 'minor']);
+    }
+    try {
+      const saved = localStorage.getItem(`violation-severity-filter-${assessmentId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return new Set(parsed);
+      }
+    } catch {
+      // ignore
+    }
+    return new Set(['major', 'moderate', 'minor']);
+  });
+
+  // Persist severity filter changes
+  useEffect(() => {
+    if (assessmentId && typeof window !== 'undefined') {
+      localStorage.setItem(
+        `violation-severity-filter-${assessmentId}`,
+        JSON.stringify(Array.from(severityFilter))
+      );
+    }
+    onSeverityFilterChange?.(severityFilter);
+  }, [severityFilter, assessmentId, onSeverityFilterChange]);
+
+  const toggleSeverityFilter = (severity: string) => {
+    setSeverityFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(severity)) {
+        next.delete(severity);
+      } else {
+        next.add(severity);
+      }
+      return next;
+    });
+  };
+
+  // Filter violations by search query and severity
   const filteredViolations = useMemo(() => {
-    if (!searchQuery) return violations;
-    const query = searchQuery.toLowerCase();
-    return violations.filter(
-      v =>
-        v.description.toLowerCase().includes(query) ||
-        v.codeSectionNumber.toLowerCase().includes(query) ||
-        v.checkName.toLowerCase().includes(query)
-    );
-  }, [violations, searchQuery]);
+    let filtered = violations;
+
+    // Filter by severity
+    filtered = filtered.filter(v => severityFilter.has(v.severity));
+
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        v =>
+          v.description.toLowerCase().includes(query) ||
+          v.codeSectionNumber.toLowerCase().includes(query) ||
+          v.checkName.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [violations, searchQuery, severityFilter]);
+
+  // Count violations by severity
+  const severityCounts = useMemo(() => {
+    const counts = { major: 0, moderate: 0, minor: 0 };
+    violations.forEach(v => {
+      if (v.severity in counts) {
+        counts[v.severity as keyof typeof counts]++;
+      }
+    });
+    return counts;
+  }, [violations]);
 
   // Group violations based on selected grouping
   const groupedViolations = useMemo(() => {
@@ -105,6 +169,52 @@ export function ViolationListSidebar({
           onChange={e => setSearchQuery(e.target.value)}
           className="w-full px-3 py-2 text-sm border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent"
         />
+
+        {/* Severity Filter Pills */}
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={() => toggleSeverityFilter('major')}
+            className={clsx(
+              'flex-1 px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
+              severityFilter.has('major')
+                ? 'bg-danger-50 border-danger-600 text-danger-700'
+                : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
+            )}
+          >
+            Major
+            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
+              {severityCounts.major}
+            </span>
+          </button>
+          <button
+            onClick={() => toggleSeverityFilter('moderate')}
+            className={clsx(
+              'flex-1 px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
+              severityFilter.has('moderate')
+                ? 'bg-yellow-50 border-yellow-600 text-yellow-700'
+                : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
+            )}
+          >
+            Moderate
+            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
+              {severityCounts.moderate}
+            </span>
+          </button>
+          <button
+            onClick={() => toggleSeverityFilter('minor')}
+            className={clsx(
+              'flex-1 px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
+              severityFilter.has('minor')
+                ? 'bg-accent-50 border-accent-600 text-accent-700'
+                : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
+            )}
+          >
+            Minor
+            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
+              {severityCounts.minor}
+            </span>
+          </button>
+        </div>
 
         <div className="mt-3 flex gap-1 bg-paper rounded-lg p-1">
           <button

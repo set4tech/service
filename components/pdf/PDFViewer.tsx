@@ -1,9 +1,11 @@
 'use client';
 
 import { pdfjs } from 'react-pdf';
-import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ViolationMarker as ViolationMarkerType } from '@/lib/reports/get-violations';
 import { ViolationMarker } from '../reports/ViolationMarker';
+import { ViolationBoundingBox } from '../reports/ViolationBoundingBox';
+import { groupOverlappingViolations } from '@/lib/reports/group-violations';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -13,6 +15,9 @@ const MAX_SCALE = 10;
 const MAX_CANVAS_SIDE = 16384; // Sweet spot: 5.4x multiplier without crashing
 const MAX_CANVAS_PIXELS = 268_000_000; // 16384^2
 const TRANSFORM_SAVE_DEBOUNCE_MS = 500;
+
+// Stable empty function to avoid creating new functions on every render
+const NOOP = () => {};
 
 interface ViewerState {
   transform: { tx: number; ty: number; scale: number };
@@ -98,6 +103,7 @@ export function PDFViewer({
   onMarkerClick,
   currentPage: externalCurrentPage,
   onPageChange,
+  highlightedViolationId,
 }: {
   pdfUrl: string;
   assessmentId?: string;
@@ -110,6 +116,7 @@ export function PDFViewer({
   onMarkerClick?: (marker: ViolationMarkerType) => void;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  highlightedViolationId?: string | null;
 }) {
   const assessmentId = propAssessmentId || activeCheck?.assessment_id;
 
@@ -167,26 +174,46 @@ export function PDFViewer({
 
   // UI state
   const [layers, setLayers] = useState<PDFLayer[]>([]);
+  const [layersVersion, setLayersVersion] = useState(0); // Increment when layers change
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [renderScale, setRenderScale] = useState(2); // Quality multiplier, NOT viewport scale
   const [savingScale, setSavingScale] = useState(false);
 
-  const dpr = typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1;
+  // Use useState for dpr to ensure stability
+  const [dpr] = useState(() => typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1);
+
+  // Memoize violation groups to avoid recalculating on every render
+  const violationGroups = useMemo(() => {
+    if (!readOnly || violationMarkers.length === 0) return [];
+    return groupOverlappingViolations(violationMarkers, state.pageNumber);
+  }, [readOnly, violationMarkers, state.pageNumber]);
+
+  // Store latest onPageChange callback in a ref to avoid unnecessary re-renders
+  const onPageChangeRef = useRef(onPageChange);
+  useEffect(() => {
+    onPageChangeRef.current = onPageChange;
+  }, [onPageChange]);
 
   // External page control → internal
+  // Track previous external page to only respond to actual changes
+  const prevExternalPageRef = useRef(externalCurrentPage);
   useEffect(() => {
-    if (externalCurrentPage && externalCurrentPage !== state.pageNumber) {
-      dispatch({ type: 'SET_PAGE', payload: externalCurrentPage });
+    // Only update if externalCurrentPage actually changed (not internal state change)
+    if (externalCurrentPage && externalCurrentPage !== prevExternalPageRef.current) {
+      prevExternalPageRef.current = externalCurrentPage;
+      if (externalCurrentPage !== state.pageNumber) {
+        dispatch({ type: 'SET_PAGE', payload: externalCurrentPage });
+      }
     }
   }, [externalCurrentPage, state.pageNumber]);
 
   // Notify parent + persist page number
   useEffect(() => {
-    onPageChange?.(state.pageNumber);
+    onPageChangeRef.current?.(state.pageNumber);
     if (assessmentId && typeof window !== 'undefined') {
       localStorage.setItem(`pdf-page-${assessmentId}`, String(state.pageNumber));
     }
-  }, [state.pageNumber, onPageChange, assessmentId]);
+  }, [state.pageNumber, assessmentId]);
 
   // Debounced transform persistence
   useEffect(() => {
@@ -274,14 +301,29 @@ export function PDFViewer({
     };
   }, [presignedUrl]);
 
+  // Track current page number to avoid redundant loads
+  const currentPageNumRef = useRef<number | null>(null);
+
+  // Reset page tracking when PDF document changes
+  useEffect(() => {
+    currentPageNumRef.current = null;
+  }, [pdfDoc]);
+
   // Load current page proxy
   useEffect(() => {
     if (!pdfDoc) return;
+
+    // Skip if we're already on this page
+    if (currentPageNumRef.current === state.pageNumber) {
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
         const p = await pdfDoc.getPage(state.pageNumber);
         if (cancelled) return;
+        currentPageNumRef.current = state.pageNumber;
         setPage(p);
       } catch {
         if (!cancelled) setPage(null);
@@ -344,10 +386,12 @@ export function PDFViewer({
 
         setOcConfig(cfg);
         setLayers(initialLayers);
+        setLayersVersion(v => v + 1);
       } catch {
         // No layers or error: fall back to default render via our canvas
         setOcConfig(null);
         setLayers([]);
+        setLayersVersion(v => v + 1);
       }
     })();
     return () => {
@@ -357,50 +401,24 @@ export function PDFViewer({
 
   // Calculate safe rendering multiplier that respects canvas limits
   const getSafeRenderMultiplier = useCallback((baseViewport: any, desiredMultiplier: number) => {
-    // desiredMultiplier is the renderScale value (e.g., 2.0-8.0)
     const maxBySide = Math.min(
       MAX_CANVAS_SIDE / baseViewport.width,
       MAX_CANVAS_SIDE / baseViewport.height
     );
     const maxByPixels = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
     const cap = Math.min(maxBySide, maxByPixels);
-    const safeMultiplier = Math.max(1, Math.min(desiredMultiplier, cap));
-    console.log('[PDFViewer] getSafeRenderMultiplier:', {
-      baseWidth: baseViewport.width,
-      baseHeight: baseViewport.height,
-      desiredMultiplier,
-      maxBySide,
-      maxByPixels,
-      cap,
-      safeMultiplier,
-      isCapped: safeMultiplier < desiredMultiplier,
-      finalPixels:
-        Math.ceil(baseViewport.width * safeMultiplier) *
-        Math.ceil(baseViewport.height * safeMultiplier),
-    });
-    return safeMultiplier;
+    return Math.max(1, Math.min(desiredMultiplier, cap));
   }, []);
 
   // Core render function (single path)
   const renderPage = useCallback(
-    async (why: string) => {
-      console.log('[PDFViewer] renderPage START:', {
-        why,
-        hasCanvas: !!canvasRef.current,
-        hasPage: !!page,
-      });
+    async () => {
       const c = canvasRef.current;
-      if (!c || !page) {
-        console.log('[PDFViewer] renderPage ABORT: missing canvas or page');
-        return;
-      }
+      if (!c || !page) return;
 
       // Validate page object has required methods
       if (typeof page.getViewport !== 'function' || typeof page.render !== 'function') {
-        console.error('[PDFViewer] Invalid page object:', {
-          hasGetViewport: typeof page.getViewport,
-          hasRender: typeof page.render,
-        });
+        console.error('[PDFViewer] Invalid page object');
         return;
       }
 
@@ -432,16 +450,6 @@ export function PDFViewer({
         return;
       }
 
-      console.log('[PDFViewer] renderPage:', {
-        why,
-        renderScale,
-        dpr,
-        desiredMultiplier,
-        safeMultiplier,
-        hasOcConfig: !!ocConfig,
-        layerCount: layers.length,
-      });
-
       // CSS size at 1x (base PDF dimensions), canvas at safeMultiplier for quality
       const widthCSS = Math.ceil(baseViewport.width);
       const heightCSS = Math.ceil(baseViewport.height);
@@ -449,13 +457,6 @@ export function PDFViewer({
       c.style.height = `${heightCSS}px`;
       c.width = Math.ceil(viewport.width);
       c.height = Math.ceil(viewport.height);
-      console.log('[PDFViewer] Canvas dimensions:', {
-        cssWidth: widthCSS,
-        cssHeight: heightCSS,
-        canvasWidth: c.width,
-        canvasHeight: c.height,
-        totalPixels: c.width * c.height,
-      });
 
       const ctx = c.getContext('2d');
       if (!ctx) return;
@@ -473,10 +474,6 @@ export function PDFViewer({
 
       // Ensure ocConfig reflects our current layer state
       if (ocConfig && layers.length > 0) {
-        console.log(
-          '[PDFViewer] Setting layer visibility:',
-          layers.map(l => ({ id: l.id, name: l.name, visible: l.visible }))
-        );
         for (const layer of layers) {
           try {
             ocConfig.setVisibility?.(layer.id, layer.visible);
@@ -486,21 +483,9 @@ export function PDFViewer({
         }
       }
 
-      console.log('[PDFViewer] About to call page.render with:', {
-        hasContext: !!ctx,
-        hasViewport: !!viewport,
-        viewportWidth: viewport?.width,
-        viewportHeight: viewport?.height,
-        hasOcConfig: !!ocConfig,
-      });
-
       // Validate render parameters
-      if (!ctx) {
-        console.error('[PDFViewer] Missing canvas context');
-        return;
-      }
       if (!viewport || !viewport.width || !viewport.height) {
-        console.error('[PDFViewer] Invalid viewport:', viewport);
+        console.error('[PDFViewer] Invalid viewport');
         return;
       }
 
@@ -510,37 +495,30 @@ export function PDFViewer({
         ...(ocConfig && { optionalContentConfigPromise: Promise.resolve(ocConfig) }),
       };
 
-      console.log('[PDFViewer] Render params:', {
-        hasCanvasContext: !!renderParams.canvasContext,
-        hasViewport: !!renderParams.viewport,
-        hasOptionalContent: !!renderParams.optionalContentConfigPromise,
-      });
-
       const task = page.render(renderParams);
       renderTaskRef.current = task;
-      console.log('[PDFViewer] Render task created, awaiting...');
 
       try {
         await task.promise;
-        console.log('[PDFViewer] Render completed successfully');
       } catch (err: any) {
-        if (err?.name === 'RenderingCancelledException') {
-          // Expected when changing pages/settings quickly - ignore
-          console.log('[PDFViewer] Render cancelled (expected):', why);
-        } else {
-          console.error('[PDFViewer] Unexpected render error:', err, 'why:', why);
+        if (err?.name !== 'RenderingCancelledException') {
+          // Only log unexpected errors
+          console.error('[PDFViewer] Render error:', err);
         }
       } finally {
         if (renderTaskRef.current === task) renderTaskRef.current = null;
       }
     },
-    [page, renderScale, dpr, ocConfig, layers, getSafeRenderMultiplier]
+    [page, renderScale, ocConfig, layers, getSafeRenderMultiplier]
   );
 
   // Kick renders when inputs change
+  // Note: renderPage is not in deps because it already depends on all these values
+  // Using layersVersion instead of layers array to avoid reference equality issues
   useEffect(() => {
-    if (page) renderPage('initial/changed deps');
-  }, [page, renderScale, layers, ocConfig, dpr, renderPage]);
+    if (page) renderPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, renderScale, layersVersion]);
 
   // Wheel zoom centred at pointer
   useEffect(() => {
@@ -705,7 +683,6 @@ export function PDFViewer({
   // User-facing controls
   const updateRenderScale = useCallback(
     async (newScale: number) => {
-      console.log('[PDFViewer] updateRenderScale called:', { oldScale: renderScale, newScale });
       setRenderScale(newScale);
       if (!assessmentId) return;
       setSavingScale(true);
@@ -716,16 +693,15 @@ export function PDFViewer({
           body: JSON.stringify({ pdf_scale: newScale }),
         });
         if (!response.ok) {
-          const error = await response.json();
-          console.error('[PDFViewer] Failed to save scale:', error);
+          console.error('[PDFViewer] Failed to save render scale');
         }
       } catch (err) {
-        console.error('[PDFViewer] Error saving scale:', err);
+        console.error('[PDFViewer] Error saving render scale:', err);
       } finally {
         setSavingScale(false);
       }
     },
-    [assessmentId, renderScale]
+    [assessmentId]
   );
 
   const toggleLayer = useCallback(
@@ -733,12 +709,12 @@ export function PDFViewer({
       if (!page) return;
       setLayers(prev => {
         const next = prev.map(l => (l.id === layerId ? { ...l, visible: !l.visible } : l));
-        // render immediately with new visibility; ocConfig is mutated in renderPage()
-        renderPage('toggleLayer');
         return next;
       });
+      setLayersVersion(v => v + 1);
+      // renderPage will be called automatically by the useEffect when layersVersion changes
     },
-    [page, renderPage]
+    [page]
   );
 
   // Screenshot capture reusing DPR + ocConfig for fidelity
@@ -1131,17 +1107,24 @@ export function PDFViewer({
               />
             )}
 
-            {readOnly &&
-              violationMarkers
-                .filter(m => m.pageNumber === state.pageNumber)
-                .map((marker, idx) => (
-                  <ViolationMarker
-                    key={`${marker.checkId}-${marker.screenshotId}-${idx}`}
-                    marker={marker}
-                    onClick={onMarkerClick || (() => {})}
-                    isVisible={true}
-                  />
-                ))}
+            {readOnly && violationGroups.map((group, groupIdx) => {
+              // Check if any violation in this group is highlighted
+              const isHighlighted = highlightedViolationId
+                ? group.violations.some(v => `${v.checkId}-${v.screenshotId}` === highlightedViolationId)
+                : false;
+
+              return (
+                <ViolationBoundingBox
+                  key={group.key}
+                  violations={group.violations}
+                  onClick={onMarkerClick || NOOP}
+                  isVisible={true}
+                  isHighlighted={isHighlighted}
+                  fanOutIndex={groupIdx}
+                  totalInGroup={group.violations.length}
+                />
+              );
+            })}
           </div>
         </div>
       </div>
