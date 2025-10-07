@@ -47,7 +47,7 @@ export async function getProjectViolations(
   // Get project info
   const { data: project, error: projectError } = await supabase
     .from('projects')
-    .select('id, name, pdf_url, extracted_variables')
+    .select('id, name, pdf_url, unannotated_drawing_url, extracted_variables')
     .eq('id', projectId)
     .single();
 
@@ -100,7 +100,7 @@ export async function getProjectViolations(
       projectId: project.id,
       projectName: project.name,
       assessmentId: assessment.id,
-      pdfUrl: project.pdf_url,
+      pdfUrl: project.unannotated_drawing_url || project.pdf_url,
       violations: [],
       buildingParams: project.extracted_variables,
       codeInfo: undefined,
@@ -131,23 +131,36 @@ export async function getProjectViolations(
   }
 
   // Filter to only non-compliant checks
+  console.log('[getProjectViolations] Total checks:', allChecks?.length);
   const nonCompliantChecks = allChecks.filter((check: any) => {
     const latestAnalysis = Array.isArray(check.latest_analysis_runs)
       ? check.latest_analysis_runs[0]
       : check.latest_analysis_runs;
 
-    return (
+    const isNonCompliant =
       check.manual_override === 'non_compliant' ||
-      latestAnalysis?.compliance_status === 'non_compliant'
-    );
+      latestAnalysis?.compliance_status === 'non_compliant';
+
+    if (isNonCompliant) {
+      console.log('[getProjectViolations] Non-compliant check found:', {
+        checkId: check.id,
+        checkName: check.check_name,
+        manual_override: check.manual_override,
+        analysisStatus: latestAnalysis?.compliance_status,
+      });
+    }
+
+    return isNonCompliant;
   });
+
+  console.log('[getProjectViolations] Non-compliant checks count:', nonCompliantChecks.length);
 
   if (nonCompliantChecks.length === 0) {
     return {
       projectId: project.id,
       projectName: project.name,
       assessmentId: assessment.id,
-      pdfUrl: project.pdf_url,
+      pdfUrl: project.unannotated_drawing_url || project.pdf_url,
       violations: [],
       buildingParams: project.extracted_variables,
       codeInfo,
@@ -183,35 +196,54 @@ export async function getProjectViolations(
 
   // Batch fetch all screenshots for non-compliant checks
   const checkIds = nonCompliantChecks.map((c: any) => c.id);
-  const { data: allScreenshots } = await supabase
+
+  // First get all screenshot assignments for these checks
+  const { data: assignments, error: assignmentError } = await supabase
+    .from('screenshot_check_assignments')
+    .select('check_id, screenshot_id')
+    .in('check_id', checkIds);
+
+  if (assignmentError) {
+    console.error('[getProjectViolations] Assignment query error:', assignmentError);
+  }
+
+  console.log('[getProjectViolations] Screenshot assignments fetched:', assignments?.length);
+
+  // Get unique screenshot IDs
+  const screenshotIds = Array.from(new Set(assignments?.map(a => a.screenshot_id) || []));
+
+  // Fetch all screenshots in one query
+  const { data: screenshots, error: screenshotError } = await supabase
     .from('screenshots')
-    .select(
-      `
-      id,
-      screenshot_url,
-      thumbnail_url,
-      page_number,
-      crop_coordinates,
-      screenshot_check_assignments!inner(check_id)
-    `
-    )
-    .in('screenshot_check_assignments.check_id', checkIds)
-    .order('created_at', { ascending: true });
+    .select('id, screenshot_url, thumbnail_url, page_number, crop_coordinates')
+    .in('id', screenshotIds);
+
+  if (screenshotError) {
+    console.error('[getProjectViolations] Screenshot query error:', screenshotError);
+  }
+
+  console.log('[getProjectViolations] Screenshots fetched:', screenshots?.length);
+
+  // Create a map of screenshot_id -> screenshot data
+  const screenshotsMap = new Map(screenshots?.map(s => [s.id, s]) || []);
 
   // Group screenshots by check_id
   const screenshotsByCheck = new Map<string, any[]>();
-  allScreenshots?.forEach((s: any) => {
-    const checkId = s.screenshot_check_assignments?.check_id;
-    if (checkId) {
+  assignments?.forEach((assignment: any) => {
+    const checkId = assignment.check_id;
+    const screenshotId = assignment.screenshot_id;
+    const screenshot = screenshotsMap.get(screenshotId);
+
+    if (checkId && screenshot) {
       if (!screenshotsByCheck.has(checkId)) {
         screenshotsByCheck.set(checkId, []);
       }
       screenshotsByCheck.get(checkId)!.push({
-        id: s.id,
-        screenshot_url: s.screenshot_url,
-        thumbnail_url: s.thumbnail_url,
-        page_number: s.page_number,
-        crop_coordinates: s.crop_coordinates,
+        id: screenshot.id,
+        screenshot_url: screenshot.screenshot_url,
+        thumbnail_url: screenshot.thumbnail_url,
+        page_number: screenshot.page_number,
+        crop_coordinates: screenshot.crop_coordinates,
       });
     }
   });
@@ -238,6 +270,10 @@ export async function getProjectViolations(
 
     // Get screenshots from pre-fetched map
     const screenshots = screenshotsByCheck.get(check.id) || [];
+    console.log('[getProjectViolations] Check screenshots:', {
+      checkId: check.id,
+      screenshotCount: screenshots.length,
+    });
 
     // Parse violations from AI response
     let violationDetails: Array<{
@@ -280,6 +316,7 @@ export async function getProjectViolations(
 
     // Create a violation marker for each screenshot
     if (screenshots && screenshots.length > 0) {
+      console.log('[getProjectViolations] Creating violations from screenshots');
       screenshots.forEach((screenshot, idx) => {
         // Get violation details for this screenshot (use first violation if multiple, or generic)
         const violationDetail = violationDetails[idx] || violationDetails[0];
@@ -317,11 +354,18 @@ export async function getProjectViolations(
       });
     } else {
       // No screenshots - create a generic marker (we'll handle this case in the UI)
+      console.log('[getProjectViolations] No screenshots, creating generic violation marker');
       const violationDetail = violationDetails[0];
       const description =
         violationDetail?.description ||
         `Non-compliant with ${check.code_section_number || check.code_section_key}`;
       const severity = violationDetail?.severity || 'moderate';
+
+      console.log('[getProjectViolations] Generic violation:', {
+        checkId: check.id,
+        description,
+        severity,
+      });
 
       violations.push({
         checkId: check.id,
@@ -344,11 +388,15 @@ export async function getProjectViolations(
     }
   }
 
+  console.log('[getProjectViolations] Project:', projectId);
+  console.log('[getProjectViolations] Total violations found:', violations.length);
+  console.log('[getProjectViolations] Violations:', JSON.stringify(violations, null, 2));
+
   return {
     projectId: project.id,
     projectName: project.name,
     assessmentId: assessment.id,
-    pdfUrl: project.pdf_url,
+    pdfUrl: project.unannotated_drawing_url || project.pdf_url,
     violations,
     buildingParams: project.extracted_variables,
     codeInfo,

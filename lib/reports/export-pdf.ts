@@ -6,7 +6,7 @@ import { ViolationMarker } from './get-violations';
 
 // Set up PDF.js worker
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 }
 
 interface ExportOptions {
@@ -14,36 +14,183 @@ interface ExportOptions {
   violations: ViolationMarker[];
   projectName: string;
   assessmentId: string;
+  buildingParams?: any;
+  codeInfo?: {
+    id: string;
+    title: string;
+    version: string;
+    sourceUrl?: string;
+  };
 }
 
-const SIDEBAR_WIDTH = 200; // Width of sidebar in mm
-const PAGE_MARGIN = 10; // Margin in mm
-const VIOLATION_ITEM_HEIGHT = 25; // Height per violation in sidebar
+const PAGE_MARGIN = 15; // Margin in mm
 
 /**
  * Exports a compliance report PDF with violations marked up
  */
 export async function exportCompliancePDF(options: ExportOptions): Promise<void> {
-  const { pdfUrl, violations, projectName } = options;
+  const { pdfUrl, violations, projectName, buildingParams, codeInfo } = options;
 
   console.log('[PDF Export] Starting export with', violations.length, 'violations');
+  console.log('[PDF Export] Input PDF URL:', pdfUrl);
 
   // Get presigned URL if needed
   let presignedUrl = pdfUrl;
-  if (pdfUrl.startsWith('projects/')) {
-    console.log('[PDF Export] Fetching presigned URL for S3 key');
+  const isS3Url = pdfUrl.includes('.s3.') || pdfUrl.includes('.s3-') || pdfUrl.startsWith('s3://');
+  const isAlreadyPresigned = pdfUrl.includes('X-Amz-Signature');
+
+  console.log('[PDF Export] isS3Url:', isS3Url, 'isAlreadyPresigned:', isAlreadyPresigned);
+
+  if (isS3Url && !isAlreadyPresigned) {
+    console.log('[PDF Export] Fetching presigned URL for S3 URL');
     const presignRes = await fetch('/api/pdf/presign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pdfUrl }),
     });
     if (!presignRes.ok) {
-      throw new Error('Failed to get presigned URL');
+      const errorData = await presignRes.json();
+      console.error('[PDF Export] Presign failed:', errorData);
+      throw new Error(`Failed to get presigned URL: ${errorData.error || presignRes.statusText}`);
     }
     const { url } = await presignRes.json();
     presignedUrl = url;
+    console.log('[PDF Export] Got presigned URL, loading PDF...');
+  } else {
+    console.log('[PDF Export] Using URL as-is (already presigned or not S3)');
   }
 
+  console.log('[PDF Export] Final URL:', presignedUrl.substring(0, 100) + '...');
+
+  // Create output PDF (portrait for report format)
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - PAGE_MARGIN * 2;
+
+  // ==================== TITLE PAGE ====================
+  let yPos = PAGE_MARGIN + 30;
+
+  // Project title
+  pdf.setFontSize(20);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(0, 0, 0);
+  pdf.text('Compliance Report', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 12;
+
+  pdf.setFontSize(14);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(projectName, pageWidth / 2, yPos, { align: 'center' });
+  yPos += 20;
+
+  // Code information
+  if (codeInfo) {
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Code Information', PAGE_MARGIN, yPos);
+    yPos += 8;
+
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Title: ${codeInfo.title}`, PAGE_MARGIN + 5, yPos);
+    yPos += 6;
+    pdf.text(`Version: ${codeInfo.version}`, PAGE_MARGIN + 5, yPos);
+    yPos += 12;
+  }
+
+  // Building parameters - format nicely
+  if (buildingParams && Object.keys(buildingParams).length > 0) {
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Building Parameters', PAGE_MARGIN, yPos);
+    yPos += 8;
+
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+
+    const formatValue = (val: any, indent = 0): string[] => {
+      const indentStr = '  '.repeat(indent);
+      if (typeof val === 'object' && val !== null) {
+        const lines: string[] = [];
+        for (const [k, v] of Object.entries(val)) {
+          const key = k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          if (typeof v === 'object' && v !== null) {
+            lines.push(`${indentStr}${key}:`);
+            lines.push(...formatValue(v, indent + 1));
+          } else {
+            lines.push(`${indentStr}${key}: ${v}`);
+          }
+        }
+        return lines;
+      }
+      return [`${indentStr}${val}`];
+    };
+
+    for (const [key, value] of Object.entries(buildingParams)) {
+      if (yPos > pageHeight - PAGE_MARGIN - 20) {
+        pdf.addPage();
+        yPos = PAGE_MARGIN;
+      }
+
+      const displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(displayKey + ':', PAGE_MARGIN + 5, yPos);
+      yPos += 5;
+
+      pdf.setFont('helvetica', 'normal');
+      const lines = formatValue(value, 1);
+      lines.forEach(line => {
+        if (yPos > pageHeight - PAGE_MARGIN - 10) {
+          pdf.addPage();
+          yPos = PAGE_MARGIN;
+        }
+        const wrappedLines = pdf.splitTextToSize(line, contentWidth - 10);
+        pdf.text(wrappedLines, PAGE_MARGIN + 5, yPos);
+        yPos += 4.5 * wrappedLines.length;
+      });
+      yPos += 3;
+    }
+    yPos += 5;
+  }
+
+  // Summary stats
+  pdf.setFontSize(12);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Violations Summary', PAGE_MARGIN, yPos);
+  yPos += 8;
+
+  const severityCounts = {
+    major: violations.filter(v => v.severity === 'major').length,
+    moderate: violations.filter(v => v.severity === 'moderate').length,
+    minor: violations.filter(v => v.severity === 'minor').length,
+  };
+
+  pdf.setFontSize(10);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(`Total Violations: ${violations.length}`, PAGE_MARGIN + 5, yPos);
+  yPos += 6;
+  pdf.setTextColor(220, 38, 38);
+  pdf.text(`Major: ${severityCounts.major}`, PAGE_MARGIN + 5, yPos);
+  yPos += 6;
+  pdf.setTextColor(234, 179, 8);
+  pdf.text(`Moderate: ${severityCounts.moderate}`, PAGE_MARGIN + 5, yPos);
+  yPos += 6;
+  pdf.setTextColor(59, 130, 246);
+  pdf.text(`Minor: ${severityCounts.minor}`, PAGE_MARGIN + 5, yPos);
+  yPos += 12;
+
+  pdf.setTextColor(100, 100, 100);
+  pdf.setFontSize(9);
+  pdf.text(`Generated: ${new Date().toLocaleString()}`, PAGE_MARGIN, pageHeight - PAGE_MARGIN);
+
+  console.log('[PDF Export] Created title page');
+
+  // ==================== DRAWING PAGES WITH MARKERS ====================
   // Load source PDF
   const loadingTask = pdfjsLib.getDocument(presignedUrl);
   const pdfDoc = await loadingTask.promise;
@@ -60,16 +207,7 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     violationsByPage.get(v.pageNumber)!.push(v);
   });
 
-  // Create output PDF (landscape for more space)
-  const pdf = new jsPDF({
-    orientation: 'landscape',
-    unit: 'mm',
-    format: 'a3', // A3 for larger pages
-  });
-
-  let isFirstPage = true;
-
-  // Process each page that has violations
+  // Render each page that has violations
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     const pageViolations = violationsByPage.get(pageNum) || [];
     if (pageViolations.length === 0) {
@@ -77,17 +215,10 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     }
 
     console.log(
-      '[PDF Export] Processing page',
-      pageNum,
-      'with',
-      pageViolations.length,
-      'violations'
+      `[PDF Export] Rendering drawing page ${pageNum} with ${pageViolations.length} violations`
     );
 
-    if (!isFirstPage) {
-      pdf.addPage();
-    }
-    isFirstPage = false;
+    pdf.addPage('a4', 'landscape');
 
     // Get PDF page
     const page = await pdfDoc.getPage(pageNum);
@@ -105,70 +236,11 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
       viewport: viewport,
     }).promise;
 
-    // Calculate layout dimensions (in mm)
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const drawingWidth = pageWidth - SIDEBAR_WIDTH - PAGE_MARGIN * 3;
-    const drawingHeight = pageHeight - PAGE_MARGIN * 2;
-
-    // Draw sidebar background
-    pdf.setFillColor(250, 250, 250);
-    pdf.rect(PAGE_MARGIN, PAGE_MARGIN, SIDEBAR_WIDTH, drawingHeight, 'F');
-
-    // Draw sidebar border
-    pdf.setDrawColor(200, 200, 200);
-    pdf.setLineWidth(0.5);
-    pdf.rect(PAGE_MARGIN, PAGE_MARGIN, SIDEBAR_WIDTH, drawingHeight, 'S');
-
-    // Add sidebar title
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Violations', PAGE_MARGIN + 5, PAGE_MARGIN + 8);
-
-    // Add page number in sidebar
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(100, 100, 100);
-    pdf.text(`Page ${pageNum}`, PAGE_MARGIN + 5, PAGE_MARGIN + 14);
-
-    // Draw violations in sidebar
-    let yOffset = PAGE_MARGIN + 20;
-    pageViolations.forEach(violation => {
-      if (yOffset + VIOLATION_ITEM_HEIGHT > pageHeight - PAGE_MARGIN) {
-        return; // Skip if we run out of space
-      }
-
-      // Violation number/marker
-      const markerColor = getSeverityColor(violation.severity);
-      pdf.setFillColor(markerColor.r, markerColor.g, markerColor.b);
-      pdf.circle(PAGE_MARGIN + 10, yOffset + 3, 3, 'F');
-
-      // Code reference
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(0, 0, 0);
-      const codeText = pdf.splitTextToSize(violation.codeSectionNumber, SIDEBAR_WIDTH - 25);
-      pdf.text(codeText, PAGE_MARGIN + 16, yOffset + 4);
-      yOffset += 4 * codeText.length;
-
-      // Violation description
-      pdf.setFontSize(7);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(60, 60, 60);
-      const descText = pdf.splitTextToSize(violation.description, SIDEBAR_WIDTH - 20);
-      pdf.text(descText.slice(0, 3), PAGE_MARGIN + 10, yOffset + 2); // Limit to 3 lines
-      yOffset += 3 * Math.min(descText.length, 3);
-
-      // Separator
-      yOffset += 4;
-      pdf.setDrawColor(220, 220, 220);
-      pdf.line(PAGE_MARGIN + 5, yOffset, PAGE_MARGIN + SIDEBAR_WIDTH - 5, yOffset);
-      yOffset += 4;
-    });
-
-    // Add drawing to right side
-    const drawingX = PAGE_MARGIN + SIDEBAR_WIDTH + PAGE_MARGIN;
-    const drawingY = PAGE_MARGIN;
+    // Calculate layout dimensions (landscape page)
+    const drawingPageWidth = pdf.internal.pageSize.getWidth();
+    const drawingPageHeight = pdf.internal.pageSize.getHeight();
+    const drawingWidth = drawingPageWidth - PAGE_MARGIN * 2;
+    const drawingHeight = drawingPageHeight - PAGE_MARGIN * 2;
 
     // Calculate aspect ratio to fit
     const imgAspect = viewport.width / viewport.height;
@@ -176,21 +248,19 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     let imgWidth, imgHeight;
 
     if (imgAspect > boxAspect) {
-      // Image is wider - fit to width
       imgWidth = drawingWidth;
       imgHeight = drawingWidth / imgAspect;
     } else {
-      // Image is taller - fit to height
       imgHeight = drawingHeight;
       imgWidth = drawingHeight * imgAspect;
     }
 
-    // Center the image in the available space
-    const imgX = drawingX + (drawingWidth - imgWidth) / 2;
-    const imgY = drawingY + (drawingHeight - imgHeight) / 2;
+    // Center the image
+    const imgX = PAGE_MARGIN + (drawingWidth - imgWidth) / 2;
+    const imgY = PAGE_MARGIN + (drawingHeight - imgHeight) / 2;
 
     // Add the PDF page image
-    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+    const imgData = canvas.toDataURL('image/jpeg', 0.9);
     pdf.addImage(imgData, 'JPEG', imgX, imgY, imgWidth, imgHeight);
 
     // Draw violation markers on the drawing
@@ -200,7 +270,6 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
       }
 
       // Convert PDF coordinates to image coordinates
-      // bounds are in PDF coordinate space (relative to viewport)
       const x = imgX + (violation.bounds.x / viewport.width) * imgWidth;
       const y = imgY + (violation.bounds.y / viewport.height) * imgHeight;
       const w = (violation.bounds.width / viewport.width) * imgWidth;
@@ -209,64 +278,199 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
       // Draw rectangle around violation
       const color = getSeverityColor(violation.severity);
       pdf.setDrawColor(color.r, color.g, color.b);
-      pdf.setLineWidth(1);
+      pdf.setLineWidth(1.5);
       pdf.rect(x, y, w, h, 'S');
 
-      // Draw filled circle marker at top-left
+      // Draw filled circle marker with number
       pdf.setFillColor(color.r, color.g, color.b);
-      pdf.circle(x, y, 2, 'F');
+      pdf.circle(x + 5, y + 5, 4, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'bold');
+      const violationNum = violations.findIndex(v => v.checkId === violation.checkId) + 1;
+      pdf.text(String(violationNum), x + 5, y + 6.5, { align: 'center' });
     });
 
-    console.log('[PDF Export] Completed page', pageNum);
+    // Page title
+    pdf.setFontSize(10);
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(
+      `Drawing Page ${pageNum} - ${pageViolations.length} Violation(s)`,
+      PAGE_MARGIN,
+      PAGE_MARGIN - 3
+    );
+
+    console.log('[PDF Export] Completed drawing page', pageNum);
   }
 
-  // Add title page at the beginning
-  pdf.insertPage(1);
-  pdf.setPage(1);
+  // ==================== VIOLATION DETAIL PAGES ====================
+  // Fetch section texts for all violations
+  console.log('[PDF Export] Fetching section texts...');
+  const sectionKeys = Array.from(new Set(violations.map(v => v.codeSectionKey).filter(Boolean)));
+  const sectionTextsMap = new Map<string, string>();
 
-  // Title page content
-  pdf.setFontSize(24);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(0, 0, 0);
-  const titleY = pdf.internal.pageSize.getHeight() / 2 - 30;
-  pdf.text('Compliance Report', pdf.internal.pageSize.getWidth() / 2, titleY, { align: 'center' });
+  try {
+    const response = await fetch('/api/sections/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: sectionKeys }),
+    });
+    if (response.ok) {
+      const sections = await response.json();
+      sections.forEach((s: any) => {
+        sectionTextsMap.set(s.key, s.text || 'No text available');
+      });
+    }
+  } catch (err) {
+    console.error('[PDF Export] Failed to fetch section texts:', err);
+  }
 
-  pdf.setFontSize(14);
-  pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(100, 100, 100);
-  pdf.text(projectName, pdf.internal.pageSize.getWidth() / 2, titleY + 10, { align: 'center' });
+  // Process each violation
+  for (let i = 0; i < violations.length; i++) {
+    const violation = violations[i];
+    console.log(`[PDF Export] Processing violation ${i + 1}/${violations.length}`);
 
-  // Summary stats
-  pdf.setFontSize(12);
-  pdf.setTextColor(0, 0, 0);
-  const statsY = titleY + 30;
-  pdf.text(`Total Violations: ${violations.length}`, pdf.internal.pageSize.getWidth() / 2, statsY, {
-    align: 'center',
-  });
+    pdf.addPage();
+    yPos = PAGE_MARGIN;
 
-  const severityCounts = {
-    major: violations.filter(v => v.severity === 'major').length,
-    moderate: violations.filter(v => v.severity === 'moderate').length,
-    minor: violations.filter(v => v.severity === 'minor').length,
-  };
+    // Violation header
+    const color = getSeverityColor(violation.severity);
+    pdf.setFillColor(color.r, color.g, color.b);
+    pdf.rect(PAGE_MARGIN, yPos, contentWidth, 10, 'F');
 
-  pdf.setFontSize(10);
-  pdf.text(
-    `Major: ${severityCounts.major} | Moderate: ${severityCounts.moderate} | Minor: ${severityCounts.minor}`,
-    pdf.internal.pageSize.getWidth() / 2,
-    statsY + 8,
-    { align: 'center' }
-  );
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(`Violation ${i + 1} of ${violations.length}`, PAGE_MARGIN + 3, yPos + 7);
+    pdf.text(violation.severity.toUpperCase(), pageWidth - PAGE_MARGIN - 3, yPos + 7, {
+      align: 'right',
+    });
+    yPos += 15;
 
-  // Generated date
-  pdf.setFontSize(9);
-  pdf.setTextColor(150, 150, 150);
-  pdf.text(
-    `Generated: ${new Date().toLocaleDateString()}`,
-    pdf.internal.pageSize.getWidth() / 2,
-    pdf.internal.pageSize.getHeight() - 20,
-    { align: 'center' }
-  );
+    // Code section
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`Code Section: ${violation.codeSectionNumber}`, PAGE_MARGIN, yPos);
+    yPos += 8;
+
+    // Code text
+    const sectionText = sectionTextsMap.get(violation.codeSectionKey) || 'Code text not available';
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(40, 40, 40);
+    const codeTextLines = pdf.splitTextToSize(sectionText, contentWidth);
+    const maxCodeLines = 15;
+    pdf.text(codeTextLines.slice(0, maxCodeLines), PAGE_MARGIN, yPos);
+    yPos += 5 * Math.min(codeTextLines.length, maxCodeLines) + 8;
+
+    if (codeTextLines.length > maxCodeLines) {
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('(truncated...)', PAGE_MARGIN, yPos);
+      yPos += 6;
+    }
+
+    // Violation description
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('Violation:', PAGE_MARGIN, yPos);
+    yPos += 6;
+
+    pdf.setFont('helvetica', 'normal');
+    const descLines = pdf.splitTextToSize(violation.description, contentWidth);
+    pdf.text(descLines, PAGE_MARGIN, yPos);
+    yPos += 5 * descLines.length + 6;
+
+    // AI reasoning
+    if (violation.reasoning) {
+      if (yPos > pageHeight - 60) {
+        pdf.addPage();
+        yPos = PAGE_MARGIN;
+      }
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Analysis:', PAGE_MARGIN, yPos);
+      yPos += 6;
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      const reasoningLines = pdf.splitTextToSize(violation.reasoning, contentWidth);
+      pdf.text(reasoningLines, PAGE_MARGIN, yPos);
+      yPos += 5 * reasoningLines.length + 6;
+    }
+
+    // Recommendations
+    if (violation.recommendations && violation.recommendations.length > 0) {
+      if (yPos > pageHeight - 40) {
+        pdf.addPage();
+        yPos = PAGE_MARGIN;
+      }
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Recommendations:', PAGE_MARGIN, yPos);
+      yPos += 6;
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      violation.recommendations.forEach(rec => {
+        const recLines = pdf.splitTextToSize(`• ${rec}`, contentWidth - 3);
+        pdf.text(recLines, PAGE_MARGIN + 3, yPos);
+        yPos += 5 * recLines.length;
+      });
+      yPos += 6;
+    }
+
+    // Screenshot if available
+    if (violation.screenshotUrl) {
+      try {
+        // Get presigned URL for screenshot
+        const screenshotRes = await fetch('/api/screenshots/presign-view', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ screenshotUrls: [violation.screenshotUrl] }),
+        });
+        if (screenshotRes.ok) {
+          const { presignedUrls } = await screenshotRes.json();
+          const imgUrl = presignedUrls[0];
+
+          if (yPos > pageHeight - 80) {
+            pdf.addPage();
+            yPos = PAGE_MARGIN;
+          }
+
+          pdf.setFontSize(10);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('Screenshot:', PAGE_MARGIN, yPos);
+          yPos += 6;
+
+          // Add image
+          const maxImgWidth = contentWidth;
+          const maxImgHeight = pageHeight - yPos - PAGE_MARGIN - 10;
+          const imgHeight = Math.min(80, maxImgHeight);
+
+          pdf.addImage(imgUrl, 'JPEG', PAGE_MARGIN, yPos, maxImgWidth, imgHeight);
+          yPos += imgHeight + 5;
+        }
+      } catch (err) {
+        console.error('[PDF Export] Failed to load screenshot:', err);
+      }
+    }
+
+    // Page footer
+    pdf.setFontSize(8);
+    pdf.setTextColor(150, 150, 150);
+    pdf.text(
+      `Page ${i + 2} of ${violations.length + 1}`,
+      pageWidth / 2,
+      pageHeight - PAGE_MARGIN / 2,
+      { align: 'center' }
+    );
+  }
 
   // Save the PDF
   const filename = `compliance-report-${projectName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.pdf`;

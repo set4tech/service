@@ -3,7 +3,6 @@
 import { pdfjs } from 'react-pdf';
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ViolationMarker as ViolationMarkerType } from '@/lib/reports/get-violations';
-import { ViolationMarker } from '../reports/ViolationMarker';
 import { ViolationBoundingBox } from '../reports/ViolationBoundingBox';
 import { groupOverlappingViolations } from '@/lib/reports/group-violations';
 
@@ -104,6 +103,7 @@ export function PDFViewer({
   currentPage: externalCurrentPage,
   onPageChange,
   highlightedViolationId,
+  disableLayers = false,
 }: {
   pdfUrl: string;
   assessmentId?: string;
@@ -117,6 +117,7 @@ export function PDFViewer({
   currentPage?: number;
   onPageChange?: (page: number) => void;
   highlightedViolationId?: string | null;
+  disableLayers?: boolean;
 }) {
   const assessmentId = propAssessmentId || activeCheck?.assessment_id;
 
@@ -178,9 +179,12 @@ export function PDFViewer({
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [renderScale, setRenderScale] = useState(2); // Quality multiplier, NOT viewport scale
   const [savingScale, setSavingScale] = useState(false);
+  const [smoothTransition, setSmoothTransition] = useState(false);
 
   // Use useState for dpr to ensure stability
-  const [dpr] = useState(() => typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1);
+  const [dpr] = useState(() =>
+    typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1
+  );
 
   // Memoize violation groups to avoid recalculating on every render
   const violationGroups = useMemo(() => {
@@ -193,6 +197,70 @@ export function PDFViewer({
   useEffect(() => {
     onPageChangeRef.current = onPageChange;
   }, [onPageChange]);
+
+  // Center on highlighted violation when it changes
+  useEffect(() => {
+    if (!readOnly || !highlightedViolationId || !canvasRef.current || !viewportRef.current) {
+      return;
+    }
+
+    // Find the violation marker
+    const violation = violationMarkers.find(
+      v => `${v.checkId}-${v.screenshotId}` === highlightedViolationId
+    );
+
+    if (!violation || violation.pageNumber !== state.pageNumber) {
+      return;
+    }
+
+    // Skip centering if violation has no valid bounds (e.g., no screenshot)
+    const bounds = violation.bounds;
+    const hasValidBounds = bounds.width > 0 && bounds.height > 0;
+    if (!hasValidBounds) {
+      console.log(
+        '[PDFViewer] Skipping center - violation has no valid bounds:',
+        violation.checkId
+      );
+      return;
+    }
+
+    // Small delay to ensure canvas is rendered
+    const timeoutId = setTimeout(() => {
+      if (!viewportRef.current) return;
+
+      // Calculate center of violation bounds
+      const centerX = bounds.x + bounds.width / 2;
+      const centerY = bounds.y + bounds.height / 2;
+
+      // Get viewport dimensions
+      const viewportRect = viewportRef.current.getBoundingClientRect();
+      const viewportCenterX = viewportRect.width / 2;
+      const viewportCenterY = viewportRect.height / 2;
+
+      // Calculate transform to center the violation (using current scale)
+      const currentScale = state.transform.scale;
+      const tx = viewportCenterX - centerX * currentScale;
+      const ty = viewportCenterY - centerY * currentScale;
+
+      // Enable smooth transition for centering
+      setSmoothTransition(true);
+
+      // Update transform to center the violation
+      dispatch({
+        type: 'SET_TRANSFORM',
+        payload: { scale: currentScale, tx, ty },
+      });
+
+      // Disable smooth transition after animation completes
+      const transitionTimeout = setTimeout(() => {
+        setSmoothTransition(false);
+      }, 500);
+
+      return () => clearTimeout(transitionTimeout);
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [highlightedViolationId, state.pageNumber, readOnly, violationMarkers]);
 
   // External page control → internal
   // Track previous external page to only respond to actual changes
@@ -337,6 +405,15 @@ export function PDFViewer({
   // Extract optional content config and layers, restore visibility before first paint
   useEffect(() => {
     if (!pdfDoc) return;
+
+    // Skip loading layers entirely if disabled
+    if (disableLayers) {
+      setOcConfig(null);
+      setLayers([]);
+      setLayersVersion(v => v + 1);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
@@ -397,7 +474,7 @@ export function PDFViewer({
     return () => {
       cancelled = true;
     };
-  }, [pdfDoc, assessmentId]);
+  }, [pdfDoc, assessmentId, disableLayers]);
 
   // Calculate safe rendering multiplier that respects canvas limits
   const getSafeRenderMultiplier = useCallback((baseViewport: any, desiredMultiplier: number) => {
@@ -411,106 +488,104 @@ export function PDFViewer({
   }, []);
 
   // Core render function (single path)
-  const renderPage = useCallback(
-    async () => {
-      const c = canvasRef.current;
-      if (!c || !page) return;
+  const renderPage = useCallback(async () => {
+    const c = canvasRef.current;
+    if (!c || !page) return;
 
-      // Validate page object has required methods
-      if (typeof page.getViewport !== 'function' || typeof page.render !== 'function') {
-        console.error('[PDFViewer] Invalid page object');
-        return;
-      }
+    // Validate page object has required methods
+    if (typeof page.getViewport !== 'function' || typeof page.render !== 'function') {
+      console.error('[PDFViewer] Invalid page object');
+      return;
+    }
 
-      // Cancel any in-flight render
-      if (renderTaskRef.current) {
-        try {
-          renderTaskRef.current.cancel();
-        } catch {
-          // ignore
-        }
-        renderTaskRef.current = null;
-      }
-
-      // Calculate safe multiplier for rendering quality
-      const baseViewport = page.getViewport({ scale: 1 });
-      if (!baseViewport) {
-        console.error('[PDFViewer] Failed to get base viewport from page');
-        return;
-      }
-
-      // renderScale IS the quality multiplier (don't multiply by DPR - that causes immediate capping)
-      const desiredMultiplier = renderScale;
-      const safeMultiplier = getSafeRenderMultiplier(baseViewport, desiredMultiplier);
-
-      // Create viewport at safe scale for PDF.js rendering
-      const viewport = page.getViewport({ scale: safeMultiplier });
-      if (!viewport) {
-        console.error('[PDFViewer] Failed to get viewport at scale', safeMultiplier);
-        return;
-      }
-
-      // CSS size at 1x (base PDF dimensions), canvas at safeMultiplier for quality
-      const widthCSS = Math.ceil(baseViewport.width);
-      const heightCSS = Math.ceil(baseViewport.height);
-      c.style.width = `${widthCSS}px`;
-      c.style.height = `${heightCSS}px`;
-      c.width = Math.ceil(viewport.width);
-      c.height = Math.ceil(viewport.height);
-
-      const ctx = c.getContext('2d');
-      if (!ctx) return;
-
-      // White background to avoid transparency over gray app background
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, c.width, c.height);
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, c.width, c.height);
-      ctx.restore();
-
-      // No transform needed - viewport scale already matches canvas
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-      // Ensure ocConfig reflects our current layer state
-      if (ocConfig && layers.length > 0) {
-        for (const layer of layers) {
-          try {
-            ocConfig.setVisibility?.(layer.id, layer.visible);
-          } catch (err) {
-            console.error('[PDFViewer] Error setting layer visibility:', err);
-          }
-        }
-      }
-
-      // Validate render parameters
-      if (!viewport || !viewport.width || !viewport.height) {
-        console.error('[PDFViewer] Invalid viewport');
-        return;
-      }
-
-      const renderParams = {
-        canvasContext: ctx,
-        viewport: viewport,
-        ...(ocConfig && { optionalContentConfigPromise: Promise.resolve(ocConfig) }),
-      };
-
-      const task = page.render(renderParams);
-      renderTaskRef.current = task;
-
+    // Cancel any in-flight render
+    if (renderTaskRef.current) {
       try {
-        await task.promise;
-      } catch (err: any) {
-        if (err?.name !== 'RenderingCancelledException') {
-          // Only log unexpected errors
-          console.error('[PDFViewer] Render error:', err);
-        }
-      } finally {
-        if (renderTaskRef.current === task) renderTaskRef.current = null;
+        renderTaskRef.current.cancel();
+      } catch {
+        // ignore
       }
-    },
-    [page, renderScale, ocConfig, layers, getSafeRenderMultiplier]
-  );
+      renderTaskRef.current = null;
+    }
+
+    // Calculate safe multiplier for rendering quality
+    const baseViewport = page.getViewport({ scale: 1 });
+    if (!baseViewport) {
+      console.error('[PDFViewer] Failed to get base viewport from page');
+      return;
+    }
+
+    // renderScale IS the quality multiplier (don't multiply by DPR - that causes immediate capping)
+    const desiredMultiplier = renderScale;
+    const safeMultiplier = getSafeRenderMultiplier(baseViewport, desiredMultiplier);
+
+    // Create viewport at safe scale for PDF.js rendering
+    const viewport = page.getViewport({ scale: safeMultiplier });
+    if (!viewport) {
+      console.error('[PDFViewer] Failed to get viewport at scale', safeMultiplier);
+      return;
+    }
+
+    // CSS size at 1x (base PDF dimensions), canvas at safeMultiplier for quality
+    const widthCSS = Math.ceil(baseViewport.width);
+    const heightCSS = Math.ceil(baseViewport.height);
+    c.style.width = `${widthCSS}px`;
+    c.style.height = `${heightCSS}px`;
+    c.width = Math.ceil(viewport.width);
+    c.height = Math.ceil(viewport.height);
+
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+
+    // White background to avoid transparency over gray app background
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.restore();
+
+    // No transform needed - viewport scale already matches canvas
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Ensure ocConfig reflects our current layer state
+    if (ocConfig && layers.length > 0) {
+      for (const layer of layers) {
+        try {
+          ocConfig.setVisibility?.(layer.id, layer.visible);
+        } catch (err) {
+          console.error('[PDFViewer] Error setting layer visibility:', err);
+        }
+      }
+    }
+
+    // Validate render parameters
+    if (!viewport || !viewport.width || !viewport.height) {
+      console.error('[PDFViewer] Invalid viewport');
+      return;
+    }
+
+    const renderParams = {
+      canvasContext: ctx,
+      viewport: viewport,
+      ...(ocConfig &&
+        !disableLayers && { optionalContentConfigPromise: Promise.resolve(ocConfig) }),
+    };
+
+    const task = page.render(renderParams);
+    renderTaskRef.current = task;
+
+    try {
+      await task.promise;
+    } catch (err: any) {
+      if (err?.name !== 'RenderingCancelledException') {
+        // Only log unexpected errors
+        console.error('[PDFViewer] Render error:', err);
+      }
+    } finally {
+      if (renderTaskRef.current === task) renderTaskRef.current = null;
+    }
+  }, [page, renderScale, ocConfig, layers, getSafeRenderMultiplier, disableLayers]);
 
   // Kick renders when inputs change
   // Note: renderPage is not in deps because it already depends on all these values
@@ -1087,6 +1162,9 @@ export function PDFViewer({
             position: 'absolute',
             left: 0,
             top: 0,
+            transition: smoothTransition
+              ? 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+              : 'none',
           }}
         >
           <div ref={pageContainerRef} style={{ position: 'relative' }}>
@@ -1107,24 +1185,27 @@ export function PDFViewer({
               />
             )}
 
-            {readOnly && violationGroups.map((group, groupIdx) => {
-              // Check if any violation in this group is highlighted
-              const isHighlighted = highlightedViolationId
-                ? group.violations.some(v => `${v.checkId}-${v.screenshotId}` === highlightedViolationId)
-                : false;
+            {readOnly &&
+              violationGroups.map((group, groupIdx) => {
+                // Check if any violation in this group is highlighted
+                const isHighlighted = highlightedViolationId
+                  ? group.violations.some(
+                      v => `${v.checkId}-${v.screenshotId}` === highlightedViolationId
+                    )
+                  : false;
 
-              return (
-                <ViolationBoundingBox
-                  key={group.key}
-                  violations={group.violations}
-                  onClick={onMarkerClick || NOOP}
-                  isVisible={true}
-                  isHighlighted={isHighlighted}
-                  fanOutIndex={groupIdx}
-                  totalInGroup={group.violations.length}
-                />
-              );
-            })}
+                return (
+                  <ViolationBoundingBox
+                    key={group.key}
+                    violations={group.violations}
+                    onClick={onMarkerClick || NOOP}
+                    isVisible={true}
+                    isHighlighted={isHighlighted}
+                    fanOutIndex={groupIdx}
+                    totalInGroup={group.violations.length}
+                  />
+                );
+              })}
           </div>
         </div>
       </div>

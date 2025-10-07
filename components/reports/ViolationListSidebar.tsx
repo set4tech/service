@@ -8,6 +8,7 @@ interface Props {
   violations: ViolationMarker[];
   selectedViolation: ViolationMarker | null;
   onViolationClick: (violation: ViolationMarker) => void;
+  onViolationDetailsClick?: (violation: ViolationMarker) => void;
   currentPage: number;
   assessmentId?: string;
   onSeverityFilterChange?: (severities: Set<string>) => void;
@@ -19,6 +20,7 @@ export function ViolationListSidebar({
   violations,
   selectedViolation,
   onViolationClick,
+  onViolationDetailsClick,
   currentPage: _currentPage,
   assessmentId,
   onSeverityFilterChange,
@@ -281,16 +283,16 @@ export function ViolationListSidebar({
               {/* Group Items */}
               <div className="divide-y divide-line">
                 {group.violations.map(violation => (
-                  <button
+                  <div
                     key={`${violation.checkId}-${violation.screenshotId}`}
-                    onClick={() => onViolationClick(violation)}
                     className={clsx(
-                      'w-full px-4 py-3 text-left hover:bg-paper transition-colors',
+                      'relative px-4 py-3 hover:bg-paper transition-colors cursor-pointer',
                       selectedViolation?.checkId === violation.checkId &&
                         selectedViolation?.screenshotId === violation.screenshotId
                         ? 'bg-paper border-l-4 border-accent-600'
                         : 'border-l-4 border-transparent'
                     )}
+                    onClick={() => onViolationClick(violation)}
                   >
                     <div className="flex items-start gap-2.5">
                       <div
@@ -319,8 +321,33 @@ export function ViolationListSidebar({
                           </span>
                         </div>
                       </div>
+                      {/* Details button */}
+                      {onViolationDetailsClick && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            onViolationDetailsClick(violation);
+                          }}
+                          className="flex-shrink-0 p-2 rounded-lg hover:bg-white border border-line hover:border-accent-600 transition-colors"
+                          title="View details"
+                        >
+                          <svg
+                            className="w-4 h-4 text-ink-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </button>
+                      )}
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>
