@@ -352,16 +352,33 @@ export function PDFViewer({
     if (!presignedUrl) return;
     let cancelled = false;
     (async () => {
-      const loadingTask = pdfjs.getDocument(presignedUrl);
+      console.log('[PDFViewer] Starting PDF load from presigned URL');
+      const loadingTask = pdfjs.getDocument({
+        url: presignedUrl,
+        // Enable streaming and range requests for large files
+        disableAutoFetch: false,
+        disableStream: false,
+        disableRange: false,
+      });
+
+      // Track loading progress
+      loadingTask.onProgress = (progress: any) => {
+        console.log(
+          `[PDFViewer] Loading progress: ${progress.loaded} / ${progress.total || '?'} bytes`
+        );
+      };
+
       try {
         const doc = await loadingTask.promise;
         if (cancelled) return;
+        console.log('[PDFViewer] PDF loaded successfully, pages:', doc.numPages);
         setPdfDoc(doc);
         setPage(null);
         setOcConfig(null);
         setLayers([]);
         dispatch({ type: 'SET_NUM_PAGES', payload: doc.numPages });
-      } catch {
+      } catch (error) {
+        console.error('[PDFViewer] Failed to load PDF:', error);
         if (!cancelled) setPdfDoc(null);
       }
     })();

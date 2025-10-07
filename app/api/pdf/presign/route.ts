@@ -15,8 +15,9 @@ export async function POST(req: NextRequest) {
       key = parts.slice(1).join('/');
     } else if (pdfUrl.includes('.s3.') || pdfUrl.includes('.s3-')) {
       const url = new URL(pdfUrl);
-      // Decode the pathname to handle URL-encoded characters properly
-      key = decodeURIComponent(url.pathname.slice(1)); // Remove leading slash and decode
+      // URL.pathname is already decoded by the URL constructor, just remove leading slash
+      // Don't use decodeURIComponent again as it will fail on malformed sequences (e.g., "100%" without hex digits)
+      key = url.pathname.slice(1); // Remove leading slash
     } else {
       console.error('[PDF Presign] Invalid S3 URL format:', pdfUrl);
       return NextResponse.json(
