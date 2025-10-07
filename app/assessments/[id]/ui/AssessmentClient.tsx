@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import { CheckList } from '@/components/checks/CheckList';
 import { CodeDetailPanel } from '@/components/checks/CodeDetailPanel';
 import { ViolationsSummary } from '@/components/checks/ViolationsSummary';
+import { AssessmentScreenshotGallery } from '@/components/screenshots/AssessmentScreenshotGallery';
 
 // Load PDF viewer only on client side - removes need for wrapper component
 const PDFViewer = dynamic(
@@ -72,19 +73,21 @@ export default function AssessmentClient({
       console.log(`  - ${i.instance_label}: ${i.screenshots.length} screenshots`);
     });
   }, []);
-  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary'>('section');
+  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary' | 'gallery'>(
+    'section'
+  );
 
   // Restore saved mode after hydration to avoid mismatch
   useEffect(() => {
     const saved = localStorage.getItem(`checkMode-${assessment.id}`);
     if (saved) {
-      setCheckMode(saved as 'section' | 'element' | 'summary');
+      setCheckMode(saved as 'section' | 'element' | 'summary' | 'gallery');
     }
   }, [assessment.id]);
 
-  // Filter checks by mode (skip filtering for summary mode)
+  // Filter checks by mode (skip filtering for summary/gallery modes)
   const displayedChecks = useMemo(() => {
-    if (checkMode === 'summary') return checks;
+    if (checkMode === 'summary' || checkMode === 'gallery') return checks;
 
     // Debug: log element checks
     if (checkMode === 'element') {
@@ -617,6 +620,20 @@ export default function AssessmentClient({
             >
               Summary
             </button>
+            <button
+              onClick={() => {
+                setCheckMode('gallery');
+                localStorage.setItem(`checkMode-${assessment.id}`, 'gallery');
+              }}
+              className={clsx(
+                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                checkMode === 'gallery'
+                  ? 'bg-white shadow-sm text-gray-900'
+                  : 'text-gray-600 hover:text-gray-900'
+              )}
+            >
+              Gallery
+            </button>
           </div>
 
           {/* Background Seeding Banner */}
@@ -664,6 +681,8 @@ export default function AssessmentClient({
               projectName={assessment.projects?.name}
               assessmentId={assessment.id}
             />
+          ) : checkMode === 'gallery' ? (
+            <AssessmentScreenshotGallery assessmentId={assessment.id} />
           ) : (
             <CheckList
               checks={displayedChecks}

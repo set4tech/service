@@ -227,6 +227,7 @@ export function CheckList({
     // Prioritize manual override
     if (check.manual_override === 'compliant') return '✓';
     if (check.manual_override === 'non_compliant') return '✗';
+    if (check.manual_override === 'insufficient_information') return '?';
     // Fall back to AI assessment
     if (check.latest_status === 'compliant') return '✓';
     if (check.latest_status === 'non_compliant') return '✗';
@@ -239,6 +240,7 @@ export function CheckList({
     // Prioritize manual override
     if (check.manual_override === 'compliant') return 'text-green-600 font-bold';
     if (check.manual_override === 'non_compliant') return 'text-red-600 font-bold';
+    if (check.manual_override === 'insufficient_information') return 'text-yellow-600 font-bold';
     // Fall back to AI assessment
     if (check.latest_status === 'compliant') return 'text-green-600';
     if (check.latest_status === 'non_compliant') return 'text-red-600';

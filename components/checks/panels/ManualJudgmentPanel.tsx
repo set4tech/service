@@ -1,11 +1,16 @@
 import type { CodeSection } from '@/types/analysis';
 
-type OverrideStatus = 'compliant' | 'non_compliant' | 'not_applicable' | null;
+type OverrideStatus =
+  | 'compliant'
+  | 'non_compliant'
+  | 'not_applicable'
+  | 'insufficient_information'
+  | null;
 
 interface ManualJudgmentPanelProps {
   effectiveCheckId: string | null;
   sectionKey: string | null;
-  section: CodeSection | null;
+  _section: CodeSection | null;
   manualOverride: OverrideStatus;
   setManualOverride: (override: OverrideStatus) => void;
   manualOverrideNote: string;
@@ -16,10 +21,10 @@ interface ManualJudgmentPanelProps {
   overrideError: string | null;
   handleSaveOverride: () => void;
   handleClearOverride: () => void;
-  setShowFloorplanRelevantDialog: (show: boolean) => void;
+  _setShowFloorplanRelevantDialog: (show: boolean) => void;
   setShowNeverRelevantDialog: (show: boolean) => void;
   setShowExcludeDialog: (show: boolean) => void;
-  markingFloorplanRelevant: boolean;
+  _markingFloorplanRelevant: boolean;
   markingNeverRelevant: boolean;
   excludingSection: boolean;
 }
@@ -27,7 +32,7 @@ interface ManualJudgmentPanelProps {
 export function ManualJudgmentPanel({
   effectiveCheckId,
   sectionKey,
-  section,
+  _section,
   manualOverride,
   setManualOverride,
   manualOverrideNote,
@@ -38,10 +43,10 @@ export function ManualJudgmentPanel({
   overrideError,
   handleSaveOverride,
   handleClearOverride,
-  setShowFloorplanRelevantDialog,
+  _setShowFloorplanRelevantDialog,
   setShowNeverRelevantDialog,
   setShowExcludeDialog,
-  markingFloorplanRelevant,
+  _markingFloorplanRelevant,
   markingNeverRelevant,
   excludingSection,
 }: ManualJudgmentPanelProps) {
@@ -62,7 +67,9 @@ export function ManualJudgmentPanel({
                 ? 'bg-green-50 border-green-200 text-green-800'
                 : manualOverride === 'non_compliant'
                   ? 'bg-red-50 border-red-200 text-red-800'
-                  : 'bg-gray-50 border-gray-200 text-gray-800'
+                  : manualOverride === 'insufficient_information'
+                    ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                    : 'bg-gray-50 border-gray-200 text-gray-800'
             }`}
           >
             <div className="flex items-center justify-between">
@@ -72,7 +79,9 @@ export function ManualJudgmentPanel({
                   ? 'COMPLIANT'
                   : manualOverride === 'non_compliant'
                     ? 'NON-COMPLIANT'
-                    : 'NOT APPLICABLE'}
+                    : manualOverride === 'insufficient_information'
+                      ? 'INSUFFICIENT INFORMATION'
+                      : 'NOT APPLICABLE'}
               </span>
               <button
                 onClick={handleClearOverride}
@@ -121,20 +130,21 @@ export function ManualJudgmentPanel({
                   ? 'bg-gray-100 border-gray-400 text-gray-800'
                   : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
+              title="This code section is not relevant to this design"
             >
               Not Applicable
             </button>
             <button
-              onClick={() => setShowFloorplanRelevantDialog(true)}
-              disabled={savingOverride || markingFloorplanRelevant || !sectionKey}
+              onClick={() => setManualOverride('insufficient_information')}
+              disabled={savingOverride}
               className={`flex-1 px-2 py-1.5 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
-                section?.floorplan_relevant
-                  ? 'bg-blue-100 border-blue-400 text-blue-800'
+                manualOverride === 'insufficient_information'
+                  ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
                   : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
-              title="Flag this section as specifically relevant to floorplan analysis - it will be prioritized when displaying sections"
+              title="Information not in plan: The code IS applicable to this design, but the architect didn't include necessary information to verify compliance (e.g., elevator exists but grab bar details not shown). This is different from 'Not Applicable' which means the code section isn't relevant to this design."
             >
-              Floorplan Specific
+              Info Not in Plan
             </button>
             <button
               onClick={() => setShowNeverRelevantDialog(true)}

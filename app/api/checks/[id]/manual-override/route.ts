@@ -14,13 +14,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       'compliant',
       'non_compliant',
       'not_applicable',
+      'insufficient_information',
       null,
     ];
     if (!validStatuses.includes(override)) {
       return NextResponse.json(
         {
           error:
-            'Invalid override value. Must be "compliant", "non_compliant", "not_applicable", or null',
+            'Invalid override value. Must be "compliant", "non_compliant", "not_applicable", "insufficient_information", or null',
         },
         { status: 400 }
       );

@@ -19,6 +19,7 @@ export function getComplianceStatusColor(status: string): string {
     case 'non_compliant':
       return 'text-red-700 bg-red-50 border-red-200';
     case 'needs_more_info':
+    case 'insufficient_information':
       return 'text-yellow-700 bg-yellow-50 border-yellow-200';
     default:
       return 'text-gray-700 bg-gray-50 border-gray-200';
@@ -33,6 +34,7 @@ export function getComplianceStatusBadgeColor(status: string): string {
     case 'non_compliant':
       return 'bg-red-100 text-red-800';
     case 'needs_more_info':
+    case 'insufficient_information':
       return 'bg-yellow-100 text-yellow-800';
     case 'not_applicable':
       return 'bg-gray-100 text-gray-600';

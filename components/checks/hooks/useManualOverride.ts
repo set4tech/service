@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 
-type OverrideStatus = 'compliant' | 'non_compliant' | 'not_applicable' | null;
+type OverrideStatus =
+  | 'compliant'
+  | 'non_compliant'
+  | 'not_applicable'
+  | 'insufficient_information'
+  | null;
 
 export function useManualOverride(
   effectiveCheckId: string | null,

@@ -52,13 +52,20 @@ export function ViolationsSummary({
       }
     });
 
-    // Exclude not_applicable from totals
-    const applicableChecks = allChecks.filter(c => c.manual_override !== 'not_applicable');
+    // Exclude not_applicable and insufficient_information from totals
+    const applicableChecks = allChecks.filter(
+      c =>
+        c.manual_override !== 'not_applicable' && c.manual_override !== 'insufficient_information'
+    );
     const totalSections = applicableChecks.length;
 
     // Count assessed (has AI result OR manual override)
     const assessed = applicableChecks.filter(
-      c => c.latest_status || (c.manual_override && c.manual_override !== 'not_applicable')
+      c =>
+        c.latest_status ||
+        (c.manual_override &&
+          c.manual_override !== 'not_applicable' &&
+          c.manual_override !== 'insufficient_information')
     ).length;
 
     // Count currently analyzing

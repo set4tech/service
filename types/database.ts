@@ -1,7 +1,11 @@
 // Database types for the application
 
 // Compliance override status enum (matches PostgreSQL enum: compliance_override_status)
-export type ComplianceOverrideStatus = 'compliant' | 'non_compliant' | 'not_applicable';
+export type ComplianceOverrideStatus =
+  | 'compliant'
+  | 'non_compliant'
+  | 'not_applicable'
+  | 'insufficient_information';
 
 export interface Check {
   id: string;

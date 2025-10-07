@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest) {
   const checkId = new URL(req.url).searchParams.get('check_id');
+  const assessmentId = new URL(req.url).searchParams.get('assessment_id');
   const supabase = supabaseAdmin();
 
   if (checkId) {
@@ -28,6 +29,41 @@ export async function GET(req: NextRequest) {
     const screenshots = (data || []).map((item: any) => ({
       ...item,
       is_original: item.screenshot_check_assignments?.[0]?.is_original,
+      screenshot_check_assignments: undefined, // Remove nested structure
+    }));
+
+    return NextResponse.json({ screenshots });
+  } else if (assessmentId) {
+    // Fetch all screenshots for an assessment via checks
+    const { data, error } = await supabase
+      .from('screenshots')
+      .select(
+        `
+        *,
+        screenshot_check_assignments!inner(
+          check_id,
+          is_original,
+          assigned_at,
+          checks!inner(
+            assessment_id,
+            code_section_number,
+            code_section_title
+          )
+        )
+      `
+      )
+      .eq('screenshot_check_assignments.checks.assessment_id', assessmentId)
+      .order('created_at', { ascending: false });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Flatten assignment metadata into screenshot objects
+    const screenshots = (data || []).map((item: any) => ({
+      ...item,
+      check_id: item.screenshot_check_assignments?.[0]?.check_id,
+      is_original: item.screenshot_check_assignments?.[0]?.is_original,
+      check_section_number: item.screenshot_check_assignments?.[0]?.checks?.code_section_number,
+      check_section_title: item.screenshot_check_assignments?.[0]?.checks?.code_section_title,
       screenshot_check_assignments: undefined, // Remove nested structure
     }));
 
