@@ -28,6 +28,20 @@ export function ViolationListSidebar({
   const [groupBy, setGroupBy] = useState<GroupBy>('page');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Format violation description with section number and truncated reasoning
+  const formatViolationDescription = (violation: ViolationMarker): string => {
+    const maxLength = 80;
+    if (violation.reasoning && violation.reasoning.trim()) {
+      const reasoning = violation.reasoning.trim();
+      if (reasoning.length > maxLength) {
+        return `${violation.codeSectionNumber} - ${reasoning.slice(0, maxLength)}[...]`;
+      }
+      return `${violation.codeSectionNumber} - ${reasoning}`;
+    }
+    // Fallback to description if no reasoning
+    return violation.description;
+  };
+
   // Severity filter state with localStorage persistence
   const [severityFilter, setSeverityFilter] = useState<Set<string>>(() => {
     if (typeof window === 'undefined' || !assessmentId) {
@@ -302,11 +316,8 @@ export function ViolationListSidebar({
                         )}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-mono text-ink-500 mb-1">
-                          {violation.codeSectionNumber}
-                        </div>
                         <div className="text-sm font-medium text-ink-900 line-clamp-2">
-                          {violation.description}
+                          {formatViolationDescription(violation)}
                         </div>
                         <div className="mt-1.5 flex items-center gap-2 text-xs text-ink-500">
                           <span className="font-mono">Page {violation.pageNumber}</span>
@@ -328,7 +339,7 @@ export function ViolationListSidebar({
                             e.stopPropagation();
                             onViolationDetailsClick(violation);
                           }}
-                          className="flex-shrink-0 p-2 rounded-lg hover:bg-white border border-line hover:border-accent-600 transition-colors"
+                          className="flex-shrink-0 p-2 rounded-lg hover:bg-white transition-colors"
                           title="View details"
                         >
                           <svg
