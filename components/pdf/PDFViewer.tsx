@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } 
 import { ViolationMarker as ViolationMarkerType } from '@/lib/reports/get-violations';
 import { ViolationBoundingBox } from '../reports/ViolationBoundingBox';
 import { groupOverlappingViolations } from '@/lib/reports/group-violations';
+import { BlueprintLoader } from '../reports/BlueprintLoader';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -987,22 +988,24 @@ export function PDFViewer({
   );
 
   if (loadingUrl) {
-    return (
-      <div className="p-6 text-center">
-        <div>Loading PDF...</div>
-        <div className="text-sm text-gray-500 mt-2">PDF URL: {pdfUrl}</div>
-      </div>
-    );
+    return <BlueprintLoader />;
   }
 
   if (!presignedUrl) {
     return (
-      <div className="p-6 text-center text-red-600">
-        <div>Failed to load PDF</div>
-        <div className="text-sm text-gray-500 mt-2">Original URL: {pdfUrl}</div>
-        <div className="text-xs text-gray-400 mt-1">Check browser console for more details</div>
+      <div className="h-full w-full flex items-center justify-center bg-red-50">
+        <div className="p-6 text-center text-red-600 max-w-md">
+          <div className="text-lg font-medium mb-2">Failed to load PDF</div>
+          <div className="text-sm text-gray-600 mt-2 break-all">Original URL: {pdfUrl}</div>
+          <div className="text-xs text-gray-500 mt-2">Check browser console for more details</div>
+        </div>
       </div>
     );
+  }
+
+  // Show loading animation while PDF document or first page is loading
+  if (!pdfDoc || !page) {
+    return <BlueprintLoader />;
   }
 
   const zoomPct = Math.round(state.transform.scale * 100);

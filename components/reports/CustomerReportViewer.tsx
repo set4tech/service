@@ -5,17 +5,14 @@ import dynamic from 'next/dynamic';
 import { ProjectViolationsData, ViolationMarker } from '@/lib/reports/get-violations';
 import { ViolationListSidebar } from './ViolationListSidebar';
 import { ViolationDetailModal } from './ViolationDetailModal';
+import { BlueprintLoader } from './BlueprintLoader';
 
 // Load PDF viewer only on client side
 const PDFViewer = dynamic(
   () => import('@/components/pdf/PDFViewer').then(mod => ({ default: mod.PDFViewer })),
   {
     ssr: false,
-    loading: () => (
-      <div className="h-full w-full flex items-center justify-center">
-        <div className="text-sm text-gray-500">Loading PDF viewer...</div>
-      </div>
-    ),
+    loading: () => <BlueprintLoader />,
   }
 );
 
@@ -28,7 +25,9 @@ export function CustomerReportViewer({ data }: Props) {
   const [modalViolation, setModalViolation] = useState<ViolationMarker | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [exporting, setExporting] = useState(false);
-  const [sidebarView, setSidebarView] = useState<'violations' | 'building-info' | 'code-info'>('violations');
+  const [sidebarView, setSidebarView] = useState<'violations' | 'building-info' | 'code-info'>(
+    'violations'
+  );
   const [isNavHovered, setIsNavHovered] = useState(false);
 
   const handleNavClick = (view: 'violations' | 'building-info' | 'code-info') => {
@@ -97,7 +96,14 @@ export function CustomerReportViewer({ data }: Props) {
     } finally {
       setExporting(false);
     }
-  }, [data.pdfUrl, data.violations, data.projectName, data.assessmentId, data.buildingParams, data.codeInfo]);
+  }, [
+    data.pdfUrl,
+    data.violations,
+    data.projectName,
+    data.assessmentId,
+    data.buildingParams,
+    data.codeInfo,
+  ]);
 
   // Group violations by severity for stats
   const violationStats = useMemo(() => {
@@ -133,27 +139,48 @@ export function CustomerReportViewer({ data }: Props) {
       params.push({ label: 'Address', value: formatParamValue(bp.project_identity.full_address) });
     }
     if (bp.project_identity?.authority_having_jurisdiction) {
-      params.push({ label: 'Jurisdiction', value: formatParamValue(bp.project_identity.authority_having_jurisdiction) });
+      params.push({
+        label: 'Jurisdiction',
+        value: formatParamValue(bp.project_identity.authority_having_jurisdiction),
+      });
     }
 
     // Building Characteristics
     if (bp.building_characteristics?.occupancy_classification) {
-      params.push({ label: 'Occupancy', value: formatParamValue(bp.building_characteristics.occupancy_classification) });
+      params.push({
+        label: 'Occupancy',
+        value: formatParamValue(bp.building_characteristics.occupancy_classification),
+      });
     }
     if (bp.building_characteristics?.number_of_stories) {
-      params.push({ label: 'Stories', value: formatParamValue(bp.building_characteristics.number_of_stories) });
+      params.push({
+        label: 'Stories',
+        value: formatParamValue(bp.building_characteristics.number_of_stories),
+      });
     }
     if (bp.building_characteristics?.has_parking !== undefined) {
-      params.push({ label: 'Parking', value: formatParamValue(bp.building_characteristics.has_parking) });
+      params.push({
+        label: 'Parking',
+        value: formatParamValue(bp.building_characteristics.has_parking),
+      });
     }
     if (bp.building_characteristics?.has_mezzanine !== undefined) {
-      params.push({ label: 'Mezzanine', value: formatParamValue(bp.building_characteristics.has_mezzanine) });
+      params.push({
+        label: 'Mezzanine',
+        value: formatParamValue(bp.building_characteristics.has_mezzanine),
+      });
     }
     if (bp.building_characteristics?.has_exterior_routes !== undefined) {
-      params.push({ label: 'Exterior Routes', value: formatParamValue(bp.building_characteristics.has_exterior_routes) });
+      params.push({
+        label: 'Exterior Routes',
+        value: formatParamValue(bp.building_characteristics.has_exterior_routes),
+      });
     }
     if (bp.building_characteristics?.elevator_exemption_applies !== undefined) {
-      params.push({ label: 'Elevator Exemption', value: formatParamValue(bp.building_characteristics.elevator_exemption_applies) });
+      params.push({
+        label: 'Elevator Exemption',
+        value: formatParamValue(bp.building_characteristics.elevator_exemption_applies),
+      });
     }
 
     // Project Scope
@@ -169,7 +196,10 @@ export function CustomerReportViewer({ data }: Props) {
       params.push({ label: 'Facility Type', value: formatParamValue(bp.facility_type.category) });
     }
     if (bp.facility_type?.is_public_accommodation !== undefined) {
-      params.push({ label: 'Public Accommodation', value: formatParamValue(bp.facility_type.is_public_accommodation) });
+      params.push({
+        label: 'Public Accommodation',
+        value: formatParamValue(bp.facility_type.is_public_accommodation),
+      });
     }
 
     // Ownership
@@ -182,7 +212,10 @@ export function CustomerReportViewer({ data }: Props) {
       params.push({ label: 'Funding', value: formatParamValue(bp.funding_sources.funding_type) });
     }
     if (bp.funding_sources?.has_federal_assistance !== undefined) {
-      params.push({ label: 'Federal Assistance', value: formatParamValue(bp.funding_sources.has_federal_assistance) });
+      params.push({
+        label: 'Federal Assistance',
+        value: formatParamValue(bp.funding_sources.has_federal_assistance),
+      });
     }
 
     return params;
@@ -296,7 +329,9 @@ export function CustomerReportViewer({ data }: Props) {
                 <div className="text-2xl font-semibold text-danger-600 font-mono">
                   {violationStats.major || 0}
                 </div>
-                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">Major</div>
+                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
+                  Major
+                </div>
               </div>
               <div className="bg-white border border-line rounded-lg px-3 py-2.5 text-center">
                 <div className="text-2xl font-semibold text-yellow-700 font-mono">
@@ -310,7 +345,9 @@ export function CustomerReportViewer({ data }: Props) {
                 <div className="text-2xl font-semibold text-accent-600 font-mono">
                   {violationStats.minor || 0}
                 </div>
-                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">Minor</div>
+                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
+                  Minor
+                </div>
               </div>
             </div>
           )}
@@ -416,7 +453,12 @@ export function CustomerReportViewer({ data }: Props) {
                       className="text-sm text-accent-600 hover:text-accent-700 underline flex items-center gap-1"
                     >
                       View Code Source
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
                         <path
                           strokeLinecap="round"
                           strokeLinejoin="round"
