@@ -241,6 +241,11 @@ export function CustomerReportViewer({ data }: Props) {
             : '2px 0 8px rgba(0, 0, 0, 0.15)',
         }}
       >
+        {/* Logo at top */}
+        <div className="mb-2">
+          <img src="/set4-logo.svg" alt="Set4" className="w-10 h-10" />
+        </div>
+
         <button
           onClick={() => handleNavClick('violations')}
           className={`p-3 rounded-lg transition-all ${
