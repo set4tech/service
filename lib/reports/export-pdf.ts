@@ -269,11 +269,30 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
         return; // Skip if no bounds
       }
 
-      // Convert PDF coordinates to image coordinates
-      const x = imgX + (violation.bounds.x / viewport.width) * imgWidth;
-      const y = imgY + (violation.bounds.y / viewport.height) * imgHeight;
-      const w = (violation.bounds.width / viewport.width) * imgWidth;
-      const h = (violation.bounds.height / viewport.height) * imgHeight;
+      // Account for zoom level differences between capture and render
+      const renderScale = 2.0;
+      const captureZoom = violation.bounds.zoom_level || 1.0;
+      const zoomRatio = renderScale / captureZoom;
+
+      console.log('[PDF Export] Violation bounds:', {
+        checkId: violation.checkId,
+        originalBounds: violation.bounds,
+        captureZoom,
+        renderScale,
+        zoomRatio,
+        viewportDims: { width: viewport.width, height: viewport.height },
+      });
+
+      // Convert PDF coordinates to viewport coordinates, then to image coordinates
+      const viewportX = violation.bounds.x * zoomRatio;
+      const viewportY = violation.bounds.y * zoomRatio;
+      const viewportW = violation.bounds.width * zoomRatio;
+      const viewportH = violation.bounds.height * zoomRatio;
+
+      const x = imgX + (viewportX / viewport.width) * imgWidth;
+      const y = imgY + (viewportY / viewport.height) * imgHeight;
+      const w = (viewportW / viewport.width) * imgWidth;
+      const h = (viewportH / viewport.height) * imgHeight;
 
       // Draw rectangle around violation
       const color = getSeverityColor(violation.severity);
