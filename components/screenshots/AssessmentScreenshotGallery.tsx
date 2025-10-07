@@ -24,6 +24,8 @@ export function AssessmentScreenshotGallery({
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState<AssessmentScreenshot | null>(null);
   const [assigningScreenshot, setAssigningScreenshot] = useState<AssessmentScreenshot | null>(null);
+  const [editingCaption, setEditingCaption] = useState<string | null>(null);
+  const [editedCaption, setEditedCaption] = useState('');
   const [presignedUrls, setPresignedUrls] = useState<
     Record<string, { screenshot: string; thumbnail: string }>
   >({});
@@ -78,6 +80,34 @@ export function AssessmentScreenshotGallery({
     } catch (err) {
       console.error('Failed to delete screenshot:', err);
     }
+  };
+
+  const handleStartEdit = (shot: AssessmentScreenshot) => {
+    setEditingCaption(shot.id);
+    setEditedCaption(shot.caption || '');
+  };
+
+  const handleSaveCaption = async (id: string) => {
+    try {
+      const res = await fetch(`/api/screenshots/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption: editedCaption }),
+      });
+
+      if (res.ok) {
+        setScreenshots(prev => prev.map(s => (s.id === id ? { ...s, caption: editedCaption } : s)));
+        setEditingCaption(null);
+        setEditedCaption('');
+      }
+    } catch (err) {
+      console.error('Failed to update caption:', err);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCaption(null);
+    setEditedCaption('');
   };
 
   if (loading) {
@@ -174,12 +204,51 @@ export function AssessmentScreenshotGallery({
                 </button>
 
                 <figcaption className="mt-2 flex flex-col gap-1 min-w-0">
-                  <div
-                    className="text-xs font-medium text-gray-900 truncate"
-                    title={shot.caption || 'No caption'}
-                  >
-                    {shot.caption || 'No caption'}
-                  </div>
+                  {editingCaption === shot.id ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={editedCaption}
+                        onChange={e => setEditedCaption(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveCaption(shot.id);
+                          if (e.key === 'Escape') handleCancelEdit();
+                        }}
+                        className="flex-1 text-xs px-1 py-0.5 border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleSaveCaption(shot.id)}
+                        className="text-green-600 hover:text-green-900"
+                        title="Save"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="text-gray-600 hover:text-gray-900"
+                        title="Cancel"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 group/caption">
+                      <div
+                        className="text-xs font-medium text-gray-900 truncate flex-1"
+                        title={shot.caption || 'No caption'}
+                      >
+                        {shot.caption || 'No caption'}
+                      </div>
+                      <button
+                        onClick={() => handleStartEdit(shot)}
+                        className="text-xs text-gray-400 hover:text-gray-900"
+                        title="Edit caption"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                  )}
                   {shot.check_section_number && (
                     <div
                       className="text-xs text-gray-600 truncate"
