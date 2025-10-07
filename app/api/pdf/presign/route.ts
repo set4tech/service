@@ -6,8 +6,6 @@ export async function POST(req: NextRequest) {
     const { pdfUrl } = await req.json();
     if (!pdfUrl) return NextResponse.json({ error: 'pdfUrl required' }, { status: 400 });
 
-    console.log('[PDF Presign] Processing URL:', pdfUrl);
-
     // Extract key from S3 URL (supports both https://bucket.s3.region.amazonaws.com/key and s3://bucket/key formats)
     let key: string;
     if (pdfUrl.startsWith('s3://')) {
@@ -15,9 +13,21 @@ export async function POST(req: NextRequest) {
       key = parts.slice(1).join('/');
     } else if (pdfUrl.includes('.s3.') || pdfUrl.includes('.s3-')) {
       const url = new URL(pdfUrl);
-      // URL.pathname is already decoded by the URL constructor, just remove leading slash
-      // Don't use decodeURIComponent again as it will fail on malformed sequences (e.g., "100%" without hex digits)
-      key = url.pathname.slice(1); // Remove leading slash
+
+      // URL.pathname keeps URL encoding, so we need to decode it
+      // But decodeURIComponent fails on malformed sequences like "100%" (% not followed by hex)
+      // Solution: Replace standalone % with a placeholder, decode, then restore
+      const pathname = url.pathname.slice(1); // Remove leading slash
+
+      try {
+        // Try direct decode first
+        key = decodeURIComponent(pathname);
+      } catch {
+        // If that fails, it's likely due to a standalone % character
+        // Replace %<non-hex> patterns with a placeholder
+        const safePath = pathname.replace(/%(?![0-9A-Fa-f]{2})/g, '___PERCENT___');
+        key = decodeURIComponent(safePath).replace(/___PERCENT___/g, '%');
+      }
     } else {
       console.error('[PDF Presign] Invalid S3 URL format:', pdfUrl);
       return NextResponse.json(
@@ -26,7 +36,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log('[PDF Presign] Extracted key:', key);
     const presignedUrl = await presignGet(key, 3600); // 1 hour expiry
     return NextResponse.json({ url: presignedUrl });
   } catch (error) {
