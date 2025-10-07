@@ -19,6 +19,13 @@ export interface ViolationMarker {
   sourceLabel?: string;
 }
 
+export interface CodeInfo {
+  id: string;
+  title: string;
+  version: string;
+  sourceUrl?: string;
+}
+
 export interface ProjectViolationsData {
   projectId: string;
   projectName: string;
@@ -26,6 +33,7 @@ export interface ProjectViolationsData {
   pdfUrl: string;
   violations: ViolationMarker[];
   buildingParams?: any; // extracted_variables from projects table
+  codeInfo?: CodeInfo;
 }
 
 /**
@@ -95,7 +103,31 @@ export async function getProjectViolations(
       pdfUrl: project.pdf_url,
       violations: [],
       buildingParams: project.extracted_variables,
+      codeInfo: undefined,
     };
+  }
+
+  // Fetch code info from the first check's section
+  let codeInfo: CodeInfo | undefined;
+  const firstCheck = allChecks.find((c: any) => c.code_section_key);
+  if (firstCheck?.code_section_key) {
+    const { data: sectionWithCode } = await supabase
+      .from('sections')
+      .select('code_id, codes(id, title, version, source_url)')
+      .eq('key', firstCheck.code_section_key)
+      .single();
+
+    if (sectionWithCode?.codes) {
+      const code = Array.isArray(sectionWithCode.codes)
+        ? sectionWithCode.codes[0]
+        : sectionWithCode.codes;
+      codeInfo = {
+        id: code.id,
+        title: code.title,
+        version: code.version,
+        sourceUrl: code.source_url,
+      };
+    }
   }
 
   // Filter to only non-compliant checks
@@ -118,6 +150,7 @@ export async function getProjectViolations(
       pdfUrl: project.pdf_url,
       violations: [],
       buildingParams: project.extracted_variables,
+      codeInfo,
     };
   }
 
@@ -318,5 +351,6 @@ export async function getProjectViolations(
     pdfUrl: project.pdf_url,
     violations,
     buildingParams: project.extracted_variables,
+    codeInfo,
   };
 }
