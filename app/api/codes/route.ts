@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { SUPPORTED_CODE_IDS } from '@/lib/codes';
 
 interface CodeNode {
   id: string;
@@ -9,38 +10,21 @@ interface CodeNode {
   year?: string;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-
-    // Parse query parameters
-    const jurisdiction = searchParams.get('jurisdiction');
-    const provider = searchParams.get('provider');
-    const version = searchParams.get('version');
-
-    // Build Supabase query
     const supabase = supabaseAdmin();
-    let query = supabase
+
+    // Fetch only the supported codes (11A and 11B virtual codes)
+    const { data, error } = await supabase
       .from('codes')
       .select('id, title, provider, version, jurisdiction')
+      .in('id', SUPPORTED_CODE_IDS)
       .order('title', { ascending: true });
-
-    // Apply filters
-    if (jurisdiction) query = query.eq('jurisdiction', jurisdiction);
-    if (provider) query = query.eq('provider', provider);
-    if (version) query = query.eq('version', version);
-
-    const { data, error } = await query;
 
     if (error) throw error;
 
-    // Show both 11A and 11B codes separately (they map to the combined code in backend)
-    const filteredData = (data || []).filter(
-      code => code.id === 'ICC+CBC_Chapter11A+2025+CA' || code.id === 'ICC+CBC_Chapter11B+2025+CA'
-    );
-
     // Map Supabase fields to expected format
-    const codes: CodeNode[] = filteredData.map(code => ({
+    const codes: CodeNode[] = (data || []).map((code) => ({
       id: code.id,
       name: code.title,
       publisher: code.provider,
@@ -51,6 +35,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(codes);
   } catch (error) {
     console.error('Error fetching codes:', error);
-    return NextResponse.json({ error: 'Failed to fetch codes from database' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to fetch codes from database' },
+      { status: 500 }
+    );
   }
 }
