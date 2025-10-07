@@ -226,14 +226,6 @@ export function ViolationDetailModal({
             </div>
           )}
 
-          {/* Violation Description */}
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Violation</h3>
-            <div className="text-sm text-gray-900 bg-red-50 border border-red-200 rounded-lg p-3">
-              {violation.description}
-            </div>
-          </div>
-
           {/* Reasoning */}
           {violation.reasoning && (
             <div className="mb-4">
