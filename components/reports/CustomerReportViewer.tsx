@@ -25,6 +25,7 @@ interface Props {
 
 export function CustomerReportViewer({ data }: Props) {
   const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
+  const [modalViolation, setModalViolation] = useState<ViolationMarker | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [exporting, setExporting] = useState(false);
   const [sidebarView, setSidebarView] = useState<'violations' | 'building-info' | 'code-info'>('violations');
@@ -40,31 +41,43 @@ export function CustomerReportViewer({ data }: Props) {
   }, []);
 
   const handleViolationClick = useCallback((violation: ViolationMarker) => {
+    // Just navigate to the violation and center it, don't open modal
+    setCurrentPage(violation.pageNumber);
     setSelectedViolation(violation);
+  }, []);
+
+  const handleViolationDetailsClick = useCallback((violation: ViolationMarker) => {
+    // Open the modal with full details
+    setModalViolation(violation);
     setCurrentPage(violation.pageNumber);
   }, []);
 
+  // Compute highlighted violation ID for centering in PDF viewer
+  const highlightedViolationId = selectedViolation
+    ? `${selectedViolation.checkId}-${selectedViolation.screenshotId}`
+    : null;
+
   const handleCloseModal = useCallback(() => {
-    setSelectedViolation(null);
+    setModalViolation(null);
   }, []);
 
   const handleNextViolation = useCallback(() => {
-    if (!selectedViolation) return;
-    const currentIndex = data.violations.findIndex(v => v.checkId === selectedViolation.checkId);
+    if (!modalViolation) return;
+    const currentIndex = data.violations.findIndex(v => v.checkId === modalViolation.checkId);
     const nextIndex = (currentIndex + 1) % data.violations.length;
     const nextViolation = data.violations[nextIndex];
-    setSelectedViolation(nextViolation);
+    setModalViolation(nextViolation);
     setCurrentPage(nextViolation.pageNumber);
-  }, [selectedViolation, data.violations]);
+  }, [modalViolation, data.violations]);
 
   const handlePrevViolation = useCallback(() => {
-    if (!selectedViolation) return;
-    const currentIndex = data.violations.findIndex(v => v.checkId === selectedViolation.checkId);
+    if (!modalViolation) return;
+    const currentIndex = data.violations.findIndex(v => v.checkId === modalViolation.checkId);
     const prevIndex = (currentIndex - 1 + data.violations.length) % data.violations.length;
     const prevViolation = data.violations[prevIndex];
-    setSelectedViolation(prevViolation);
+    setModalViolation(prevViolation);
     setCurrentPage(prevViolation.pageNumber);
-  }, [selectedViolation, data.violations]);
+  }, [modalViolation, data.violations]);
 
   const handleExportPDF = useCallback(async () => {
     setExporting(true);
@@ -75,6 +88,8 @@ export function CustomerReportViewer({ data }: Props) {
         violations: data.violations,
         projectName: data.projectName,
         assessmentId: data.assessmentId,
+        buildingParams: data.buildingParams,
+        codeInfo: data.codeInfo,
       });
     } catch (err) {
       console.error('[Export] Failed to export PDF:', err);
@@ -82,7 +97,7 @@ export function CustomerReportViewer({ data }: Props) {
     } finally {
       setExporting(false);
     }
-  }, [data.pdfUrl, data.violations, data.projectName, data.assessmentId]);
+  }, [data.pdfUrl, data.violations, data.projectName, data.assessmentId, data.buildingParams, data.codeInfo]);
 
   // Group violations by severity for stats
   const violationStats = useMemo(() => {
@@ -175,9 +190,9 @@ export function CustomerReportViewer({ data }: Props) {
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-paper">
-      {/* Dark Brown Navigation Sidebar - Peek icons with glow on hover */}
+      {/* Dark Green Navigation Sidebar - Peek icons with glow on hover */}
       <div
-        className="fixed left-0 top-0 h-screen w-[60px] bg-stone-800 z-20 flex flex-col items-center py-6 gap-4 transition-all duration-200"
+        className="fixed left-0 top-0 h-screen w-[60px] bg-emerald-900 z-20 flex flex-col items-center py-6 gap-4 transition-all duration-200"
         onMouseEnter={() => setIsNavHovered(true)}
         onMouseLeave={() => setIsNavHovered(false)}
         style={{
@@ -198,7 +213,7 @@ export function CustomerReportViewer({ data }: Props) {
           className={`p-3 rounded-lg transition-all ${
             sidebarView === 'violations'
               ? 'bg-danger-600 text-white shadow-lg'
-              : 'text-stone-300 hover:text-white hover:bg-stone-700'
+              : 'text-emerald-100 hover:text-white hover:bg-emerald-800'
           }`}
           style={{
             opacity: isNavHovered ? 1 : 0.7,
@@ -220,7 +235,7 @@ export function CustomerReportViewer({ data }: Props) {
           className={`p-3 rounded-lg transition-all ${
             sidebarView === 'building-info'
               ? 'bg-accent-600 text-white shadow-lg'
-              : 'text-stone-300 hover:text-white hover:bg-stone-700'
+              : 'text-emerald-100 hover:text-white hover:bg-emerald-800'
           }`}
           style={{
             opacity: isNavHovered ? 1 : 0.7,
@@ -242,7 +257,7 @@ export function CustomerReportViewer({ data }: Props) {
           className={`p-3 rounded-lg transition-all ${
             sidebarView === 'code-info'
               ? 'bg-blue-600 text-white shadow-lg'
-              : 'text-stone-300 hover:text-white hover:bg-stone-700'
+              : 'text-emerald-100 hover:text-white hover:bg-emerald-800'
           }`}
           style={{
             opacity: isNavHovered ? 1 : 0.7,
@@ -349,6 +364,7 @@ export function CustomerReportViewer({ data }: Props) {
             violations={data.violations}
             selectedViolation={selectedViolation}
             onViolationClick={handleViolationClick}
+            onViolationDetailsClick={handleViolationDetailsClick}
             currentPage={currentPage}
           />
         ) : sidebarView === 'building-info' ? (
@@ -429,21 +445,23 @@ export function CustomerReportViewer({ data }: Props) {
           pdfUrl={data.pdfUrl}
           readOnly={true}
           violationMarkers={data.violations}
-          onMarkerClick={handleViolationClick}
+          onMarkerClick={handleViolationDetailsClick}
           currentPage={currentPage}
           onPageChange={handlePageChange}
+          highlightedViolationId={highlightedViolationId}
+          disableLayers={true}
         />
       </div>
 
       {/* Violation Detail Modal */}
-      {selectedViolation && (
+      {modalViolation && (
         <ViolationDetailModal
-          violation={selectedViolation}
+          violation={modalViolation}
           onClose={handleCloseModal}
           onNext={handleNextViolation}
           onPrev={handlePrevViolation}
           totalViolations={data.violations.length}
-          currentIndex={data.violations.findIndex(v => v.checkId === selectedViolation.checkId) + 1}
+          currentIndex={data.violations.findIndex(v => v.checkId === modalViolation.checkId) + 1}
         />
       )}
     </div>
