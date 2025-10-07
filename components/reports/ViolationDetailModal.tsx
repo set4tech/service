@@ -70,12 +70,12 @@ export function ViolationDetailModal({
         const res = await fetch('/api/screenshots/presign-view', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ s3Key: violation.screenshotUrl }),
+          body: JSON.stringify({ screenshotUrl: violation.screenshotUrl }),
         });
 
         if (res.ok) {
           const data = await res.json();
-          setScreenshotUrl(data.url);
+          setScreenshotUrl(data.screenshot);
         }
       } catch (err) {
         console.error('Failed to fetch screenshot:', err);

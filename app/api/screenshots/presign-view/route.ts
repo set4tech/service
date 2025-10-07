@@ -12,10 +12,15 @@ const s3 = new S3Client({
 
 export async function POST(req: NextRequest) {
   try {
-    const { screenshotUrl, thumbnailUrl } = await req.json();
+    const body = await req.json();
+
+    // Support both single URL format and array format
+    const screenshotUrls = body.screenshotUrls || (body.screenshotUrl ? [body.screenshotUrl] : []);
+    const thumbnailUrls = body.thumbnailUrls || (body.thumbnailUrl ? [body.thumbnailUrl] : []);
 
     // Extract keys from s3:// URLs
-    const getKey = (url: string) => {
+    const getKey = (url: string | null | undefined): string | null => {
+      if (!url || url === '') return null;
       if (url.startsWith('s3://')) {
         const parts = url.replace('s3://', '').split('/');
         parts.shift(); // Remove bucket name
@@ -24,32 +29,44 @@ export async function POST(req: NextRequest) {
       return url;
     };
 
-    const screenshotKey = getKey(screenshotUrl);
-    const thumbnailKey = getKey(thumbnailUrl);
+    // Generate presigned URLs for all provided screenshots
+    const presignedScreenshots = await Promise.all(
+      screenshotUrls.filter(Boolean).map(async (url: string) => {
+        const key = getKey(url);
+        if (!key) return null;
+        return getSignedUrl(
+          s3,
+          new GetObjectCommand({
+            Bucket: 'set4-data',
+            Key: key,
+          }),
+          { expiresIn: 3600 }
+        );
+      })
+    );
 
-    // Generate presigned URLs for viewing (1 hour expiry)
-    const [screenshotPresigned, thumbnailPresigned] = await Promise.all([
-      getSignedUrl(
-        s3,
-        new GetObjectCommand({
-          Bucket: 'set4-data',
-          Key: screenshotKey,
-        }),
-        { expiresIn: 3600 }
-      ),
-      getSignedUrl(
-        s3,
-        new GetObjectCommand({
-          Bucket: 'set4-data',
-          Key: thumbnailKey,
-        }),
-        { expiresIn: 3600 }
-      ),
-    ]);
+    const presignedThumbnails = await Promise.all(
+      thumbnailUrls.filter(Boolean).map(async (url: string) => {
+        const key = getKey(url);
+        if (!key) return null;
+        return getSignedUrl(
+          s3,
+          new GetObjectCommand({
+            Bucket: 'set4-data',
+            Key: key,
+          }),
+          { expiresIn: 3600 }
+        );
+      })
+    );
 
+    // Return both array format (new) and single format (legacy)
     return NextResponse.json({
-      screenshot: screenshotPresigned,
-      thumbnail: thumbnailPresigned,
+      presignedUrls: presignedScreenshots.filter(Boolean),
+      presignedThumbnails: presignedThumbnails.filter(Boolean),
+      // Legacy format for backwards compatibility
+      screenshot: presignedScreenshots[0] || null,
+      thumbnail: presignedThumbnails[0] || null,
     });
   } catch (error) {
     console.error('Failed to generate presigned URLs:', error);
