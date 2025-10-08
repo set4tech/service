@@ -200,6 +200,14 @@ export default function AssessmentClient({
     });
   };
 
+  const refetchChecks = async () => {
+    const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
+    if (checksRes.ok) {
+      const updatedChecks = await checksRes.json();
+      setChecks(updatedChecks);
+    }
+  };
+
   const handleCheckDeleted = (checkId: string) => {
     // Remove the check from the state
     setChecks(prevChecks => {
@@ -687,6 +695,7 @@ export default function AssessmentClient({
               assessmentId={assessment.id}
               onCheckAdded={handleCheckAdded}
               onCheckDeleted={handleCheckDeleted}
+              refetchChecks={refetchChecks}
             />
           )}
         </div>

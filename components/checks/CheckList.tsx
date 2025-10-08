@@ -11,6 +11,7 @@ interface CheckListProps {
   assessmentId?: string;
   onCheckAdded?: (newCheck: any) => void;
   onCheckDeleted?: (checkId: string) => void;
+  refetchChecks?: () => Promise<void>;
 }
 
 export function CheckList({
@@ -21,6 +22,7 @@ export function CheckList({
   assessmentId,
   onCheckAdded,
   onCheckDeleted,
+  refetchChecks,
 }: CheckListProps) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -248,12 +250,11 @@ export function CheckList({
       }
 
       const { check } = await response.json();
+      console.log('Label updated successfully:', check);
 
-      // Update the check in the parent state
-      if (onCheckAdded) {
-        onCheckAdded(check);
-      } else {
-        window.location.reload();
+      // Refetch checks to get updated data first, then clear editing state
+      if (refetchChecks) {
+        await refetchChecks();
       }
 
       setEditingCheckId(null);
