@@ -57,7 +57,7 @@ export function ViolationsSummary({
   const [exporting, setExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [severityFilter, setSeverityFilter] = useState<Set<string>>(
-    new Set(['major', 'moderate', 'minor'])
+    new Set(['major', 'moderate', 'minor', 'needs_more_info'])
   );
   const [highlightedViolationId, setHighlightedViolationId] = useState<string | null>(null);
 
@@ -116,11 +116,14 @@ export function ViolationsSummary({
     console.log('[ViolationsSummary] Processing', allChecks.length, 'checks (including instances)');
 
     allChecks.forEach(check => {
-      // Determine if non-compliant
+      // Determine if non-compliant or needs more info
       const isNonCompliant =
         check.manual_override === 'non_compliant' || check.latest_status === 'non_compliant';
 
-      if (!isNonCompliant) return;
+      const needsMoreInfo =
+        check.manual_override === 'needs_more_info' || check.latest_status === 'needs_more_info';
+
+      if (!isNonCompliant && !needsMoreInfo) return;
 
       // Parse violations from latest analysis
       let violationDetails: Array<{
@@ -168,6 +171,21 @@ export function ViolationsSummary({
         screenshots.forEach((screenshot: any, idx: number) => {
           const violationDetail = violationDetails[idx] || violationDetails[0];
 
+          // Determine severity - use needs_more_info if that's the status, otherwise use violation detail
+          const checkStatus = check.manual_override || check.latest_status;
+          let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
+          if (checkStatus === 'needs_more_info') {
+            severity = 'needs_more_info';
+          } else if (violationDetail?.severity) {
+            severity = violationDetail.severity;
+          }
+
+          const description =
+            violationDetail?.description ||
+            (checkStatus === 'needs_more_info'
+              ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
+              : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
+
           if (screenshot.crop_coordinates && screenshot.page_number) {
             result.push({
               checkId: check.id,
@@ -182,8 +200,8 @@ export function ViolationsSummary({
                 height: screenshot.crop_coordinates.height,
                 zoom_level: screenshot.crop_coordinates.zoom_level || 1,
               },
-              severity: violationDetail.severity,
-              description: violationDetail.description,
+              severity,
+              description,
               screenshotUrl: screenshot.screenshot_url || '',
               thumbnailUrl: screenshot.thumbnail_url || '',
               screenshotId: screenshot.id,
@@ -196,6 +214,22 @@ export function ViolationsSummary({
       } else {
         // No screenshots - create generic violation
         const violationDetail = violationDetails[0];
+
+        // Determine severity - use needs_more_info if that's the status, otherwise use violation detail
+        const checkStatus = check.manual_override || check.latest_status;
+        let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
+        if (checkStatus === 'needs_more_info') {
+          severity = 'needs_more_info';
+        } else if (violationDetail?.severity) {
+          severity = violationDetail.severity;
+        }
+
+        const description =
+          violationDetail?.description ||
+          (checkStatus === 'needs_more_info'
+            ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
+            : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
+
         result.push({
           checkId: check.id,
           checkName: check.check_name || check.code_section_title || '',
@@ -203,8 +237,8 @@ export function ViolationsSummary({
           codeSectionNumber: check.code_section_number || check.code_section_key || '',
           pageNumber: 1,
           bounds: { x: 0, y: 0, width: 0, height: 0, zoom_level: 1 },
-          severity: violationDetail.severity,
-          description: violationDetail.description,
+          severity,
+          description,
           screenshotUrl: '',
           thumbnailUrl: '',
           screenshotId: '',

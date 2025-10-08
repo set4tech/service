@@ -36,6 +36,9 @@ export function CheckList({
   const [expandedInstances, setExpandedInstances] = useState<Set<string>>(new Set());
   const [cloneModalCheck, setCloneModalCheck] = useState<any | null>(null);
   const [deletingCheckId, setDeletingCheckId] = useState<string | null>(null);
+  const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState('');
+  const [showUnassessedOnly, setShowUnassessedOnly] = useState(false);
 
   // Debounced search effect
   useEffect(() => {
@@ -78,11 +81,28 @@ export function CheckList({
     const sourceChecks = searchResults !== null ? searchResults : checks;
 
     // Filter out checks marked as not_applicable
-    return sourceChecks.filter(c => {
+    let result = sourceChecks.filter(c => {
       if (c.manual_override === 'not_applicable') return false;
       return true;
     });
-  }, [searchResults, checks, checkMode]);
+
+    // Filter by unassessed status if enabled
+    if (showUnassessedOnly) {
+      result = result.filter(c => {
+        // Check is assessed if it has manual_override or latest_status
+        const isAssessed = c.manual_override || c.latest_status;
+
+        // For element checks, also check if all sections have overrides
+        if (c.check_type === 'element' && c.has_section_overrides) {
+          return false; // Has section overrides, so it's assessed
+        }
+
+        return !isAssessed;
+      });
+    }
+
+    return result;
+  }, [searchResults, checks, checkMode, showUnassessedOnly]);
 
   // Group checks hierarchically
   const groupedChecks = useMemo(() => {
@@ -198,6 +218,52 @@ export function CheckList({
     }
   };
 
+  const handleStartEdit = (checkId: string, currentLabel: string) => {
+    setEditingCheckId(checkId);
+    setEditingLabel(currentLabel);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCheckId(null);
+    setEditingLabel('');
+  };
+
+  const handleSaveEdit = async (checkId: string) => {
+    const newLabel = editingLabel.trim();
+    if (!newLabel) {
+      alert('Label cannot be empty');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/checks/${checkId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance_label: newLabel }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update label');
+      }
+
+      const { check } = await response.json();
+
+      // Update the check in the parent state
+      if (onCheckAdded) {
+        onCheckAdded(check);
+      } else {
+        window.location.reload();
+      }
+
+      setEditingCheckId(null);
+      setEditingLabel('');
+    } catch (error: any) {
+      console.error('Update error:', error);
+      alert(`Failed to update: ${error.message}`);
+    }
+  };
+
   const getStatusIcon = (check: any) => {
     // Check if currently processing (analyzing)
     if (check.status === 'processing' || check.status === 'analyzing') {
@@ -282,6 +348,19 @@ export function CheckList({
               </svg>
             </div>
           )}
+        </div>
+
+        {/* Unassessed Only Filter */}
+        <div className="mt-2">
+          <label className="flex items-center text-sm text-gray-700 cursor-pointer hover:text-gray-900">
+            <input
+              type="checkbox"
+              checked={showUnassessedOnly}
+              onChange={e => setShowUnassessedOnly(e.target.checked)}
+              className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Show unassessed only</span>
+          </label>
         </div>
       </div>
 
@@ -483,9 +562,43 @@ export function CheckList({
                                 // Element mode: show instance label and screenshot count
                                 <>
                                   <div className="flex items-start gap-1">
-                                    <span className="font-medium text-sm text-gray-900">
-                                      {check.instance_label || `Instance ${check.instance_number}`}
-                                    </span>
+                                    {editingCheckId === check.id ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="text"
+                                          value={editingLabel}
+                                          onChange={e => setEditingLabel(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              e.currentTarget.blur();
+                                              handleSaveEdit(check.id);
+                                            } else if (e.key === 'Escape') {
+                                              e.preventDefault();
+                                              handleCancelEdit();
+                                            }
+                                          }}
+                                          autoFocus
+                                          className="font-medium text-sm text-gray-900 border border-blue-500 rounded px-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <span
+                                        className="font-medium text-sm text-gray-900 cursor-pointer hover:text-blue-600"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          handleStartEdit(
+                                            check.id,
+                                            check.instance_label ||
+                                              `Instance ${check.instance_number}`
+                                          );
+                                        }}
+                                        title="Click to edit"
+                                      >
+                                        {check.instance_label ||
+                                          `Instance ${check.instance_number}`}
+                                      </span>
+                                    )}
                                     {check.screenshots?.length > 0 && (
                                       <span className="text-xs text-gray-500">
                                         ({check.screenshots.length}{' '}

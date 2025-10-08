@@ -9,7 +9,10 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export async function POST(req: NextRequest) {
   const { assessmentId, elementGroupSlug, instanceLabel } = await req.json();
 
+  console.log('[create-element] Request:', { assessmentId, elementGroupSlug, instanceLabel });
+
   if (!assessmentId || !elementGroupSlug) {
+    console.log('[create-element] ❌ Missing required fields');
     return NextResponse.json(
       { error: 'assessmentId and elementGroupSlug are required' },
       { status: 400 }
@@ -38,7 +41,13 @@ export async function POST(req: NextRequest) {
     .select('section_key')
     .eq('element_group_id', elementGroup.id);
 
+  console.log('[create-element] Section mappings:', {
+    count: mappings?.length,
+    error: mappingsError?.message,
+  });
+
   if (mappingsError) {
+    console.log('[create-element] ❌ Failed to fetch section mappings:', mappingsError);
     return NextResponse.json(
       { error: `Failed to fetch section mappings: ${mappingsError.message}` },
       { status: 500 }
@@ -48,6 +57,7 @@ export async function POST(req: NextRequest) {
   const sectionKeys = (mappings || []).map(m => m.section_key);
 
   if (sectionKeys.length === 0) {
+    console.log('[create-element] ❌ No section mappings found for:', elementGroupSlug);
     return NextResponse.json(
       { error: `No section mappings found for element group "${elementGroupSlug}"` },
       { status: 400 }
@@ -82,6 +92,15 @@ export async function POST(req: NextRequest) {
   // This is needed because checks table requires code_section_key
   const primarySectionKey = sectionKeys[0];
 
+  console.log('[create-element] Creating check with:', {
+    assessment_id: assessmentId,
+    element_group_id: elementGroup.id,
+    instance_number: nextInstanceNumber,
+    instance_label: label,
+    code_section_key: primarySectionKey,
+    section_count: sectionKeys.length,
+  });
+
   // 5. Create the main element check
   const { data: newCheck, error: checkError } = await supabase
     .from('checks')
@@ -100,8 +119,11 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (checkError) {
+    console.log('[create-element] ❌ Failed to create check:', checkError);
     return NextResponse.json({ error: checkError.message }, { status: 400 });
   }
+
+  console.log('[create-element] ✅ Created check:', newCheck.id);
 
   // 6. Create child section checks for each mapped section
   const { data: sections, error: sectionsError } = await supabase

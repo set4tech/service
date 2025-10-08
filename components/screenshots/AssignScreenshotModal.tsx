@@ -123,8 +123,8 @@ export function AssignScreenshotModal({
 
   const filteredChecks = checksToDisplay.filter(
     check =>
-      check.code_section_number.toLowerCase().includes(search.toLowerCase()) ||
-      check.check_name.toLowerCase().includes(search.toLowerCase()) ||
+      check.code_section_number?.toLowerCase().includes(search.toLowerCase()) ||
+      check.check_name?.toLowerCase().includes(search.toLowerCase()) ||
       check.instance_label?.toLowerCase().includes(search.toLowerCase())
   );
 

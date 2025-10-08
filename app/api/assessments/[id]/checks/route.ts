@@ -229,12 +229,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log('[SEARCH] Total unique matches:', allChecks.length);
 
-      // Group and return
+      // Group and return - all element checks (except templates) as top-level peers
       const checks = allChecks.reduce((acc: any[], check: any) => {
-        if (!check.parent_check_id) {
-          const instances = allChecks.filter((c: any) => c.parent_check_id === check.id);
-          acc.push({ ...check, instances, instance_count: instances.length });
+        // Skip section checks that belong to element parents
+        if (check.check_type === 'section' && check.parent_check_id) {
+          const parent = allChecks.find((c: any) => c.id === check.parent_check_id);
+          if (parent?.check_type === 'element') {
+            return acc; // Skip child sections of elements
+          }
         }
+
+        // Skip element templates (instance_number === 0)
+        if (check.check_type === 'element' && check.instance_number === 0) {
+          return acc;
+        }
+
+        // All other checks are returned as top-level
+        acc.push({ ...check, instances: [], instance_count: 0 });
         return acc;
       }, []);
 
@@ -386,17 +397,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       };
     });
 
-    // Group checks by parent - instances will be nested under their parent
+    // Group checks - all element checks (except templates) are returned as top-level peers
+    // Section checks that belong to element parents are hidden (accessed via parent)
     const checks = mappedChecks.reduce((acc: any[], check: any) => {
-      if (!check.parent_check_id) {
-        // This is a parent check - find all its instances
-        const instances = mappedChecks.filter((c: any) => c.parent_check_id === check.id);
-        acc.push({
-          ...check,
-          instances,
-          instance_count: instances.length,
-        });
+      // Skip section checks that belong to element parents (they're accessed via the parent)
+      if (check.check_type === 'section' && check.parent_check_id) {
+        const parent = mappedChecks.find((c: any) => c.id === check.parent_check_id);
+        if (parent?.check_type === 'element') {
+          return acc; // Skip - this is a child section of an element
+        }
       }
+
+      // Skip element templates (instance_number === 0)
+      if (check.check_type === 'element' && check.instance_number === 0) {
+        return acc;
+      }
+
+      // All other checks are returned as top-level
+      acc.push({ ...check, instances: [], instance_count: 0 });
+
       return acc;
     }, []);
 
