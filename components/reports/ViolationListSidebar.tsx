@@ -45,7 +45,7 @@ export function ViolationListSidebar({
   // Severity filter state with localStorage persistence
   const [severityFilter, setSeverityFilter] = useState<Set<string>>(() => {
     if (typeof window === 'undefined' || !assessmentId) {
-      return new Set(['major', 'moderate', 'minor']);
+      return new Set(['major', 'moderate', 'minor', 'needs_more_info']);
     }
     try {
       const saved = localStorage.getItem(`violation-severity-filter-${assessmentId}`);
@@ -56,7 +56,7 @@ export function ViolationListSidebar({
     } catch {
       // ignore
     }
-    return new Set(['major', 'moderate', 'minor']);
+    return new Set(['major', 'moderate', 'minor', 'needs_more_info']);
   });
 
   // Persist severity filter changes
@@ -105,7 +105,7 @@ export function ViolationListSidebar({
 
   // Count violations by severity
   const severityCounts = useMemo(() => {
-    const counts = { major: 0, moderate: 0, minor: 0 };
+    const counts = { major: 0, moderate: 0, minor: 0, needs_more_info: 0 };
     violations.forEach(v => {
       if (v.severity in counts) {
         counts[v.severity as keyof typeof counts]++;
@@ -139,7 +139,7 @@ export function ViolationListSidebar({
         const pageB = parseInt(b.replace('Page ', ''));
         return pageA - pageB;
       } else if (groupBy === 'severity') {
-        const order = { Major: 0, Moderate: 1, Minor: 2 };
+        const order = { Major: 0, Moderate: 1, Minor: 2, Needs_more_info: 3 };
         return order[a as keyof typeof order] - order[b as keyof typeof order];
       }
       return a.localeCompare(b);
@@ -156,6 +156,8 @@ export function ViolationListSidebar({
         return 'text-yellow-700 bg-white border-line';
       case 'minor':
         return 'text-accent-600 bg-white border-line';
+      case 'needs_more_info':
+        return 'text-blue-600 bg-white border-line';
       default:
         return 'text-ink-700 bg-white border-line';
     }
@@ -169,6 +171,8 @@ export function ViolationListSidebar({
         return 'bg-yellow-600';
       case 'minor':
         return 'bg-accent-600';
+      case 'needs_more_info':
+        return 'bg-blue-600';
       default:
         return 'bg-gray-500';
     }
@@ -187,11 +191,11 @@ export function ViolationListSidebar({
         />
 
         {/* Severity Filter Pills */}
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2">
           <button
             onClick={() => toggleSeverityFilter('major')}
             className={clsx(
-              'flex-1 px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
+              'px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
               severityFilter.has('major')
                 ? 'bg-danger-50 border-danger-600 text-danger-700'
                 : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
@@ -205,7 +209,7 @@ export function ViolationListSidebar({
           <button
             onClick={() => toggleSeverityFilter('moderate')}
             className={clsx(
-              'flex-1 px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
+              'px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
               severityFilter.has('moderate')
                 ? 'bg-yellow-50 border-yellow-600 text-yellow-700'
                 : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
@@ -219,7 +223,7 @@ export function ViolationListSidebar({
           <button
             onClick={() => toggleSeverityFilter('minor')}
             className={clsx(
-              'flex-1 px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
+              'px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
               severityFilter.has('minor')
                 ? 'bg-accent-50 border-accent-600 text-accent-700'
                 : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
@@ -228,6 +232,20 @@ export function ViolationListSidebar({
             Minor
             <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
               {severityCounts.minor}
+            </span>
+          </button>
+          <button
+            onClick={() => toggleSeverityFilter('needs_more_info')}
+            className={clsx(
+              'px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
+              severityFilter.has('needs_more_info')
+                ? 'bg-blue-50 border-blue-600 text-blue-700'
+                : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
+            )}
+          >
+            Needs Info
+            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
+              {severityCounts.needs_more_info}
             </span>
           </button>
         </div>

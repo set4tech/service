@@ -112,7 +112,7 @@ export function CustomerReportViewer({ data }: Props) {
         acc[v.severity] = (acc[v.severity] || 0) + 1;
         return acc;
       },
-      { major: 0, moderate: 0, minor: 0 } as Record<string, number>
+      { major: 0, moderate: 0, minor: 0, needs_more_info: 0 } as Record<string, number>
     );
   }, [data.violations]);
 
@@ -329,7 +329,7 @@ export function CustomerReportViewer({ data }: Props) {
 
           {/* Violation Summary - Only show when in violations view */}
           {sidebarView === 'violations' && (
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="mt-4 grid grid-cols-4 gap-2">
               <div className="bg-white border border-line rounded-lg px-3 py-2.5 text-center">
                 <div className="text-2xl font-semibold text-danger-600 font-mono">
                   {violationStats.major || 0}
@@ -352,6 +352,14 @@ export function CustomerReportViewer({ data }: Props) {
                 </div>
                 <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
                   Minor
+                </div>
+              </div>
+              <div className="bg-white border border-line rounded-lg px-3 py-2.5 text-center">
+                <div className="text-2xl font-semibold text-blue-600 font-mono">
+                  {violationStats.needs_more_info || 0}
+                </div>
+                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
+                  Needs Info
                 </div>
               </div>
             </div>

@@ -7,7 +7,7 @@ export interface ViolationMarker {
   codeSectionNumber: string;
   pageNumber: number;
   bounds: { x: number; y: number; width: number; height: number; zoom_level: number };
-  severity: 'minor' | 'moderate' | 'major';
+  severity: 'minor' | 'moderate' | 'major' | 'needs_more_info';
   description: string;
   screenshotUrl: string;
   thumbnailUrl: string;
@@ -130,7 +130,7 @@ export async function getProjectViolations(
     }
   }
 
-  // Filter to only non-compliant checks
+  // Filter to non-compliant and needs_more_info checks
   console.log('[getProjectViolations] Total checks:', allChecks?.length);
   const nonCompliantChecks = allChecks.filter((check: any) => {
     const latestAnalysis = Array.isArray(check.latest_analysis_runs)
@@ -141,8 +141,14 @@ export async function getProjectViolations(
       check.manual_override === 'non_compliant' ||
       latestAnalysis?.compliance_status === 'non_compliant';
 
-    if (isNonCompliant) {
-      console.log('[getProjectViolations] Non-compliant check found:', {
+    const needsMoreInfo =
+      check.manual_override === 'needs_more_info' ||
+      latestAnalysis?.compliance_status === 'needs_more_info';
+
+    const shouldInclude = isNonCompliant || needsMoreInfo;
+
+    if (shouldInclude) {
+      console.log('[getProjectViolations] Check found for report:', {
         checkId: check.id,
         checkName: check.check_name,
         manual_override: check.manual_override,
@@ -150,10 +156,10 @@ export async function getProjectViolations(
       });
     }
 
-    return isNonCompliant;
+    return shouldInclude;
   });
 
-  console.log('[getProjectViolations] Non-compliant checks count:', nonCompliantChecks.length);
+  console.log('[getProjectViolations] Checks for report count:', nonCompliantChecks.length);
 
   if (nonCompliantChecks.length === 0) {
     return {
@@ -320,10 +326,21 @@ export async function getProjectViolations(
       screenshots.forEach((screenshot, idx) => {
         // Get violation details for this screenshot (use first violation if multiple, or generic)
         const violationDetail = violationDetails[idx] || violationDetails[0];
+
+        // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
+        const checkStatus = check.manual_override || latestAnalysis?.compliance_status;
+        let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
+        if (checkStatus === 'needs_more_info') {
+          severity = 'needs_more_info';
+        } else if (violationDetail?.severity) {
+          severity = violationDetail.severity;
+        }
+
         const description =
           violationDetail?.description ||
-          `Non-compliant with ${check.code_section_number || check.code_section_key}`;
-        const severity = violationDetail?.severity || 'moderate';
+          (checkStatus === 'needs_more_info'
+            ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
+            : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
 
         if (screenshot.crop_coordinates && screenshot.page_number) {
           violations.push({
@@ -356,10 +373,21 @@ export async function getProjectViolations(
       // No screenshots - create a generic marker (we'll handle this case in the UI)
       console.log('[getProjectViolations] No screenshots, creating generic violation marker');
       const violationDetail = violationDetails[0];
+
+      // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
+      const checkStatus = check.manual_override || latestAnalysis?.compliance_status;
+      let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
+      if (checkStatus === 'needs_more_info') {
+        severity = 'needs_more_info';
+      } else if (violationDetail?.severity) {
+        severity = violationDetail.severity;
+      }
+
       const description =
         violationDetail?.description ||
-        `Non-compliant with ${check.code_section_number || check.code_section_key}`;
-      const severity = violationDetail?.severity || 'moderate';
+        (checkStatus === 'needs_more_info'
+          ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
+          : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
 
       console.log('[getProjectViolations] Generic violation:', {
         checkId: check.id,
