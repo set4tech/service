@@ -84,7 +84,9 @@ export async function getProjectViolations(
         compliance_status,
         ai_reasoning,
         confidence,
-        raw_ai_response
+        raw_ai_response,
+        violations,
+        recommendations
       )
     `
     )
@@ -257,10 +259,24 @@ export async function getProjectViolations(
   // Build violations from non-compliant checks
   const violations: ViolationMarker[] = [];
 
+  console.log(
+    '[getProjectViolations] Building violations from',
+    nonCompliantChecks.length,
+    'checks'
+  );
+
   for (const check of nonCompliantChecks) {
     const latestAnalysis = Array.isArray(check.latest_analysis_runs)
       ? check.latest_analysis_runs[0]
       : check.latest_analysis_runs;
+
+    console.log('[getProjectViolations] Processing check:', {
+      id: check.id,
+      section: check.code_section_number,
+      manual_override: check.manual_override,
+      ai_status: latestAnalysis?.compliance_status,
+      violations: latestAnalysis?.raw_ai_response?.violations,
+    });
 
     // Get source URL from pre-fetched sections (with parent fallback)
     const section = sectionsMap.get(check.code_section_key);
@@ -294,29 +310,45 @@ export async function getProjectViolations(
       reasoning = latestAnalysis.ai_reasoning || '';
       confidence = latestAnalysis.confidence || '';
 
-      try {
-        let aiResponse = latestAnalysis.raw_ai_response;
+      // Use violations from the dedicated column (parsed during analysis)
+      if (latestAnalysis.violations && Array.isArray(latestAnalysis.violations)) {
+        violationDetails = latestAnalysis.violations;
+      }
 
-        if (typeof aiResponse === 'string') {
-          // Strip markdown code fences if present (```json ... ```)
-          let cleaned = aiResponse.trim();
-          if (cleaned.startsWith('```json')) {
-            cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-          } else if (cleaned.startsWith('```')) {
-            cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      if (latestAnalysis.recommendations && Array.isArray(latestAnalysis.recommendations)) {
+        recommendations = latestAnalysis.recommendations;
+      }
+
+      // Fallback: try parsing from raw_ai_response if violations column is empty
+      if (violationDetails.length === 0) {
+        try {
+          let aiResponse = latestAnalysis.raw_ai_response;
+
+          if (typeof aiResponse === 'string') {
+            // Strip markdown code fences if present (```json ... ```)
+            let cleaned = aiResponse.trim();
+            if (cleaned.startsWith('```json')) {
+              cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+            } else if (cleaned.startsWith('```')) {
+              cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+            }
+            aiResponse = JSON.parse(cleaned);
           }
-          aiResponse = JSON.parse(cleaned);
-        }
 
-        if (aiResponse?.violations && Array.isArray(aiResponse.violations)) {
-          violationDetails = aiResponse.violations;
-        }
+          if (aiResponse?.violations && Array.isArray(aiResponse.violations)) {
+            violationDetails = aiResponse.violations;
+          }
 
-        if (aiResponse?.recommendations && Array.isArray(aiResponse.recommendations)) {
-          recommendations = aiResponse.recommendations;
+          if (
+            recommendations.length === 0 &&
+            aiResponse?.recommendations &&
+            Array.isArray(aiResponse.recommendations)
+          ) {
+            recommendations = aiResponse.recommendations;
+          }
+        } catch (err) {
+          console.error('Failed to parse AI response:', err);
         }
-      } catch (err) {
-        console.error('Failed to parse AI response:', err);
       }
     }
 
@@ -326,6 +358,13 @@ export async function getProjectViolations(
       screenshots.forEach((screenshot, idx) => {
         // Get violation details for this screenshot (use first violation if multiple, or generic)
         const violationDetail = violationDetails[idx] || violationDetails[0];
+
+        console.log('[getProjectViolations] Violation detail for screenshot:', {
+          checkId: check.id,
+          idx,
+          violationDetail,
+          violationDetailsArray: violationDetails,
+        });
 
         // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
         const checkStatus = check.manual_override || latestAnalysis?.compliance_status;
@@ -341,6 +380,13 @@ export async function getProjectViolations(
           (checkStatus === 'needs_more_info'
             ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
             : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
+
+        console.log('[getProjectViolations] Creating violation marker:', {
+          checkId: check.id,
+          section: check.code_section_number,
+          severity,
+          screenshotId: screenshot.id,
+        });
 
         if (screenshot.crop_coordinates && screenshot.page_number) {
           violations.push({

@@ -1,6 +1,10 @@
 import { getProjectViolations } from '@/lib/reports/get-violations';
 import { CustomerReportViewer } from '@/components/reports/CustomerReportViewer';
 
+// Force dynamic rendering - don't use static cache
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function ProjectReportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await getProjectViolations(id);

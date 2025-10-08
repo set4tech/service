@@ -415,9 +415,9 @@ export function ViolationsSummary({
                 Currently Analyzing
               </div>
               <div className="space-y-1 max-h-32 overflow-y-auto">
-                {stats.analyzing.map((check: any) => (
+                {stats.analyzing.map((check: any, idx: number) => (
                   <button
-                    key={check.id}
+                    key={`analyzing-${check.id}-${idx}`}
                     onClick={() => onCheckSelect(check.id)}
                     className="w-full text-left text-xs text-blue-900 hover:text-blue-700 hover:underline"
                   >
@@ -494,9 +494,9 @@ export function ViolationsSummary({
                 </div>
               </div>
               <div className="space-y-1 max-h-32 overflow-y-auto">
-                {stats.analyzing.map((check: any) => (
+                {stats.analyzing.map((check: any, idx: number) => (
                   <button
-                    key={check.id}
+                    key={`analyzing-${check.id}-${idx}`}
                     onClick={() => onCheckSelect(check.id)}
                     className="w-full text-left text-xs text-blue-900 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
                   >
