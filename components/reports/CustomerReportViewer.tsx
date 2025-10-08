@@ -334,7 +334,7 @@ export function CustomerReportViewer({ data }: Props) {
                 <div className="text-2xl font-semibold text-danger-600 font-mono">
                   {violationStats.major || 0}
                 </div>
-                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
+                <div className="text-[10px] text-ink-500 uppercase font-medium tracking-wide">
                   Major
                 </div>
               </div>
@@ -342,7 +342,7 @@ export function CustomerReportViewer({ data }: Props) {
                 <div className="text-2xl font-semibold text-yellow-700 font-mono">
                   {violationStats.moderate || 0}
                 </div>
-                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
+                <div className="text-[10px] text-ink-500 uppercase font-medium tracking-wide">
                   Moderate
                 </div>
               </div>
@@ -350,7 +350,7 @@ export function CustomerReportViewer({ data }: Props) {
                 <div className="text-2xl font-semibold text-accent-600 font-mono">
                   {violationStats.minor || 0}
                 </div>
-                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
+                <div className="text-[10px] text-ink-500 uppercase font-medium tracking-wide">
                   Minor
                 </div>
               </div>
@@ -358,7 +358,7 @@ export function CustomerReportViewer({ data }: Props) {
                 <div className="text-2xl font-semibold text-blue-600 font-mono">
                   {violationStats.needs_more_info || 0}
                 </div>
-                <div className="text-xs text-ink-500 uppercase font-medium tracking-wide">
+                <div className="text-[10px] text-ink-500 uppercase font-medium tracking-wide">
                   Needs Info
                 </div>
               </div>
