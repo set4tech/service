@@ -100,7 +100,7 @@ export async function getProjectViolations(
       projectId: project.id,
       projectName: project.name,
       assessmentId: assessment.id,
-      pdfUrl: project.unannotated_drawing_url || project.pdf_url,
+      pdfUrl: project.pdf_url, // Use same PDF that screenshots were captured from
       violations: [],
       buildingParams: project.extracted_variables,
       codeInfo: undefined,
@@ -160,7 +160,7 @@ export async function getProjectViolations(
       projectId: project.id,
       projectName: project.name,
       assessmentId: assessment.id,
-      pdfUrl: project.unannotated_drawing_url || project.pdf_url,
+      pdfUrl: project.pdf_url, // Use same PDF that screenshots were captured from
       violations: [],
       buildingParams: project.extracted_variables,
       codeInfo,
@@ -396,7 +396,7 @@ export async function getProjectViolations(
     projectId: project.id,
     projectName: project.name,
     assessmentId: assessment.id,
-    pdfUrl: project.unannotated_drawing_url || project.pdf_url,
+    pdfUrl: project.pdf_url, // Use same PDF that screenshots were captured from
     violations,
     buildingParams: project.extracted_variables,
     codeInfo,
