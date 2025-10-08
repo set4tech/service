@@ -181,6 +181,7 @@ Individual building projects for customers.
 | `building_type`           | VARCHAR(100)           | Type of building                                                   |
 | `code_assembly_id`        | VARCHAR(255)           | Legacy code assembly identifier                                    |
 | `pdf_url`                 | TEXT                   | S3 URL to architectural drawings PDF                               |
+| `unannotated_drawing_url` | TEXT                   | S3 URL to original drawings PDF without markups or annotations     |
 | `selected_code_ids`       | TEXT[]                 | Array of code IDs to assess against                                |
 | `status`                  | VARCHAR(50)            | Project status (default 'in_progress')                             |
 | `extracted_variables`     | JSONB                  | Building metadata extracted from drawings                          |
@@ -319,6 +320,20 @@ Maps element groups to applicable code sections.
 - `idx_element_mappings_section` on `section_key`
 - `element_section_mappings_element_group_id_section_key_key` UNIQUE on `(element_group_id, section_key)`
 
+**Available Element Groups:**
+
+- Doors (doors)
+- Bathrooms (bathrooms)
+- Kitchens (kitchens)
+- Exit Signage (exit-signage)
+- Assisted Listening (assisted-listening)
+- Elevators (elevators)
+- Elevator Signage (elevator-signage)
+- Parking Signage (parking-signage)
+- Ramps (ramps)
+- Changes in Level (changes-in-level)
+- Turning Spaces (turning-spaces)
+
 **Example:**
 Element "Doors" maps to sections like 11B-404.2.6, 11B-404.2.7, etc.
 
@@ -369,17 +384,37 @@ Screenshots captured from PDF drawings for compliance evidence.
 
 **Schema:**
 
-| Column             | Type                       | Description                              |
-| ------------------ | -------------------------- | ---------------------------------------- |
-| `id`               | UUID PK                    | Primary key                              |
-| `analysis_run_id`  | UUID FK → analysis_runs.id | Analysis run reference (SET NULL delete) |
-| `page_number`      | INTEGER NOT NULL           | PDF page number                          |
-| `crop_coordinates` | JSONB                      | {x, y, width, height, zoom_level}        |
-| `screenshot_url`   | TEXT NOT NULL              | S3 URL to full screenshot                |
-| `thumbnail_url`    | TEXT                       | S3 URL to thumbnail                      |
-| `caption`          | TEXT                       | User caption/description                 |
-| `created_at`       | TIMESTAMPTZ                | Creation timestamp                       |
-| `created_by`       | UUID                       | User who captured it                     |
+| Column             | Type                        | Description                                                            |
+| ------------------ | --------------------------- | ---------------------------------------------------------------------- |
+| `id`               | UUID PK                     | Primary key                                                            |
+| `analysis_run_id`  | UUID FK → analysis_runs.id  | Analysis run reference (SET NULL delete)                               |
+| `page_number`      | INTEGER NOT NULL            | PDF page number                                                        |
+| `crop_coordinates` | JSONB                       | {x, y, width, height, zoom_level}                                      |
+| `screenshot_url`   | TEXT NOT NULL               | S3 URL to full screenshot                                              |
+| `thumbnail_url`    | TEXT                        | S3 URL to thumbnail                                                    |
+| `caption`          | TEXT                        | User caption/description                                               |
+| `screenshot_type`  | TEXT NOT NULL               | Screenshot type: 'plan' or 'elevation' (default 'plan')                |
+| `element_group_id` | UUID FK → element_groups.id | Element group reference for elevation categorization (SET NULL delete) |
+| `extracted_text`   | TEXT                        | Text extracted from PDF region for searchability                       |
+| `created_at`       | TIMESTAMPTZ                 | Creation timestamp                                                     |
+| `created_by`       | UUID                        | User who captured it                                                   |
+
+**Indexes:**
+
+- `idx_screenshots_text_search` GIN on `to_tsvector('english', COALESCE(caption, '') || ' ' || COALESCE(extracted_text, ''))`
+- `idx_screenshots_type` on `screenshot_type`
+- `idx_screenshots_element_group` on `element_group_id` (partial WHERE NOT NULL)
+
+**Constraints:**
+
+- `screenshot_type` CHECK: Must be 'plan' or 'elevation'
+
+**Usage:**
+
+- **Plan screenshots**: Captured from floor plans during normal assessment workflow
+- **Elevation screenshots**: Captured in bulk mode for reuse across multiple element instances
+- **Text searchability**: `extracted_text` contains text from PDF source for full-text search
+- **Element tagging**: `element_group_id` allows filtering elevations by building element type
 
 **Note:** Screenshots are linked to checks via the `screenshot_check_assignments` junction table (many-to-many relationship).
 

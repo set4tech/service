@@ -6,6 +6,8 @@ import { ViolationMarker as ViolationMarkerType } from '@/lib/reports/get-violat
 import { ViolationBoundingBox } from '../reports/ViolationBoundingBox';
 import { groupOverlappingViolations } from '@/lib/reports/group-violations';
 import { BlueprintLoader } from '../reports/BlueprintLoader';
+import { ElevationCapturePrompt } from './ElevationCapturePrompt';
+import { extractTextFromRegion } from '@/lib/pdf-text-extraction';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -181,6 +183,7 @@ export function PDFViewer({
   const [renderScale, setRenderScale] = useState(2); // Quality multiplier, NOT viewport scale
   const [savingScale, setSavingScale] = useState(false);
   const [smoothTransition, setSmoothTransition] = useState(false);
+  const [showElevationPrompt, setShowElevationPrompt] = useState(false);
 
   // Use useState for dpr to ensure stability
   const [dpr] = useState(() =>
@@ -361,11 +364,22 @@ export function PDFViewer({
         disableRange: false,
       });
 
-      // Track loading progress
+      // Track loading progress - log only at 10% intervals
+      let lastLoggedPercent = -1;
       loadingTask.onProgress = (progress: any) => {
-        console.log(
-          `[PDFViewer] Loading progress: ${progress.loaded} / ${progress.total || '?'} bytes`
-        );
+        if (progress.total) {
+          const percent = Math.floor((progress.loaded / progress.total) * 100);
+          if (percent >= lastLoggedPercent + 10) {
+            console.log(
+              `[PDFViewer] Loading progress: ${percent}% (${progress.loaded} / ${progress.total} bytes)`
+            );
+            lastLoggedPercent = percent;
+          }
+        } else if (lastLoggedPercent < 0) {
+          // Log once if total is unknown
+          console.log(`[PDFViewer] Loading progress: ${progress.loaded} bytes (total unknown)`);
+          lastLoggedPercent = 0;
+        }
       };
 
       try {
@@ -681,22 +695,27 @@ export function PDFViewer({
         const k = e.key.toLowerCase();
         if (k === 'c') {
           e.preventDefault();
-          capture('current');
+          capture('current', 'plan');
+          return;
+        }
+        if (k === 'e') {
+          e.preventDefault();
+          setShowElevationPrompt(true);
           return;
         }
         if (k === 'b') {
           e.preventDefault();
-          capture('bathroom');
+          capture('bathroom', 'plan');
           return;
         }
         if (k === 'd') {
           e.preventDefault();
-          capture('door');
+          capture('door', 'plan');
           return;
         }
         if (k === 'k') {
           e.preventDefault();
-          capture('kitchen');
+          capture('kitchen', 'plan');
           return;
         }
       }
@@ -811,57 +830,56 @@ export function PDFViewer({
   );
 
   // Screenshot capture reusing DPR + ocConfig for fidelity
-  const findElementTemplate = async (
+  const createElementInstance = async (
     elementSlug: 'bathroom' | 'door' | 'kitchen'
-  ): Promise<string | null> => {
-    const elementGroupIds: Record<string, string> = {
-      bathroom: 'f9557ba0-1cf6-41b2-a030-984cfe0c8c15',
-      door: '3cf23143-d9cc-436c-885e-fa6391c20caf',
-      kitchen: '709e704b-35d8-47f1-8ba0-92c22fdf3008',
+  ): Promise<any | null> => {
+    const elementGroupSlugs: Record<string, string> = {
+      bathroom: 'bathrooms',
+      door: 'doors',
+      kitchen: 'kitchens',
     };
-    const elementGroupId = elementGroupIds[elementSlug];
-    if (!elementGroupId || !assessmentId) return null;
+    const slug = elementGroupSlugs[elementSlug];
+    if (!slug || !assessmentId) return null;
     try {
-      const res = await fetch(`/api/assessments/${assessmentId}/checks`);
+      const res = await fetch(`/api/checks/create-element`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assessmentId, elementGroupSlug: slug }),
+      });
       if (!res.ok) return null;
-      const checks = await res.json();
-      const template = checks.find(
-        (c: any) => c.element_group_id === elementGroupId && c.instance_number === 0
-      );
-      return template?.id || null;
+      const { check } = await res.json();
+      return check;
     } catch {
       return null;
     }
   };
 
   const capture = useCallback(
-    async (target: 'current' | 'bathroom' | 'door' | 'kitchen' = 'current') => {
+    async (
+      target: 'current' | 'bathroom' | 'door' | 'kitchen' = 'current',
+      screenshotType: 'plan' | 'elevation' = 'plan',
+      elementGroupId?: string,
+      caption?: string
+    ) => {
       try {
         if (readOnly || !state.selection || !page) return;
         if (capturingRef.current) return;
         capturingRef.current = true;
 
         const savedSelection = { ...state.selection };
-        dispatch({ type: 'CLEAR_SELECTION' });
+
+        // Only clear selection for plan screenshots (not elevations)
+        if (screenshotType === 'plan') {
+          dispatch({ type: 'CLEAR_SELECTION' });
+        }
 
         let targetCheckId = activeCheck?.id;
         if (target !== 'current') {
-          const templateId = await findElementTemplate(target);
-          if (!templateId) {
-            alert(`Could not find ${target} template check.`);
+          const newCheck = await createElementInstance(target);
+          if (!newCheck) {
+            alert(`Failed to create new ${target} instance.`);
             return;
           }
-          const cloneRes = await fetch(`/api/checks/${templateId}/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ instanceLabel: undefined, copyScreenshots: false }),
-          });
-          if (!cloneRes.ok) {
-            const e = await cloneRes.json().catch(() => ({}));
-            alert(`Failed to create new ${target} instance: ${e.error || 'Unknown error'}`);
-            return;
-          }
-          const { check: newCheck } = await cloneRes.json();
           targetCheckId = newCheck.id;
           onCheckAdded?.(newCheck);
           onCheckSelect?.(newCheck.id);
@@ -958,11 +976,24 @@ export function PDFViewer({
           }),
         ]);
 
+        // Extract text from PDF region for elevations
+        let extractedText = '';
+        if (screenshotType === 'elevation' && page) {
+          console.log('[PDFViewer] Extracting text from region for elevation screenshot');
+          extractedText = await extractTextFromRegion(page, {
+            x: sx,
+            y: sy,
+            width: sw,
+            height: sh,
+          });
+          console.log('[PDFViewer] Extracted text:', extractedText);
+        }
+
         await fetch('/api/screenshots', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            check_id: targetCheckId,
+            check_id: screenshotType === 'plan' ? targetCheckId : null, // Only assign to check for plan screenshots
             page_number: state.pageNumber,
             crop_coordinates: {
               x: sx,
@@ -973,7 +1004,10 @@ export function PDFViewer({
             },
             screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
             thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
-            caption: '',
+            caption: caption || '',
+            screenshot_type: screenshotType,
+            element_group_id: elementGroupId || null,
+            extracted_text: extractedText || null,
           }),
         });
 
@@ -1047,7 +1081,10 @@ export function PDFViewer({
       {state.screenshotMode && state.selection && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
           <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-blue-500 font-mono">
-            C - Current
+            C - Save to Current (exits)
+          </kbd>
+          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-green-500 font-mono">
+            E - Save as Elevation (stays active)
           </kbd>
           <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
             B - Bathroom
@@ -1257,6 +1294,19 @@ export function PDFViewer({
           Shortcuts: ←/→, -/+, 0, S, Esc
         </span>
       </div>
+
+      {showElevationPrompt && (
+        <ElevationCapturePrompt
+          onSave={(elementGroupId, caption) => {
+            setShowElevationPrompt(false);
+            // Capture as elevation, DO NOT clear selection (stay in screenshot mode)
+            capture('current', 'elevation', elementGroupId, caption);
+          }}
+          onCancel={() => {
+            setShowElevationPrompt(false);
+          }}
+        />
+      )}
     </div>
   );
 }

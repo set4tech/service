@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
+import { SearchElevationsModal } from '@/components/screenshots/SearchElevationsModal';
 import { TableRenderer } from '@/components/ui/TableRenderer';
 import { TriageModal } from './TriageModal';
 import { AnalysisHistory } from './AnalysisHistory';
@@ -114,6 +115,7 @@ export function CodeDetailPanel({
 
   // Screenshots section toggle state
   const [showScreenshots, setShowScreenshots] = useState(true);
+  const [showElevationSearch, setShowElevationSearch] = useState(false);
 
   // Resizable section content height (percentage of available space)
   const [sectionContentHeight, setSectionContentHeight] = useState(40); // 40% default
@@ -1391,7 +1393,7 @@ export function CodeDetailPanel({
                     className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors px-2 py-1 rounded"
                   >
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Screenshots
+                      Screenshots & Elevations
                     </div>
                     <svg
                       className={`w-4 h-4 text-gray-400 transition-transform ${showScreenshots ? 'rotate-180' : ''}`}
@@ -1410,7 +1412,15 @@ export function CodeDetailPanel({
                 </div>
 
                 {showScreenshots && (
-                  <div className="pb-4">
+                  <div className="pb-4 space-y-2">
+                    {activeCheck?.check_type === 'element' && (
+                      <button
+                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                        onClick={() => setShowElevationSearch(true)}
+                      >
+                        + Manage Elevations
+                      </button>
+                    )}
                     <ScreenshotGallery
                       check={activeCheck}
                       refreshKey={screenshotsRefreshKey || 0}
@@ -2031,6 +2041,31 @@ export function CodeDetailPanel({
             } catch (error: any) {
               console.error('Failed to save section overrides:', error);
               alert('Failed to save overrides: ' + error.message);
+            }
+          }}
+        />
+      )}
+
+      {/* Search Elevations Modal */}
+      {showElevationSearch && activeCheck && (
+        <SearchElevationsModal
+          open={showElevationSearch}
+          onClose={() => setShowElevationSearch(false)}
+          assessmentId={activeCheck.assessment_id}
+          currentCheckId={activeCheck.id}
+          onAssign={async screenshotIds => {
+            // Assign selected elevations to this check
+            for (const screenshotId of screenshotIds) {
+              await fetch(`/api/screenshots/${screenshotId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ checkIds: [activeCheck.id] }),
+              });
+            }
+
+            // Refresh screenshots
+            if (onScreenshotAssigned) {
+              onScreenshotAssigned();
             }
           }}
         />
