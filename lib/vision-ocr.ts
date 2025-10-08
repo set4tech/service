@@ -22,12 +22,6 @@ export async function extractTextFromImage(
   imageUrl?: string,
   imageData?: string
 ): Promise<OcrResult> {
-  // Feature flag check
-  if (process.env.ENABLE_SCREENSHOT_OCR !== 'true') {
-    console.log('[OCR] Feature disabled via ENABLE_SCREENSHOT_OCR env var');
-    return { text: '', provider: 'gemini', error: 'Feature disabled' };
-  }
-
   // Try Gemini first (faster and cheaper)
   if (process.env.GOOGLE_API_KEY) {
     try {

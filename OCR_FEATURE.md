@@ -20,9 +20,6 @@ Automatically extracts text from screenshot images using vision-capable LLMs (Ge
 ### Environment Variables
 
 ```bash
-# Enable/disable OCR feature (default: false)
-export ENABLE_SCREENSHOT_OCR=true
-
 # Google Gemini API key (primary OCR provider)
 export GOOGLE_API_KEY=your_google_api_key
 
@@ -33,12 +30,9 @@ export OPENAI_API_KEY=your_openai_api_key
 export NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### Feature Flag
+### How It Enables
 
-The OCR feature is controlled by the `ENABLE_SCREENSHOT_OCR` environment variable:
-
-- `true`: OCR runs automatically for all new screenshots
-- `false` or unset: OCR is disabled
+OCR runs automatically if either `GOOGLE_API_KEY` or `OPENAI_API_KEY` is configured. No feature flag needed - just add API keys and it works!
 
 ## API Endpoints
 
@@ -138,8 +132,8 @@ Check logs for OCR activity:
 [OCR] Gemini extracted: 245 characters
 [OCR] Successfully extracted and saved text: 245 characters
 
-# Feature disabled
-[OCR] Feature disabled via ENABLE_SCREENSHOT_OCR env var
+# No API keys configured (OCR skipped)
+[Screenshot] Not triggering OCR - no API keys configured
 
 # Error handling
 [OCR] Vision OCR failed: API rate limit exceeded

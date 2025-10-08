@@ -163,7 +163,8 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. Trigger background OCR extraction (non-blocking)
-  if (process.env.ENABLE_SCREENSHOT_OCR === 'true') {
+  // Only run if we have API keys configured
+  if (process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY) {
     console.log('[Screenshot] Triggering background OCR for:', screenshot.id);
     // Fire and forget - don't await
     fetch(
