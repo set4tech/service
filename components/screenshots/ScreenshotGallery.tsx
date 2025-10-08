@@ -1,8 +1,22 @@
 'use client';
 import { useEffect, useState } from 'react';
-import type { Check, Screenshot } from '@/types/database';
+import type { Check, Screenshot, ElementGroup } from '@/types/database';
 import Modal from '@/components/ui/Modal';
 import { AssignScreenshotModal } from './AssignScreenshotModal';
+
+const ELEMENT_TYPE_COLORS: Record<string, string> = {
+  doors: 'bg-blue-600',
+  bathrooms: 'bg-purple-600',
+  kitchens: 'bg-orange-600',
+  'exit-signage': 'bg-red-600',
+  'assisted-listening': 'bg-indigo-600',
+  elevators: 'bg-cyan-600',
+  'elevator-signage': 'bg-teal-600',
+  'parking-signage': 'bg-yellow-600',
+  ramps: 'bg-green-600',
+  'changes-in-level': 'bg-pink-600',
+  'turning-spaces': 'bg-violet-600',
+};
 
 export function ScreenshotGallery({
   check,
@@ -14,11 +28,26 @@ export function ScreenshotGallery({
   onScreenshotAssigned?: () => void;
 }) {
   const [shots, setShots] = useState<Screenshot[]>((check as any).screenshots || []);
+  const [filter, setFilter] = useState<'all' | 'plan' | 'elevation'>('all');
+  const [elementGroups, setElementGroups] = useState<ElementGroup[]>([]);
   const [preview, setPreview] = useState<Screenshot | null>(null);
   const [assigningScreenshot, setAssigningScreenshot] = useState<Screenshot | null>(null);
   const [presignedUrls, setPresignedUrls] = useState<
     Record<string, { screenshot: string; thumbnail: string }>
   >({});
+
+  // Fetch element groups
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/element-groups');
+        const data = await res.json();
+        setElementGroups(data.element_groups || []);
+      } catch (error) {
+        console.error('Failed to fetch element groups:', error);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     console.log('[ScreenshotGallery] 🔍 Check object:', {
@@ -30,29 +59,9 @@ export function ScreenshotGallery({
       refreshKey,
     });
 
-    // Only fetch if screenshots not already in check object
-    if ((check as any).screenshots?.length > 0) {
-      console.log(
-        '[ScreenshotGallery] ✅ Using screenshots from check prop:',
-        (check as any).screenshots.length,
-        'screenshots'
-      );
-      console.log(
-        '[ScreenshotGallery] Screenshot details:',
-        (check as any).screenshots.map((s: any) => ({
-          id: s.id,
-          caption: s.caption,
-          isOriginal: s.is_original,
-        }))
-      );
-      setShots((check as any).screenshots);
-      return;
-    }
-
-    console.log(
-      '[ScreenshotGallery] ⚠️ No screenshots in prop, fetching from API for check:',
-      check.id
-    );
+    // Always fetch from API to get latest assignments
+    // (refreshKey changes when screenshots are assigned/modified)
+    console.log('[ScreenshotGallery] 📡 Fetching screenshots from API for check:', check.id);
     (async () => {
       const res = await fetch(`/api/screenshots?check_id=${check.id}`);
       const { screenshots } = await res.json();
@@ -64,7 +73,7 @@ export function ScreenshotGallery({
       );
       setShots(screenshots || []);
     })();
-  }, [check.id, refreshKey, (check as any).screenshots]);
+  }, [check.id, refreshKey]);
 
   // Fetch presigned URLs for screenshots
   useEffect(() => {
@@ -101,13 +110,40 @@ export function ScreenshotGallery({
     }
   };
 
+  const filteredShots = shots.filter(s => {
+    if (filter === 'all') return true;
+    return s.screenshot_type === filter;
+  });
+
   return (
     <div className="stack-sm">
-      <div className="text-sm font-medium">Screenshots</div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">Screenshots & Elevations</div>
+
+        {/* Filter Toggle */}
+        {shots.length > 0 && (
+          <div className="flex gap-1 border rounded overflow-hidden">
+            {(['all', 'plan', 'elevation'] as const).map(f => (
+              <button
+                key={f}
+                className={`px-3 py-1 text-xs font-medium ${
+                  filter === f
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+                onClick={() => setFilter(f)}
+              >
+                {f === 'all' ? 'All' : f === 'plan' ? 'Plans' : 'Elevations'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="flex gap-2 flex-wrap">
-        {shots.map(s => {
+        {filteredShots.map(s => {
           const urls = presignedUrls[s.id];
           const isOriginal = (s as any).is_original !== false; // Default to true if not set
+          const elementGroup = elementGroups.find(g => g.id === s.element_group_id);
           return (
             <figure key={s.id} className="w-40">
               <button
@@ -130,6 +166,17 @@ export function ScreenshotGallery({
                   />
                 ) : (
                   <span className="text-xs text-gray-400">Loading...</span>
+                )}
+
+                {/* Element Type Badge for elevations */}
+                {s.screenshot_type === 'elevation' && elementGroup && (
+                  <div
+                    className={`absolute top-1 left-1 ${
+                      ELEMENT_TYPE_COLORS[elementGroup.slug] || 'bg-gray-600'
+                    } text-white text-xs px-2 py-0.5 rounded`}
+                  >
+                    {elementGroup.name}
+                  </div>
                 )}
 
                 {/* Badge for assigned screenshots */}

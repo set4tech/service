@@ -4,11 +4,12 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export async function GET(req: NextRequest) {
   const checkId = new URL(req.url).searchParams.get('check_id');
   const assessmentId = new URL(req.url).searchParams.get('assessment_id');
+  const screenshotType = new URL(req.url).searchParams.get('screenshot_type');
   const supabase = supabaseAdmin();
 
   if (checkId) {
     // Fetch screenshots assigned to this check via junction table
-    const { data, error } = await supabase
+    let query = supabase
       .from('screenshots')
       .select(
         `
@@ -20,8 +21,14 @@ export async function GET(req: NextRequest) {
         )
       `
       )
-      .eq('screenshot_check_assignments.check_id', checkId)
-      .order('created_at', { ascending: false });
+      .eq('screenshot_check_assignments.check_id', checkId);
+
+    // Filter by screenshot_type if provided
+    if (screenshotType && ['plan', 'elevation'].includes(screenshotType)) {
+      query = query.eq('screenshot_type', screenshotType);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -35,7 +42,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ screenshots });
   } else if (assessmentId) {
     // Fetch assigned screenshots for an assessment via checks
-    const { data: assignedData, error: assignedError } = await supabase
+    let assignedQuery = supabase
       .from('screenshots')
       .select(
         `
@@ -52,8 +59,16 @@ export async function GET(req: NextRequest) {
         )
       `
       )
-      .eq('screenshot_check_assignments.checks.assessment_id', assessmentId)
-      .order('created_at', { ascending: false });
+      .eq('screenshot_check_assignments.checks.assessment_id', assessmentId);
+
+    // Filter by screenshot_type if provided
+    if (screenshotType && ['plan', 'elevation'].includes(screenshotType)) {
+      assignedQuery = assignedQuery.eq('screenshot_type', screenshotType);
+    }
+
+    const { data: assignedData, error: assignedError } = await assignedQuery.order('created_at', {
+      ascending: false,
+    });
 
     if (assignedError) return NextResponse.json({ error: assignedError.message }, { status: 500 });
 
@@ -71,11 +86,18 @@ export async function GET(req: NextRequest) {
     const assignedIds = assignedScreenshots.map(s => s.id);
 
     // Fetch all screenshots for this assessment by URL pattern
-    const { data: allScreenshotsData, error: allScreenshotsError } = await supabase
+    let allScreenshotsQuery = supabase
       .from('screenshots')
       .select('*')
-      .like('screenshot_url', `%${assessmentId}%`)
-      .order('created_at', { ascending: false });
+      .like('screenshot_url', `%${assessmentId}%`);
+
+    // Apply screenshot_type filter to unassigned screenshots as well
+    if (screenshotType && ['plan', 'elevation'].includes(screenshotType)) {
+      allScreenshotsQuery = allScreenshotsQuery.eq('screenshot_type', screenshotType);
+    }
+
+    const { data: allScreenshotsData, error: allScreenshotsError } =
+      await allScreenshotsQuery.order('created_at', { ascending: false });
 
     if (allScreenshotsError)
       return NextResponse.json({ error: allScreenshotsError.message }, { status: 500 });

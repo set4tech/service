@@ -22,6 +22,7 @@ export function AssessmentScreenshotGallery({
   const [screenshots, setScreenshots] = useState<AssessmentScreenshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'plan' | 'elevation'>('all');
   const [preview, setPreview] = useState<AssessmentScreenshot | null>(null);
   const [assigningScreenshot, setAssigningScreenshot] = useState<AssessmentScreenshot | null>(null);
   const [editingCaption, setEditingCaption] = useState<string | null>(null);
@@ -131,8 +132,14 @@ export function AssessmentScreenshotGallery({
     );
   }
 
-  // Filter screenshots by search query
+  // Filter screenshots by search query and type
   const filteredScreenshots = screenshots.filter(shot => {
+    // Type filter
+    if (typeFilter !== 'all' && shot.screenshot_type !== typeFilter) {
+      return false;
+    }
+
+    // Search filter
     const searchLower = search.toLowerCase();
     const caption = (shot.caption || '').toLowerCase();
     const sectionNumber = (shot.check_section_number || '').toLowerCase();
@@ -154,15 +161,24 @@ export function AssessmentScreenshotGallery({
         </p>
       </div>
 
-      {/* Search Bar */}
-      <div className="mb-4">
+      {/* Search Bar and Filters */}
+      <div className="mb-4 flex gap-3">
         <input
           type="text"
           placeholder="Search by caption or section..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        <select
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value as 'all' | 'plan' | 'elevation')}
+          className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Types</option>
+          <option value="plan">Plans Only</option>
+          <option value="elevation">Elevations Only</option>
+        </select>
       </div>
 
       {filteredScreenshots.length === 0 ? (
@@ -195,9 +211,14 @@ export function AssessmentScreenshotGallery({
                     <span className="text-xs text-gray-400">Loading...</span>
                   )}
 
+                  {/* Badge for screenshot type */}
+                  <div className="absolute top-1 left-1 bg-gray-900/75 text-white text-xs px-1.5 py-0.5 rounded">
+                    {shot.screenshot_type === 'elevation' ? '📐 Elevation' : '📋 Plan'}
+                  </div>
+
                   {/* Badge for assigned screenshots */}
                   {shot.is_original === false && (
-                    <div className="absolute top-1 right-1 bg-blue-600 text-white text-xs px-1 rounded">
+                    <div className="absolute top-1 right-1 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded">
                       Assigned
                     </div>
                   )}

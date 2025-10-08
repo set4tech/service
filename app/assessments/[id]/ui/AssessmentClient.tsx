@@ -765,6 +765,10 @@ export default function AssessmentClient({
                 console.error('Failed to refetch checks:', error);
               }
             }}
+            onScreenshotAssigned={() => {
+              // Increment refresh key to trigger ScreenshotGallery re-fetch
+              setScreenshotsChanged(prev => prev + 1);
+            }}
           />
         )}
       </div>
