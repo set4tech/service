@@ -10,7 +10,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = supabaseAdmin();
 
-  const [{ data: assessment }, { data: allChecks }] = await Promise.all([
+  const [{ data: assessment }, { data: allChecks, error: checksError }] = await Promise.all([
     supabase
       .from('assessments')
       .select('*, projects(name, pdf_url, selected_code_ids, extracted_variables)')
@@ -20,8 +20,12 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       .from('checks')
       .select('*, element_groups(name, slug), sections!code_section_key(never_relevant)')
       .eq('assessment_id', id)
-      .order('code_section_number', { ascending: true }),
+      .limit(5000), // Increase limit to handle large assessments
   ]);
+
+  if (checksError) {
+    console.error('[Server] ERROR fetching checks:', checksError);
+  }
 
   // Filter out checks for sections marked as never_relevant
   // Exception: Don't filter element checks since they cover multiple sections
@@ -118,9 +122,28 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   // Group checks by parent - instances will be nested under their parent
   const checks = filteredChecks.reduce((acc: any[], check: any) => {
-    if (!check.parent_check_id) {
-      // This is a parent check - find all its instances
-      const rawInstances = filteredChecks.filter((c: any) => c.parent_check_id === check.id);
+    // Skip element templates (instance_number === 0)
+    if (check.check_type === 'element' && check.instance_number === 0) {
+      return acc;
+    }
+
+    // Skip section checks that belong to element parents (they're accessed via parent)
+    if (check.check_type === 'section' && check.parent_check_id) {
+      const parent = filteredChecks.find((c: any) => c.id === check.parent_check_id);
+      if (parent?.check_type === 'element') {
+        return acc;
+      }
+    }
+
+    // For element checks, always treat as top-level (ignore parent_check_id from old cloning system)
+    const isTopLevel = check.check_type === 'element' || !check.parent_check_id;
+
+    if (isTopLevel) {
+      // This is a parent check - find all its instances (only for section mode)
+      const rawInstances =
+        check.check_type === 'element'
+          ? [] // Element checks don't use nested instances anymore
+          : filteredChecks.filter((c: any) => c.parent_check_id === check.id);
 
       // Add analysis data and screenshots to instances
       const instances = rawInstances.map((instance: any) => {

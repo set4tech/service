@@ -89,25 +89,20 @@ export function CheckList({
     const mainGroups = new Map<string, any[]>();
 
     if (checkMode === 'element') {
-      // Group by element group name - flatten instances
+      // Group by element group name - treat all instances as peers (no parent/child)
       filtered.forEach(check => {
+        // Skip templates (instance_number === 0)
+        if (check.instance_number === 0) {
+          return;
+        }
+
         const groupName = check.element_group_name || 'Other';
         if (!mainGroups.has(groupName)) {
           mainGroups.set(groupName, []);
         }
 
-        // Add all instances (not the parent template)
-        if (check.instances && check.instances.length > 0) {
-          check.instances.forEach((instance: any) => {
-            mainGroups.get(groupName)!.push({
-              ...instance,
-              element_group_name: check.element_group_name,
-            });
-          });
-        } else if (check.instance_number !== 0) {
-          // Fallback: if no instances array, add the check itself (if not template)
-          mainGroups.get(groupName)!.push(check);
-        }
+        // Add the check itself (all element checks are peers now)
+        mainGroups.get(groupName)!.push(check);
       });
 
       // Sort each group by instance number
@@ -294,11 +289,24 @@ export function CheckList({
       <div className="flex-1">
         {groupedChecks.map(([mainPrefix, groupChecks]) => {
           const isExpanded = expandedSections.has(mainPrefix);
-          // In element mode, get template from filtered checks (not from groupChecks which are instances)
-          const templateCheck =
-            checkMode === 'element'
-              ? filtered.find(c => c.element_group_name === mainPrefix && c.instance_number === 0)
-              : null;
+
+          // Map element group names to slugs for API calls
+          const elementGroupSlugMap: Record<string, string> = {
+            Doors: 'doors',
+            Bathrooms: 'bathrooms',
+            Kitchens: 'kitchens',
+            'Exit Signage': 'exit-signage',
+            'Assisted Listening': 'assisted-listening',
+            Elevators: 'elevators',
+            'Elevator Signage': 'elevator-signage',
+            'Parking Signage': 'parking-signage',
+            Ramps: 'ramps',
+            'Changes in Level': 'changes-in-level',
+            'Turning Spaces': 'turning-spaces',
+          };
+
+          const elementGroupSlug = checkMode === 'element' ? elementGroupSlugMap[mainPrefix] : null;
+
           // All groupChecks are already instances (templates filtered out during grouping)
           const displayChecks = groupChecks;
 
@@ -329,11 +337,35 @@ export function CheckList({
                 </button>
 
                 {/* Add Element Button (only in element mode) */}
-                {checkMode === 'element' && templateCheck && (
+                {checkMode === 'element' && elementGroupSlug && (
                   <button
-                    onClick={e => {
+                    onClick={async e => {
                       e.stopPropagation();
-                      setCloneModalCheck(templateCheck);
+
+                      // Call create-element API directly (no template needed)
+                      try {
+                        const res = await fetch('/api/checks/create-element', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            assessmentId,
+                            elementGroupSlug,
+                          }),
+                        });
+
+                        if (res.ok) {
+                          const { check } = await res.json();
+                          onCheckAdded?.(check);
+                        } else {
+                          const data = await res.json();
+                          alert(
+                            `Failed to create element instance: ${data.error || 'Unknown error'}`
+                          );
+                        }
+                      } catch (error) {
+                        console.error('Error creating element instance:', error);
+                        alert('Failed to create element instance');
+                      }
                     }}
                     className="px-3 py-2 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
                     title={`Add ${mainPrefix.toLowerCase().replace(/s$/, '')}`}

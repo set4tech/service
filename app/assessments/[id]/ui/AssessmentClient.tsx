@@ -89,20 +89,6 @@ export default function AssessmentClient({
   const displayedChecks = useMemo(() => {
     if (checkMode === 'summary' || checkMode === 'gallery') return checks;
 
-    // Debug: log element checks
-    if (checkMode === 'element') {
-      const elementChecks = checks.filter(c => c.check_type === 'element');
-      console.log(
-        '[AssessmentClient] Element checks:',
-        elementChecks.map(c => ({
-          name: c.element_group_name,
-          title: c.code_section_title,
-          instance: c.instance_number,
-          type: c.check_type,
-        }))
-      );
-    }
-
     return checks.filter(c => {
       const type = c.check_type || 'section';
       return type === checkMode;

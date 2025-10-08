@@ -34,8 +34,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ screenshots });
   } else if (assessmentId) {
-    // Fetch all screenshots for an assessment via checks
-    const { data, error } = await supabase
+    // Fetch assigned screenshots for an assessment via checks
+    const { data: assignedData, error: assignedError } = await supabase
       .from('screenshots')
       .select(
         `
@@ -55,10 +55,10 @@ export async function GET(req: NextRequest) {
       .eq('screenshot_check_assignments.checks.assessment_id', assessmentId)
       .order('created_at', { ascending: false });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (assignedError) return NextResponse.json({ error: assignedError.message }, { status: 500 });
 
     // Flatten assignment metadata into screenshot objects
-    const screenshots = (data || []).map((item: any) => ({
+    const assignedScreenshots = (assignedData || []).map((item: any) => ({
       ...item,
       check_id: item.screenshot_check_assignments?.[0]?.check_id,
       is_original: item.screenshot_check_assignments?.[0]?.is_original,
@@ -66,6 +66,36 @@ export async function GET(req: NextRequest) {
       check_section_title: item.screenshot_check_assignments?.[0]?.checks?.code_section_title,
       screenshot_check_assignments: undefined, // Remove nested structure
     }));
+
+    // Fetch unassigned screenshots for this assessment (via screenshot_url pattern)
+    const assignedIds = assignedScreenshots.map(s => s.id);
+
+    // Fetch all screenshots for this assessment by URL pattern
+    const { data: allScreenshotsData, error: allScreenshotsError } = await supabase
+      .from('screenshots')
+      .select('*')
+      .like('screenshot_url', `%${assessmentId}%`)
+      .order('created_at', { ascending: false });
+
+    if (allScreenshotsError)
+      return NextResponse.json({ error: allScreenshotsError.message }, { status: 500 });
+
+    // Filter out assigned screenshots in memory
+    const unassignedData = (allScreenshotsData || []).filter(
+      (screenshot: any) => !assignedIds.includes(screenshot.id)
+    );
+
+    // Mark unassigned screenshots
+    const unassignedScreenshots = (unassignedData || []).map((item: any) => ({
+      ...item,
+      check_id: null,
+      is_original: false,
+      check_section_number: null,
+      check_section_title: 'Unassigned',
+    }));
+
+    // Combine assigned and unassigned screenshots
+    const screenshots = [...assignedScreenshots, ...unassignedScreenshots];
 
     return NextResponse.json({ screenshots });
   } else {
