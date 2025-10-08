@@ -145,7 +145,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (elementGroups && elementGroups.length > 0) {
           for (const group of elementGroups) {
             const { data: groupMappings } = await supabase
-              .from('element_section_mappings')
+              .from('element_group_section_mappings')
               .select('section_key, sections!inner(number, title)')
               .eq('element_group_id', group.id);
 

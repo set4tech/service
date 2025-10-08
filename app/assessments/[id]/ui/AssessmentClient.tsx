@@ -227,7 +227,15 @@ export default function AssessmentClient({
         return prevChecks.filter(c => c.id !== checkId);
       }
 
-      // If it's an instance, remove from parent's instances array
+      // Check if parent exists in checks array (templates with instance_number=0 are filtered out)
+      const parentExists = prevChecks.some(c => c.id === deletedCheck.parent_check_id);
+
+      // If parent doesn't exist in UI (e.g., it's a template), treat as top-level deletion
+      if (!parentExists) {
+        return prevChecks.filter(c => c.id !== checkId);
+      }
+
+      // If it's an instance with a visible parent, remove from parent's instances array
       return prevChecks.map(c => {
         if (c.id === deletedCheck.parent_check_id) {
           return {
