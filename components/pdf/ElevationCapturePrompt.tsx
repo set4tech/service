@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ElementGroup } from '@/types/database';
 
 interface ElevationCapturePromptProps {
@@ -29,6 +29,12 @@ export function ElevationCapturePrompt({ onSave, onCancel }: ElevationCapturePro
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // Use refs to avoid re-registering keyboard listener when callbacks change
+  const onSaveRef = useRef(onSave);
+  const onCancelRef = useRef(onCancel);
+  onSaveRef.current = onSave;
+  onCancelRef.current = onCancel;
+
   useEffect(() => {
     // Fetch element groups from API
     (async () => {
@@ -46,47 +52,87 @@ export function ElevationCapturePrompt({ onSave, onCancel }: ElevationCapturePro
 
   // Global keyboard handler for modal
   useEffect(() => {
+    console.log(
+      '[ElevationCapturePrompt] Mounting - adding global keyboard listener (capture phase)'
+    );
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore keyboard events from input/textarea elements (except Escape)
+      console.log('[ElevationCapturePrompt] Key pressed:', {
+        key: e.key,
+        step,
+        selectedElementGroup: selectedElementGroup?.name,
+        caption,
+      });
+
+      // Ignore keyboard events from input/textarea elements (except Escape and Enter)
       const target = e.target as HTMLElement;
       const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+
+      // Handle Escape globally
+      if (e.key === 'Escape') {
+        console.log('[ElevationCapturePrompt] Escape pressed, canceling');
+        e.preventDefault();
+        e.stopPropagation();
+        onCancelRef.current();
+        return;
+      }
+
+      // Handle Enter globally - if we have a selected element, save it
+      // This handles both keyboard flow AND click+Enter race condition
+      if (e.key === 'Enter') {
+        console.log(
+          '[ElevationCapturePrompt] Enter pressed, selectedElementGroup:',
+          selectedElementGroup
+        );
+        if (selectedElementGroup) {
+          console.log(
+            '[ElevationCapturePrompt] Saving elevation with element:',
+            selectedElementGroup.name
+          );
+          e.preventDefault();
+          e.stopPropagation();
+          onSaveRef.current(selectedElementGroup.id, caption);
+          return;
+        }
+        // If no element selected yet, just prevent bubbling to PDFViewer
+        console.log('[ElevationCapturePrompt] No element selected, preventing default');
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
 
       if (step === 'element-type') {
         // Support numeric keys 1-9 for first 9 element types
         const keyNum = parseInt(e.key);
         if (keyNum >= 1 && keyNum <= elementGroups.length && keyNum <= 9) {
+          console.log(
+            '[ElevationCapturePrompt] Number key pressed:',
+            keyNum,
+            'selecting:',
+            elementGroups[keyNum - 1]?.name
+          );
           e.preventDefault();
           e.stopPropagation();
           const group = elementGroups[keyNum - 1];
           setSelectedElementGroup(group);
           setStep('caption');
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          onCancel();
-        }
-      } else if (step === 'caption') {
-        // Allow Escape to work from anywhere
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          onCancel();
           return;
         }
+      }
 
-        // Only handle Enter from input field
-        if (e.key === 'Enter' && isInputField && selectedElementGroup) {
-          e.preventDefault();
-          e.stopPropagation();
-          onSave(selectedElementGroup.id, caption);
-        }
+      // Prevent most other keys from reaching PDFViewer (but allow typing in input)
+      if (!isInputField) {
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
 
     // Use capture phase to intercept events before they reach PDFViewer
     window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [step, elementGroups, selectedElementGroup, caption, onSave, onCancel]);
+    return () => {
+      console.log('[ElevationCapturePrompt] Unmounting - removing global keyboard listener');
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [step, elementGroups, selectedElementGroup, caption]);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center">
@@ -120,7 +166,10 @@ export function ElevationCapturePrompt({ onSave, onCancel }: ElevationCapturePro
                 ))}
               </div>
             )}
-            <button className="mt-4 w-full text-gray-600 hover:text-gray-900" onClick={onCancel}>
+            <button
+              className="mt-4 w-full text-gray-600 hover:text-gray-900"
+              onClick={() => onCancelRef.current()}
+            >
               Cancel (Esc)
             </button>
           </>
@@ -143,13 +192,22 @@ export function ElevationCapturePrompt({ onSave, onCancel }: ElevationCapturePro
             <div className="flex gap-2">
               <button
                 className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                onClick={() => onSave(selectedElementGroup.id, caption)}
+                onClick={() => {
+                  console.log(
+                    '[ElevationCapturePrompt] Save button clicked, calling onSave with:',
+                    {
+                      elementGroupId: selectedElementGroup.id,
+                      caption,
+                    }
+                  );
+                  onSaveRef.current(selectedElementGroup.id, caption);
+                }}
               >
                 Save (Enter)
               </button>
               <button
                 className="flex-1 border border-gray-300 px-4 py-2 rounded hover:bg-gray-50"
-                onClick={onCancel}
+                onClick={() => onCancelRef.current()}
               >
                 Cancel (Esc)
               </button>

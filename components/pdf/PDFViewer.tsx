@@ -169,6 +169,11 @@ export function PDFViewer({
     selection: null,
   });
 
+  // Keep a ref to the current state to avoid stale closures in keyboard handler
+  const stateRef = useRef(state);
+  // Update ref whenever state changes (must be done immediately, not in useEffect)
+  stateRef.current = state;
+
   // Core PDF state
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
@@ -689,54 +694,86 @@ export function PDFViewer({
   // Keyboard shortcuts
   useEffect(() => {
     const el = viewportRef.current;
-    if (!el) return;
+    if (!el) {
+      console.log('[PDFViewer] No viewport element, cannot attach keyboard listener');
+      return;
+    }
+    console.log('[PDFViewer] Attaching keyboard listener to viewport element');
     const onKey = (e: KeyboardEvent) => {
-      if (state.screenshotMode && state.selection && !e.repeat) {
+      // Get fresh state from stateRef to avoid stale closure
+      const currentState = stateRef.current;
+
+      console.log('[PDFViewer] Key pressed:', {
+        key: e.key,
+        screenshotMode: currentState.screenshotMode,
+        hasSelection: !!currentState.selection,
+        repeat: e.repeat,
+        showElevationPrompt,
+      });
+
+      // Handle screenshot mode shortcuts - check selection individually for each key
+      if (currentState.screenshotMode && !e.repeat) {
         const k = e.key.toLowerCase();
-        if (k === 'c') {
-          e.preventDefault();
-          capture('current', 'plan');
-          return;
-        }
-        if (k === 'e') {
-          e.preventDefault();
-          setShowElevationPrompt(true);
-          return;
-        }
-        if (k === 'b') {
-          e.preventDefault();
-          capture('bathroom', 'plan');
-          return;
-        }
-        if (k === 'd') {
-          e.preventDefault();
-          capture('door', 'plan');
-          return;
-        }
-        if (k === 'k') {
-          e.preventDefault();
-          capture('kitchen', 'plan');
-          return;
+        console.log('[PDFViewer] Key pressed in screenshot mode:', {
+          key: k,
+          hasSelection: !!currentState.selection,
+          showElevationPrompt,
+        });
+
+        // These shortcuts require a selection
+        if (currentState.selection) {
+          if (k === 'c') {
+            e.preventDefault();
+            capture('current', 'plan');
+            return;
+          }
+          if (k === 'e') {
+            console.log('[PDFViewer] E key pressed, opening elevation prompt');
+            e.preventDefault();
+            setShowElevationPrompt(true);
+            return;
+          }
+          if (k === 'b') {
+            e.preventDefault();
+            capture('bathroom', 'plan');
+            return;
+          }
+          if (k === 'd') {
+            e.preventDefault();
+            capture('door', 'plan');
+            return;
+          }
+          if (k === 'k') {
+            e.preventDefault();
+            capture('kitchen', 'plan');
+            return;
+          }
         }
       }
 
       if (e.key === 'ArrowLeft')
-        dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) });
+        dispatch({ type: 'SET_PAGE', payload: Math.max(1, currentState.pageNumber - 1) });
       if (e.key === 'ArrowRight')
         dispatch({
           type: 'SET_PAGE',
-          payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
+          payload: Math.min(
+            currentState.numPages || currentState.pageNumber,
+            currentState.pageNumber + 1
+          ),
         });
       if (e.key === '-' || e.key === '_') zoom('out');
       if (e.key === '=' || e.key === '+') zoom('in');
       if (e.key === '0') dispatch({ type: 'RESET_ZOOM' });
       if (!readOnly && e.key.toLowerCase() === 's') dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
-      if (!readOnly && e.key === 'Escape' && state.screenshotMode)
+      if (!readOnly && e.key === 'Escape' && currentState.screenshotMode)
         dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
     };
     el.addEventListener('keydown', onKey);
-    return () => el.removeEventListener('keydown', onKey);
-  }, [state.screenshotMode, state.selection, state.numPages, state.pageNumber, readOnly, zoom]);
+    return () => {
+      console.log('[PDFViewer] Removing keyboard listener from viewport element');
+      el.removeEventListener('keydown', onKey);
+    };
+  }, [state.screenshotMode, state.numPages, state.pageNumber, readOnly, zoom, showElevationPrompt]);
 
   // Mouse handlers for pan / selection
   const screenToContent = useCallback(
@@ -861,16 +898,42 @@ export function PDFViewer({
       elementGroupId?: string,
       caption?: string
     ) => {
+      console.log('[PDFViewer] capture() called:', {
+        target,
+        screenshotType,
+        elementGroupId,
+        caption,
+        readOnly,
+        hasPage: !!page,
+        capturingRef: capturingRef.current,
+        stateRef: stateRef.current,
+        selection: stateRef.current?.selection,
+      });
       try {
-        if (readOnly || !state.selection || !page) return;
-        if (capturingRef.current) return;
+        // Use stateRef for fresh state without causing dependency issues
+        const currentState = stateRef.current;
+        if (readOnly || !currentState.selection || !page) {
+          console.log('[PDFViewer] Early return from capture:', {
+            readOnly,
+            hasSelection: !!currentState.selection,
+            hasPage: !!page,
+          });
+          return;
+        }
+        if (capturingRef.current) {
+          console.log('[PDFViewer] Already capturing, skipping');
+          return;
+        }
         capturingRef.current = true;
 
-        const savedSelection = { ...state.selection };
+        const savedSelection = { ...currentState.selection };
 
         // Only clear selection for plan screenshots (not elevations)
         if (screenshotType === 'plan') {
+          console.log('[PDFViewer] Clearing selection (plan screenshot)');
           dispatch({ type: 'CLEAR_SELECTION' });
+        } else {
+          console.log('[PDFViewer] NOT clearing selection (elevation screenshot)');
         }
 
         let targetCheckId = activeCheck?.id;
@@ -994,13 +1057,13 @@ export function PDFViewer({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             check_id: screenshotType === 'plan' ? targetCheckId : null, // Only assign to check for plan screenshots
-            page_number: state.pageNumber,
+            page_number: currentState.pageNumber,
             crop_coordinates: {
               x: sx,
               y: sy,
               width: sw,
               height: sh,
-              zoom_level: state.transform.scale,
+              zoom_level: currentState.transform.scale,
             },
             screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
             thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
@@ -1011,6 +1074,7 @@ export function PDFViewer({
           }),
         });
 
+        console.log('[PDFViewer] Calling onScreenshotSaved callback');
         onScreenshotSaved?.();
       } catch (err) {
         alert('Failed to save screenshot.');
@@ -1018,13 +1082,16 @@ export function PDFViewer({
         console.error('[PDFViewer] capture failed:', err);
       } finally {
         capturingRef.current = false;
+        console.log(
+          '[PDFViewer] Capture complete. screenshotType:',
+          screenshotType,
+          'selection still exists:',
+          !!stateRef.current?.selection
+        );
       }
     },
     [
       readOnly,
-      state.selection,
-      state.pageNumber,
-      state.transform.scale,
       page,
       activeCheck,
       assessmentId,
@@ -1037,6 +1104,26 @@ export function PDFViewer({
       onScreenshotSaved,
     ]
   );
+
+  // Stable callbacks for ElevationCapturePrompt to prevent infinite re-renders
+  const handleElevationSave = useCallback(
+    (elementGroupId: string, caption: string) => {
+      console.log('[PDFViewer] ElevationCapturePrompt onSave called, closing modal');
+      setShowElevationPrompt(false);
+      // Capture as elevation, DO NOT clear selection (stay in screenshot mode)
+      capture('current', 'elevation', elementGroupId, caption);
+      // Refocus viewport to restore keyboard handling
+      setTimeout(() => viewportRef.current?.focus(), 0);
+    },
+    [capture]
+  );
+
+  const handleElevationCancel = useCallback(() => {
+    console.log('[PDFViewer] ElevationCapturePrompt onCancel called, closing modal');
+    setShowElevationPrompt(false);
+    // Refocus viewport to restore keyboard handling
+    setTimeout(() => viewportRef.current?.focus(), 0);
+  }, []);
 
   if (loadingUrl) {
     return <BlueprintLoader />;
@@ -1296,16 +1383,7 @@ export function PDFViewer({
       </div>
 
       {showElevationPrompt && (
-        <ElevationCapturePrompt
-          onSave={(elementGroupId, caption) => {
-            setShowElevationPrompt(false);
-            // Capture as elevation, DO NOT clear selection (stay in screenshot mode)
-            capture('current', 'elevation', elementGroupId, caption);
-          }}
-          onCancel={() => {
-            setShowElevationPrompt(false);
-          }}
-        />
+        <ElevationCapturePrompt onSave={handleElevationSave} onCancel={handleElevationCancel} />
       )}
     </div>
   );
