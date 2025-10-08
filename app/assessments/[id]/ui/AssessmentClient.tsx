@@ -680,6 +680,7 @@ export default function AssessmentClient({
               pdfUrl={assessment.pdf_url}
               projectName={assessment.projects?.name}
               assessmentId={assessment.id}
+              embedded={true}
             />
           ) : checkMode === 'gallery' ? (
             <AssessmentScreenshotGallery assessmentId={assessment.id} />

@@ -40,6 +40,7 @@ interface Props {
   pdfUrl?: string;
   projectName?: string;
   assessmentId?: string;
+  embedded?: boolean; // If true, only render sidebar (used in AssessmentClient)
 }
 
 export function ViolationsSummary({
@@ -50,6 +51,7 @@ export function ViolationsSummary({
   pdfUrl,
   projectName,
   assessmentId,
+  embedded = false,
 }: Props) {
   const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -269,31 +271,62 @@ export function ViolationsSummary({
     return 'text-yellow-700 bg-yellow-50 border-yellow-200';
   };
 
-  // If no PDF URL, show sidebar-only view
-  if (!pdfUrl) {
+  // If no PDF URL OR embedded mode, show sidebar-only view
+  if (!pdfUrl || embedded) {
     return (
       <div className="flex flex-col h-full">
         {/* Stats Header */}
         <div className="px-4 py-4 border-b bg-white space-y-3">
-        <div className={`px-4 py-3 rounded-lg border ${getSeverityColor()}`}>
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{getSeverityIcon()}</span>
-            <div className="flex-1">
-              <div className="font-semibold text-sm">
-                {violations.length === 0 ? (
-                  'No Violations Found'
-                ) : (
-                  <>
-                    {violations.length} Violation{violations.length === 1 ? '' : 's'} Found
-                  </>
+          <div className={`px-4 py-3 rounded-lg border ${getSeverityColor()}`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{getSeverityIcon()}</span>
+              <div className="flex-1">
+                <div className="font-semibold text-sm">
+                  {violations.length === 0 ? (
+                    'No Violations Found'
+                  ) : (
+                    <>
+                      {violations.length} Violation{violations.length === 1 ? '' : 's'} Found
+                    </>
+                  )}
+                </div>
+                <div className="text-xs mt-1">
+                  {stats.assessed} of {stats.totalSections} sections assessed ({stats.pct}%)
+                </div>
+                {stats.analyzing.length > 0 && (
+                  <div className="text-xs mt-1 flex items-center gap-1 text-blue-600">
+                    <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    {stats.analyzing.length} analyzing...
+                  </div>
                 )}
               </div>
-              <div className="text-xs mt-1">
-                {stats.assessed} of {stats.totalSections} sections assessed ({stats.pct}%)
-              </div>
-              {stats.analyzing.length > 0 && (
-                <div className="text-xs mt-1 flex items-center gap-1 text-blue-600">
-                  <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+            </div>
+          </div>
+
+          {/* Export Button */}
+          {pdfUrl && violations.length > 0 && (
+            <button
+              onClick={handleExportPDF}
+              disabled={exporting}
+              className="w-full px-4 py-3 rounded-lg border-2 border-blue-600 bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 hover:border-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {exporting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                     <circle
                       className="opacity-25"
                       cx="12"
@@ -308,23 +341,29 @@ export function ViolationsSummary({
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  {stats.analyzing.length} analyzing...
-                </div>
+                  Generating PDF...
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  Export Compliance Report
+                </>
               )}
-            </div>
-          </div>
-        </div>
+            </button>
+          )}
 
-        {/* Export Button */}
-        {pdfUrl && violations.length > 0 && (
-          <button
-            onClick={handleExportPDF}
-            disabled={exporting}
-            className="w-full px-4 py-3 rounded-lg border-2 border-blue-600 bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 hover:border-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {exporting ? (
-              <>
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+          {/* Currently Analyzing Checks */}
+          {stats.analyzing.length > 0 && (
+            <div className="px-4 py-3 rounded-lg border border-blue-200 bg-blue-50">
+              <div className="font-semibold text-xs text-blue-700 mb-2 flex items-center gap-2">
+                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
                   <circle
                     className="opacity-25"
                     cx="12"
@@ -339,154 +378,117 @@ export function ViolationsSummary({
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   />
                 </svg>
-                Generating PDF...
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                Export Compliance Report
-              </>
-            )}
-          </button>
-        )}
-
-        {/* Currently Analyzing Checks */}
-        {stats.analyzing.length > 0 && (
-          <div className="px-4 py-3 rounded-lg border border-blue-200 bg-blue-50">
-            <div className="font-semibold text-xs text-blue-700 mb-2 flex items-center gap-2">
-              <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              Currently Analyzing
-            </div>
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {stats.analyzing.map((check: any) => (
-                <button
-                  key={check.id}
-                  onClick={() => onCheckSelect(check.id)}
-                  className="w-full text-left text-xs text-blue-900 hover:text-blue-700 hover:underline"
-                >
-                  •{' '}
-                  {check.element_group_name
-                    ? `${check.element_group_name} - ${check.instance_label || `Instance ${check.instance_number}`}`
-                    : check.code_section_number || check.code_section_title}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Building Info Card */}
-        <div className="px-4 py-3 rounded-lg border border-gray-200 bg-gray-50">
-          <div className="font-semibold text-xs text-gray-700 mb-2">Building Parameters</div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            <div>
-              <span className="text-gray-600">Occupancy:</span>{' '}
-              <span className="font-medium text-gray-900">{buildingInfo.occupancy}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Stories:</span>{' '}
-              <span className="font-medium text-gray-900">{buildingInfo.stories ?? 'N/A'}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Size:</span>{' '}
-              <span className="font-medium text-gray-900">
-                {buildingInfo.size_sf ? `${buildingInfo.size_sf.toLocaleString()} sq ft` : 'N/A'}
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-600">Parking:</span>{' '}
-              <span className="font-medium text-gray-900">
-                {buildingInfo.has_parking === null
-                  ? 'N/A'
-                  : buildingInfo.has_parking
-                    ? 'Yes'
-                    : 'No'}
-              </span>
-            </div>
-            <div className="col-span-2">
-              <span className="text-gray-600">Work Type:</span>{' '}
-              <span className="font-medium text-gray-900">{buildingInfo.work_type}</span>
-            </div>
-            <div className="col-span-2">
-              <span className="text-gray-600">Facility:</span>{' '}
-              <span className="font-medium text-gray-900">{buildingInfo.facility_category}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Currently Analyzing */}
-        {stats.analyzing.length > 0 && (
-          <div className="px-4 py-3 rounded-lg border border-blue-200 bg-blue-50">
-            <div className="flex items-center gap-2 mb-2">
-              <svg className="animate-spin h-3 w-3 text-blue-600" fill="none" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              <div className="font-semibold text-xs text-blue-700">
-                Currently Analyzing ({stats.analyzing.length})
+                Currently Analyzing
+              </div>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {stats.analyzing.map((check: any) => (
+                  <button
+                    key={check.id}
+                    onClick={() => onCheckSelect(check.id)}
+                    className="w-full text-left text-xs text-blue-900 hover:text-blue-700 hover:underline"
+                  >
+                    •{' '}
+                    {check.element_group_name
+                      ? `${check.element_group_name} - ${check.instance_label || `Instance ${check.instance_number}`}`
+                      : check.code_section_number || check.code_section_title}
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {stats.analyzing.map((check: any) => (
-                <button
-                  key={check.id}
-                  onClick={() => onCheckSelect(check.id)}
-                  className="w-full text-left text-xs text-blue-900 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
-                >
-                  {check.check_type === 'element'
-                    ? `${check.element_group_name} - ${check.instance_label || `Instance ${check.instance_number}`}`
-                    : check.code_section_number || check.code_section_title}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Codebooks Card */}
-        {codebooks.length > 0 && (
+          {/* Building Info Card */}
           <div className="px-4 py-3 rounded-lg border border-gray-200 bg-gray-50">
-            <div className="font-semibold text-xs text-gray-700 mb-2">Selected Code Books</div>
-            <div className="space-y-1">
-              {codebooks.map(code => (
-                <div key={code.id} className="text-xs text-gray-900">
-                  • {code.name}
-                </div>
-              ))}
+            <div className="font-semibold text-xs text-gray-700 mb-2">Building Parameters</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <div>
+                <span className="text-gray-600">Occupancy:</span>{' '}
+                <span className="font-medium text-gray-900">{buildingInfo.occupancy}</span>
+              </div>
+              <div>
+                <span className="text-gray-600">Stories:</span>{' '}
+                <span className="font-medium text-gray-900">{buildingInfo.stories ?? 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-gray-600">Size:</span>{' '}
+                <span className="font-medium text-gray-900">
+                  {buildingInfo.size_sf ? `${buildingInfo.size_sf.toLocaleString()} sq ft` : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-600">Parking:</span>{' '}
+                <span className="font-medium text-gray-900">
+                  {buildingInfo.has_parking === null
+                    ? 'N/A'
+                    : buildingInfo.has_parking
+                      ? 'Yes'
+                      : 'No'}
+                </span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-gray-600">Work Type:</span>{' '}
+                <span className="font-medium text-gray-900">{buildingInfo.work_type}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-gray-600">Facility:</span>{' '}
+                <span className="font-medium text-gray-900">{buildingInfo.facility_category}</span>
+              </div>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Currently Analyzing */}
+          {stats.analyzing.length > 0 && (
+            <div className="px-4 py-3 rounded-lg border border-blue-200 bg-blue-50">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="animate-spin h-3 w-3 text-blue-600" fill="none" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                <div className="font-semibold text-xs text-blue-700">
+                  Currently Analyzing ({stats.analyzing.length})
+                </div>
+              </div>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {stats.analyzing.map((check: any) => (
+                  <button
+                    key={check.id}
+                    onClick={() => onCheckSelect(check.id)}
+                    className="w-full text-left text-xs text-blue-900 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
+                  >
+                    {check.check_type === 'element'
+                      ? `${check.element_group_name} - ${check.instance_label || `Instance ${check.instance_number}`}`
+                      : check.code_section_number || check.code_section_title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Codebooks Card */}
+          {codebooks.length > 0 && (
+            <div className="px-4 py-3 rounded-lg border border-gray-200 bg-gray-50">
+              <div className="font-semibold text-xs text-gray-700 mb-2">Selected Code Books</div>
+              <div className="space-y-1">
+                {codebooks.map(code => (
+                  <div key={code.id} className="text-xs text-gray-900">
+                    • {code.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Violations List */}
         <ViolationListSidebar
