@@ -67,6 +67,9 @@ export interface Screenshot {
   screenshot_url: string;
   thumbnail_url?: string;
   caption?: string;
+  screenshot_type: 'plan' | 'elevation'; // Type of screenshot
+  element_group_id?: string | null; // Reference to element_groups for elevations
+  extracted_text?: string | null; // Text extracted from PDF region for searchability
   created_at?: string;
   updated_at?: string;
 }
