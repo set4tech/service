@@ -712,7 +712,8 @@ export function PDFViewer({
       });
 
       // Handle screenshot mode shortcuts - check selection individually for each key
-      if (currentState.screenshotMode && !e.repeat) {
+      // Skip if elevation prompt is open (let the modal handle keyboard input)
+      if (currentState.screenshotMode && !e.repeat && !showElevationPrompt) {
         const k = e.key.toLowerCase();
         console.log('[PDFViewer] Key pressed in screenshot mode:', {
           key: k,
