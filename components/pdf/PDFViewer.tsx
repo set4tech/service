@@ -481,8 +481,14 @@ export function PDFViewer({
   }, [pdfDoc, state.pageNumber]);
 
   // Center the page initially when it first loads
+  // Track whether we've already centered this page to avoid re-centering on zoom
+  const pageCenteredRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!page || !viewportRef.current) return;
+
+    // Only center if we haven't centered this page yet
+    if (pageCenteredRef.current === state.pageNumber) return;
 
     const viewport = page.getViewport({ scale: 1 });
     const container = viewportRef.current;
@@ -506,8 +512,10 @@ export function PDFViewer({
         type: 'SET_TRANSFORM',
         payload: { tx: centeredTx, ty: centeredTy, scale: 1 },
       });
+      // Mark this page as centered
+      pageCenteredRef.current = state.pageNumber;
     }
-  }, [page, state.transform]);
+  }, [page, state.pageNumber]);
 
   // Extract optional content config and layers, restore visibility before first paint
   useEffect(() => {
