@@ -21,6 +21,13 @@ const TRANSFORM_SAVE_DEBOUNCE_MS = 500;
 // Stable empty function to avoid creating new functions on every render
 const NOOP = () => {};
 
+// In-memory cache for presigned URLs (valid for 50 minutes to be safe)
+const PRESIGN_CACHE = new Map<string, { url: string; expiresAt: number }>();
+const CACHE_DURATION_MS = 50 * 60 * 1000; // 50 minutes
+
+// In-flight request deduplication
+const PRESIGN_INFLIGHT = new Map<string, Promise<string>>();
+
 interface ViewerState {
   transform: { tx: number; ty: number; scale: number };
   pageNumber: number;
@@ -324,16 +331,50 @@ export function PDFViewer({
     (async () => {
       setLoadingUrl(true);
       try {
-        const presign = await fetch('/api/pdf/presign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pdfUrl }),
-        });
-        if (!presign.ok) throw new Error(`presign ${presign.status}`);
-        const { url } = await presign.json();
+        // Check cache first
+        const cached = PRESIGN_CACHE.get(pdfUrl);
+        if (cached && cached.expiresAt > Date.now()) {
+          console.log('[PDFViewer] Using cached presigned URL');
+          if (!cancelled) setPresignedUrl(cached.url);
+          if (!cancelled) setLoadingUrl(false);
+          return;
+        }
+
+        // Check if request is already in-flight
+        let inflightPromise = PRESIGN_INFLIGHT.get(pdfUrl);
+        if (!inflightPromise) {
+          console.log('[PDFViewer] Fetching new presigned URL');
+          inflightPromise = (async () => {
+            const presign = await fetch('/api/pdf/presign', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pdfUrl }),
+            });
+            if (!presign.ok) throw new Error(`presign ${presign.status}`);
+            const { url } = await presign.json();
+
+            // Cache the result
+            PRESIGN_CACHE.set(pdfUrl, {
+              url,
+              expiresAt: Date.now() + CACHE_DURATION_MS,
+            });
+
+            // Clear in-flight marker
+            PRESIGN_INFLIGHT.delete(pdfUrl);
+
+            return url;
+          })();
+
+          PRESIGN_INFLIGHT.set(pdfUrl, inflightPromise);
+        } else {
+          console.log('[PDFViewer] Waiting for in-flight presign request');
+        }
+
+        const url = await inflightPromise;
         if (!cancelled) setPresignedUrl(url);
       } catch {
         if (!cancelled) setPresignedUrl(null);
+        PRESIGN_INFLIGHT.delete(pdfUrl);
       } finally {
         if (!cancelled) setLoadingUrl(false);
       }
@@ -439,6 +480,35 @@ export function PDFViewer({
     };
   }, [pdfDoc, state.pageNumber]);
 
+  // Center the page initially when it first loads
+  useEffect(() => {
+    if (!page || !viewportRef.current) return;
+
+    const viewport = page.getViewport({ scale: 1 });
+    const container = viewportRef.current;
+
+    // Calculate what the centered position should be
+    const centeredTx = (container.clientWidth - viewport.width) / 2;
+    const centeredTy = (container.clientHeight - viewport.height) / 2;
+
+    // Check if current transform would put the page off-screen or is initial load
+    const isOffScreen =
+      state.transform.tx < -viewport.width ||
+      state.transform.tx > container.clientWidth ||
+      state.transform.ty < -viewport.height ||
+      state.transform.ty > container.clientHeight;
+
+    const isInitialLoad =
+      state.transform.tx === 0 && state.transform.ty === 0 && state.transform.scale === 1;
+
+    if (isInitialLoad || isOffScreen) {
+      dispatch({
+        type: 'SET_TRANSFORM',
+        payload: { tx: centeredTx, ty: centeredTy, scale: 1 },
+      });
+    }
+  }, [page, state.transform]);
+
   // Extract optional content config and layers, restore visibility before first paint
   useEffect(() => {
     if (!pdfDoc) return;
@@ -527,7 +597,9 @@ export function PDFViewer({
   // Core render function (single path)
   const renderPage = useCallback(async () => {
     const c = canvasRef.current;
-    if (!c || !page) return;
+    if (!c || !page) {
+      return;
+    }
 
     // Validate page object has required methods
     if (typeof page.getViewport !== 'function' || typeof page.render !== 'function') {
