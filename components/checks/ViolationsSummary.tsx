@@ -107,36 +107,36 @@ export function ViolationsSummary({
 
   // Transform checks to violations
   const violations = useMemo(() => {
+    console.log('[ViolationsSummary] Processing checks:', checks.length);
     const result: ViolationMarker[] = [];
 
     // Build list of all checks to process
-    // For element checks: use their child section checks (in instances array)
-    // For section checks: include the check itself + any cloned instances
+    // Include all checks (both element and section) plus any cloned instances
     const allChecks: any[] = [];
     checks.forEach(check => {
-      if (check.check_type === 'element') {
-        // For element checks, process their child section checks
-        if (check.instances && Array.isArray(check.instances)) {
-          allChecks.push(...check.instances);
-        }
-      } else {
-        // For section checks, include the check itself
-        allChecks.push(check);
-        // Also add any cloned instances
-        if (check.instances && Array.isArray(check.instances)) {
-          allChecks.push(...check.instances);
-        }
+      // Include the check itself
+      allChecks.push(check);
+      // Also add any cloned instances
+      if (check.instances && Array.isArray(check.instances)) {
+        allChecks.push(...check.instances);
       }
     });
 
     allChecks.forEach(check => {
-      // Skip excluded/not applicable checks
-      if (check.manual_override === 'not_applicable') {
+      // Skip excluded/not applicable checks (MATCH get-violations.ts logic)
+      if (
+        check.manual_override === 'not_applicable' ||
+        check.manual_override === 'excluded' ||
+        check.manual_override === 'compliant'
+      ) {
         return;
       }
 
       // For element checks, skip if element_sections is empty (all sections excluded)
-      if (check.check_type === 'element' && (!check.element_sections || check.element_sections.length === 0)) {
+      if (
+        check.check_type === 'element' &&
+        (!check.element_sections || check.element_sections.length === 0)
+      ) {
         return;
       }
 
@@ -148,6 +148,15 @@ export function ViolationsSummary({
         check.manual_override === 'needs_more_info' || check.latest_status === 'needs_more_info';
 
       if (!isNonCompliant && !needsMoreInfo) return;
+
+      console.log('[ViolationsSummary] Creating violation for check:', {
+        id: check.id,
+        code_section_number: check.code_section_number,
+        check_type: check.check_type,
+        instance_label: check.instance_label,
+        manual_override: check.manual_override,
+        latest_status: check.latest_status,
+      });
 
       // Parse violations from latest analysis
       let violationDetails: Array<{
@@ -189,55 +198,57 @@ export function ViolationsSummary({
         ];
       }
 
-      // Create violation marker for each screenshot
-      const screenshots = check.screenshots || [];
+      // Create ONE violation marker per check (using first screenshot only)
+      const screenshots = (check.screenshots || []).sort(
+        (a: any, b: any) => a.page_number - b.page_number
+      );
       if (screenshots.length > 0) {
-        screenshots.forEach((screenshot: any, idx: number) => {
-          const violationDetail = violationDetails[idx] || violationDetails[0];
+        // Use only the first screenshot (earliest page)
+        const screenshot = screenshots[0];
+        const violationDetail = violationDetails[0];
 
-          // Determine severity - use needs_more_info if that's the status, otherwise use violation detail
-          const checkStatus = check.manual_override || check.latest_status;
-          let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-          if (checkStatus === 'needs_more_info') {
-            severity = 'needs_more_info';
-          } else if (violationDetail?.severity) {
-            severity = violationDetail.severity;
-          }
+        // Determine severity - use needs_more_info if that's the status, otherwise use violation detail
+        const checkStatus = check.manual_override || check.latest_status;
+        let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
+        if (checkStatus === 'needs_more_info') {
+          severity = 'needs_more_info';
+        } else if (violationDetail?.severity) {
+          severity = violationDetail.severity;
+        }
 
-          const description =
-            violationDetail?.description ||
-            (checkStatus === 'needs_more_info'
-              ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
-              : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
+        const description =
+          violationDetail?.description ||
+          (checkStatus === 'needs_more_info'
+            ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
+            : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
 
-          if (screenshot.crop_coordinates && screenshot.page_number) {
-            result.push({
-              checkId: check.id,
-              checkName: check.check_name || check.code_section_title || '',
-              codeSectionKey: check.code_section_key || '',
-              codeSectionNumber: check.code_section_number || check.code_section_key || '',
-              pageNumber: screenshot.page_number,
-              bounds: {
-                x: screenshot.crop_coordinates.x,
-                y: screenshot.crop_coordinates.y,
-                width: screenshot.crop_coordinates.width,
-                height: screenshot.crop_coordinates.height,
-                zoom_level: screenshot.crop_coordinates.zoom_level || 1,
-              },
-              severity,
-              description,
-              screenshotUrl: screenshot.screenshot_url || '',
-              thumbnailUrl: screenshot.thumbnail_url || '',
-              screenshotId: screenshot.id,
-              reasoning,
-              recommendations,
-              confidence,
-              checkType: check.check_type,
-              elementGroupName: check.element_group_name,
-              instanceLabel: check.instance_label,
-            });
-          }
-        });
+        if (screenshot.crop_coordinates && screenshot.page_number) {
+          result.push({
+            checkId: check.id,
+            checkName: check.check_name || check.code_section_title || '',
+            codeSectionKey: check.code_section_key || '',
+            codeSectionNumber: check.code_section_number || check.code_section_key || '',
+            pageNumber: screenshot.page_number,
+            bounds: {
+              x: screenshot.crop_coordinates.x,
+              y: screenshot.crop_coordinates.y,
+              width: screenshot.crop_coordinates.width,
+              height: screenshot.crop_coordinates.height,
+              zoom_level: screenshot.crop_coordinates.zoom_level || 1,
+            },
+            severity,
+            description,
+            screenshotUrl: screenshot.screenshot_url || '',
+            thumbnailUrl: screenshot.thumbnail_url || '',
+            screenshotId: screenshot.id,
+            reasoning,
+            recommendations,
+            confidence,
+            checkType: check.check_type,
+            elementGroupName: check.element_group_name,
+            instanceLabel: check.instance_label,
+          });
+        }
       } else {
         // No screenshots - create generic violation
         const violationDetail = violationDetails[0];
@@ -279,6 +290,7 @@ export function ViolationsSummary({
       }
     });
 
+    console.log('[ViolationsSummary] Total violations created:', result.length);
     return result;
   }, [checks]);
 
