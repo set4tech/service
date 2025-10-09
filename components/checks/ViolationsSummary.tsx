@@ -35,6 +35,7 @@ interface Codebook {
 interface Props {
   checks: any[];
   onCheckSelect: (checkId: string, sectionKey?: string) => void;
+  onViolationSelect?: (violation: ViolationMarker | null) => void; // Notify parent of selected violation
   buildingInfo: BuildingInfo;
   codebooks: Codebook[];
   pdfUrl?: string;
@@ -46,6 +47,7 @@ interface Props {
 export function ViolationsSummary({
   checks,
   onCheckSelect,
+  onViolationSelect,
   buildingInfo: _buildingInfo,
   codebooks: _codebooks,
   pdfUrl,
@@ -107,7 +109,6 @@ export function ViolationsSummary({
 
   // Transform checks to violations
   const violations = useMemo(() => {
-    console.log('[ViolationsSummary] Processing checks:', checks.length);
     const result: ViolationMarker[] = [];
 
     // Build list of all checks to process
@@ -148,15 +149,6 @@ export function ViolationsSummary({
         check.manual_override === 'needs_more_info' || check.latest_status === 'needs_more_info';
 
       if (!isNonCompliant && !needsMoreInfo) return;
-
-      console.log('[ViolationsSummary] Creating violation for check:', {
-        id: check.id,
-        code_section_number: check.code_section_number,
-        check_type: check.check_type,
-        instance_label: check.instance_label,
-        manual_override: check.manual_override,
-        latest_status: check.latest_status,
-      });
 
       // Parse violations from latest analysis
       let violationDetails: Array<{
@@ -290,7 +282,6 @@ export function ViolationsSummary({
       }
     });
 
-    console.log('[ViolationsSummary] Total violations created:', result.length);
     return result;
   }, [checks]);
 
@@ -298,8 +289,14 @@ export function ViolationsSummary({
     console.log('[ViolationsSummary] handleViolationClick:', violation);
     setSelectedViolation(violation);
     setCurrentPage(violation.pageNumber);
+
     // Pass both checkId and sectionKey to filter to specific section
     onCheckSelect(violation.checkId, violation.codeSectionKey);
+
+    // Notify parent of selected violation (for ViolationDetailPanel)
+    if (onViolationSelect) {
+      onViolationSelect(violation);
+    }
 
     // Trigger highlight pulse
     const highlightId = `${violation.checkId}-${violation.screenshotId}`;

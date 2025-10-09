@@ -7,7 +7,9 @@ import clsx from 'clsx';
 import { CheckList } from '@/components/checks/CheckList';
 import { CodeDetailPanel } from '@/components/checks/CodeDetailPanel';
 import { ViolationsSummary } from '@/components/checks/ViolationsSummary';
+import { ViolationDetailPanel } from '@/components/checks/ViolationDetailPanel';
 import { AssessmentScreenshotGallery } from '@/components/screenshots/AssessmentScreenshotGallery';
+import type { ViolationMarker } from '@/lib/reports/get-violations';
 
 // Load PDF viewer only on client side - removes need for wrapper component
 const PDFViewer = dynamic(
@@ -115,6 +117,7 @@ export default function AssessmentClient({
   const [activeCheckId, setActiveCheckId] = useState<string | null>(checks[0]?.id || null);
   const [filterToSectionKey, setFilterToSectionKey] = useState<string | null>(null);
   const [showDetailPanel, setShowDetailPanel] = useState(false);
+  const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
   const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
   const [detailPanelWidth, setDetailPanelWidth] = useState(400);
 
@@ -684,6 +687,10 @@ export default function AssessmentClient({
             <ViolationsSummary
               checks={checks}
               onCheckSelect={handleCheckSelect}
+              onViolationSelect={violation => {
+                setSelectedViolation(violation);
+                setShowDetailPanel(!!violation);
+              }}
               buildingInfo={buildingInfo}
               codebooks={codebooks}
               pdfUrl={assessment.pdf_url}
@@ -715,7 +722,7 @@ export default function AssessmentClient({
         style={{ touchAction: 'none' }}
       />
 
-      {/* Code Detail Panel */}
+      {/* Detail Panel (Violation or Code) */}
       <div
         ref={detailPanelRef}
         className="flex-shrink-0 h-screen overflow-hidden transition-all duration-300 ease-in-out"
@@ -725,68 +732,94 @@ export default function AssessmentClient({
         }}
       >
         {showDetailPanel && (
-          <CodeDetailPanel
-            checkId={activeCheck?.id || null}
-            sectionKey={activeCheck?.code_section_key || null}
-            filterToSectionKey={filterToSectionKey}
-            activeCheck={activeCheck}
-            screenshotsRefreshKey={screenshotsChanged}
-            onClose={() => setShowDetailPanel(false)}
-            onMoveToNextCheck={handleMoveToNextCheck}
-            onCheckUpdate={async () => {
-              if (activeCheck?.id) {
-                try {
-                  const res = await fetch(`/api/checks/${activeCheck.id}`);
-                  if (res.ok) {
-                    const { check: updatedCheck } = await res.json();
-                    setChecks(prev =>
-                      prev.map(c => {
-                        // Update top-level check if it matches
-                        if (c.id === updatedCheck.id) {
-                          return { ...c, ...updatedCheck, instances: c.instances };
-                        }
-                        // Update instance within check if it matches
-                        if (c.instances?.length > 0) {
-                          const updatedInstances = c.instances.map((instance: any) =>
-                            instance.id === updatedCheck.id
-                              ? { ...instance, ...updatedCheck }
-                              : instance
-                          );
-                          if (updatedInstances !== c.instances) {
-                            return { ...c, instances: updatedInstances };
-                          }
-                        }
-                        return c;
-                      })
-                    );
+          <>
+            {/* Show ViolationDetailPanel in summary mode with selected violation */}
+            {checkMode === 'summary' && selectedViolation ? (
+              <ViolationDetailPanel
+                violation={selectedViolation}
+                onClose={() => {
+                  setShowDetailPanel(false);
+                  setSelectedViolation(null);
+                }}
+                onCheckUpdate={async () => {
+                  // Refetch all checks to refresh violations list
+                  try {
+                    const res = await fetch(`/api/assessments/${assessment.id}/checks`);
+                    if (res.ok) {
+                      const updatedChecks = await res.json();
+                      setChecks(updatedChecks);
+                    }
+                  } catch (error) {
+                    console.error('Failed to refetch checks:', error);
                   }
-                } catch (error) {
-                  console.error('Failed to refetch check:', error);
-                }
-              }
-            }}
-            onChecksRefresh={async () => {
-              // Refetch all checks (used after exclusion)
-              try {
-                const res = await fetch(`/api/assessments/${assessment.id}/checks`);
-                if (res.ok) {
-                  const updatedChecks = await res.json();
-                  setChecks(updatedChecks);
-                  // Close the detail panel if the active check was deleted
-                  if (!updatedChecks.find((c: any) => c.id === activeCheck?.id)) {
-                    setShowDetailPanel(false);
-                    setActiveCheckId(null);
+                }}
+              />
+            ) : (
+              /* Show CodeDetailPanel in section/element modes */
+              <CodeDetailPanel
+                checkId={activeCheck?.id || null}
+                sectionKey={activeCheck?.code_section_key || null}
+                filterToSectionKey={filterToSectionKey}
+                activeCheck={activeCheck}
+                screenshotsRefreshKey={screenshotsChanged}
+                onClose={() => setShowDetailPanel(false)}
+                onMoveToNextCheck={handleMoveToNextCheck}
+                onCheckUpdate={async () => {
+                  if (activeCheck?.id) {
+                    try {
+                      const res = await fetch(`/api/checks/${activeCheck.id}`);
+                      if (res.ok) {
+                        const { check: updatedCheck } = await res.json();
+                        setChecks(prev =>
+                          prev.map(c => {
+                            // Update top-level check if it matches
+                            if (c.id === updatedCheck.id) {
+                              return { ...c, ...updatedCheck, instances: c.instances };
+                            }
+                            // Update instance within check if it matches
+                            if (c.instances?.length > 0) {
+                              const updatedInstances = c.instances.map((instance: any) =>
+                                instance.id === updatedCheck.id
+                                  ? { ...instance, ...updatedCheck }
+                                  : instance
+                              );
+                              if (updatedInstances !== c.instances) {
+                                return { ...c, instances: updatedInstances };
+                              }
+                            }
+                            return c;
+                          })
+                        );
+                      }
+                    } catch (error) {
+                      console.error('Failed to refetch check:', error);
+                    }
                   }
-                }
-              } catch (error) {
-                console.error('Failed to refetch checks:', error);
-              }
-            }}
-            onScreenshotAssigned={() => {
-              // Increment refresh key to trigger ScreenshotGallery re-fetch
-              setScreenshotsChanged(prev => prev + 1);
-            }}
-          />
+                }}
+                onChecksRefresh={async () => {
+                  // Refetch all checks (used after exclusion)
+                  try {
+                    const res = await fetch(`/api/assessments/${assessment.id}/checks`);
+                    if (res.ok) {
+                      const updatedChecks = await res.json();
+                      setChecks(updatedChecks);
+                      // Close the detail panel if the active check was deleted
+                      if (!updatedChecks.find((c: any) => c.id === activeCheck?.id)) {
+                        setShowDetailPanel(false);
+                        setActiveCheckId(null);
+                      }
+                    }
+                  } catch (error) {
+                    console.error('Failed to refetch checks:', error);
+                  }
+                }}
+                onScreenshotAssigned={() => {
+                  // Increment refresh key to trigger ScreenshotGallery re-fetch
+                  setScreenshotsChanged(prev => prev + 1);
+                }}
+              />
+            )}
+          </>
         )}
       </div>
 
