@@ -18,6 +18,9 @@ export interface ViolationMarker {
   sourceUrl?: string;
   sourceLabel?: string;
   humanReadableTitle?: string; // AI-generated natural language title (e.g., "Latchside clearance too small")
+  checkType?: 'section' | 'element'; // Type of check
+  elementGroupName?: string; // Element group name (e.g., "Doors", "Ramps")
+  instanceLabel?: string; // Instance label (e.g., "Door 1", "Ramp 2")
 }
 
 export interface CodeInfo {
@@ -82,6 +85,9 @@ export async function getProjectViolations(
       code_section_number,
       manual_override,
       human_readable_title,
+      check_type,
+      element_group_name,
+      instance_label,
       latest_analysis_runs(
         id,
         compliance_status,
@@ -426,6 +432,9 @@ export async function getProjectViolations(
             sourceUrl,
             sourceLabel,
             humanReadableTitle: check.human_readable_title,
+            checkType: check.check_type,
+            elementGroupName: check.element_group_name,
+            instanceLabel: check.instance_label,
           });
         }
       });
@@ -466,6 +475,9 @@ export async function getProjectViolations(
         sourceUrl,
         sourceLabel,
         humanReadableTitle: check.human_readable_title,
+        checkType: check.check_type,
+        elementGroupName: check.element_group_name,
+        instanceLabel: check.instance_label,
       });
     }
   }
