@@ -77,7 +77,7 @@ export async function GET() {
         // Check if manual override exists - if so, skip this job
         const { data: checkData } = await supabase
           .from('checks')
-          .select('manual_override, status')
+          .select('manual_override, status, check_type')
           .eq('id', checkId)
           .single();
 
@@ -263,6 +263,77 @@ Return your response as a JSON object with this exact structure:
           execution_time_ms: executionTimeMs,
         });
         if (error) throw new Error(error.message);
+
+        // Also create analysis_runs for child section checks (for element checks)
+        // This maintains consistency between parent section_results and child analysis_runs
+        if (checkData?.check_type === 'element' && sectionResults.length > 0) {
+          // Fetch child checks for this parent element check
+          const { data: childChecks } = await supabase
+            .from('checks')
+            .select('id, code_section_number')
+            .eq('parent_check_id', checkId);
+
+          if (childChecks && childChecks.length > 0) {
+            console.log(
+              `[Queue] Creating ${childChecks.length} child analysis_runs for element check ${checkId}`
+            );
+
+            // Create analysis_run for each child check based on matching section result
+            const childAnalysisRuns = childChecks
+              .map(childCheck => {
+                // Find the section result that matches this child's code_section_number
+                // Note: section_number might have title appended (e.g., "11B-404.2 - Vision lights")
+                const sectionResult = sectionResults.find((sr: any) => {
+                  const sectionNum = sr.section_number || '';
+                  // Extract just the number part before " - "
+                  const numPart = sectionNum.split(' - ')[0];
+                  return numPart === childCheck.code_section_number;
+                });
+
+                if (!sectionResult) {
+                  console.warn(
+                    `[Queue] No section result found for child check ${childCheck.id} (section ${childCheck.code_section_number})`
+                  );
+                  return null;
+                }
+
+                return {
+                  check_id: childCheck.id,
+                  run_number: runNumber,
+                  batch_group_id: batchGroupId,
+                  batch_number: batchNum,
+                  total_batches: totalBatches,
+                  section_keys_in_batch: [sectionResult.section_key],
+                  section_results: [sectionResult], // Array with single element
+                  compliance_status: sectionResult.compliance_status,
+                  confidence: sectionResult.confidence,
+                  ai_provider: provider,
+                  ai_model: model,
+                  ai_reasoning: sectionResult.reasoning || null,
+                  violations: sectionResult.violations || [],
+                  compliant_aspects: [],
+                  recommendations: sectionResult.recommendations || [],
+                  additional_evidence_needed: [],
+                  raw_ai_response: JSON.stringify(sectionResult),
+                  execution_time_ms: executionTimeMs,
+                };
+              })
+              .filter(Boolean); // Remove nulls
+
+            if (childAnalysisRuns.length > 0) {
+              const { error: childError } = await supabase
+                .from('analysis_runs')
+                .insert(childAnalysisRuns);
+
+              if (childError) {
+                console.error(`[Queue] Failed to create child analysis_runs:`, childError.message);
+                // Don't throw - parent analysis succeeded, this is supplementary
+              } else {
+                console.log(`[Queue] Created ${childAnalysisRuns.length} child analysis_runs`);
+              }
+            }
+          }
+        }
 
         // Check if all batches are complete
         const { data: allRuns } = await supabase
