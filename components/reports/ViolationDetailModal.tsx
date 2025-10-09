@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ViolationMarker } from '@/lib/reports/get-violations';
 import { CodeSection } from '@/types/analysis';
 import { SectionContentDisplay } from '@/components/checks/panels/SectionContentDisplay';
@@ -15,6 +15,10 @@ interface Props {
   currentIndex: number;
 }
 
+// Cache for section data and screenshot URLs
+const sectionCache = new Map<string, CodeSection>();
+const screenshotUrlCache = new Map<string, string>();
+
 export function ViolationDetailModal({
   violation,
   onClose,
@@ -28,10 +32,37 @@ export function ViolationDetailModal({
   const [section, setSection] = useState<CodeSection | null>(null);
   const [sectionLoading, setSectionLoading] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const imageLoadedRef = useRef<Set<string>>(new Set());
+
+  // Reset state when violation changes
+  useEffect(() => {
+    // Check if image was already loaded before
+    const imageKey = violation.screenshotUrl || 'no-image';
+    if (imageLoadedRef.current.has(imageKey)) {
+      setImageLoaded(true);
+    } else {
+      setImageLoaded(false);
+    }
+
+    setSectionLoading(true);
+    setLoading(true);
+  }, [violation.checkId, violation.screenshotUrl]);
 
   // Fetch section content
   useEffect(() => {
-    if (!violation.codeSectionKey) return;
+    if (!violation.codeSectionKey) {
+      setSectionLoading(false);
+      return;
+    }
+
+    // Check cache first
+    const cached = sectionCache.get(violation.codeSectionKey);
+    if (cached) {
+      setSection(cached);
+      setSectionLoading(false);
+      return;
+    }
 
     const fetchSection = async () => {
       setSectionLoading(true);
@@ -46,6 +77,8 @@ export function ViolationDetailModal({
         if (res.ok) {
           const data = await res.json();
           setSection(data);
+          // Cache the result
+          sectionCache.set(violation.codeSectionKey, data);
         } else {
           setSectionError('Failed to load section details');
         }
@@ -62,7 +95,20 @@ export function ViolationDetailModal({
 
   // Fetch presigned URL for screenshot
   useEffect(() => {
-    if (!violation.screenshotUrl) return;
+    if (!violation.screenshotUrl) {
+      setImageLoaded(true); // No image to load
+      setLoading(false);
+      imageLoadedRef.current.add('no-image');
+      return;
+    }
+
+    // Check cache first
+    const cachedUrl = screenshotUrlCache.get(violation.screenshotUrl);
+    if (cachedUrl) {
+      setScreenshotUrl(cachedUrl);
+      setLoading(false);
+      return;
+    }
 
     const fetchScreenshot = async () => {
       setLoading(true);
@@ -76,9 +122,14 @@ export function ViolationDetailModal({
         if (res.ok) {
           const data = await res.json();
           setScreenshotUrl(data.screenshot);
+          // Cache the presigned URL
+          screenshotUrlCache.set(violation.screenshotUrl, data.screenshot);
+        } else {
+          setImageLoaded(true); // Don't block on error
         }
       } catch (err) {
         console.error('Failed to fetch screenshot:', err);
+        setImageLoaded(true); // Don't block on error
       } finally {
         setLoading(false);
       }
@@ -113,6 +164,9 @@ export function ViolationDetailModal({
         return 'bg-gray-100 text-gray-800 border-gray-300';
     }
   };
+
+  // Check if everything is loaded (including image)
+  const isFullyLoaded = !sectionLoading && !loading && imageLoaded;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -153,115 +207,140 @@ export function ViolationDetailModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Code Section */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-medium text-ink-700">Code Section</h3>
-              {violation.sourceUrl && (
-                <a
-                  href={violation.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
-                >
-                  See Original Code
-                  <svg
-                    width="12"
-                    height="12"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    className="flex-shrink-0"
+          {/* Loading spinner overlay */}
+          {!isFullyLoaded && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+                <p className="text-sm text-gray-600">Loading violation details...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Content (rendered but hidden until loaded) */}
+          <div className={isFullyLoaded ? 'animate-fadeIn' : 'hidden'}>
+            <style jsx>{`
+              @keyframes fadeIn {
+                from {
+                  opacity: 0;
+                  transform: translateY(4px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
+                }
+              }
+              .animate-fadeIn {
+                animation: fadeIn 0.3s ease-out;
+              }
+            `}</style>
+            {/* Code Section */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-medium text-ink-700">Code Section</h3>
+                {violation.sourceUrl && (
+                  <a
+                    href={violation.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                </a>
+                    See Original Code
+                    <svg
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      className="flex-shrink-0"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </a>
+                )}
+              </div>
+              <div className="text-lg font-mono text-ink-900">{violation.codeSectionNumber}</div>
+              {violation.checkName && (
+                <div className="text-sm text-ink-500 mt-1">{violation.checkName}</div>
               )}
             </div>
-            <div className="text-lg font-mono text-ink-900">{violation.codeSectionNumber}</div>
-            {violation.checkName && (
-              <div className="text-sm text-ink-500 mt-1">{violation.checkName}</div>
-            )}
-          </div>
 
-          {/* Code Section Content */}
-          <div className="mb-6 pb-6 border-b border-gray-200">
-            <SectionContentDisplay
-              section={section}
-              loading={sectionLoading}
-              error={sectionError}
-              isElementCheck={false}
-              sections={section ? [section] : []}
-              check={null}
-            />
-          </div>
+            {/* Code Section Content */}
+            <div className="mb-6 pb-6 border-b border-gray-200">
+              <SectionContentDisplay
+                section={section}
+                loading={false}
+                error={sectionError}
+                isElementCheck={false}
+                sections={section ? [section] : []}
+                check={null}
+              />
+            </div>
 
-          {/* Screenshot */}
-          {violation.screenshotUrl && (
-            <div className="mb-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Evidence</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                {loading ? (
-                  <div className="h-64 flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-                  </div>
-                ) : screenshotUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+            {/* Screenshot */}
+            {violation.screenshotUrl && screenshotUrl && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Evidence</h3>
+                <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={screenshotUrl}
                     alt="Violation evidence"
                     className="w-full h-auto"
-                    loading="lazy"
+                    loading="eager"
+                    onLoad={() => {
+                      setImageLoaded(true);
+                      if (violation.screenshotUrl) {
+                        imageLoadedRef.current.add(violation.screenshotUrl);
+                      }
+                    }}
+                    onError={() => setImageLoaded(true)}
                   />
-                ) : (
-                  <div className="h-64 flex items-center justify-center text-gray-400">
-                    Failed to load screenshot
-                  </div>
-                )}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Page {violation.pageNumber}</div>
               </div>
-              <div className="text-xs text-gray-500 mt-1">Page {violation.pageNumber}</div>
-            </div>
-          )}
+            )}
 
-          {/* Reasoning */}
-          {violation.reasoning && (
-            <div className="mb-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Analysis</h3>
-              <div className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3 whitespace-pre-wrap">
-                {violation.reasoning}
+            {/* Reasoning */}
+            {violation.reasoning && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Analysis</h3>
+                <div className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3 whitespace-pre-wrap">
+                  {violation.reasoning}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Recommendations */}
-          {violation.recommendations && violation.recommendations.length > 0 && (
-            <div className="mb-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Recommendations</h3>
-              <ul className="space-y-2">
-                {violation.recommendations.map((rec, idx) => (
-                  <li
-                    key={idx}
-                    className="text-sm text-gray-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2"
-                  >
-                    <span className="text-blue-600 font-bold mt-0.5">•</span>
-                    <span>{rec}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+            {/* Recommendations */}
+            {violation.recommendations && violation.recommendations.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Recommendations</h3>
+                <ul className="space-y-2">
+                  {violation.recommendations.map((rec, idx) => (
+                    <li
+                      key={idx}
+                      className="text-sm text-gray-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2"
+                    >
+                      <span className="text-blue-600 font-bold mt-0.5">•</span>
+                      <span>{rec}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          {/* Confidence */}
-          {violation.confidence && (
-            <div className="text-xs text-gray-500 mt-4 text-center">
-              Analysis confidence: {violation.confidence}
-            </div>
-          )}
+            {/* Confidence */}
+            {violation.confidence && (
+              <div className="text-xs text-gray-500 mt-4 text-center">
+                Analysis confidence: {violation.confidence}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer with Navigation */}
