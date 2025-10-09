@@ -1,5 +1,8 @@
+import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { getProjectViolations } from '@/lib/reports/get-violations';
 import { CustomerReportViewer } from '@/components/reports/CustomerReportViewer';
+import { isAuthenticatedForReport } from '@/lib/auth';
 
 // Force dynamic rendering - don't use static cache
 export const dynamic = 'force-dynamic';
@@ -7,6 +10,27 @@ export const revalidate = 0;
 
 export default async function ProjectReportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // Skip all auth checks in development
+  const isLocalDev = process.env.VERCEL_ENV !== 'production';
+
+  console.log('[Report] VERCEL_ENV:', process.env.VERCEL_ENV);
+  console.log('[Report] Skip auth?', isLocalDev);
+
+  if (!isLocalDev) {
+    // In production, check if user is a Vercel team member
+    const cookieStore = await cookies();
+    const isVercelTeamMember = cookieStore.get('_vercel_jwt') || cookieStore.get('_vercel_no_index');
+
+    // If not a team member, check for password authentication
+    if (!isVercelTeamMember) {
+      const isAuthenticated = await isAuthenticatedForReport(id);
+      if (!isAuthenticated) {
+        redirect(`/projects/${id}/report/login`);
+      }
+    }
+  }
+
   const data = await getProjectViolations(id);
 
   if (!data) {

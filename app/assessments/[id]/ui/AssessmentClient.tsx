@@ -113,6 +113,7 @@ export default function AssessmentClient({
   }, [checks]);
   const [isSeeding, setIsSeeding] = useState(false);
   const [activeCheckId, setActiveCheckId] = useState<string | null>(checks[0]?.id || null);
+  const [filterToSectionKey, setFilterToSectionKey] = useState<string | null>(null);
   const [showDetailPanel, setShowDetailPanel] = useState(false);
   const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
   const [detailPanelWidth, setDetailPanelWidth] = useState(400);
@@ -144,9 +145,15 @@ export default function AssessmentClient({
     startWidth: 0,
   });
 
-  const handleCheckSelect = (checkId: string) => {
+  const handleCheckSelect = (checkId: string, sectionKey?: string) => {
     setActiveCheckId(checkId);
     setShowDetailPanel(true);
+    // Store sectionKey if provided (for filtering in CodeDetailPanel)
+    if (sectionKey) {
+      setFilterToSectionKey(sectionKey);
+    } else {
+      setFilterToSectionKey(null);
+    }
   };
 
   const handleMoveToNextCheck = () => {
@@ -721,6 +728,7 @@ export default function AssessmentClient({
           <CodeDetailPanel
             checkId={activeCheck?.id || null}
             sectionKey={activeCheck?.code_section_key || null}
+            filterToSectionKey={filterToSectionKey}
             activeCheck={activeCheck}
             screenshotsRefreshKey={screenshotsChanged}
             onClose={() => setShowDetailPanel(false)}

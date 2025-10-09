@@ -10,6 +10,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = supabaseAdmin();
 
+  const startTime = Date.now();
   const [{ data: assessment }, { data: allChecks, error: checksError }] = await Promise.all([
     supabase
       .from('assessments')
@@ -22,6 +23,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       .eq('assessment_id', id)
       .limit(5000), // Increase limit to handle large assessments
   ]);
+  console.log(`[Perf] Assessment + checks query: ${Date.now() - startTime}ms`);
 
   if (checksError) {
     console.error('[Server] ERROR fetching checks:', checksError);
@@ -46,6 +48,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const checkIds = filteredChecks.map(c => c.id);
 
   // Fetch analysis
+  const t1 = Date.now();
   const { data: latestAnalysis } =
     checkIds.length > 0
       ? await supabase
@@ -55,6 +58,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
           )
           .in('check_id', checkIds)
       : { data: [] };
+  console.log(`[Perf] Latest analysis query: ${Date.now() - t1}ms`);
 
   // Fetch screenshots - use alternative approach via join to avoid large IN clause
   let allScreenshots: any[] = [];
@@ -63,6 +67,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   if (checkIds.length > 0) {
     try {
       // Fetch all screenshots for this assessment via junction table (avoids large IN clause)
+      const t2 = Date.now();
       const result = await supabase
         .from('screenshots')
         .select(
@@ -77,14 +82,17 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
         )
         .eq('screenshot_check_assignments.checks.assessment_id', id)
         .order('created_at');
+      console.log(`[Perf] Screenshots query: ${Date.now() - t2}ms`);
 
       // Flatten the nested structure
+      const t3 = Date.now();
       allScreenshots = (result.data || []).map((item: any) => ({
         ...item,
         check_id: item.screenshot_check_assignments?.[0]?.check_id,
         is_original: item.screenshot_check_assignments?.[0]?.is_original,
         screenshot_check_assignments: undefined, // Remove nested structure
       }));
+      console.log(`[Perf] Screenshots flatten: ${Date.now() - t3}ms`);
       screenshotsError = result.error;
       console.warn(
         `[Server] Screenshots query returned: ${allScreenshots.length} rows, error: ${screenshotsError ? 'YES' : 'NO'}`
@@ -121,6 +129,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   });
 
   // Group checks by parent - instances will be nested under their parent
+  const t4 = Date.now();
   const checks = filteredChecks.reduce((acc: any[], check: any) => {
     // Skip element templates (instance_number === 0)
     if (check.check_type === 'element' && check.instance_number === 0) {
@@ -139,10 +148,12 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     const isTopLevel = check.check_type === 'element' || !check.parent_check_id;
 
     if (isTopLevel) {
-      // This is a parent check - find all its instances (only for section mode)
+      // This is a parent check - find all its instances
+      // For element checks: find child section checks
+      // For section checks: find cloned instances
       const rawInstances =
         check.check_type === 'element'
-          ? [] // Element checks don't use nested instances anymore
+          ? filteredChecks.filter((c: any) => c.parent_check_id === check.id && c.check_type === 'section')
           : filteredChecks.filter((c: any) => c.parent_check_id === check.id);
 
       // Add analysis data and screenshots to instances
@@ -192,6 +203,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     }
     return acc;
   }, []);
+  console.log(`[Perf] Process checks: ${Date.now() - t4}ms`);
 
   if (!assessment) {
     return <div className="p-6">Assessment not found.</div>;
@@ -199,10 +211,12 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   // Fetch codebook details for selected codes
   const selectedCodeIds = (assessment.projects as any)?.selected_code_ids || [];
+  const t5 = Date.now();
   const { data: codes } = await supabase
     .from('codes')
     .select('id, title')
     .in('id', selectedCodeIds);
+  console.log(`[Perf] Codes query: ${Date.now() - t5}ms`);
 
   const codebooks = codes?.map(c => ({ id: c.id, name: c.title })) || [];
 
@@ -228,6 +242,8 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const totalChecks = checks?.length || 0;
   const completed = (checks || []).filter(c => c.latest_status || c.status === 'completed').length;
   const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
+
+  console.log(`[Perf] TOTAL page load time: ${Date.now() - startTime}ms`);
 
   return (
     <AssessmentClient

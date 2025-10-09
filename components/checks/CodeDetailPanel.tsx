@@ -19,6 +19,7 @@ interface Check {
 interface CodeDetailPanelProps {
   checkId: string | null;
   sectionKey: string | null;
+  filterToSectionKey?: string | null; // If provided, show only this section in element checks
   onClose: () => void;
   onMoveToNextCheck?: () => void; // Callback to move to next check in list
   onCheckUpdate?: () => void; // Callback when check is updated
@@ -31,6 +32,7 @@ interface CodeDetailPanelProps {
 export function CodeDetailPanel({
   checkId,
   sectionKey,
+  filterToSectionKey,
   onClose,
   onMoveToNextCheck,
   onCheckUpdate,
@@ -48,6 +50,8 @@ export function CodeDetailPanel({
   // For element checks: child section checks
   const [childChecks, setChildChecks] = useState<any[]>([]);
   const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
+  // Track if we should show only a single section (from violations summary) or all sections
+  const [showSingleSectionOnly, setShowSingleSectionOnly] = useState<boolean>(false);
 
   // Computed: current section to display
   const section = sections[activeSectionIndex] || null;
@@ -150,6 +154,7 @@ export function CodeDetailPanel({
     // Reset child check state when loading a new check to prevent stale data
     setActiveChildCheckId(null);
     setChildChecks([]);
+    setShowSingleSectionOnly(false);
 
     fetch(`/api/checks/${checkId}`)
       .then(res => res.json())
@@ -160,45 +165,99 @@ export function CodeDetailPanel({
             type: data.check.check_type,
             instance_number: data.check.instance_number,
             element_sections: data.check.element_sections,
+            parent_check_id: data.check.parent_check_id,
           });
-          setCheck(data.check);
 
-          // If this is an element check, fetch child section checks
+          // Case 1: This is a section check (child of an element)
+          // Load parent element and all siblings, then set this check as active
+          if (data.check.check_type === 'section' && data.check.parent_check_id) {
+            console.log('CodeDetailPanel: Section check detected, loading parent element', data.check.parent_check_id);
+
+            // Fetch parent element check
+            return fetch(`/api/checks/${data.check.parent_check_id}`)
+              .then(res => res.json())
+              .then(parentData => {
+                if (parentData.check) {
+                  setCheck(parentData.check);
+
+                  // Fetch all sibling section checks
+                  return fetch(`/api/checks?parent_check_id=${data.check.parent_check_id}`)
+                    .then(res => res.json())
+                    .then(siblings => ({
+                      siblings,
+                      requestedCheckId: checkId, // Remember which section was requested
+                    }));
+                }
+                return null;
+              });
+          }
+
+          // Case 2: This is an element check - fetch child section checks
+          setCheck(data.check);
           if (data.check.check_type === 'element') {
             console.log('CodeDetailPanel: Fetching child checks for element check', checkId);
-            return fetch(`/api/checks?parent_check_id=${checkId}`).then(res => res.json());
+            return fetch(`/api/checks?parent_check_id=${checkId}`)
+              .then(res => res.json())
+              .then(childData => ({ siblings: childData, requestedCheckId: null }));
           }
         }
         return null;
       })
-      .then(childData => {
-        if (childData && Array.isArray(childData)) {
-          console.log('CodeDetailPanel: Loaded child checks', {
-            count: childData.length,
-            sections: childData.map(c => c.code_section_number),
+      .then(result => {
+        if (result && result.siblings && Array.isArray(result.siblings)) {
+          console.log('CodeDetailPanel: Loaded child/sibling checks', {
+            count: result.siblings.length,
+            sections: result.siblings.map(c => c.code_section_number),
+            requestedCheckId: result.requestedCheckId,
           });
+
           // Sort by section number
-          const sorted = childData.sort((a, b) =>
+          let sorted = result.siblings.sort((a, b) =>
             (a.code_section_number || '').localeCompare(b.code_section_number || '')
           );
+
+          // If a specific section key was requested (from violations summary),
+          // filter to show ONLY that section and remember this preference
+          if (filterToSectionKey) {
+            const matchingSection = sorted.find(c => c.code_section_key === filterToSectionKey);
+            if (matchingSection) {
+              sorted = [matchingSection];
+              setShowSingleSectionOnly(true);
+              setActiveChildCheckId(matchingSection.id);
+            }
+          }
+
+          if (result.requestedCheckId) {
+            // Fallback: if requestedCheckId was passed (section check clicked directly)
+            const requestedCheck = sorted.find(c => c.id === result.requestedCheckId);
+            if (requestedCheck) {
+              sorted = [requestedCheck];
+              setShowSingleSectionOnly(true);
+              console.log('CodeDetailPanel: Filtered to show only requested check', requestedCheck.code_section_number);
+            }
+          }
+
           setChildChecks(sorted);
-          // Set first child as active
-          if (sorted.length > 0) {
+
+          // Set active child: use requested check ID if specified, otherwise first child
+          if (result.requestedCheckId && sorted.some(c => c.id === result.requestedCheckId)) {
+            setActiveChildCheckId(result.requestedCheckId);
+            console.log('CodeDetailPanel: Set active child to requested check', result.requestedCheckId);
+          } else if (sorted.length > 0) {
             setActiveChildCheckId(sorted[0].id);
+            console.log('CodeDetailPanel: Set active child to first check', sorted[0].id);
           } else {
-            // Explicitly set to null if no child checks found
             setActiveChildCheckId(null);
           }
         } else {
           console.log('CodeDetailPanel: No child checks found');
-          // Explicitly set to null if no child checks found
           setActiveChildCheckId(null);
         }
       })
       .catch(err => {
         console.error('Failed to load check:', err);
       });
-  }, [checkId]);
+  }, [checkId, filterToSectionKey]);
 
   // Check for in-progress analysis when checkId changes
   useEffect(() => {
@@ -345,7 +404,10 @@ export function CodeDetailPanel({
     setError(null);
 
     // Determine which sections to load
-    const sectionKeys = check?.element_sections || (sectionKey ? [sectionKey] : []);
+    // If filterToSectionKey is provided (from violations view), only load that one section
+    const sectionKeys = filterToSectionKey
+      ? [filterToSectionKey]
+      : (check?.element_sections || (sectionKey ? [sectionKey] : []));
 
     if (sectionKeys.length === 0) {
       setSections([]);
@@ -374,7 +436,7 @@ export function CodeDetailPanel({
         setError(err.message);
         setLoading(false);
       });
-  }, [sectionKey, check, childChecks, activeChildCheckId]);
+  }, [sectionKey, check, childChecks, activeChildCheckId, filterToSectionKey]);
 
   // Load analysis runs and manual override
   useEffect(() => {
@@ -565,9 +627,18 @@ export function CodeDetailPanel({
           .then(res => res.json())
           .then(childData => {
             if (Array.isArray(childData)) {
-              const sorted = childData.sort((a, b) =>
+              let sorted = childData.sort((a, b) =>
                 (a.code_section_number || '').localeCompare(b.code_section_number || '')
               );
+
+              // If we're in single-section mode, keep only the active section
+              if (showSingleSectionOnly && activeChildCheckId) {
+                const activeSection = sorted.find(c => c.id === activeChildCheckId);
+                if (activeSection) {
+                  sorted = [activeSection];
+                }
+              }
+
               setChildChecks(sorted);
               // If current child was removed, switch to first available
               if (sorted.length > 0 && !sorted.find(c => c.id === activeChildCheckId)) {
@@ -672,9 +743,18 @@ export function CodeDetailPanel({
           .then(res => res.json())
           .then(childData => {
             if (Array.isArray(childData)) {
-              const sorted = childData.sort((a, b) =>
+              let sorted = childData.sort((a, b) =>
                 (a.code_section_number || '').localeCompare(b.code_section_number || '')
               );
+
+              // If we're in single-section mode, keep only the active section
+              if (showSingleSectionOnly && activeChildCheckId) {
+                const activeSection = sorted.find(c => c.id === activeChildCheckId);
+                if (activeSection) {
+                  sorted = [activeSection];
+                }
+              }
+
               setChildChecks(sorted);
               // If current child was removed, switch to first available
               if (sorted.length > 0 && !sorted.find(c => c.id === activeChildCheckId)) {
@@ -962,16 +1042,8 @@ export function CodeDetailPanel({
         </button>
       </div>
 
-      {/* Section Tabs for Element Checks */}
-      {(() => {
-        console.log('CodeDetailPanel: Rendering section tabs?', {
-          childChecksLength: childChecks.length,
-          willRender: childChecks.length > 0,
-          childChecks: childChecks.map(c => ({ id: c.id, section: c.code_section_number })),
-        });
-        return null;
-      })()}
-      {childChecks.length > 0 && (
+      {/* Section Tabs for Element Checks - Hide when showing single section only */}
+      {childChecks.length > 0 && !showSingleSectionOnly && (
         <div className="border-b bg-gray-50 flex-shrink-0">
           {/* Toggle Button */}
           <button

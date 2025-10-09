@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { hashPassword } from '@/lib/auth';
 
 export async function GET() {
   const supabase = supabaseAdmin();
@@ -26,6 +27,11 @@ export async function GET() {
 export async function POST(request: Request) {
   const body = await request.json();
   const supabase = supabaseAdmin();
+
+  // Hash password if provided
+  if (body.report_password) {
+    body.report_password = await hashPassword(body.report_password);
+  }
 
   const { data: project, error } = await supabase.from('projects').insert(body).select().single();
 

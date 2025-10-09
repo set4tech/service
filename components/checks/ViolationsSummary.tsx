@@ -34,7 +34,7 @@ interface Codebook {
 
 interface Props {
   checks: any[];
-  onCheckSelect: (checkId: string) => void;
+  onCheckSelect: (checkId: string, sectionKey?: string) => void;
   buildingInfo: BuildingInfo;
   codebooks: Codebook[];
   pdfUrl?: string;
@@ -109,21 +109,36 @@ export function ViolationsSummary({
   const violations = useMemo(() => {
     const result: ViolationMarker[] = [];
 
-    // Flatten checks to include instances
+    // Build list of all checks to process
+    // For element checks: use their child section checks (in instances array)
+    // For section checks: include the check itself + any cloned instances
     const allChecks: any[] = [];
     checks.forEach(check => {
-      allChecks.push(check);
-      // Add instances if they exist
-      if (check.instances && Array.isArray(check.instances)) {
-        allChecks.push(...check.instances);
+      if (check.check_type === 'element') {
+        // For element checks, process their child section checks
+        if (check.instances && Array.isArray(check.instances)) {
+          allChecks.push(...check.instances);
+        }
+      } else {
+        // For section checks, include the check itself
+        allChecks.push(check);
+        // Also add any cloned instances
+        if (check.instances && Array.isArray(check.instances)) {
+          allChecks.push(...check.instances);
+        }
       }
     });
 
-    console.log('[ViolationsSummary] Processing', allChecks.length, 'checks (including instances)');
-
     allChecks.forEach(check => {
-      // Skip excluded checks
-      if (check.excluded) return;
+      // Skip excluded/not applicable checks
+      if (check.manual_override === 'not_applicable') {
+        return;
+      }
+
+      // For element checks, skip if element_sections is empty (all sections excluded)
+      if (check.check_type === 'element' && (!check.element_sections || check.element_sections.length === 0)) {
+        return;
+      }
 
       // Determine if non-compliant or needs more info
       const isNonCompliant =
@@ -217,6 +232,9 @@ export function ViolationsSummary({
               reasoning,
               recommendations,
               confidence,
+              checkType: check.check_type,
+              elementGroupName: check.element_group_name,
+              instanceLabel: check.instance_label,
             });
           }
         });
@@ -254,6 +272,9 @@ export function ViolationsSummary({
           reasoning,
           recommendations,
           confidence,
+          checkType: check.check_type,
+          elementGroupName: check.element_group_name,
+          instanceLabel: check.instance_label,
         });
       }
     });
@@ -265,7 +286,8 @@ export function ViolationsSummary({
     console.log('[ViolationsSummary] handleViolationClick:', violation);
     setSelectedViolation(violation);
     setCurrentPage(violation.pageNumber);
-    onCheckSelect(violation.checkId);
+    // Pass both checkId and sectionKey to filter to specific section
+    onCheckSelect(violation.checkId, violation.codeSectionKey);
 
     // Trigger highlight pulse
     const highlightId = `${violation.checkId}-${violation.screenshotId}`;
