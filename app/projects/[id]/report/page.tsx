@@ -14,9 +14,6 @@ export default async function ProjectReportPage({ params }: { params: Promise<{ 
   // Skip all auth checks in development
   const isLocalDev = process.env.VERCEL_ENV !== 'production';
 
-  console.log('[Report] VERCEL_ENV:', process.env.VERCEL_ENV);
-  console.log('[Report] Skip auth?', isLocalDev);
-
   if (!isLocalDev) {
     // In production, check if user is a Vercel team member
     const cookieStore = await cookies();

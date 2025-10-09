@@ -158,7 +158,7 @@ export function CodeDetailPanel({
 
     fetch(`/api/checks/${checkId}`)
       .then(res => res.json())
-      .then(data => {
+      .then((data): Promise<{ siblings: any; requestedCheckId: string | null } | null> | null => {
         if (data.check) {
           console.log('CodeDetailPanel: Loaded check', {
             id: data.check.id,
