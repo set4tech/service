@@ -102,7 +102,7 @@ export async function getProjectViolations(
       projectId: project.id,
       projectName: project.name,
       assessmentId: assessment.id,
-      pdfUrl: project.pdf_url, // Use same PDF that screenshots were captured from
+      pdfUrl: project.unannotated_drawing_url || project.pdf_url, // Use unannotated version if available
       violations: [],
       buildingParams: project.extracted_variables,
       codeInfo: undefined,
@@ -139,21 +139,41 @@ export async function getProjectViolations(
       ? check.latest_analysis_runs[0]
       : check.latest_analysis_runs;
 
-    const isNonCompliant =
-      check.manual_override === 'non_compliant' ||
-      latestAnalysis?.compliance_status === 'non_compliant';
+    // If manual_override is set, it takes precedence over AI analysis
+    if (check.manual_override) {
+      // Exclude checks marked as compliant, not_applicable, or excluded
+      if (
+        check.manual_override === 'compliant' ||
+        check.manual_override === 'not_applicable' ||
+        check.manual_override === 'excluded'
+      ) {
+        return false;
+      }
 
-    const needsMoreInfo =
-      check.manual_override === 'needs_more_info' ||
-      latestAnalysis?.compliance_status === 'needs_more_info';
+      // Include checks marked as non_compliant or needs_more_info
+      if (
+        check.manual_override === 'non_compliant' ||
+        check.manual_override === 'needs_more_info'
+      ) {
+        console.log('[getProjectViolations] Check found for report (manual override):', {
+          checkId: check.id,
+          checkName: check.check_name,
+          manual_override: check.manual_override,
+        });
+        return true;
+      }
+    }
+
+    // If no manual override, use AI analysis result
+    const isNonCompliant = latestAnalysis?.compliance_status === 'non_compliant';
+    const needsMoreInfo = latestAnalysis?.compliance_status === 'needs_more_info';
 
     const shouldInclude = isNonCompliant || needsMoreInfo;
 
     if (shouldInclude) {
-      console.log('[getProjectViolations] Check found for report:', {
+      console.log('[getProjectViolations] Check found for report (AI analysis):', {
         checkId: check.id,
         checkName: check.check_name,
-        manual_override: check.manual_override,
         analysisStatus: latestAnalysis?.compliance_status,
       });
     }
@@ -168,7 +188,7 @@ export async function getProjectViolations(
       projectId: project.id,
       projectName: project.name,
       assessmentId: assessment.id,
-      pdfUrl: project.pdf_url, // Use same PDF that screenshots were captured from
+      pdfUrl: project.unannotated_drawing_url || project.pdf_url, // Use unannotated version if available
       violations: [],
       buildingParams: project.extracted_variables,
       codeInfo,
@@ -470,7 +490,7 @@ export async function getProjectViolations(
     projectId: project.id,
     projectName: project.name,
     assessmentId: assessment.id,
-    pdfUrl: project.pdf_url, // Use same PDF that screenshots were captured from
+    pdfUrl: project.unannotated_drawing_url || project.pdf_url, // Use unannotated version if available
     violations,
     buildingParams: project.extracted_variables,
     codeInfo,
