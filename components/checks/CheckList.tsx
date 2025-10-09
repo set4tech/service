@@ -265,9 +265,22 @@ export function CheckList({
     }
   };
 
+  const isActivelyProcessing = (check: any) => {
+    if (check.status === 'processing' || check.status === 'analyzing') {
+      // Check if updated within last 5 minutes
+      if (check.updated_at) {
+        const updatedAt = new Date(check.updated_at);
+        const minutesAgo = (Date.now() - updatedAt.getTime()) / 1000 / 60;
+        return minutesAgo < 5;
+      }
+      return true; // If no updated_at, assume it's recent
+    }
+    return false;
+  };
+
   const getStatusIcon = (check: any) => {
     // Check if currently processing (analyzing)
-    if (check.status === 'processing' || check.status === 'analyzing') {
+    if (isActivelyProcessing(check)) {
       return (
         <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
           <circle
@@ -298,7 +311,7 @@ export function CheckList({
 
   const getStatusColor = (check: any) => {
     // Check if currently processing (analyzing)
-    if (check.status === 'processing' || check.status === 'analyzing') return 'text-blue-600';
+    if (isActivelyProcessing(check)) return 'text-blue-600';
     // Prioritize manual override
     if (check.manual_override === 'compliant') return 'text-green-600 font-bold';
     if (check.manual_override === 'non_compliant') return 'text-red-600 font-bold';
@@ -548,10 +561,10 @@ export function CheckList({
                               className={clsx(
                                 'mt-0.5 mr-2 text-sm',
                                 getStatusColor(check),
-                                check.status === 'analyzing' && 'animate-bounce'
+                                isActivelyProcessing(check) && 'animate-bounce'
                               )}
                               style={
-                                check.status === 'analyzing'
+                                isActivelyProcessing(check)
                                   ? { animationDuration: '2s' }
                                   : undefined
                               }
@@ -797,10 +810,10 @@ export function CheckList({
                                     className={clsx(
                                       'mt-0.5 mr-2 text-sm',
                                       getStatusColor(instance),
-                                      instance.status === 'analyzing' && 'animate-bounce'
+                                      isActivelyProcessing(instance) && 'animate-bounce'
                                     )}
                                     style={
-                                      instance.status === 'analyzing'
+                                      isActivelyProcessing(instance)
                                         ? { animationDuration: '2s' }
                                         : undefined
                                     }
