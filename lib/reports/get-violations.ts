@@ -17,6 +17,7 @@ export interface ViolationMarker {
   confidence?: string;
   sourceUrl?: string;
   sourceLabel?: string;
+  humanReadableTitle?: string; // AI-generated natural language title (e.g., "Latchside clearance too small")
 }
 
 export interface CodeInfo {
@@ -80,13 +81,17 @@ export async function getProjectViolations(
       code_section_key,
       code_section_number,
       manual_override,
+      human_readable_title,
       latest_analysis_runs(
+        id,
         compliance_status,
         ai_reasoning,
         confidence,
         raw_ai_response,
         violations,
-        recommendations
+        recommendations,
+        batch_group_id,
+        total_batches
       )
     `
     )
@@ -133,7 +138,6 @@ export async function getProjectViolations(
   }
 
   // Filter to non-compliant and needs_more_info checks
-  console.log('[getProjectViolations] Total checks:', allChecks?.length);
   const nonCompliantChecks = allChecks.filter((check: any) => {
     const latestAnalysis = Array.isArray(check.latest_analysis_runs)
       ? check.latest_analysis_runs[0]
@@ -155,11 +159,6 @@ export async function getProjectViolations(
         check.manual_override === 'non_compliant' ||
         check.manual_override === 'needs_more_info'
       ) {
-        console.log('[getProjectViolations] Check found for report (manual override):', {
-          checkId: check.id,
-          checkName: check.check_name,
-          manual_override: check.manual_override,
-        });
         return true;
       }
     }
@@ -168,20 +167,8 @@ export async function getProjectViolations(
     const isNonCompliant = latestAnalysis?.compliance_status === 'non_compliant';
     const needsMoreInfo = latestAnalysis?.compliance_status === 'needs_more_info';
 
-    const shouldInclude = isNonCompliant || needsMoreInfo;
-
-    if (shouldInclude) {
-      console.log('[getProjectViolations] Check found for report (AI analysis):', {
-        checkId: check.id,
-        checkName: check.check_name,
-        analysisStatus: latestAnalysis?.compliance_status,
-      });
-    }
-
-    return shouldInclude;
+    return isNonCompliant || needsMoreInfo;
   });
-
-  console.log('[getProjectViolations] Checks for report count:', nonCompliantChecks.length);
 
   if (nonCompliantChecks.length === 0) {
     return {
@@ -235,8 +222,6 @@ export async function getProjectViolations(
     console.error('[getProjectViolations] Assignment query error:', assignmentError);
   }
 
-  console.log('[getProjectViolations] Screenshot assignments fetched:', assignments?.length);
-
   // Get unique screenshot IDs
   const screenshotIds = Array.from(new Set(assignments?.map(a => a.screenshot_id) || []));
 
@@ -249,8 +234,6 @@ export async function getProjectViolations(
   if (screenshotError) {
     console.error('[getProjectViolations] Screenshot query error:', screenshotError);
   }
-
-  console.log('[getProjectViolations] Screenshots fetched:', screenshots?.length);
 
   // Create a map of screenshot_id -> screenshot data
   const screenshotsMap = new Map(screenshots?.map(s => [s.id, s]) || []);
@@ -279,24 +262,42 @@ export async function getProjectViolations(
   // Build violations from non-compliant checks
   const violations: ViolationMarker[] = [];
 
-  console.log(
-    '[getProjectViolations] Building violations from',
-    nonCompliantChecks.length,
-    'checks'
-  );
+  // Fetch all analysis runs for batched checks
+  const batchGroupIds = new Set<string>();
+  const checksWithBatches = new Map<string, any[]>();
 
   for (const check of nonCompliantChecks) {
     const latestAnalysis = Array.isArray(check.latest_analysis_runs)
       ? check.latest_analysis_runs[0]
       : check.latest_analysis_runs;
 
-    console.log('[getProjectViolations] Processing check:', {
-      id: check.id,
-      section: check.code_section_number,
-      manual_override: check.manual_override,
-      ai_status: latestAnalysis?.compliance_status,
-      violations: latestAnalysis?.raw_ai_response?.violations,
+    if (latestAnalysis?.batch_group_id && latestAnalysis?.total_batches > 1) {
+      batchGroupIds.add(latestAnalysis.batch_group_id);
+    }
+  }
+
+  // Fetch all runs for batched checks
+  if (batchGroupIds.size > 0) {
+    const { data: batchedRuns } = await supabase
+      .from('analysis_runs')
+      .select(
+        'id, check_id, batch_group_id, compliance_status, ai_reasoning, confidence, raw_ai_response, violations, recommendations'
+      )
+      .in('batch_group_id', Array.from(batchGroupIds));
+
+    // Group by check_id
+    batchedRuns?.forEach((run: any) => {
+      if (!checksWithBatches.has(run.check_id)) {
+        checksWithBatches.set(run.check_id, []);
+      }
+      checksWithBatches.get(run.check_id)!.push(run);
     });
+  }
+
+  for (const check of nonCompliantChecks) {
+    const latestAnalysis = Array.isArray(check.latest_analysis_runs)
+      ? check.latest_analysis_runs[0]
+      : check.latest_analysis_runs;
 
     // Get source URL from pre-fetched sections (with parent fallback)
     const section = sectionsMap.get(check.code_section_key);
@@ -312,12 +313,8 @@ export async function getProjectViolations(
 
     // Get screenshots from pre-fetched map
     const screenshots = screenshotsByCheck.get(check.id) || [];
-    console.log('[getProjectViolations] Check screenshots:', {
-      checkId: check.id,
-      screenshotCount: screenshots.length,
-    });
 
-    // Parse violations from AI response
+    // Parse violations from AI response - aggregate from all batches if applicable
     let violationDetails: Array<{
       description: string;
       severity: 'minor' | 'moderate' | 'major';
@@ -326,23 +323,35 @@ export async function getProjectViolations(
     let reasoning = '';
     let confidence = '';
 
-    if (latestAnalysis) {
-      reasoning = latestAnalysis.ai_reasoning || '';
-      confidence = latestAnalysis.confidence || '';
+    // Check if this is a batched analysis
+    const batchedRuns = checksWithBatches.get(check.id);
+    const analysisRuns = batchedRuns && batchedRuns.length > 0 ? batchedRuns : [latestAnalysis];
 
-      // Use violations from the dedicated column (parsed during analysis)
-      if (latestAnalysis.violations && Array.isArray(latestAnalysis.violations)) {
-        violationDetails = latestAnalysis.violations;
+    // Aggregate violations and recommendations from all runs
+    for (const analysis of analysisRuns) {
+      if (!analysis) continue;
+
+      // Take reasoning and confidence from the first run
+      if (!reasoning && analysis.ai_reasoning) {
+        reasoning = analysis.ai_reasoning;
+      }
+      if (!confidence && analysis.confidence) {
+        confidence = analysis.confidence;
       }
 
-      if (latestAnalysis.recommendations && Array.isArray(latestAnalysis.recommendations)) {
-        recommendations = latestAnalysis.recommendations;
+      // Use violations from the dedicated column (parsed during analysis)
+      if (analysis.violations && Array.isArray(analysis.violations)) {
+        violationDetails.push(...analysis.violations);
+      }
+
+      if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
+        recommendations.push(...analysis.recommendations);
       }
 
       // Fallback: try parsing from raw_ai_response if violations column is empty
-      if (violationDetails.length === 0) {
+      if (analysis.violations?.length === 0 || !analysis.violations) {
         try {
-          let aiResponse = latestAnalysis.raw_ai_response;
+          let aiResponse = analysis.raw_ai_response;
 
           if (typeof aiResponse === 'string') {
             // Strip markdown code fences if present (```json ... ```)
@@ -356,35 +365,26 @@ export async function getProjectViolations(
           }
 
           if (aiResponse?.violations && Array.isArray(aiResponse.violations)) {
-            violationDetails = aiResponse.violations;
+            violationDetails.push(...aiResponse.violations);
           }
 
-          if (
-            recommendations.length === 0 &&
-            aiResponse?.recommendations &&
-            Array.isArray(aiResponse.recommendations)
-          ) {
-            recommendations = aiResponse.recommendations;
+          if (aiResponse?.recommendations && Array.isArray(aiResponse.recommendations)) {
+            recommendations.push(...aiResponse.recommendations);
           }
         } catch (err) {
-          console.error('Failed to parse AI response:', err);
+          console.error('[getProjectViolations] Failed to parse AI response:', err);
         }
       }
     }
 
+    // Deduplicate recommendations
+    recommendations = Array.from(new Set(recommendations));
+
     // Create a violation marker for each screenshot
     if (screenshots && screenshots.length > 0) {
-      console.log('[getProjectViolations] Creating violations from screenshots');
       screenshots.forEach((screenshot, idx) => {
         // Get violation details for this screenshot (use first violation if multiple, or generic)
         const violationDetail = violationDetails[idx] || violationDetails[0];
-
-        console.log('[getProjectViolations] Violation detail for screenshot:', {
-          checkId: check.id,
-          idx,
-          violationDetail,
-          violationDetailsArray: violationDetails,
-        });
 
         // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
         const checkStatus = check.manual_override || latestAnalysis?.compliance_status;
@@ -400,13 +400,6 @@ export async function getProjectViolations(
           (checkStatus === 'needs_more_info'
             ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
             : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
-
-        console.log('[getProjectViolations] Creating violation marker:', {
-          checkId: check.id,
-          section: check.code_section_number,
-          severity,
-          screenshotId: screenshot.id,
-        });
 
         if (screenshot.crop_coordinates && screenshot.page_number) {
           violations.push({
@@ -432,12 +425,12 @@ export async function getProjectViolations(
             confidence,
             sourceUrl,
             sourceLabel,
+            humanReadableTitle: check.human_readable_title,
           });
         }
       });
     } else {
       // No screenshots - create a generic marker (we'll handle this case in the UI)
-      console.log('[getProjectViolations] No screenshots, creating generic violation marker');
       const violationDetail = violationDetails[0];
 
       // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
@@ -454,12 +447,6 @@ export async function getProjectViolations(
         (checkStatus === 'needs_more_info'
           ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
           : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
-
-      console.log('[getProjectViolations] Generic violation:', {
-        checkId: check.id,
-        description,
-        severity,
-      });
 
       violations.push({
         checkId: check.id,
@@ -478,13 +465,10 @@ export async function getProjectViolations(
         confidence,
         sourceUrl,
         sourceLabel,
+        humanReadableTitle: check.human_readable_title,
       });
     }
   }
-
-  console.log('[getProjectViolations] Project:', projectId);
-  console.log('[getProjectViolations] Total violations found:', violations.length);
-  console.log('[getProjectViolations] Violations:', JSON.stringify(violations, null, 2));
 
   return {
     projectId: project.id,

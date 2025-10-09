@@ -28,8 +28,14 @@ export function ViolationListSidebar({
   const [groupBy, setGroupBy] = useState<GroupBy>('page');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Format violation description with section number and truncated reasoning
+  // Format violation description - prioritize human-readable title
   const formatViolationDescription = (violation: ViolationMarker): string => {
+    // Use AI-generated human-readable title if available
+    if (violation.humanReadableTitle && violation.humanReadableTitle.trim()) {
+      return violation.humanReadableTitle;
+    }
+
+    // Fallback: use reasoning with section number
     const maxLength = 80;
     if (violation.reasoning && violation.reasoning.trim()) {
       const reasoning = violation.reasoning.trim();
@@ -38,7 +44,8 @@ export function ViolationListSidebar({
       }
       return `${violation.codeSectionNumber} - ${reasoning}`;
     }
-    // Fallback to description if no reasoning
+
+    // Last resort: use description
     return violation.description;
   };
 
