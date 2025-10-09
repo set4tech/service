@@ -141,7 +141,9 @@ function useCheckData(
 
         const check = checkData.check;
 
-        // Handle section check (child of element) - load parent instead
+        // Handle child checks differently based on type:
+        // - Section checks (child of element): redirect to parent element and show this section
+        // - Element checks with parent (instances): treat as standalone element check
         if (check.check_type === 'section' && check.parent_check_id) {
           const parentResponse = await fetch(`/api/checks/${check.parent_check_id}`);
           const parentData = await parentResponse.json();
@@ -272,9 +274,17 @@ function useCheckData(
 
           // Load first child's section
           if (finalActiveChildId && sorted[0]?.code_section_key) {
-            const firstSection = await fetchSection(sorted[0].code_section_key);
-            if (!isCancelled) {
-              finalSections = [firstSection];
+            try {
+              const firstSection = await fetchSection(sorted[0].code_section_key);
+              if (!isCancelled) {
+                finalSections = [firstSection];
+              }
+            } catch (err) {
+              console.error('Failed to load first child section:', err);
+              // Section not found (possibly never_relevant) - leave finalSections empty
+              if (!isCancelled) {
+                finalSections = [];
+              }
             }
           }
         } else if (sectionData) {
@@ -471,7 +481,11 @@ export function CodeDetailPanel({
             });
         }
       })
-      .catch(err => console.error('Failed to load section:', err));
+      .catch(err => {
+        console.error('Failed to load section:', err);
+        // Section not found (possibly never_relevant) - clear sections
+        setSections([]);
+      });
   }, [activeChildCheckId, childChecks, check, checkId, panelLoading]);
 
   // Polling hook
