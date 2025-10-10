@@ -6,6 +6,7 @@ import { SearchElevationsModal } from '@/components/screenshots/SearchElevations
 import { TableRenderer } from '@/components/ui/TableRenderer';
 import { TriageModal } from './TriageModal';
 import { AnalysisHistory } from './AnalysisHistory';
+import { useManualOverride } from '@/hooks/useManualOverride';
 import type { SectionResult, AnalysisRun, CodeSection } from '@/types/analysis';
 
 interface Check {
@@ -309,19 +310,47 @@ export function CodeDetailPanel({
     showSingleSectionOnly,
   } = useCheckData(checkId, filterToSectionKey);
 
+  // Manual override hook
+  const manualOverrideHook = useManualOverride({
+    initialOverride: initialManualOverride,
+    initialNote: initialManualOverrideNote,
+    onSaveSuccess: () => {
+      setAssessing(false);
+      if (onCheckUpdate) onCheckUpdate();
+    },
+    onCheckDeleted: () => {
+      if (onCheckUpdate) onCheckUpdate();
+    },
+  });
+
+  const {
+    state: {
+      override: manualOverride,
+      note: manualOverrideNote,
+      saving: savingOverride,
+      error: overrideError,
+      showNoteInput: showOverrideNote,
+    },
+    actions: {
+      setOverride: setManualOverride,
+      setNote: setManualOverrideNote,
+      setShowNoteInput: setShowOverrideNote,
+      saveOverride,
+    },
+  } = manualOverrideHook;
+
   // Local state for things that change after initial load
   const [childChecks, setChildChecks] = useState<any[]>([]);
   const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
   const [sections, setSections] = useState<CodeSection[]>([]);
   const [activeSectionIndex] = useState(0);
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
-  const [manualOverride, setManualOverride] = useState<string | null>(null);
-  const [manualOverrideNote, setManualOverrideNote] = useState('');
 
   // Track the last synced checkId to prevent unnecessary re-syncs
   const lastSyncedCheckIdRef = useRef<string | null>(null);
 
   // Sync initial data to local state when loading completes
+
   useEffect(() => {
     if (!panelLoading && checkId !== lastSyncedCheckIdRef.current) {
       lastSyncedCheckIdRef.current = checkId;
@@ -332,6 +361,7 @@ export function CodeDetailPanel({
       setManualOverride(initialManualOverride);
       setManualOverrideNote(initialManualOverrideNote);
     }
+    // setManualOverride and setManualOverrideNote are stable functions from useState, safe to omit
   }, [
     panelLoading,
     checkId,
@@ -409,9 +439,6 @@ export function CodeDetailPanel({
   const [loadingPrompt, setLoadingPrompt] = useState(false);
 
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
-  const [showOverrideNote, setShowOverrideNote] = useState(false);
-  const [savingOverride, setSavingOverride] = useState(false);
-  const [overrideError, setOverrideError] = useState<string | null>(null);
 
   const [showNeverRelevantDialog, setShowNeverRelevantDialog] = useState(false);
   const [markingNeverRelevant, setMarkingNeverRelevant] = useState(false);
@@ -465,29 +492,9 @@ export function CodeDetailPanel({
   const handleSaveOverride = async () => {
     if (!effectiveCheckId) return;
 
-    setSavingOverride(true);
-    setOverrideError(null);
-
     try {
-      // Always save to the current check's manual_override field
-      const response = await fetch(`/api/checks/${effectiveCheckId}/manual-override`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          override: manualOverride,
-          note: manualOverrideNote.trim() || undefined,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          if (onCheckUpdate) onCheckUpdate();
-          throw new Error('This check has been deleted or excluded. The list will refresh.');
-        }
-        throw new Error(data.error || 'Failed to save override');
-      }
+      // Save using the hook
+      await saveOverride(effectiveCheckId);
 
       // Update the current check's override in the childChecks array
       if (childChecks.length > 0 && effectiveCheckId) {
@@ -499,9 +506,7 @@ export function CodeDetailPanel({
         setChildChecks(updatedChildChecks);
       }
 
-      setAssessing(false);
-      if (onCheckUpdate) onCheckUpdate();
-
+      // Navigate to next check if marking as not_applicable
       if (manualOverride === 'not_applicable') {
         if (activeChildCheckId && childChecks.length > 1) {
           const currentIndex = childChecks.findIndex(c => c.id === activeChildCheckId);
@@ -514,10 +519,8 @@ export function CodeDetailPanel({
           onMoveToNextCheck();
         }
       }
-    } catch (err: any) {
-      setOverrideError(err.message);
-    } finally {
-      setSavingOverride(false);
+    } catch {
+      // Error is already set by the hook
     }
   };
 
