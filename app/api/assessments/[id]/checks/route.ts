@@ -139,6 +139,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         return {
           ...check,
+          element_group_name: check.element_groups?.name || null, // Flatten element group name
+          element_groups: undefined, // Remove nested element_groups object
           sections: undefined, // Remove nested sections object (used only for sorting)
           latest_status: analysis?.compliance_status || null,
           latest_confidence: analysis?.confidence || null,
@@ -310,6 +312,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       return {
         ...check,
+        element_group_name: check.element_groups?.name || null, // Flatten element group name
+        element_groups: undefined, // Remove nested element_groups object
         sections: undefined, // Remove nested sections object (used only for sorting)
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
