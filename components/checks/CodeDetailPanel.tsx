@@ -11,9 +11,7 @@ import type { SectionResult, AnalysisRun, CodeSection } from '@/types/analysis';
 interface Check {
   id: string;
   check_type?: string;
-  instance_number?: number;
   code_section_key?: string;
-  parent_check_id?: string;
   manual_override?: string | null;
   manual_override_note?: string;
   element_groups?: {
@@ -167,11 +165,12 @@ function useCheckData(
           }
 
           const activeChildId = sorted.find(c => c.id === checkId)?.id || sorted[0]?.id || null;
+          const activeChild = sorted.find(c => c.id === activeChildId);
 
           // Load data for active child in parallel
           const [section, runs, progress] = await Promise.all([
-            activeChildId && sorted.find(c => c.id === activeChildId)?.code_section_key
-              ? fetchSection(sorted.find(c => c.id === activeChildId)!.code_section_key!)
+            activeChildId && activeChild?.code_section_key
+              ? fetchSection(activeChild.code_section_key)
               : Promise.resolve(null),
             fetchAnalysisRuns(checkId!),
             fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
@@ -186,8 +185,9 @@ function useCheckData(
             sections: section ? [section] : [],
             analysisRuns: runs,
             assessing: progress.inProgress || false,
-            manualOverride: check.manual_override || null,
-            manualOverrideNote: check.manual_override_note || '',
+            // Load the active child's override, not the first check's override
+            manualOverride: activeChild?.manual_override || null,
+            manualOverrideNote: activeChild?.manual_override_note || '',
             showSingleSectionOnly: !!filterToSectionKey,
           });
           setLoading(false);
@@ -299,7 +299,7 @@ export function CodeDetailPanel({
     loading: panelLoading,
     error: panelError,
     check,
-    childChecks,
+    childChecks: initialChildChecks,
     activeChildCheckId: initialActiveChildId,
     sections: initialSections,
     analysisRuns: initialAnalysisRuns,
@@ -310,6 +310,7 @@ export function CodeDetailPanel({
   } = useCheckData(checkId, filterToSectionKey);
 
   // Local state for things that change after initial load
+  const [childChecks, setChildChecks] = useState<any[]>([]);
   const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
   const [sections, setSections] = useState<CodeSection[]>([]);
   const [activeSectionIndex] = useState(0);
@@ -317,9 +318,14 @@ export function CodeDetailPanel({
   const [manualOverride, setManualOverride] = useState<string | null>(null);
   const [manualOverrideNote, setManualOverrideNote] = useState('');
 
+  // Track the last synced checkId to prevent unnecessary re-syncs
+  const lastSyncedCheckIdRef = useRef<string | null>(null);
+
   // Sync initial data to local state when loading completes
   useEffect(() => {
-    if (!panelLoading) {
+    if (!panelLoading && checkId !== lastSyncedCheckIdRef.current) {
+      lastSyncedCheckIdRef.current = checkId;
+      setChildChecks(initialChildChecks);
       setActiveChildCheckId(initialActiveChildId);
       setSections(initialSections);
       setAnalysisRuns(initialAnalysisRuns);
@@ -328,6 +334,8 @@ export function CodeDetailPanel({
     }
   }, [
     panelLoading,
+    checkId,
+    initialChildChecks,
     initialActiveChildId,
     initialSections,
     initialAnalysisRuns,
@@ -347,28 +355,18 @@ export function CodeDetailPanel({
     const activeChild = childChecks.find(c => c.id === activeChildCheckId);
     if (!activeChild?.code_section_key) return;
 
-    fetchSection(activeChild.code_section_key)
+    const sectionKey = activeChild.code_section_key;
+
+    fetchSection(sectionKey)
       .then(section => {
         setSections([section]);
 
-        // Load override for this section
-        if (check?.check_type === 'element' && checkId) {
-          fetch(`/api/checks/${checkId}/section-overrides`)
-            .then(r => r.json())
-            .then(overrides => {
-              if (Array.isArray(overrides)) {
-                const sectionOverride = overrides.find(
-                  (so: any) => so.section_key === activeChild.code_section_key
-                );
-                if (sectionOverride) {
-                  setManualOverride(sectionOverride.override_status);
-                  setManualOverrideNote(sectionOverride.note || '');
-                } else {
-                  setManualOverride(null);
-                  setManualOverrideNote('');
-                }
-              }
-            });
+        // Re-find the active check to avoid stale closure
+        // This ensures we get the latest override data even if childChecks was updated during the async operation
+        const currentActiveChild = childChecks.find(c => c.id === activeChildCheckId);
+        if (currentActiveChild) {
+          setManualOverride(currentActiveChild.manual_override || null);
+          setManualOverrideNote(currentActiveChild.manual_override_note || '');
         }
       })
       .catch(err => {
@@ -376,7 +374,7 @@ export function CodeDetailPanel({
         // Section not found (possibly never_relevant) - clear sections
         setSections([]);
       });
-  }, [activeChildCheckId, childChecks, check, checkId, panelLoading]);
+  }, [activeChildCheckId, childChecks, panelLoading]);
 
   // Polling hook
   const handleAssessmentComplete = useCallback(() => {
@@ -471,35 +469,15 @@ export function CodeDetailPanel({
     setOverrideError(null);
 
     try {
-      const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
-      const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-      const sectionKeyForOverride = isViewingChildSection ? activeChild?.code_section_key : null;
-
-      let response;
-
-      if (sectionKeyForOverride && checkId) {
-        response = await fetch(`/api/checks/${checkId}/section-overrides`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            overrides: {
-              [sectionKeyForOverride]: {
-                status: manualOverride,
-                note: manualOverrideNote.trim() || undefined,
-              },
-            },
-          }),
-        });
-      } else {
-        response = await fetch(`/api/checks/${effectiveCheckId}/manual-override`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            override: manualOverride,
-            note: manualOverrideNote.trim() || undefined,
-          }),
-        });
-      }
+      // Always save to the current check's manual_override field
+      const response = await fetch(`/api/checks/${effectiveCheckId}/manual-override`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          override: manualOverride,
+          note: manualOverrideNote.trim() || undefined,
+        }),
+      });
 
       const data = await response.json();
 
@@ -511,11 +489,21 @@ export function CodeDetailPanel({
         throw new Error(data.error || 'Failed to save override');
       }
 
+      // Update the current check's override in the childChecks array
+      if (childChecks.length > 0 && effectiveCheckId) {
+        const updatedChildChecks = childChecks.map(c =>
+          c.id === effectiveCheckId
+            ? { ...c, manual_override: manualOverride, manual_override_note: manualOverrideNote }
+            : c
+        );
+        setChildChecks(updatedChildChecks);
+      }
+
       setAssessing(false);
       if (onCheckUpdate) onCheckUpdate();
 
       if (manualOverride === 'not_applicable') {
-        if (isViewingChildSection && childChecks.length > 1) {
+        if (activeChildCheckId && childChecks.length > 1) {
           const currentIndex = childChecks.findIndex(c => c.id === activeChildCheckId);
           if (currentIndex < childChecks.length - 1) {
             setActiveChildCheckId(childChecks[currentIndex + 1].id);
