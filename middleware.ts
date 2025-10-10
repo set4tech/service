@@ -30,45 +30,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for team member authentication
-  const isTeamMember = checkTeamMemberAuth(request);
-
-  if (!isTeamMember) {
-    // Return 401 Unauthorized
-    return new NextResponse('Unauthorized - Team member access required', { status: 401 });
-  }
-
+  // All other routes are open (customer reports have their own password protection)
   return NextResponse.next();
-}
-
-/**
- * Check if request is from a Vercel team member
- */
-function checkTeamMemberAuth(request: NextRequest): boolean {
-  // Option 1: Check Vercel authentication cookie (automatically set when logged into Vercel)
-  const vercelAuth = request.cookies.get('_vercel_jwt');
-  if (vercelAuth) {
-    return true;
-  }
-
-  // Option 2: Check for Vercel preview deployment authentication
-  const vercelPreviewAuth = request.cookies.get('_vercel_no_index');
-  if (vercelPreviewAuth) {
-    return true;
-  }
-
-  // Option 3: In development, allow all access
-  if (process.env.NODE_ENV === 'development') {
-    return true;
-  }
-
-  // Option 4: Check for admin access key in headers (optional override)
-  const adminKey = request.headers.get('x-admin-key');
-  if (adminKey && adminKey === process.env.ADMIN_ACCESS_KEY) {
-    return true;
-  }
-
-  return false;
 }
 
 /**
