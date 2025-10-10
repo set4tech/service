@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '../test-utils';
-import { createMockCheck, createMockGroupedChecks, setupFetchMock } from '../test-utils';
+import { createMockCheck, createMockGroupedChecks } from '../test-utils';
 
 /**
  * Critical tests for manual override behavior in CodeDetailPanel

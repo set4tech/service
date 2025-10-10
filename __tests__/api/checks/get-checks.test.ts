@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';
 import { createMockGroupedChecks } from '../../test-utils';
 
@@ -150,11 +151,7 @@ describe('GET /api/checks - Filtering and Grouping', () => {
     });
 
     it('should handle special characters in instance labels', () => {
-      const labels = [
-        'Doors & Windows',
-        'Ramp #1',
-        'Bathroom (1st Floor)',
-      ];
+      const labels = ['Doors & Windows', 'Ramp #1', 'Bathroom (1st Floor)'];
 
       labels.forEach(label => {
         const encoded = encodeURIComponent(label);

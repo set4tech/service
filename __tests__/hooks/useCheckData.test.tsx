@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { createMockCheck, createMockGroupedChecks, createMockCodeSection, setupFetchMock } from '../test-utils';
+import {
+  createMockCheck,
+  createMockGroupedChecks,
+  createMockCodeSection,
+  setupFetchMock,
+} from '../test-utils';
 
 // We need to extract useCheckData from CodeDetailPanel to test it
 // For now, we'll test the integration behavior through CodeDetailPanel

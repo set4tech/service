@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import { ReactElement } from 'react';
 import { render, RenderOptions } from '@testing-library/react';
 
 // Add custom render function if needed (e.g., with providers)
@@ -10,34 +10,36 @@ export * from '@testing-library/react';
 export { customRender as render };
 
 // Mock data factories
-export const createMockCheck = (overrides: any = {}) => ({
+export const createMockCheck = (overrides: Record<string, unknown> = {}) => ({
   id: 'test-check-id',
-  check_type: 'section',
+  check_type: 'section' as const,
   code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
   code_section_number: '11B-404',
   code_section_title: 'Doors',
   assessment_id: 'test-assessment-id',
-  manual_override: null,
-  manual_override_note: null,
+  element_group_id: null as string | null,
+  instance_label: null as string | null,
+  manual_override: null as string | null,
+  manual_override_note: null as string | null,
   ...overrides,
 });
 
 export const createMockGroupedChecks = (count: number = 3) => {
   return Array.from({ length: count }, (_, i) => ({
     id: `check-${i}`,
-    check_type: 'section',
+    check_type: 'section' as const,
     code_section_key: `ICC:CBC_Chapter11A_11B:2025:CA:11B-404.${i}`,
     code_section_number: `11B-404.${i}`,
     code_section_title: `Door requirement ${i}`,
     element_group_id: 'element-group-1',
     instance_label: 'Doors 12',
     assessment_id: 'test-assessment-id',
-    manual_override: null,
-    manual_override_note: null,
+    manual_override: null as string | null,
+    manual_override_note: null as string | null,
   }));
 };
 
-export const createMockCodeSection = (overrides: any = {}) => ({
+export const createMockCodeSection = (overrides: Record<string, unknown> = {}) => ({
   key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
   number: '11B-404',
   title: 'Doors',
@@ -45,7 +47,7 @@ export const createMockCodeSection = (overrides: any = {}) => ({
   ...overrides,
 });
 
-export const createMockAnalysisRun = (overrides: any = {}) => ({
+export const createMockAnalysisRun = (overrides: Record<string, unknown> = {}) => ({
   id: 'analysis-run-1',
   check_id: 'test-check-id',
   compliance_status: 'compliant',
@@ -55,7 +57,7 @@ export const createMockAnalysisRun = (overrides: any = {}) => ({
 });
 
 // Mock fetch response helper
-export const mockFetchResponse = (data: any, ok: boolean = true) => {
+export const mockFetchResponse = (data: unknown, ok: boolean = true) => {
   return {
     ok,
     json: async () => data,
@@ -64,7 +66,8 @@ export const mockFetchResponse = (data: any, ok: boolean = true) => {
 };
 
 // Mock fetch helper
-export const setupFetchMock = (responses: { [url: string]: any }) => {
+export const setupFetchMock = (responses: Record<string, unknown>) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (global.fetch as any).mockImplementation((url: string) => {
     for (const [pattern, response] of Object.entries(responses)) {
       if (url.includes(pattern)) {
