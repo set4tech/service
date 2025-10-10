@@ -203,10 +203,10 @@ export async function getProjectViolations(
         return false;
       }
 
-      // Include checks marked as non_compliant or needs_more_info
+      // Include checks marked as non_compliant or insufficient_information
       if (
         check.manual_override === 'non_compliant' ||
-        check.manual_override === 'needs_more_info'
+        check.manual_override === 'insufficient_information'
       ) {
         return true;
       }

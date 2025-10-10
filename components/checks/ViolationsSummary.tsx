@@ -161,7 +161,8 @@ export function ViolationsSummary({
           check.manual_override === 'non_compliant' || check.latest_status === 'non_compliant';
 
         const needsMoreInfo =
-          check.manual_override === 'needs_more_info' || check.latest_status === 'needs_more_info';
+          check.manual_override === 'insufficient_information' ||
+          check.latest_status === 'needs_more_info';
 
         if (!isNonCompliant && !needsMoreInfo) return;
       }

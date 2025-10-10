@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { ViolationMarker } from '@/lib/reports/get-violations';
+import type { ComplianceOverrideStatus } from '@/types/database';
 import Modal from '@/components/ui/Modal';
 
 interface Props {
@@ -11,9 +12,7 @@ interface Props {
 }
 
 export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Props) {
-  const [manualOverride, setManualOverride] = useState<
-    'compliant' | 'non_compliant' | 'needs_more_info' | 'not_applicable' | null
-  >(null);
+  const [manualOverride, setManualOverride] = useState<ComplianceOverrideStatus | null>(null);
   const [manualOverrideNote, setManualOverrideNote] = useState('');
   const [showOverrideNote, setShowOverrideNote] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
@@ -316,7 +315,7 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
                   ? 'bg-green-50 border-green-200 text-green-800'
                   : manualOverride === 'non_compliant'
                     ? 'bg-red-50 border-red-200 text-red-800'
-                    : manualOverride === 'needs_more_info'
+                    : manualOverride === 'insufficient_information'
                       ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
                       : 'bg-gray-50 border-gray-200 text-gray-800'
               }`}
@@ -328,7 +327,7 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
                     ? 'COMPLIANT'
                     : manualOverride === 'non_compliant'
                       ? 'NON-COMPLIANT'
-                      : manualOverride === 'needs_more_info'
+                      : manualOverride === 'insufficient_information'
                         ? 'NEEDS MORE INFO'
                         : 'NOT APPLICABLE'}
                 </span>
@@ -372,10 +371,10 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
                 Non-Compliant
               </button>
               <button
-                onClick={() => setManualOverride('needs_more_info')}
+                onClick={() => setManualOverride('insufficient_information')}
                 disabled={savingOverride}
                 className={`px-3 py-2 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
-                  manualOverride === 'needs_more_info'
+                  manualOverride === 'insufficient_information'
                     ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
                     : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                 }`}
