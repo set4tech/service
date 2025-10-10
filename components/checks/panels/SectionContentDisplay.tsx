@@ -2,7 +2,9 @@ import type { CodeSection } from '@/types/analysis';
 import { TableRenderer } from '@/components/ui/TableRenderer';
 
 interface Check {
-  element_group_name?: string;
+  element_groups?: {
+    name?: string;
+  };
 }
 
 interface SectionContentDisplayProps {
@@ -57,10 +59,10 @@ export function SectionContentDisplay({
             <div>
               <div className="text-sm font-semibold text-blue-900 mb-1">Element-Based Check</div>
               <div className="text-xs text-blue-800 leading-relaxed">
-                This {check?.element_group_name?.toLowerCase().replace(/s$/, '')} check evaluates{' '}
+                This {check?.element_groups?.name?.toLowerCase().replace(/s$/, '')} check evaluates{' '}
                 <span className="font-semibold">{sections.length} code sections</span> together in a
                 single assessment. All requirements from these sections apply to this specific{' '}
-                {check?.element_group_name?.toLowerCase().replace(/s$/, '')}.
+                {check?.element_groups?.name?.toLowerCase().replace(/s$/, '')}.
               </div>
             </div>
           </div>

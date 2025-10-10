@@ -66,9 +66,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       // Filter out checks for sections marked as never_relevant
-      // BUT keep element templates (instance_number = 0) even if never_relevant, since they're used for cloning
       const filteredChecksData = (allChecksData || []).filter((check: any) => {
-        return check.sections?.never_relevant !== true || check.instance_number === 0;
+        return check.sections?.never_relevant !== true;
       });
 
       if (filteredChecksData.length < (allChecksData?.length || 0)) {
@@ -79,44 +78,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         );
       }
 
-      // Fetch latest analysis runs, screenshots, and section overrides for all checks
+      // Fetch latest analysis runs and screenshots for all checks
       const checkIds = filteredChecksData.map((c: any) => c.id);
-      const [{ data: latestAnalysis }, { data: allScreenshots }, { data: sectionOverrides }] =
-        await Promise.all([
-          supabase
-            .from('latest_analysis_runs')
-            .select(
-              'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
-            )
-            .in('check_id', checkIds),
-          supabase
-            .from('screenshot_check_assignments')
-            .select(
-              `
+      const [{ data: latestAnalysis }, { data: allScreenshots }] = await Promise.all([
+        supabase
+          .from('latest_analysis_runs')
+          .select(
+            'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+          )
+          .in('check_id', checkIds),
+        supabase
+          .from('screenshot_check_assignments')
+          .select(
+            `
             check_id,
             is_original,
             screenshots (*)
           `
-            )
-            .in('check_id', checkIds)
-            .order('screenshots(created_at)', { ascending: true }),
-          supabase
-            .from('section_overrides')
-            .select('check_id, section_key')
-            .in('check_id', checkIds),
-        ]);
+          )
+          .in('check_id', checkIds)
+          .order('screenshots(created_at)', { ascending: true }),
+      ]);
 
       // Create analysis map
       const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
-
-      // Create section overrides map (check_id -> set of section_keys with overrides)
-      const overridesMap = new Map<string, Set<string>>();
-      (sectionOverrides || []).forEach((override: any) => {
-        if (!overridesMap.has(override.check_id)) {
-          overridesMap.set(override.check_id, new Set());
-        }
-        overridesMap.get(override.check_id)!.add(override.section_key);
-      });
 
       // Create screenshots map
       const screenshotsMap = new Map<string, any[]>();
@@ -147,29 +132,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         return (a.code_section_number || '').localeCompare(b.code_section_number || '');
       });
 
-      // Map element_groups.name to element_group_name and add analysis data and screenshots
+      // Add analysis data and screenshots (element_groups is kept from JOIN)
       const mappedChecks = (sortedAllChecksData || []).map((check: any) => {
         const analysis = analysisMap.get(check.id);
         const screenshots = screenshotsMap.get(check.id) || [];
-        const sectionOverridesSet = overridesMap.get(check.id);
-
-        // For element checks, check if all sections have overrides
-        let allSectionsOverridden = false;
-        if (
-          check.element_sections &&
-          Array.isArray(check.element_sections) &&
-          sectionOverridesSet
-        ) {
-          const allOverridden = check.element_sections.every((sectionKey: string) =>
-            sectionOverridesSet.has(sectionKey)
-          );
-          allSectionsOverridden = allOverridden && check.element_sections.length > 0;
-        }
 
         return {
           ...check,
-          element_group_name: check.element_groups?.name || null,
-          element_groups: undefined, // Remove nested object
           sections: undefined, // Remove nested sections object (used only for sorting)
           latest_status: analysis?.compliance_status || null,
           latest_confidence: analysis?.confidence || null,
@@ -181,7 +150,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               }
             : null,
           screenshots,
-          has_section_overrides: allSectionsOverridden,
         };
       });
 
@@ -229,25 +197,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log('[SEARCH] Total unique matches:', allChecks.length);
 
-      // Group and return - all element checks (except templates) as top-level peers
-      const checks = allChecks.reduce((acc: any[], check: any) => {
-        // Skip section checks that belong to element parents
-        if (check.check_type === 'section' && check.parent_check_id) {
-          const parent = allChecks.find((c: any) => c.id === check.parent_check_id);
-          if (parent?.check_type === 'element') {
-            return acc; // Skip child sections of elements
-          }
-        }
-
-        // Skip element templates (instance_number === 0)
-        if (check.check_type === 'element' && check.instance_number === 0) {
-          return acc;
-        }
-
-        // All other checks are returned as top-level
-        acc.push({ ...check, instances: [], instance_count: 0 });
-        return acc;
-      }, []);
+      // All checks are flat section checks - return them all
+      const checks = allChecks.map((check: any) => ({
+        ...check,
+        instances: [],
+        instance_count: 0,
+      }));
 
       return NextResponse.json(checks);
     }
@@ -263,9 +218,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Filter out checks for sections marked as never_relevant
-    // BUT keep element templates (instance_number = 0) even if never_relevant, since they're used for cloning
     const filteredChecks = (allChecks || []).filter((check: any) => {
-      return check.sections?.never_relevant !== true || check.instance_number === 0;
+      return check.sections?.never_relevant !== true;
     });
 
     if (filteredChecks.length < (allChecks?.length || 0)) {
@@ -320,28 +274,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return (a.code_section_number || '').localeCompare(b.code_section_number || '');
     });
 
-    // Fetch latest analysis runs and section overrides for all checks (reusing checkIds from above)
-    const [{ data: latestAnalysis }, { data: sectionOverrides }] = await Promise.all([
-      supabase
-        .from('latest_analysis_runs')
-        .select(
-          'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
-        )
-        .in('check_id', checkIds),
-      supabase.from('section_overrides').select('check_id, section_key').in('check_id', checkIds),
-    ]);
+    // Fetch latest analysis runs for all checks (reusing checkIds from above)
+    const { data: latestAnalysis } = await supabase
+      .from('latest_analysis_runs')
+      .select('check_id, compliance_status, confidence, ai_reasoning, violations, recommendations')
+      .in('check_id', checkIds);
 
     // Create analysis map
     const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
-
-    // Create section overrides map (check_id -> set of section_keys with overrides)
-    const overridesMap = new Map<string, Set<string>>();
-    (sectionOverrides || []).forEach((override: any) => {
-      if (!overridesMap.has(override.check_id)) {
-        overridesMap.set(override.check_id, new Set());
-      }
-      overridesMap.get(override.check_id)!.add(override.section_key);
-    });
 
     // Create screenshots map
     const screenshotsMap = new Map<string, any[]>();
@@ -363,25 +303,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       totalScreenshots: Array.from(screenshotsMap.values()).flat().length,
     });
 
-    // Map element_groups.name to element_group_name and add analysis data and screenshots
+    // Add analysis data and screenshots (element_groups is kept from JOIN)
     const mappedChecks = (sortedChecks || []).map((check: any) => {
       const analysis = analysisMap.get(check.id);
       const screenshots = screenshotsMap.get(check.id) || [];
-      const sectionOverridesSet = overridesMap.get(check.id);
-
-      // For element checks, check if all sections have overrides
-      let allSectionsOverridden = false;
-      if (check.element_sections && Array.isArray(check.element_sections) && sectionOverridesSet) {
-        const allOverridden = check.element_sections.every((sectionKey: string) =>
-          sectionOverridesSet.has(sectionKey)
-        );
-        allSectionsOverridden = allOverridden && check.element_sections.length > 0;
-      }
 
       return {
         ...check,
-        element_group_name: check.element_groups?.name || null,
-        element_groups: undefined, // Remove nested object
         sections: undefined, // Remove nested sections object (used only for sorting)
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
@@ -393,31 +321,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
           : null,
         screenshots,
-        has_section_overrides: allSectionsOverridden,
       };
     });
 
-    // Group checks - all element checks (except templates) are returned as top-level peers
-    // Section checks that belong to element parents are hidden (accessed via parent)
-    const checks = mappedChecks.reduce((acc: any[], check: any) => {
-      // Skip section checks that belong to element parents (they're accessed via the parent)
-      if (check.check_type === 'section' && check.parent_check_id) {
-        const parent = mappedChecks.find((c: any) => c.id === check.parent_check_id);
-        if (parent?.check_type === 'element') {
-          return acc; // Skip - this is a child section of an element
-        }
-      }
-
-      // Skip element templates (instance_number === 0)
-      if (check.check_type === 'element' && check.instance_number === 0) {
-        return acc;
-      }
-
-      // All other checks are returned as top-level
-      acc.push({ ...check, instances: [], instance_count: 0 });
-
-      return acc;
-    }, []);
+    // All checks are flat section checks - return them all
+    const checks = mappedChecks.map((check: any) => ({
+      ...check,
+      instances: [],
+      instance_count: 0,
+    }));
 
     // Log detailed screenshot info for checks with instances
     const checksWithInstances = checks.filter((c: any) => c.instances && c.instances.length > 0);

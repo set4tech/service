@@ -87,39 +87,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    // Update element checks to remove this section from their element_sections array
-    const { data: elementChecks, error: fetchError } = await supabase
-      .from('checks')
-      .select('id, element_sections, code_section_key')
-      .eq('assessment_id', assessmentId)
-      .eq('check_type', 'element')
-      .contains('element_sections', [sectionKey]);
-
-    if (!fetchError && elementChecks) {
-      console.log(
-        `Found ${elementChecks.length} element checks containing section ${sectionKey}, updating...`
-      );
-      for (const check of elementChecks) {
-        const updatedSections = (check.element_sections || []).filter(
-          (s: string) => s !== sectionKey
-        );
-
-        // If the excluded section was the code_section_key, update it to the first remaining section
-        const updates: any = { element_sections: updatedSections };
-        if (check.code_section_key === sectionKey && updatedSections.length > 0) {
-          updates.code_section_key = updatedSections[0];
-        }
-
-        const { error: updateError } = await supabase
-          .from('checks')
-          .update(updates)
-          .eq('id', check.id);
-
-        if (updateError) {
-          console.error(`Error updating element check ${check.id}:`, updateError);
-        }
-      }
-    }
+    // Note: In flat section model, checks are deleted above if they match the excluded section
+    // No need to update element_sections arrays (deprecated in new model)
 
     return NextResponse.json({
       success: true,
@@ -191,39 +160,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         });
       }
 
-      // Re-add to element checks if applicable
-      if (isElementMapped) {
-        // Get all element template checks for this assessment
-        const { data: elementChecks } = await supabase
-          .from('checks')
-          .select('id, element_group_id, element_sections')
-          .eq('assessment_id', assessmentId)
-          .eq('check_type', 'element')
-          .eq('instance_number', 0); // Templates only
-
-        for (const check of elementChecks || []) {
-          // Check if this section should be in this element group
-          const { data: mapping } = await supabase
-            .from('element_section_mappings')
-            .select('section_key')
-            .eq('element_group_id', check.element_group_id)
-            .eq('section_key', sectionKey)
-            .single();
-
-          if (mapping) {
-            // Add section back to element_sections array if not already there
-            const currentSections = check.element_sections || [];
-            if (!currentSections.includes(sectionKey)) {
-              await supabase
-                .from('checks')
-                .update({
-                  element_sections: [...currentSections, sectionKey],
-                })
-                .eq('id', check.id);
-            }
-          }
-        }
-      }
+      // Note: In flat section model, section checks are created individually
+      // No need to update element_sections arrays (deprecated in new model)
     }
 
     return NextResponse.json({ success: true });
