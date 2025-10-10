@@ -80,11 +80,18 @@ export function useAssessmentPolling(
           // Trigger queue processing
           fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
         } else {
+          // Assessment complete - show loading message while fetching results
+          setProgress(100);
+          setMessage('Loading results...');
+
+          // Call onComplete to fetch the results
+          if (onComplete) {
+            await onComplete();
+          }
+
+          // Only stop assessing after results are loaded
           setAssessing(false);
           setMessage('Assessment complete!');
-          if (onComplete) {
-            onComplete();
-          }
         }
       } catch (err) {
         console.error('Poll error:', err);
