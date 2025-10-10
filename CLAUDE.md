@@ -321,19 +321,23 @@ AssessmentClient (main assessment page)
 
 - **Branch**: `main`
 - **Deployment**: Vercel production deployment
-- **Database**: Production Supabase instance
-- **S3**: Production bucket
+- **Database**: Production Supabase instance (`grosxzvvmhakkxybeuwu.supabase.co`)
+- **S3**: Production bucket (`set4-data`)
 - **URL**: Production domain
 
 ### Development/Staging Environment
 
 - **Branch**: `dev`
 - **Deployment**: Vercel preview deployment
-- **Database**: Same Supabase instance (shared with prod)
-- **S3**: Same bucket (shared with prod)
+- **Database**: Development Supabase instance (`yfkrmsieuupgggyuqddk.supabase.co`)
+- **S3**: Same bucket (shared with prod - `set4-data`)
 - **URL**: Staging domain
 
-**Important**: Both environments share the same database and S3 bucket. Exercise caution when testing data operations.
+**Important**:
+
+- Production and development use **separate databases**
+- Both environments share the **same S3 bucket**
+- Database changes must be applied to both environments separately
 
 ## Environment Variables Required
 
@@ -406,21 +410,40 @@ element_groups (1) ──> (many) element_section_mappings ──> (many) sectio
 
 **Important**: Always use the **pooler** connection (IPv4 compatible), not the direct connection.
 
-### Running Database Queries
+### Production Database
 
-Use psql with the pooler connection string:
+Connection string for production queries:
 
 ```bash
 PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "YOUR_QUERY_HERE"
 ```
 
-### Connection Details
+**Connection Details:**
 
+- **Project**: `grosxzvvmhakkxybeuwu.supabase.co`
 - **Host**: `aws-1-us-east-1.pooler.supabase.com`
 - **Port**: `6543` (pooler port, NOT 5432)
 - **User**: `postgres.grosxzvvmhakkxybeuwu` (project-scoped username)
 - **Database**: `postgres`
-- **Password**: Must be URL-encoded (`&` → `%26`, `!` → `%21`)
+- **Password**: `beiajs3&!!jfSJAB12` (must be URL-encoded: `&` → `%26`, `!` → `%21`)
+- **SSL**: Required (set `PGSSLMODE=require`)
+
+### Development Database
+
+Connection string for development queries:
+
+```bash
+PGSSLMODE=require psql "postgresql://postgres:utroligbra%21%21@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -c "YOUR_QUERY_HERE"
+```
+
+**Connection Details:**
+
+- **Project**: `yfkrmsieuupgggyuqddk.supabase.co`
+- **Host**: `aws-0-us-west-1.pooler.supabase.com`
+- **Port**: `6543` (pooler port, NOT 5432)
+- **User**: `postgres` (or `postgres.yfkrmsieuupgggyuqddk`)
+- **Database**: `postgres`
+- **Password**: `utroligbra!!` (must be URL-encoded: `!` → `%21`)
 - **SSL**: Required (set `PGSSLMODE=require`)
 
 ### Important Notes
@@ -432,6 +455,8 @@ PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21
 
 ### Common Query Patterns
 
+**Production:**
+
 ```bash
 # List all tables
 PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "\dt"
@@ -441,4 +466,17 @@ PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21
 
 # Run custom query
 PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "SELECT * FROM projects LIMIT 10"
+```
+
+**Development:**
+
+```bash
+# List all tables
+PGSSLMODE=require psql "postgresql://postgres:utroligbra%21%21@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -c "\dt"
+
+# Describe table schema
+PGSSLMODE=require psql "postgresql://postgres:utroligbra%21%21@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -c "\d table_name"
+
+# Run custom query
+PGSSLMODE=require psql "postgresql://postgres:utroligbra%21%21@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -c "SELECT * FROM projects LIMIT 10"
 ```
