@@ -141,3 +141,5 @@ next-env.d.ts
 
 
 cbc_CA_2025.json
+
+backups/*
