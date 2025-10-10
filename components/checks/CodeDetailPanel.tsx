@@ -7,6 +7,7 @@ import { TableRenderer } from '@/components/ui/TableRenderer';
 import { TriageModal } from './TriageModal';
 import { AnalysisHistory } from './AnalysisHistory';
 import { useManualOverride } from '@/hooks/useManualOverride';
+import { useAssessmentPolling } from '@/hooks/useAssessmentPolling';
 import type { SectionResult, AnalysisRun, CodeSection } from '@/types/analysis';
 
 interface Check {
@@ -236,53 +237,6 @@ function useCheckData(
   return { loading, error, ...data };
 }
 
-// Custom hook for assessment polling
-function useAssessmentPolling(
-  checkId: string | null,
-  initialAssessing: boolean,
-  onComplete: () => void
-): {
-  assessing: boolean;
-  progress: number;
-  message: string;
-  setAssessing: (value: boolean) => void;
-} {
-  const [assessing, setAssessing] = useState(initialAssessing);
-  const [progress, setProgress] = useState(0);
-  const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    if (!assessing || !checkId) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/checks/${checkId}/assessment-progress`);
-        const data = await res.json();
-
-        if (data.inProgress) {
-          const percent = Math.round((data.completed / data.total) * 100);
-          setProgress(percent);
-          setMessage(`Analyzing... (${data.completed}/${data.total})`);
-
-          // Trigger queue processing
-          fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
-        } else {
-          setAssessing(false);
-          setMessage('Assessment complete!');
-          onComplete();
-        }
-      } catch (err) {
-        console.error('Poll error:', err);
-        setAssessing(false);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [assessing, checkId, onComplete]);
-
-  return { assessing, progress, message, setAssessing };
-}
-
 export function CodeDetailPanel({
   checkId,
   sectionKey,
@@ -424,7 +378,11 @@ export function CodeDetailPanel({
     progress: assessmentProgress,
     message: assessmentMessage,
     setAssessing,
-  } = useAssessmentPolling(checkId, initialAssessing, handleAssessmentComplete);
+  } = useAssessmentPolling({
+    checkId,
+    initialAssessing,
+    onComplete: handleAssessmentComplete,
+  });
 
   // Other UI state
   const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-pro');
