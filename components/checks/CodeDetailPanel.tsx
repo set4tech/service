@@ -818,6 +818,11 @@ export function CodeDetailPanel({
   if (!sectionKey && childChecks.length === 0) return null;
 
   const isElementCheck = childChecks.length > 0;
+  console.log('[CodeDetailPanel] Rendering:', {
+    isElementCheck,
+    childChecksCount: childChecks.length,
+    sectionKey,
+  });
 
   // [Continue with the rest of the JSX - importing from original lines 1104-2248]
   // Due to length, I'll include the key parts and preserve exact structure...

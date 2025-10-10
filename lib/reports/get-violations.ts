@@ -88,6 +88,7 @@ export async function getProjectViolations(
       check_type,
       element_group_name,
       instance_label,
+      parent_check_id,
       latest_analysis_runs(
         id,
         compliance_status,
@@ -108,7 +109,28 @@ export async function getProjectViolations(
     return null;
   }
 
-  if (!allChecks || allChecks.length === 0) {
+  // Fetch all section overrides for all checks
+  const checkIds = (allChecks || []).map((c: any) => c.id);
+  const { data: sectionOverrides } = await supabase
+    .from('section_overrides')
+    .select('check_id, section_key, section_number, override_status, note')
+    .in('check_id', checkIds);
+
+  // Create a map of check_id -> section overrides
+  const sectionOverridesMap = new Map<string, any[]>();
+  sectionOverrides?.forEach((override: any) => {
+    if (!sectionOverridesMap.has(override.check_id)) {
+      sectionOverridesMap.set(override.check_id, []);
+    }
+    sectionOverridesMap.get(override.check_id)!.push(override);
+  });
+
+  // All checks are flat section checks now
+  const checksForViolations = allChecks || [];
+
+  console.log(`[getProjectViolations] Processing ${checksForViolations.length} checks`);
+
+  if (!checksForViolations || checksForViolations.length === 0) {
     return {
       projectId: project.id,
       projectName: project.name,
@@ -122,7 +144,7 @@ export async function getProjectViolations(
 
   // Fetch code info from the first check's section
   let codeInfo: CodeInfo | undefined;
-  const firstCheck = allChecks.find((c: any) => c.code_section_key);
+  const firstCheck = checksForViolations.find((c: any) => c.code_section_key);
   if (firstCheck?.code_section_key) {
     const { data: sectionWithCode } = await supabase
       .from('sections')
@@ -144,12 +166,33 @@ export async function getProjectViolations(
   }
 
   // Filter to non-compliant and needs_more_info checks
-  const nonCompliantChecks = allChecks.filter((check: any) => {
+  const nonCompliantChecks = checksForViolations.filter((check: any) => {
     const latestAnalysis = Array.isArray(check.latest_analysis_runs)
       ? check.latest_analysis_runs[0]
       : check.latest_analysis_runs;
 
-    // If manual_override is set, it takes precedence over AI analysis
+    // Check for section-level overrides first
+    const checkSectionOverrides = sectionOverridesMap.get(check.id) || [];
+    if (checkSectionOverrides.length > 0) {
+      // If ANY section override is non_compliant, include this check
+      const hasNonCompliantSection = checkSectionOverrides.some(
+        (override: any) => override.override_status === 'non_compliant'
+      );
+      if (hasNonCompliantSection) {
+        return true;
+      }
+
+      // If all sections are compliant or not_applicable, exclude this check
+      const allCompliantOrNA = checkSectionOverrides.every(
+        (override: any) =>
+          override.override_status === 'compliant' || override.override_status === 'not_applicable'
+      );
+      if (allCompliantOrNA) {
+        return false;
+      }
+    }
+
+    // If manual_override is set on the check, it takes precedence over AI analysis
     if (check.manual_override) {
       // Exclude checks marked as compliant, not_applicable, or excluded
       if (
@@ -216,13 +259,13 @@ export async function getProjectViolations(
   }
 
   // Batch fetch all screenshots for non-compliant checks
-  const checkIds = nonCompliantChecks.map((c: any) => c.id);
+  const nonCompliantCheckIds = nonCompliantChecks.map((c: any) => c.id);
 
   // First get all screenshot assignments for these checks
   const { data: assignments, error: assignmentError } = await supabase
     .from('screenshot_check_assignments')
     .select('check_id, screenshot_id')
-    .in('check_id', checkIds);
+    .in('check_id', nonCompliantCheckIds);
 
   if (assignmentError) {
     console.error('[getProjectViolations] Assignment query error:', assignmentError);
@@ -317,11 +360,13 @@ export async function getProjectViolations(
 
     const sourceLabel = section?.number ? `CBC ${section.number}` : '';
 
-    // Get screenshots from pre-fetched map
-    const screenshots = screenshotsByCheck.get(check.id) || [];
+    // Get screenshots from pre-fetched map and sort by page number
+    const screenshots = (screenshotsByCheck.get(check.id) || []).sort(
+      (a, b) => a.page_number - b.page_number
+    );
 
     // Parse violations from AI response - aggregate from all batches if applicable
-    let violationDetails: Array<{
+    const violationDetails: Array<{
       description: string;
       severity: 'minor' | 'moderate' | 'major';
     }> = [];
@@ -386,58 +431,57 @@ export async function getProjectViolations(
     // Deduplicate recommendations
     recommendations = Array.from(new Set(recommendations));
 
-    // Create a violation marker for each screenshot
+    // Create ONE violation marker per check (using first screenshot only)
     if (screenshots && screenshots.length > 0) {
-      screenshots.forEach((screenshot, idx) => {
-        // Get violation details for this screenshot (use first violation if multiple, or generic)
-        const violationDetail = violationDetails[idx] || violationDetails[0];
+      // Use only the first screenshot
+      const screenshot = screenshots[0];
+      const violationDetail = violationDetails[0];
 
-        // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
-        const checkStatus = check.manual_override || latestAnalysis?.compliance_status;
-        let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-        if (checkStatus === 'needs_more_info') {
-          severity = 'needs_more_info';
-        } else if (violationDetail?.severity) {
-          severity = violationDetail.severity;
-        }
+      // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
+      const checkStatus = check.manual_override || latestAnalysis?.compliance_status;
+      let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
+      if (checkStatus === 'needs_more_info') {
+        severity = 'needs_more_info';
+      } else if (violationDetail?.severity) {
+        severity = violationDetail.severity;
+      }
 
-        const description =
-          violationDetail?.description ||
-          (checkStatus === 'needs_more_info'
-            ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
-            : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
+      const description =
+        violationDetail?.description ||
+        (checkStatus === 'needs_more_info'
+          ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
+          : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
 
-        if (screenshot.crop_coordinates && screenshot.page_number) {
-          violations.push({
-            checkId: check.id,
-            checkName: check.check_name,
-            codeSectionKey: check.code_section_key,
-            codeSectionNumber: check.code_section_number || check.code_section_key,
-            pageNumber: screenshot.page_number,
-            bounds: {
-              x: screenshot.crop_coordinates.x,
-              y: screenshot.crop_coordinates.y,
-              width: screenshot.crop_coordinates.width,
-              height: screenshot.crop_coordinates.height,
-              zoom_level: screenshot.crop_coordinates.zoom_level || 1,
-            },
-            severity,
-            description,
-            screenshotUrl: screenshot.screenshot_url,
-            thumbnailUrl: screenshot.thumbnail_url,
-            screenshotId: screenshot.id,
-            reasoning,
-            recommendations,
-            confidence,
-            sourceUrl,
-            sourceLabel,
-            humanReadableTitle: check.human_readable_title,
-            checkType: check.check_type,
-            elementGroupName: check.element_group_name,
-            instanceLabel: check.instance_label,
-          });
-        }
-      });
+      if (screenshot.crop_coordinates && screenshot.page_number) {
+        violations.push({
+          checkId: check.id,
+          checkName: check.check_name,
+          codeSectionKey: check.code_section_key,
+          codeSectionNumber: check.code_section_number || check.code_section_key,
+          pageNumber: screenshot.page_number,
+          bounds: {
+            x: screenshot.crop_coordinates.x,
+            y: screenshot.crop_coordinates.y,
+            width: screenshot.crop_coordinates.width,
+            height: screenshot.crop_coordinates.height,
+            zoom_level: screenshot.crop_coordinates.zoom_level || 1,
+          },
+          severity,
+          description,
+          screenshotUrl: screenshot.screenshot_url,
+          thumbnailUrl: screenshot.thumbnail_url,
+          screenshotId: screenshot.id,
+          reasoning,
+          recommendations,
+          confidence,
+          sourceUrl,
+          sourceLabel,
+          humanReadableTitle: check.human_readable_title,
+          checkType: check.check_type,
+          elementGroupName: check.element_group_name,
+          instanceLabel: check.instance_label,
+        });
+      }
     } else {
       // No screenshots - create a generic marker (we'll handle this case in the UI)
       const violationDetail = violationDetails[0];

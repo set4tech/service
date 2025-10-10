@@ -165,7 +165,6 @@ export async function POST(req: NextRequest) {
   // 3. Trigger background OCR extraction (non-blocking)
   // Only run if we have API keys configured
   if (process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY) {
-    console.log('[Screenshot] Triggering background OCR for:', screenshot.id);
     // Fire and forget - don't await
     fetch(
       `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/screenshots/${screenshot.id}/extract-text`,
@@ -173,9 +172,8 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       }
-    ).catch(err => {
-      console.error('[Screenshot] Failed to trigger OCR:', err);
-      // Don't fail the request if OCR trigger fails
+    ).catch(() => {
+      // Silently ignore OCR trigger failures
     });
   }
 

@@ -93,12 +93,6 @@ export function CheckList({
       result = result.filter(c => {
         // Check is assessed if it has manual_override or latest_status
         const isAssessed = c.manual_override || c.latest_status;
-
-        // For element checks, also check if all sections have overrides
-        if (c.check_type === 'element' && c.has_section_overrides) {
-          return false; // Has section overrides, so it's assessed
-        }
-
         return !isAssessed;
       });
     }
@@ -111,10 +105,10 @@ export function CheckList({
     const mainGroups = new Map<string, any[]>();
 
     if (checkMode === 'element') {
-      // Group by element group name - treat all instances as peers (no parent/child)
+      // Group by element group name, then by instance_label
       filtered.forEach(check => {
-        // Skip templates (instance_number === 0)
-        if (check.instance_number === 0) {
+        // Only show checks that belong to an element group
+        if (!check.element_group_id || !check.instance_label) {
           return;
         }
 
@@ -123,13 +117,26 @@ export function CheckList({
           mainGroups.set(groupName, []);
         }
 
-        // Add the check itself (all element checks are peers now)
-        mainGroups.get(groupName)!.push(check);
+        // Find or create instance group
+        const group = mainGroups.get(groupName)!;
+        let instanceGroup = group.find((g: any) => g.instance_label === check.instance_label);
+
+        if (!instanceGroup) {
+          // Create new instance group with first check as representative
+          instanceGroup = {
+            ...check,
+            sections: [check], // Store all sections for this instance
+          };
+          group.push(instanceGroup);
+        } else {
+          // Add section to existing instance group
+          instanceGroup.sections.push(check);
+        }
       });
 
-      // Sort each group by instance number
+      // Sort each group by instance label alphabetically
       mainGroups.forEach(group => {
-        group.sort((a, b) => a.instance_number - b.instance_number);
+        group.sort((a, b) => (a.instance_label || '').localeCompare(b.instance_label || ''));
       });
     } else {
       // Group by section prefix (original logic)
@@ -573,7 +580,7 @@ export function CheckList({
                             </span>
                             <div className="flex-1 min-w-0">
                               {checkMode === 'element' ? (
-                                // Element mode: show instance label and screenshot count
+                                // Element mode: show instance label and section count
                                 <>
                                   <div className="flex items-start gap-1">
                                     {editingCheckId === check.id ? (
@@ -613,13 +620,10 @@ export function CheckList({
                                           `Instance ${check.instance_number}`}
                                       </span>
                                     )}
-                                    {check.screenshots?.length > 0 && (
+                                    {check.sections?.length > 0 && (
                                       <span className="text-xs text-gray-500">
-                                        ({check.screenshots.length}{' '}
-                                        {check.screenshots.length === 1
-                                          ? 'screenshot'
-                                          : 'screenshots'}
-                                        )
+                                        ({check.sections.length}{' '}
+                                        {check.sections.length === 1 ? 'section' : 'sections'})
                                       </span>
                                     )}
                                   </div>
@@ -629,17 +633,18 @@ export function CheckList({
                                         Manual
                                       </span>
                                     )}
-                                    {check.element_sections && (
-                                      <span className="text-xs text-gray-500">
-                                        {check.element_sections.length} sections
-                                      </span>
-                                    )}
-                                    {hasInstances && (
-                                      <span className="text-xs text-blue-600 font-medium">
-                                        {check.instances.length}{' '}
-                                        {check.instances.length === 1 ? 'added' : 'added'}
-                                      </span>
-                                    )}
+                                    {(() => {
+                                      const totalScreenshots = (check.sections || []).reduce(
+                                        (sum: number, s: any) => sum + (s.screenshots?.length || 0),
+                                        0
+                                      );
+                                      return totalScreenshots > 0 ? (
+                                        <span className="text-xs text-gray-500">
+                                          {totalScreenshots}{' '}
+                                          {totalScreenshots === 1 ? 'screenshot' : 'screenshots'}
+                                        </span>
+                                      ) : null;
+                                    })()}
                                   </div>
                                 </>
                               ) : (
@@ -698,8 +703,8 @@ export function CheckList({
                             </button>
                           )}
 
-                          {/* Delete Button - show for instances in element mode */}
-                          {checkMode === 'element' && check.instance_number > 0 && (
+                          {/* Delete Button - show for element checks in element mode */}
+                          {checkMode === 'element' && check.element_group_id && (
                             <button
                               onClick={e => {
                                 e.stopPropagation();

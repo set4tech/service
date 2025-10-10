@@ -135,69 +135,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         })
         .eq('id', id);
 
-      // Create element group templates
-      try {
-        const { data: elementGroups } = await supabase
-          .from('element_groups')
-          .select('id, name, slug')
-          .order('sort_order');
-
-        if (elementGroups && elementGroups.length > 0) {
-          for (const group of elementGroups) {
-            const { data: groupMappings } = await supabase
-              .from('element_group_section_mappings')
-              .select('section_key, sections!inner(number, title)')
-              .eq('element_group_id', group.id);
-
-            const allSectionKeys = groupMappings?.map(m => m.section_key) || [];
-
-            // Filter section keys using same logic as section-by-section checks
-            let filteredSectionKeys = allSectionKeys;
-            if (groupMappings) {
-              filteredSectionKeys = groupMappings
-                .filter(m => {
-                  const section = m.sections as any;
-                  const sectionNumber = section?.number;
-                  const sectionTitle = section?.title;
-
-                  // Apply chapter filter if needed
-                  if (
-                    chapterFilters.length > 0 &&
-                    !chapterFilters.some(filter => filter.test(sectionNumber))
-                  ) {
-                    return false;
-                  }
-
-                  // Exclude general/scope/definitions sections
-                  if (/(general|scope|definitions?|defined terms)/i.test(sectionTitle)) {
-                    return false;
-                  }
-
-                  return true;
-                })
-                .map(m => m.section_key);
-            }
-
-            if (filteredSectionKeys.length > 0) {
-              await supabase.from('checks').insert({
-                assessment_id: id,
-                check_type: 'element',
-                element_group_id: group.id,
-                element_sections: filteredSectionKeys,
-                code_section_key: filteredSectionKeys[0],
-                code_section_number: group.slug,
-                code_section_title: `${group.name} Template`,
-                check_name: `${group.name} - Template`,
-                check_location: 'TBD',
-                instance_number: 0,
-                status: 'pending',
-              });
-            }
-          }
-        }
-      } catch (error) {
-        console.error('[Seed API] Element template creation error:', error);
-      }
+      // Element groups are available for user to create instances from
+      // No templates needed - user creates instances directly via the UI
     }
 
     // 4. Get current progress

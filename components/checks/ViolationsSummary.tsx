@@ -82,13 +82,14 @@ export function ViolationsSummary({
     );
     const totalSections = applicableChecks.length;
 
-    // Count assessed (has AI result OR manual override)
+    // Count assessed (has AI result OR manual override OR section overrides)
     const assessed = applicableChecks.filter(
       c =>
         c.latest_status ||
         (c.manual_override &&
           c.manual_override !== 'not_applicable' &&
-          c.manual_override !== 'insufficient_information')
+          c.manual_override !== 'insufficient_information') ||
+        c.has_section_overrides
     ).length;
 
     // Count currently analyzing (only if updated recently - within 5 minutes)
@@ -124,31 +125,46 @@ export function ViolationsSummary({
     });
 
     allChecks.forEach(check => {
-      // Skip excluded/not applicable checks (MATCH get-violations.ts logic)
-      if (
-        check.manual_override === 'not_applicable' ||
-        check.manual_override === 'excluded' ||
-        check.manual_override === 'compliant'
-      ) {
-        return;
+      // Check for section-level overrides first (same logic as get-violations.ts)
+      const checkSectionOverrides = check.section_overrides || [];
+      if (checkSectionOverrides.length > 0) {
+        // If ANY section override is non_compliant, include this check
+        const hasNonCompliantSection = checkSectionOverrides.some(
+          (override: any) => override.override_status === 'non_compliant'
+        );
+        if (!hasNonCompliantSection) {
+          // If no non-compliant sections, skip this check
+          return;
+        }
+        // Continue to create violation marker below
+      } else {
+        // No section overrides, use standard logic
+        // Skip excluded/not applicable checks (MATCH get-violations.ts logic)
+        if (
+          check.manual_override === 'not_applicable' ||
+          check.manual_override === 'excluded' ||
+          check.manual_override === 'compliant'
+        ) {
+          return;
+        }
+
+        // For element checks, skip if element_sections is empty (all sections excluded)
+        if (
+          check.check_type === 'element' &&
+          (!check.element_sections || check.element_sections.length === 0)
+        ) {
+          return;
+        }
+
+        // Determine if non-compliant or needs more info
+        const isNonCompliant =
+          check.manual_override === 'non_compliant' || check.latest_status === 'non_compliant';
+
+        const needsMoreInfo =
+          check.manual_override === 'needs_more_info' || check.latest_status === 'needs_more_info';
+
+        if (!isNonCompliant && !needsMoreInfo) return;
       }
-
-      // For element checks, skip if element_sections is empty (all sections excluded)
-      if (
-        check.check_type === 'element' &&
-        (!check.element_sections || check.element_sections.length === 0)
-      ) {
-        return;
-      }
-
-      // Determine if non-compliant or needs more info
-      const isNonCompliant =
-        check.manual_override === 'non_compliant' || check.latest_status === 'non_compliant';
-
-      const needsMoreInfo =
-        check.manual_override === 'needs_more_info' || check.latest_status === 'needs_more_info';
-
-      if (!isNonCompliant && !needsMoreInfo) return;
 
       // Parse violations from latest analysis
       let violationDetails: Array<{

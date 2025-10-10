@@ -91,10 +91,13 @@ export default function AssessmentClient({
   const displayedChecks = useMemo(() => {
     if (checkMode === 'summary' || checkMode === 'gallery') return checks;
 
-    return checks.filter(c => {
-      const type = c.check_type || 'section';
-      return type === checkMode;
-    });
+    // Element mode: show checks with element_group_id
+    // Section mode: show checks without element_group_id (standalone sections)
+    if (checkMode === 'element') {
+      return checks.filter(c => c.element_group_id != null);
+    } else {
+      return checks.filter(c => c.element_group_id == null);
+    }
   }, [checks, checkMode]);
 
   // Calculate progress dynamically from checks state (all checks, not filtered)
@@ -767,20 +770,33 @@ export default function AssessmentClient({
                 onCheckUpdate={async () => {
                   if (activeCheck?.id) {
                     try {
+                      // Fetch section overrides for this check
+                      const overridesRes = await fetch(
+                        `/api/checks/${activeCheck.id}/section-overrides`
+                      );
+                      const sectionOverrides = overridesRes.ok ? await overridesRes.json() : [];
+
+                      // Fetch check data
                       const res = await fetch(`/api/checks/${activeCheck.id}`);
                       if (res.ok) {
                         const { check: updatedCheck } = await res.json();
+                        const checkWithOverrides = {
+                          ...updatedCheck,
+                          section_overrides: sectionOverrides,
+                          has_section_overrides: sectionOverrides.length > 0,
+                        };
+
                         setChecks(prev =>
                           prev.map(c => {
                             // Update top-level check if it matches
-                            if (c.id === updatedCheck.id) {
-                              return { ...c, ...updatedCheck, instances: c.instances };
+                            if (c.id === checkWithOverrides.id) {
+                              return { ...c, ...checkWithOverrides, instances: c.instances };
                             }
                             // Update instance within check if it matches
                             if (c.instances?.length > 0) {
                               const updatedInstances = c.instances.map((instance: any) =>
-                                instance.id === updatedCheck.id
-                                  ? { ...instance, ...updatedCheck }
+                                instance.id === checkWithOverrides.id
+                                  ? { ...instance, ...checkWithOverrides }
                                   : instance
                               );
                               if (updatedInstances !== c.instances) {

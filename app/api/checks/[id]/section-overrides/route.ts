@@ -64,3 +64,34 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+// DELETE endpoint to remove a specific section override
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: checkId } = await params;
+  const { searchParams } = new URL(req.url);
+  const sectionKey = searchParams.get('sectionKey');
+
+  if (!sectionKey) {
+    return NextResponse.json({ error: 'sectionKey required' }, { status: 400 });
+  }
+
+  const supabase = supabaseAdmin();
+
+  try {
+    const { error } = await supabase
+      .from('section_overrides')
+      .delete()
+      .eq('check_id', checkId)
+      .eq('section_key', sectionKey);
+
+    if (error) {
+      console.error('Failed to delete section override:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Section override delete error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

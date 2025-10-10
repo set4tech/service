@@ -344,7 +344,7 @@ export function ViolationListSidebar({
                         <div className="text-sm font-medium text-ink-900 line-clamp-2">
                           {formatViolationDescription(violation)}
                         </div>
-                        <div className="mt-1.5 flex items-center gap-2 text-xs text-ink-500">
+                        <div className="mt-1.5 flex items-center gap-2 text-xs text-ink-500 flex-wrap">
                           <span className="font-mono">Page {violation.pageNumber}</span>
                           <span>•</span>
                           <span
@@ -355,6 +355,15 @@ export function ViolationListSidebar({
                           >
                             {violation.severity}
                           </span>
+                          {violation.checkType === 'element' && violation.elementGroupName && (
+                            <>
+                              <span>•</span>
+                              <span className="font-medium text-accent-600">
+                                {violation.elementGroupName}
+                                {violation.instanceLabel && ` - ${violation.instanceLabel}`}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                       {/* Details button */}

@@ -24,7 +24,7 @@ export async function GET(_request: NextRequest) {
     if (error) throw error;
 
     // Map Supabase fields to expected format
-    const codes: CodeNode[] = (data || []).map((code) => ({
+    const codes: CodeNode[] = (data || []).map(code => ({
       id: code.id,
       name: code.title,
       publisher: code.provider,
@@ -35,9 +35,6 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json(codes);
   } catch (error) {
     console.error('Error fetching codes:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch codes from database' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch codes from database' }, { status: 500 });
   }
 }

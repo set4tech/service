@@ -83,40 +83,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const project = assessment?.projects;
     const buildingContext = project?.extracted_variables || {};
 
-    // 3. Fetch code sections from Supabase
-    const sectionKeys =
-      check.element_sections || (check.code_section_key ? [check.code_section_key] : []);
-    const codeSections: any[] = [];
+    // 3. Fetch code section from Supabase (flat structure - one section per check)
+    const sectionKey = check.code_section_key;
 
-    if (sectionKeys.length > 0) {
-      const { data: sections, error: sectionsError } = await supabase
-        .from('sections')
-        .select('key, number, title, paragraphs')
-        .in('key', sectionKeys)
-        .eq('never_relevant', false);
-
-      if (!sectionsError && sections) {
-        for (const section of sections) {
-          const paragraphs = section.paragraphs || [];
-          const text = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
-
-          codeSections.push({
-            key: section.key,
-            number: section.number || '',
-            title: section.title || '',
-            text: text || 'Section text not available',
-          });
-        }
-      }
+    if (!sectionKey) {
+      return NextResponse.json({ error: 'Check has no section key' }, { status: 400 });
     }
 
-    if (codeSections.length === 0) {
-      codeSections.push({
+    const { data: section, error: sectionError } = await supabase
+      .from('sections')
+      .select('key, number, title, paragraphs')
+      .eq('key', sectionKey)
+      .eq('never_relevant', false)
+      .single();
+
+    let codeSection: any;
+
+    if (!sectionError && section) {
+      const paragraphs = section.paragraphs || [];
+      const text = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
+
+      codeSection = {
+        key: section.key,
+        number: section.number || '',
+        title: section.title || '',
+        text: text || 'Section text not available',
+      };
+    } else {
+      codeSection = {
         key: check.code_section_key || 'unknown',
         number: check.code_section_number || '',
         title: check.code_section_title || '',
-        text: 'Section text not available - no sections found',
-      });
+        text: 'Section text not available',
+      };
     }
 
     // 4. Fetch all screenshots with presigned URLs
@@ -145,18 +144,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       (screenshots || []).map(async s => await getPresignedUrl(s.screenshot_url))
     );
 
-    // 5. Batch sections (5 per batch)
-    const BATCH_SIZE = 5;
-    const batches: any[][] = [];
-    for (let i = 0; i < codeSections.length; i += BATCH_SIZE) {
-      batches.push(codeSections.slice(i, i + BATCH_SIZE));
-    }
-
-    console.log(
-      `[Assess] Check ${checkId}: Found ${codeSections.length} sections, creating ${batches.length} batches`
-    );
-
+    // 5. Create single batch with single section (flat structure)
+    const batch = [codeSection];
     const batchGroupId = crypto.randomUUID();
+
+    console.log(`[Assess] Check ${checkId}: Assessing section ${codeSection.number}`);
 
     // 6. Get starting run number
     const { count } = await supabase
@@ -165,66 +157,54 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .eq('check_id', checkId);
     const runNumber = (count || 0) + 1;
 
-    // 7. Queue ALL batches in background (including the first one)
+    // 7. Queue analysis job in background
     const { provider, modelName } = getModelConfig(aiProvider);
+    const jobId = crypto.randomUUID();
 
-    if (batches.length === 0) {
-      return NextResponse.json({ error: 'No sections to assess' }, { status: 400 });
-    }
+    console.log(`[Assess] Queuing analysis for check ${checkId}, jobId ${jobId}`);
 
-    // Queue all batches as background jobs
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      const batch = batches[batchIndex];
-      const batchNum = batchIndex + 1;
-      const jobId = crypto.randomUUID();
-
-      console.log(
-        `[Assess] Queuing batch ${batchNum}/${batches.length} for check ${checkId}, jobId ${jobId}`
-      );
-
-      await kv.hset(`job:${jobId}`, {
-        id: jobId,
-        type: 'batch_analysis',
-        payload: JSON.stringify({
-          checkId,
-          batch,
-          batchNum,
-          totalBatches: batches.length,
-          batchGroupId,
-          runNumber: runNumber + batchIndex,
-          screenshotUrls,
-          screenshots,
-          check,
-          buildingContext,
-          customPrompt,
-          extraContext,
-          provider,
-          modelName,
-        }),
-        status: 'pending',
-        attempts: 0,
-        maxAttempts: 3,
-        createdAt: Date.now(),
-      });
-      await kv.lpush('queue:analysis', jobId);
-    }
+    await kv.hset(`job:${jobId}`, {
+      id: jobId,
+      type: 'batch_analysis',
+      payload: JSON.stringify({
+        checkId,
+        batch,
+        batchNum: 1,
+        totalBatches: 1,
+        batchGroupId,
+        runNumber,
+        screenshotUrls,
+        screenshots,
+        check,
+        buildingContext,
+        customPrompt,
+        extraContext,
+        provider,
+        modelName,
+      }),
+      status: 'pending',
+      attempts: 0,
+      maxAttempts: 3,
+      createdAt: Date.now(),
+    });
+    await kv.lpush('queue:analysis', jobId);
 
     console.log(
-      `[Assess] Successfully queued ${batches.length} batches for check ${checkId}, batchGroupId ${batchGroupId}`
+      `[Assess] Successfully queued analysis for check ${checkId}, batchGroupId ${batchGroupId}`
     );
 
     // Mark check as processing
     await supabase.from('checks').update({ status: 'processing' }).eq('id', checkId);
 
     // Note: Queue processing happens via cron job (runs every minute)
-    console.log('[Assess] Jobs queued - cron will process within 60 seconds');
+    console.log('[Assess] Job queued - cron will process within 60 seconds');
 
-    // Return immediately - all batches are queued
+    // Return immediately
     return NextResponse.json({
       success: true,
       batchGroupId,
-      totalBatches: batches.length,
-      message: `Assessment queued. Processing ${batches.length} batch${batches.length > 1 ? 'es' : ''} in background.`,
+      totalBatches: 1,
+      message: `Assessment queued. Processing in background.`,
     });
   } catch (error: any) {
     console.error('=== ASSESSMENT ERROR ===');
