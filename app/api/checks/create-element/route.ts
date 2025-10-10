@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   // 2. Get section mappings for this element group
   const { data: mappings, error: mappingsError } = await supabase
-    .from('element_group_section_mappings')
+    .from('element_section_mappings')
     .select('section_key')
     .eq('element_group_id', elementGroup.id);
 
@@ -64,104 +64,74 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3. Get the next instance number (find max instance_number for this element group + assessment)
-  const { data: existingChecks, error: existingError } = await supabase
+  // 3. Determine instance label (auto-generate if not provided)
+  // Count existing instances by finding unique instance_labels for this element group
+  const { data: existingLabels } = await supabase
     .from('checks')
-    .select('instance_number')
+    .select('instance_label')
     .eq('assessment_id', assessmentId)
     .eq('element_group_id', elementGroup.id)
-    .eq('check_type', 'element')
-    .order('instance_number', { ascending: false })
-    .limit(1);
+    .not('instance_label', 'is', null);
 
-  if (existingError) {
-    return NextResponse.json(
-      { error: `Failed to determine instance number: ${existingError.message}` },
-      { status: 500 }
-    );
-  }
+  const uniqueLabels = new Set((existingLabels || []).map((c: any) => c.instance_label));
+  const nextNumber = uniqueLabels.size + 1;
+  const label = instanceLabel || `${elementGroup.name} ${nextNumber}`;
 
-  const nextInstanceNumber =
-    existingChecks && existingChecks.length > 0 && existingChecks[0].instance_number != null
-      ? existingChecks[0].instance_number + 1
-      : 1;
-
-  const label = instanceLabel || `${elementGroup.name} ${nextInstanceNumber}`;
-
-  // 4. Pick a representative section for the main check (use first section key)
-  // This is needed because checks table requires code_section_key
-  const primarySectionKey = sectionKeys[0];
-
-  console.log('[create-element] Creating check with:', {
+  console.log('[create-element] Creating section checks with:', {
     assessment_id: assessmentId,
     element_group_id: elementGroup.id,
-    instance_number: nextInstanceNumber,
     instance_label: label,
-    code_section_key: primarySectionKey,
     section_count: sectionKeys.length,
   });
 
-  // 5. Create the main element check
-  const { data: newCheck, error: checkError } = await supabase
-    .from('checks')
-    .insert({
-      assessment_id: assessmentId,
-      check_type: 'element',
-      element_group_id: elementGroup.id,
-      instance_number: nextInstanceNumber,
-      instance_label: label,
-      code_section_key: primarySectionKey, // Required by schema
-      code_section_title: `${elementGroup.name} ${nextInstanceNumber}`,
-      element_sections: sectionKeys, // Keep for backward compatibility
-      status: 'pending',
-    })
-    .select('*, element_groups(name)')
-    .single();
-
-  if (checkError) {
-    console.log('[create-element] ❌ Failed to create check:', checkError);
-    return NextResponse.json({ error: checkError.message }, { status: 400 });
-  }
-
-  console.log('[create-element] ✅ Created check:', newCheck.id);
-
-  // 6. Create child section checks for each mapped section
+  // 4. Fetch section details
   const { data: sections, error: sectionsError } = await supabase
     .from('sections')
     .select('key, number, title')
     .in('key', sectionKeys);
 
-  if (!sectionsError && sections) {
-    const sectionChecks = sections.map(section => ({
-      assessment_id: assessmentId,
-      parent_check_id: newCheck.id,
-      check_type: 'section',
-      check_name: `${label} - ${section.title}`,
-      code_section_key: section.key,
-      code_section_number: section.number,
-      code_section_title: section.title,
-      element_group_id: elementGroup.id,
-      instance_number: 0,
-      instance_label: label,
-      status: 'pending',
-    }));
-
-    const { error: insertError } = await supabase.from('checks').insert(sectionChecks);
-
-    if (insertError) {
-      console.error('Error creating section checks:', insertError);
-      return NextResponse.json(
-        { error: `Failed to create section checks: ${insertError.message}` },
-        { status: 500 }
-      );
-    }
+  if (sectionsError || !sections || sections.length === 0) {
+    return NextResponse.json(
+      {
+        error: `Failed to fetch section details: ${sectionsError?.message || 'No sections found'}`,
+      },
+      { status: 500 }
+    );
   }
 
-  // 7. Flatten and return
-  const flattenedCheck = {
-    ...newCheck,
-    element_group_name: (newCheck as any).element_groups?.name || null,
-  };
+  // 5. Create section checks directly (no parent element check)
+  const sectionChecks = sections.map(section => ({
+    assessment_id: assessmentId,
+    parent_check_id: null, // No parent - flat structure
+    check_type: 'section',
+    check_name: `${label} - ${section.title}`,
+    code_section_key: section.key,
+    code_section_number: section.number,
+    code_section_title: section.title,
+    element_group_id: elementGroup.id,
+    instance_number: 0, // All sections for same instance have same number
+    instance_label: label,
+    status: 'pending',
+  }));
 
-  return NextResponse.json({ check: flattenedCheck });
+  const { data: createdChecks, error: insertError } = await supabase
+    .from('checks')
+    .insert(sectionChecks)
+    .select('*, element_groups(name)');
+
+  if (insertError || !createdChecks || createdChecks.length === 0) {
+    console.error('[create-element] ❌ Error creating section checks:', insertError);
+    return NextResponse.json(
+      { error: `Failed to create section checks: ${insertError?.message || 'Unknown error'}` },
+      { status: 500 }
+    );
+  }
+
+  console.log(`[create-element] ✅ Created ${createdChecks.length} section checks for "${label}"`);
+
+  // 6. Return first check as representative (for UI compatibility)
+  // Note: element_groups.name is already included via JOIN in select()
+  const representativeCheck = createdChecks[0];
+
+  return NextResponse.json({ check: representativeCheck });
 }

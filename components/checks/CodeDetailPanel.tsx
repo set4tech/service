@@ -11,13 +11,14 @@ import type { SectionResult, AnalysisRun, CodeSection } from '@/types/analysis';
 interface Check {
   id: string;
   check_type?: string;
-  element_sections?: string[];
-  element_group_name?: string;
   instance_number?: number;
   code_section_key?: string;
   parent_check_id?: string;
   manual_override?: string | null;
   manual_override_note?: string;
+  element_groups?: {
+    name?: string;
+  };
 }
 
 interface CodeDetailPanelProps {
@@ -141,189 +142,78 @@ function useCheckData(
 
         const check = checkData.check;
 
-        // Handle child checks differently based on type:
-        // - Section checks (child of element): redirect to parent element and show this section
-        // - Element checks with parent (instances): treat as standalone element check
-        if (check.check_type === 'section' && check.parent_check_id) {
-          const parentResponse = await fetch(`/api/checks/${check.parent_check_id}`);
-          const parentData = await parentResponse.json();
+        // Check if this is part of an element instance (has element_group_id + instance_label)
+        if (check.element_group_id && check.instance_label) {
+          // Load all sections for this element instance
+          const siblingsResponse = await fetch(
+            `/api/checks?assessment_id=${check.assessment_id}&element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(check.instance_label)}`
+          );
+          const siblings = await siblingsResponse.json();
 
           if (isCancelled) return;
 
-          if (parentData.check) {
-            // Load parent element and siblings
-            const siblingsResponse = await fetch(
-              `/api/checks?parent_check_id=${check.parent_check_id}`
-            );
-            const siblings = await siblingsResponse.json();
+          let sorted = Array.isArray(siblings)
+            ? siblings.sort((a, b) =>
+                (a.code_section_number || '').localeCompare(b.code_section_number || '')
+              )
+            : [];
 
-            if (isCancelled) return;
-
-            let sorted = Array.isArray(siblings)
-              ? siblings.sort((a, b) =>
-                  (a.code_section_number || '').localeCompare(b.code_section_number || '')
-                )
-              : [];
-
-            // Filter to requested section if specified
-            if (filterToSectionKey) {
-              const matchingSection = sorted.find(c => c.code_section_key === filterToSectionKey);
-              if (matchingSection) {
-                sorted = [matchingSection];
-              }
-            }
-
-            const activeChildId = sorted.find(c => c.id === checkId)?.id || sorted[0]?.id || null;
-
-            // Load data for active child in parallel
-            const [section, runs, progress, overrides] = await Promise.all([
-              activeChildId && sorted.find(c => c.id === activeChildId)?.code_section_key
-                ? fetchSection(sorted.find(c => c.id === activeChildId)!.code_section_key!)
-                : Promise.resolve(null),
-              fetchAnalysisRuns(check.parent_check_id!),
-              fetch(`/api/checks/${check.parent_check_id}/assessment-progress`).then(r => r.json()),
-              fetch(`/api/checks/${check.parent_check_id}/section-overrides`).then(r => r.json()),
-            ]);
-
-            if (isCancelled) return;
-
-            // Extract override for active section
-            let override = null;
-            let overrideNote = '';
-            if (activeChildId && Array.isArray(overrides)) {
-              const activeChild = sorted.find(c => c.id === activeChildId);
-              if (activeChild?.code_section_key) {
-                const sectionOverride = overrides.find(
-                  (so: any) => so.section_key === activeChild.code_section_key
-                );
-                if (sectionOverride) {
-                  override = sectionOverride.override_status;
-                  overrideNote = sectionOverride.note || '';
-                }
-              }
-            }
-
-            setData({
-              check: parentData.check,
-              childChecks: sorted,
-              activeChildCheckId: activeChildId,
-              sections: section ? [section] : [],
-              analysisRuns: runs,
-              assessing: progress.inProgress || false,
-              manualOverride: override,
-              manualOverrideNote: overrideNote,
-              showSingleSectionOnly: !!filterToSectionKey,
-            });
-            setLoading(false);
-            return;
-          }
-        }
-
-        // STEP 2: Build parallel requests based on check type
-        const parallelRequests: Promise<any>[] = [
-          fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
-          fetchAnalysisRuns(checkId!),
-        ];
-
-        let childChecksPromise: Promise<any> = Promise.resolve(null);
-        let sectionPromise: Promise<any> = Promise.resolve(null);
-        let overridesPromise: Promise<any> = Promise.resolve(null);
-
-        if (check.check_type === 'element') {
-          // Element check: load child checks and overrides
-          childChecksPromise = fetch(`/api/checks?parent_check_id=${checkId}`).then(r => r.json());
-          overridesPromise = fetch(`/api/checks/${checkId}/section-overrides`).then(r => r.json());
-        } else if (check.code_section_key) {
-          // Regular section check: load section content
-          sectionPromise = fetchSection(check.code_section_key);
-        }
-
-        // STEP 3: Wait for all parallel requests
-        const [progress, runs, childChecksData, sectionData, overridesData] = await Promise.all([
-          ...parallelRequests,
-          childChecksPromise,
-          sectionPromise,
-          overridesPromise,
-        ]);
-
-        if (isCancelled) return;
-
-        // STEP 4: Process results based on check type
-        let finalChildChecks: any[] = [];
-        let finalActiveChildId: string | null = null;
-        let finalSections: CodeSection[] = [];
-        let showSingleSection = false;
-
-        if (check.check_type === 'element' && Array.isArray(childChecksData)) {
-          // Sort child checks
-          let sorted = childChecksData.sort((a, b) =>
-            (a.code_section_number || '').localeCompare(b.code_section_number || '')
-          );
-
-          // Filter to specific section if requested
+          // Filter to requested section if specified
           if (filterToSectionKey) {
             const matchingSection = sorted.find(c => c.code_section_key === filterToSectionKey);
             if (matchingSection) {
               sorted = [matchingSection];
-              showSingleSection = true;
             }
           }
 
-          finalChildChecks = sorted;
-          finalActiveChildId = sorted[0]?.id || null;
+          const activeChildId = sorted.find(c => c.id === checkId)?.id || sorted[0]?.id || null;
 
-          // Load first child's section
-          if (finalActiveChildId && sorted[0]?.code_section_key) {
-            try {
-              const firstSection = await fetchSection(sorted[0].code_section_key);
-              if (!isCancelled) {
-                finalSections = [firstSection];
-              }
-            } catch (err) {
-              console.error('Failed to load first child section:', err);
-              // Section not found (possibly never_relevant) - leave finalSections empty
-              if (!isCancelled) {
-                finalSections = [];
-              }
-            }
-          }
-        } else if (sectionData) {
-          finalSections = [sectionData];
+          // Load data for active child in parallel
+          const [section, runs, progress] = await Promise.all([
+            activeChildId && sorted.find(c => c.id === activeChildId)?.code_section_key
+              ? fetchSection(sorted.find(c => c.id === activeChildId)!.code_section_key!)
+              : Promise.resolve(null),
+            fetchAnalysisRuns(checkId!),
+            fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
+          ]);
+
+          if (isCancelled) return;
+
+          setData({
+            check,
+            childChecks: sorted,
+            activeChildCheckId: activeChildId,
+            sections: section ? [section] : [],
+            analysisRuns: runs,
+            assessing: progress.inProgress || false,
+            manualOverride: check.manual_override || null,
+            manualOverrideNote: check.manual_override_note || '',
+            showSingleSectionOnly: !!filterToSectionKey,
+          });
+          setLoading(false);
+          return;
         }
+
+        // Standalone section check - load single section
+        const [progress, runs, section] = await Promise.all([
+          fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
+          fetchAnalysisRuns(checkId!),
+          check.code_section_key ? fetchSection(check.code_section_key) : Promise.resolve(null),
+        ]);
 
         if (isCancelled) return;
 
-        // STEP 5: Determine manual override
-        let finalOverride = null;
-        let finalOverrideNote = '';
-
-        if (check.check_type === 'element' && finalActiveChildId && Array.isArray(overridesData)) {
-          const activeChild = finalChildChecks.find(c => c.id === finalActiveChildId);
-          if (activeChild?.code_section_key) {
-            const sectionOverride = overridesData.find(
-              (so: any) => so.section_key === activeChild.code_section_key
-            );
-            if (sectionOverride) {
-              finalOverride = sectionOverride.override_status;
-              finalOverrideNote = sectionOverride.note || '';
-            }
-          }
-        } else {
-          finalOverride = check.manual_override || null;
-          finalOverrideNote = check.manual_override_note || '';
-        }
-
-        // STEP 6: Set all state atomically
+        // Set all state
         setData({
           check,
-          childChecks: finalChildChecks,
-          activeChildCheckId: finalActiveChildId,
-          sections: finalSections,
+          childChecks: [],
+          activeChildCheckId: null,
+          sections: section ? [section] : [],
           analysisRuns: runs,
           assessing: progress.inProgress || false,
-          manualOverride: finalOverride,
-          manualOverrideNote: finalOverrideNote,
-          showSingleSectionOnly: showSingleSection,
+          manualOverride: check.manual_override || null,
+          manualOverrideNote: check.manual_override_note || '',
+          showSingleSectionOnly: false,
         });
         setLoading(false);
       } catch (err: any) {
@@ -924,9 +814,9 @@ export function CodeDetailPanel({
     );
   }
 
-  if (!sectionKey && !check?.element_sections) return null;
+  if (!sectionKey) return null;
 
-  const isElementCheck = check?.check_type === 'element' && childChecks.length > 0;
+  const isElementCheck = false; // All checks are flat section checks now
 
   // [Continue with the rest of the JSX - importing from original lines 1104-2248]
   // Due to length, I'll include the key parts and preserve exact structure...
@@ -939,7 +829,7 @@ export function CodeDetailPanel({
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-semibold text-gray-900">
             {isElementCheck
-              ? `${activeCheck?.element_group_name || check?.element_group_name || 'Element'} Instance Details`
+              ? `${activeCheck?.element_groups?.name || check?.element_groups?.name || 'Element'} Instance Details`
               : 'Code Section Details'}
           </h3>
         </div>

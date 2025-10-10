@@ -15,28 +15,92 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (e1 || !original)
     return NextResponse.json({ error: e1?.message || 'Not found' }, { status: 404 });
 
-  // Determine the parent check ID
-  const parentCheckId = original.parent_check_id || original.id;
+  // Determine if this is an element check (has element_group_id and instance_label)
+  if (original.element_group_id && original.instance_label) {
+    // Clone all sections for this element instance
+    const { data: allSections, error: sectionsError } = await supabase
+      .from('checks')
+      .select('*')
+      .eq('assessment_id', original.assessment_id)
+      .eq('element_group_id', original.element_group_id)
+      .eq('instance_label', original.instance_label);
 
-  // Get the highest instance number for this parent
-  const { data: siblings, error: siblingsError } = await supabase
-    .from('checks')
-    .select('instance_number')
-    .or(`id.eq.${parentCheckId},parent_check_id.eq.${parentCheckId}`)
-    .order('instance_number', { ascending: false })
-    .limit(1);
+    if (sectionsError || !allSections || allSections.length === 0) {
+      return NextResponse.json({ error: 'Failed to fetch element sections' }, { status: 500 });
+    }
 
-  if (siblingsError) {
-    console.error('Error fetching siblings:', siblingsError);
-    return NextResponse.json({ error: 'Failed to determine instance number' }, { status: 500 });
+    // Determine new instance label
+    const elementGroupName = (original as any).element_groups?.name || 'Element';
+    const { data: existingLabels } = await supabase
+      .from('checks')
+      .select('instance_label')
+      .eq('assessment_id', original.assessment_id)
+      .eq('element_group_id', original.element_group_id)
+      .not('instance_label', 'is', null);
+
+    const uniqueLabels = new Set((existingLabels || []).map((c: any) => c.instance_label));
+    const nextNumber = uniqueLabels.size + 1;
+    const newLabel = instanceLabel || `${elementGroupName} ${nextNumber}`;
+
+    // Clone all section checks for this element instance
+    const clonedSections = allSections.map(section => ({
+      assessment_id: section.assessment_id,
+      code_section_key: section.code_section_key,
+      code_section_number: section.code_section_number,
+      code_section_title: section.code_section_title,
+      check_name: section.check_name?.replace(original.instance_label, newLabel),
+      check_location: section.check_location,
+      instance_label: newLabel,
+      prompt_template_id: section.prompt_template_id,
+      status: 'pending',
+      check_type: 'section',
+      element_group_id: section.element_group_id,
+    }));
+
+    const { data: createdChecks, error: insertError } = await supabase
+      .from('checks')
+      .insert(clonedSections)
+      .select('*, element_groups(name)');
+
+    if (insertError || !createdChecks || createdChecks.length === 0) {
+      return NextResponse.json(
+        { error: insertError?.message || 'Failed to create checks' },
+        { status: 500 }
+      );
+    }
+
+    // Optionally copy screenshots to all cloned checks
+    if (copyScreenshots) {
+      for (const originalSection of allSections) {
+        const { data: assignments } = await supabase
+          .from('screenshot_check_assignments')
+          .select('screenshot_id')
+          .eq('check_id', originalSection.id);
+
+        if (assignments && assignments.length > 0) {
+          const matchingClone = createdChecks.find(
+            c => c.code_section_number === originalSection.code_section_number
+          );
+          if (matchingClone) {
+            const newAssignments = assignments.map(a => ({
+              screenshot_id: a.screenshot_id,
+              check_id: matchingClone.id,
+              is_original: false,
+            }));
+            await supabase.from('screenshot_check_assignments').insert(newAssignments);
+          }
+        }
+      }
+    }
+
+    // Return first check as representative
+    // Note: element_groups.name is already included via JOIN in select()
+    const representativeCheck = createdChecks[0];
+
+    return NextResponse.json({ check: representativeCheck });
   }
 
-  const nextInstanceNumber =
-    siblings && siblings.length > 0 && siblings[0].instance_number != null
-      ? siblings[0].instance_number + 1
-      : 1;
-
-  // Create the new check instance
+  // Standalone section check - clone just this one
   const clone = {
     assessment_id: original.assessment_id,
     code_section_key: original.code_section_key,
@@ -44,15 +108,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     code_section_title: original.code_section_title,
     check_name: original.check_name,
     check_location: original.check_location,
-    parent_check_id: parentCheckId,
-    instance_number: nextInstanceNumber,
-    instance_label: instanceLabel || `Instance ${nextInstanceNumber}`,
+    instance_label: instanceLabel || null,
     prompt_template_id: original.prompt_template_id,
     status: 'pending',
-    // Copy element check fields if present
-    check_type: original.check_type || 'section',
-    element_group_id: original.element_group_id || null,
-    element_sections: original.element_sections || null,
+    check_type: 'section',
+    element_group_id: null,
   };
 
   const { data, error } = await supabase
@@ -62,48 +122,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  // Flatten the element_groups join
-  const flattenedData = data
-    ? {
-        ...data,
-        element_group_name: (data as any).element_groups?.name || null,
-      }
-    : null;
+  // Note: element_groups.name is already included via JOIN in select()
+  const flattenedData = data;
 
-  // If this is an element check, create child checks for each section
-  if (flattenedData && flattenedData.check_type === 'element' && flattenedData.element_sections) {
-    const sectionKeys = flattenedData.element_sections as string[];
-
-    // Fetch section details
-    const { data: sections, error: sectionsError } = await supabase
-      .from('sections')
-      .select('key, number, title')
-      .in('key', sectionKeys);
-
-    if (!sectionsError && sections) {
-      const sectionChecks = sections.map(section => ({
-        assessment_id: flattenedData.assessment_id,
-        parent_check_id: flattenedData.id,
-        check_type: 'section',
-        check_name: `${flattenedData.instance_label} - ${section.title}`,
-        code_section_key: section.key,
-        code_section_number: section.number,
-        code_section_title: section.title,
-        element_group_id: flattenedData.element_group_id,
-        instance_number: 0,
-        instance_label: flattenedData.instance_label,
-        status: 'pending',
-      }));
-
-      const { error: insertError } = await supabase.from('checks').insert(sectionChecks);
-
-      if (insertError) {
-        console.error('Error creating section checks:', insertError);
-      }
-    }
-  }
-
-  // Optionally copy screenshots (via assignments, not duplication)
+  // Optionally copy screenshots
   if (copyScreenshots && flattenedData) {
     const { data: assignments, error: assignmentsError } = await supabase
       .from('screenshot_check_assignments')
@@ -114,16 +136,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const newAssignments = assignments.map(assignment => ({
         screenshot_id: assignment.screenshot_id,
         check_id: flattenedData.id,
-        is_original: false, // NOT original, this is a reused screenshot
+        is_original: false,
       }));
 
-      const { error: insertError } = await supabase
-        .from('screenshot_check_assignments')
-        .insert(newAssignments);
-
-      if (insertError) {
-        console.error('Error creating screenshot assignments:', insertError);
-      }
+      await supabase.from('screenshot_check_assignments').insert(newAssignments);
     }
   }
 

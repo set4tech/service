@@ -15,9 +15,7 @@ export interface Check {
   code_section_title: string;
   check_name: string;
   check_location: string;
-  parent_check_id?: string | null;
-  instance_number: number;
-  instance_label?: string | null;
+  instance_label?: string | null; // Label for element instances (e.g., "Door 1", "Bathrooms 2")
   prompt_template_id?: string;
   actual_prompt_used?: string;
   status: 'pending' | 'completed' | 'failed';
@@ -29,15 +27,11 @@ export interface Check {
   created_at?: string;
   updated_at?: string;
 
-  // Element check fields
+  // Element grouping field
   check_type?: 'section' | 'element';
   element_group_id?: string | null;
-  element_sections?: string[]; // Array of section_keys for element checks
 
   // Virtual fields (populated by queries, not in DB)
-  instances?: Check[];
-  instance_count?: number;
-  element_group_name?: string;
   element_group_slug?: string;
   section_results?: SectionResult[]; // For element checks: per-section breakdown
 }
