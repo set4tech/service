@@ -40,6 +40,30 @@ export function useAssessmentPolling(
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
 
+  // Check on mount if there's an assessment in progress
+  useEffect(() => {
+    if (!checkId) return;
+
+    const checkProgress = async () => {
+      try {
+        const res = await fetch(`/api/checks/${checkId}/assessment-progress`);
+        const data = await res.json();
+
+        if (data.inProgress) {
+          console.log(`[useAssessmentPolling] Found in-progress assessment for check ${checkId}`);
+          setAssessing(true);
+          const percent = Math.round((data.completed / data.total) * 100);
+          setProgress(percent);
+          setMessage(`Analyzing... (${data.completed}/${data.total})`);
+        }
+      } catch (err) {
+        console.error('Failed to check progress on mount:', err);
+      }
+    };
+
+    checkProgress();
+  }, [checkId]);
+
   useEffect(() => {
     if (!assessing || !checkId) return;
 

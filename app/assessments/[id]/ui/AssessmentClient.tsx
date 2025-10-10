@@ -85,6 +85,15 @@ export default function AssessmentClient({
     if (saved) {
       setCheckMode(saved as 'section' | 'element' | 'summary' | 'gallery');
     }
+
+    // Also restore active check ID from URL hash if present
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashCheckId = window.location.hash.substring(1); // Remove the '#'
+      if (hashCheckId) {
+        setActiveCheckId(hashCheckId);
+        setShowDetailPanel(true);
+      }
+    }
   }, [assessment.id]);
 
   // Filter checks by mode (skip filtering for summary/gallery modes)
@@ -160,6 +169,10 @@ export default function AssessmentClient({
     } else {
       setFilterToSectionKey(null);
     }
+    // Update URL hash to preserve selection across refreshes
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `#${checkId}`);
+    }
   };
 
   const handleMoveToNextCheck = () => {
@@ -181,10 +194,18 @@ export default function AssessmentClient({
       // No current check or at end of list - close panel
       setShowDetailPanel(false);
       setActiveCheckId(null);
+      // Clear URL hash
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
     } else {
       // Move to next check
       const nextCheckId = allCheckIds[currentIndex + 1];
       setActiveCheckId(nextCheckId);
+      // Update URL hash
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', `#${nextCheckId}`);
+      }
     }
   };
 
@@ -765,7 +786,17 @@ export default function AssessmentClient({
                 filterToSectionKey={filterToSectionKey}
                 activeCheck={activeCheck}
                 screenshotsRefreshKey={screenshotsChanged}
-                onClose={() => setShowDetailPanel(false)}
+                onClose={() => {
+                  setShowDetailPanel(false);
+                  // Clear URL hash when panel is closed
+                  if (typeof window !== 'undefined') {
+                    window.history.replaceState(
+                      null,
+                      '',
+                      window.location.pathname + window.location.search
+                    );
+                  }
+                }}
                 onMoveToNextCheck={handleMoveToNextCheck}
                 onCheckUpdate={async () => {
                   if (activeCheck?.id) {
