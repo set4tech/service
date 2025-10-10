@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import type { ViolationMarker } from '@/lib/reports/get-violations';
 import type { ComplianceOverrideStatus } from '@/types/database';
+import type { CodeSection } from '@/types/analysis';
 import Modal from '@/components/ui/Modal';
+import { TableRenderer } from '@/components/ui/TableRenderer';
 
 interface Props {
   violation: ViolationMarker;
@@ -21,6 +23,10 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
     Record<string, { screenshot: string; thumbnail: string }>
   >({});
   const [previewScreenshot, setPreviewScreenshot] = useState<string | null>(null);
+  const [sectionData, setSectionData] = useState<CodeSection | null>(null);
+  const [loadingSection, setLoadingSection] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [showSectionContent, setShowSectionContent] = useState(true);
 
   // Load check data to get current manual override
   useEffect(() => {
@@ -59,6 +65,41 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
       }
     })();
   }, [violation.screenshotUrl, violation.thumbnailUrl, violation.screenshotId]);
+
+  // Fetch section data
+  useEffect(() => {
+    if (!violation.codeSectionKey) return;
+
+    setLoadingSection(true);
+    setSectionError(null);
+
+    fetch(`/api/code-sections/${violation.codeSectionKey}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load section');
+        return res.json();
+      })
+      .then(data => {
+        console.log('Section data:', data);
+        // Convert the API response to CodeSection format
+        const section: CodeSection = {
+          key: data.key,
+          number: data.number,
+          title: data.title,
+          text: data.text,
+          requirements: data.paragraphs || [],
+          tables: data.tables || [],
+          source_url: data.source_url,
+        };
+        setSectionData(section);
+      })
+      .catch(err => {
+        console.error('Failed to load section data:', err);
+        setSectionError(err.message);
+      })
+      .finally(() => {
+        setLoadingSection(false);
+      });
+  }, [violation.codeSectionKey]);
 
   const handleSaveOverride = async () => {
     if (!violation.checkId || !manualOverride) return;
@@ -209,6 +250,95 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
                 />
               </svg>
             </a>
+          )}
+        </div>
+
+        {/* Code Section Content */}
+        <div>
+          <button
+            onClick={() => setShowSectionContent(!showSectionContent)}
+            className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 hover:text-gray-700 transition-colors"
+          >
+            <span>Code Section Content</span>
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              className={`transform transition-transform ${showSectionContent ? 'rotate-180' : ''}`}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+
+          {showSectionContent && (
+            <>
+              {loadingSection && (
+                <div className="text-sm text-gray-500">Loading section content...</div>
+              )}
+
+              {sectionError && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">
+                  {sectionError}
+                </div>
+              )}
+
+              {!loadingSection && !sectionError && sectionData && (
+                <div className="space-y-4">
+                  {/* Section Text */}
+                  {sectionData.text && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-700 mb-1">Summary</div>
+                      <div className="text-sm text-gray-800 leading-relaxed bg-gray-50 border border-gray-200 rounded p-3">
+                        {sectionData.text}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Requirements/Paragraphs */}
+                  {sectionData.requirements && sectionData.requirements.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-700 mb-1">Requirements</div>
+                      <div className="space-y-2">
+                        {sectionData.requirements.map((req, idx) => {
+                          const text = typeof req === 'string' ? req : req.text || '';
+                          return (
+                            <div key={idx} className="text-sm text-gray-800 leading-relaxed">
+                              <div className="text-xs text-gray-500 font-mono mb-0.5">
+                                Paragraph {idx + 1}
+                              </div>
+                              <div className="pl-3 border-l-2 border-gray-300">{text}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tables */}
+                  {sectionData.tables && sectionData.tables.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-700 mb-1">Tables</div>
+                      <TableRenderer tables={sectionData.tables} />
+                    </div>
+                  )}
+
+                  {/* Empty state */}
+                  {!sectionData.text &&
+                    (!sectionData.requirements || sectionData.requirements.length === 0) && (
+                      <div className="text-sm text-gray-500 italic">
+                        No detailed content available for this section.
+                      </div>
+                    )}
+                </div>
+              )}
+            </>
           )}
         </div>
 
