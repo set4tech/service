@@ -23,6 +23,13 @@ This repository contains the main **service** application - a Next.js 15.5.3 app
 - All new features should be developed in this root service app
 - Uses Supabase PostgreSQL for all data storage
 
+### Branch Strategy
+
+- **`main`** - Production branch (deployed to production environment)
+- **`dev`** - Development branch (active development, deployed to staging)
+- Always develop new features in `dev` branch
+- Merge to `main` only after thorough testing
+
 ## Development Commands
 
 ```bash
@@ -183,15 +190,109 @@ scripts/
 
 **API Endpoints**
 
+_Projects & Customers_
+
+- `GET /api/projects` - List all projects
+- `POST /api/projects` - Create new project
+- `GET /api/projects/[id]` - Get project details
+- `PUT /api/projects/[id]` - Update project
+- `DELETE /api/projects/[id]` - Delete project
+- `POST /api/projects/[id]/assessment` - Create assessment for project
+- `POST /api/projects/[id]/extract` - Extract PDF metadata
+- `GET /api/customers` - List customers
+- `POST /api/customers` - Create customer
+
+_Assessments_
+
+- `GET /api/assessments` - List assessments
 - `POST /api/assessments` - Create assessment
+- `GET /api/assessments/[id]` - Get assessment details
+- `PUT /api/assessments/[id]` - Update assessment
+- `DELETE /api/assessments/[id]` - Delete assessment
 - `POST /api/assessments/[id]/seed` - Seed checks (AI filtering)
-- `GET /api/assessments/[id]/checks` - Get checks (with search)
-- `POST /api/checks/[id]/assess` - Run AI analysis
-- `POST /api/analysis/batch` - Batch analysis
-- `POST /api/checks/[id]/manual-override` - Set manual judgment
-- `POST /api/screenshots/presign` - Get S3 upload URL
-- `GET /api/screenshots/presign-view` - Get S3 download URL
+- `GET /api/assessments/[id]/checks` - Get checks for assessment (with search/filter)
+- `GET /api/assessments/[id]/status` - Get assessment status
+- `PUT /api/assessments/[id]/pdf-scale` - Update PDF scale factor
+- `POST /api/assessments/[id]/exclude-section` - Exclude specific section
+- `POST /api/assessments/[id]/exclude-section-group` - Exclude section group
+
+_Checks_
+
+- `GET /api/checks` - List checks
+- `POST /api/checks` - Create check
+- `GET /api/checks/[id]` - Get check details
+- `PUT /api/checks/[id]` - Update check
+- `DELETE /api/checks/[id]` - Delete check
+- `POST /api/checks/[id]/assess` - Run AI analysis on check
 - `POST /api/checks/[id]/clone` - Clone check for new instance
+- `POST /api/checks/[id]/manual-override` - Set manual compliance judgment
+- `GET /api/checks/[id]/screenshots` - Get screenshots for check
+- `GET /api/checks/[id]/analysis-runs` - Get analysis history
+- `GET /api/checks/[id]/assessment-progress` - Get assessment progress
+- `GET /api/checks/[id]/prompt` - Get check prompt
+- `PUT /api/checks/[id]/prompt` - Update check prompt
+- `POST /api/checks/[id]/generate-title` - Generate AI title for check
+- `POST /api/checks/[id]/section-overrides` - Override section compliance
+- `POST /api/checks/create-element` - Create element-based check
+
+_Analysis_
+
+- `POST /api/analysis/run` - Run single analysis
+- `POST /api/analysis/batch` - Batch analysis (multiple checks)
+- `GET /api/analysis/[checkId]/history` - Get analysis history for check
+- `GET /api/analysis/[checkId]/latest` - Get latest analysis for check
+
+_Screenshots_
+
+- `GET /api/screenshots` - List screenshots
+- `POST /api/screenshots` - Create screenshot
+- `GET /api/screenshots/[id]` - Get screenshot details
+- `PUT /api/screenshots/[id]` - Update screenshot
+- `DELETE /api/screenshots/[id]` - Delete screenshot
+- `POST /api/screenshots/presign` - Get S3 presigned upload URL
+- `GET /api/screenshots/presign-view` - Get S3 presigned view URL
+- `POST /api/screenshots/[id]/assign` - Assign screenshot to check
+- `DELETE /api/screenshots/[id]/unassign/[checkId]` - Unassign from check
+- `GET /api/screenshots/[id]/assignments` - Get check assignments
+- `POST /api/screenshots/[id]/extract-text` - Extract text from screenshot
+- `POST /api/screenshots/cleanup` - Clean up orphaned screenshots
+
+_Code Sections & Elements_
+
+- `GET /api/codes` - List building codes
+- `GET /api/code-sections/[key]` - Get section by key
+- `POST /api/sections/[key]/mark-never-relevant` - Mark section never relevant
+- `POST /api/sections/[key]/mark-floorplan-relevant` - Mark section requires floorplan
+- `POST /api/sections/batch` - Batch fetch sections
+- `GET /api/element-groups` - List element groups
+- `GET /api/element-groups/[slug]/sections` - Get sections for element group
+
+_Compliance & Initialization_
+
+- `POST /api/compliance/initialize` - Initialize compliance session
+- `POST /api/compliance/sections` - Get applicable sections
+- `POST /api/compliance/sections-batch` - Batch check sections
+
+_PDF Management_
+
+- `POST /api/pdf/upload` - Upload PDF
+- `POST /api/pdf/presign` - Get presigned PDF URL
+- `POST /api/upload` - General file upload
+- `POST /api/upload/presign` - Get presigned upload URL
+
+_Prompts_
+
+- `GET /api/prompts/templates` - Get prompt templates
+- `POST /api/prompts/preview` - Preview prompt with variables
+- `GET /api/prompts/[id]` - Get prompt by ID
+- `PUT /api/prompts/[id]` - Update prompt
+
+_Utilities_
+
+- `GET /api/health` - Health check endpoint
+- `POST /api/queue/process` - Process background queue
+- `GET /api/debug/check-summary` - Debug check summary
+- `POST /api/admin/migrate` - Run database migrations
 
 ### Component Hierarchy
 
@@ -214,6 +315,26 @@ AssessmentClient (main assessment page)
     └── Thumbnail grid with captions
 ```
 
+## Environments
+
+### Production Environment
+
+- **Branch**: `main`
+- **Deployment**: Vercel production deployment
+- **Database**: Production Supabase instance
+- **S3**: Production bucket
+- **URL**: Production domain
+
+### Development/Staging Environment
+
+- **Branch**: `dev`
+- **Deployment**: Vercel preview deployment
+- **Database**: Same Supabase instance (shared with prod)
+- **S3**: Same bucket (shared with prod)
+- **URL**: Staging domain
+
+**Important**: Both environments share the same database and S3 bucket. Exercise caution when testing data operations.
+
 ## Environment Variables Required
 
 See `.envrc` for required environment variables including:
@@ -221,6 +342,7 @@ See `.envrc` for required environment variables including:
 - **Supabase**: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
 - **AWS S3**: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`
 - **AI Services**: `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`
+- **Next.js**: `NEXT_PUBLIC_*` for client-side variables
 
 ## Development Patterns
 
@@ -232,6 +354,53 @@ See `.envrc` for required environment variables including:
 - `git add *` - Always add specific files instead
 
 When staging files for commit, always use explicit file paths (e.g., `git add path/to/file.ts`).
+
+## Database Schema
+
+### Core Tables
+
+**Projects & Customers**
+
+- `customers` - Customer organizations
+- `projects` - Individual building projects
+- `assessments` - Compliance assessments for projects
+
+**Code Reference**
+
+- `codes` - Building code documents (e.g., CBC Chapter 11B)
+- `sections` - Hierarchical code sections with content
+- `element_groups` - Building elements (Doors, Ramps, etc.)
+- `element_section_mappings` - Maps elements to applicable sections
+
+**Compliance Checking**
+
+- `checks` - Individual compliance checks (section or element-based)
+  - Can be section-based (one check = one section)
+  - Or element-based (one check = multiple sections for an element)
+  - Supports parent-child relationships for instances
+- `analysis_runs` - AI analysis executions with results
+- `screenshot_check_assignments` - Many-to-many screenshots to checks
+
+**Media & Evidence**
+
+- `screenshots` - Captured plan screenshots with metadata
+- Links to S3 storage for actual image files
+
+**Supporting Tables**
+
+- `prompts` - Reusable prompt templates
+- `check_summary` - Materialized view for progress tracking
+
+### Key Relationships
+
+```
+customers (1) ──> (many) projects
+projects (1) ──> (many) assessments
+assessments (1) ──> (many) checks
+checks (1) ──> (many) analysis_runs
+checks (many) <──> (many) screenshots (via screenshot_check_assignments)
+element_groups (1) ──> (many) element_section_mappings ──> (many) sections
+```
 
 ## Database Connection
 
@@ -254,21 +423,22 @@ PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21
 - **Password**: Must be URL-encoded (`&` → `%26`, `!` → `%21`)
 - **SSL**: Required (set `PGSSLMODE=require`)
 
-### Notes
+### Important Notes
 
 - The direct connection (`db.grosxzvvmhakkxybeuwu.supabase.co:5432`) is IPv6-only and won't work on IPv4 networks
 - Special characters in passwords must be URL-encoded in connection strings
 - Always use port 6543 for pooler connections
-- Summary:
-  - Use pooler connection on port
-    6543 (not 5432)
-  - Host: aws-1-us-east-1.pooler.s
-    upabase.com
-  - User:
-    postgres.grosxzvvmhakkxybeuwu
-  - Password must be URL-encoded
-  - SSL required
-  - Direct connection won't work
-    (IPv6-only)
-    this is show to conet to thedb
-- never git reset --hard origin/mai
+- SSL mode is required for all connections
+
+### Common Query Patterns
+
+```bash
+# List all tables
+PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "\dt"
+
+# Describe table schema
+PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "\d table_name"
+
+# Run custom query
+PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "SELECT * FROM projects LIMIT 10"
+```
