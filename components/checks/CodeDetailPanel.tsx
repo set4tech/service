@@ -814,9 +814,10 @@ export function CodeDetailPanel({
     );
   }
 
-  if (!sectionKey) return null;
+  // Allow rendering if we have either a sectionKey or loaded child checks (element instances)
+  if (!sectionKey && childChecks.length === 0) return null;
 
-  const isElementCheck = false; // All checks are flat section checks now
+  const isElementCheck = childChecks.length > 0;
 
   // [Continue with the rest of the JSX - importing from original lines 1104-2248]
   // Due to length, I'll include the key parts and preserve exact structure...
