@@ -38,7 +38,7 @@
     "@aws-sdk/client-s3": "^3.676.0",
     "@aws-sdk/s3-request-presigner": "^3.896.0",
     "@google/generative-ai": "^0.21.0",
-    "@supabase/supabase-js": "^2.45.0",
+    "@supabase/supabase-js": "^2.75.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.5.2",
     "@types/react": "^19.1.13",
