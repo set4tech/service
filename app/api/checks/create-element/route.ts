@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   // 2. Get section mappings for this element group
   const { data: mappings, error: mappingsError } = await supabase
-    .from('element_section_mappings')
+    .from('element_group_section_mappings')
     .select('section_key')
     .eq('element_group_id', elementGroup.id);
 
@@ -102,14 +102,12 @@ export async function POST(req: NextRequest) {
   // 5. Create section checks directly (no parent element check)
   const sectionChecks = sections.map(section => ({
     assessment_id: assessmentId,
-    parent_check_id: null, // No parent - flat structure
     check_type: 'section',
     check_name: `${label} - ${section.title}`,
     code_section_key: section.key,
     code_section_number: section.number,
     code_section_title: section.title,
     element_group_id: elementGroup.id,
-    instance_number: 0, // All sections for same instance have same number
     instance_label: label,
     status: 'pending',
   }));
