@@ -120,28 +120,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             .eq('code_section_key', section.key);
         }
 
-        // Update element checks to remove this section
-        const { data: elementChecks } = await supabase
-          .from('checks')
-          .select('id, element_sections, code_section_key')
-          .eq('assessment_id', assessmentId)
-          .eq('check_type', 'element')
-          .contains('element_sections', [section.key]);
-
-        if (elementChecks) {
-          for (const check of elementChecks) {
-            const updatedSections = (check.element_sections || []).filter(
-              (s: string) => s !== section.key
-            );
-
-            const updates: any = { element_sections: updatedSections };
-            if (check.code_section_key === section.key && updatedSections.length > 0) {
-              updates.code_section_key = updatedSections[0];
-            }
-
-            await supabase.from('checks').update(updates).eq('id', check.id);
-          }
-        }
+        // Note: In flat section model, section checks are deleted above
+        // No need to update element_sections arrays (deprecated in new model)
 
         excludedSections.push({
           key: section.key,

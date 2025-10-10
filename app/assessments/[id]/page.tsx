@@ -47,17 +47,23 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   // Fetch latest analysis and screenshots for filtered checks
   const checkIds = filteredChecks.map(c => c.id);
 
-  // Fetch analysis
+  // Fetch analysis and section overrides
   const t1 = Date.now();
-  const { data: latestAnalysis } =
+  const [{ data: latestAnalysis }, { data: sectionOverrides }] =
     checkIds.length > 0
-      ? await supabase
-          .from('latest_analysis_runs')
-          .select(
-            'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
-          )
-          .in('check_id', checkIds)
-      : { data: [] };
+      ? await Promise.all([
+          supabase
+            .from('latest_analysis_runs')
+            .select(
+              'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+            )
+            .in('check_id', checkIds),
+          supabase
+            .from('section_overrides')
+            .select('check_id, section_key, override_status')
+            .in('check_id', checkIds),
+        ])
+      : [{ data: [] }, { data: [] }];
   console.log(`[Perf] Latest analysis query: ${Date.now() - t1}ms`);
 
   // Fetch screenshots - use alternative approach via join to avoid large IN clause
@@ -119,6 +125,15 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   // Create a map of check_id -> latest analysis
   const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
 
+  // Create a map of check_id -> section overrides
+  const sectionOverridesMap = new Map<string, any[]>();
+  (sectionOverrides || []).forEach((override: any) => {
+    if (!sectionOverridesMap.has(override.check_id)) {
+      sectionOverridesMap.set(override.check_id, []);
+    }
+    sectionOverridesMap.get(override.check_id)!.push(override);
+  });
+
   // Create a map of check_id -> screenshots
   const screenshotsMap = new Map<string, any[]>();
   (allScreenshots || []).forEach((screenshot: any) => {
@@ -153,13 +168,16 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       // For section checks: find cloned instances
       const rawInstances =
         check.check_type === 'element'
-          ? filteredChecks.filter((c: any) => c.parent_check_id === check.id && c.check_type === 'section')
+          ? filteredChecks.filter(
+              (c: any) => c.parent_check_id === check.id && c.check_type === 'section'
+            )
           : filteredChecks.filter((c: any) => c.parent_check_id === check.id);
 
       // Add analysis data and screenshots to instances
       const instances = rawInstances.map((instance: any) => {
         const instanceAnalysis = analysisMap.get(instance.id);
         const instanceScreenshots = screenshotsMap.get(instance.id) || [];
+        const instanceSectionOverrides = sectionOverridesMap.get(instance.id) || [];
         return {
           ...instance,
           latest_status: instanceAnalysis?.compliance_status || null,
@@ -172,6 +190,8 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
               }
             : null,
           screenshots: instanceScreenshots,
+          has_section_overrides: instanceSectionOverrides.length > 0,
+          section_overrides: instanceSectionOverrides,
         };
       });
 
@@ -181,12 +201,12 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       // Add latest analysis data and screenshots
       const analysis = analysisMap.get(check.id);
       const checkScreenshots = screenshotsMap.get(check.id) || [];
+      const checkSectionOverrides = sectionOverridesMap.get(check.id) || [];
 
       acc.push({
         ...check,
-        element_group_name: elementGroup?.name || null,
         element_group_slug: elementGroup?.slug || null,
-        element_groups: undefined, // Remove nested object
+        element_groups: elementGroup ? { name: elementGroup.name } : undefined, // Keep for JOIN compatibility
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
         latest_reasoning: analysis?.ai_reasoning || null,
@@ -199,6 +219,8 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
         screenshots: checkScreenshots,
         instances,
         instance_count: instances.length,
+        has_section_overrides: checkSectionOverrides.length > 0,
+        section_overrides: checkSectionOverrides,
       });
     }
     return acc;
