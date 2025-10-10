@@ -143,70 +143,37 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     screenshotsMap.get(screenshot.check_id)!.push(screenshot);
   });
 
-  // Group checks by parent - instances will be nested under their parent
+  // Group checks: element instances by (element_group_id, instance_label), standalone sections separately
   const t4 = Date.now();
-  const checks = filteredChecks.reduce((acc: any[], check: any) => {
-    // Skip element templates (instance_number === 0)
-    if (check.check_type === 'element' && check.instance_number === 0) {
-      return acc;
+
+  // Separate element sections from standalone sections
+  const elementSections = filteredChecks.filter((c: any) => c.element_group_id && c.instance_label);
+  const standaloneSections = filteredChecks.filter(
+    (c: any) => !c.element_group_id || !c.instance_label
+  );
+
+  // Group element sections by (element_group_id, instance_label) to create virtual instances
+  const instanceMap = new Map<string, any[]>();
+  elementSections.forEach((check: any) => {
+    const key = `${check.element_group_id}||${check.instance_label}`;
+    if (!instanceMap.has(key)) {
+      instanceMap.set(key, []);
     }
+    instanceMap.get(key)!.push(check);
+  });
 
-    // Skip section checks that belong to element parents (they're accessed via parent)
-    if (check.check_type === 'section' && check.parent_check_id) {
-      const parent = filteredChecks.find((c: any) => c.id === check.parent_check_id);
-      if (parent?.check_type === 'element') {
-        return acc;
-      }
-    }
+  // Convert instances to top-level items (representative check + sections array)
+  const elementInstances = Array.from(instanceMap.entries()).map(([_key, sections]) => {
+    const representative = sections[0]; // Use first section as representative
+    const elementGroup = representative.element_groups;
 
-    // For element checks, always treat as top-level (ignore parent_check_id from old cloning system)
-    const isTopLevel = check.check_type === 'element' || !check.parent_check_id;
-
-    if (isTopLevel) {
-      // This is a parent check - find all its instances
-      // For element checks: find child section checks
-      // For section checks: find cloned instances
-      const rawInstances =
-        check.check_type === 'element'
-          ? filteredChecks.filter(
-              (c: any) => c.parent_check_id === check.id && c.check_type === 'section'
-            )
-          : filteredChecks.filter((c: any) => c.parent_check_id === check.id);
-
-      // Add analysis data and screenshots to instances
-      const instances = rawInstances.map((instance: any) => {
-        const instanceAnalysis = analysisMap.get(instance.id);
-        const instanceScreenshots = screenshotsMap.get(instance.id) || [];
-        const instanceSectionOverrides = sectionOverridesMap.get(instance.id) || [];
-        return {
-          ...instance,
-          latest_status: instanceAnalysis?.compliance_status || null,
-          latest_confidence: instanceAnalysis?.confidence || null,
-          latest_reasoning: instanceAnalysis?.ai_reasoning || null,
-          latest_analysis: instanceAnalysis?.violations
-            ? {
-                violations: instanceAnalysis.violations,
-                recommendations: instanceAnalysis.recommendations,
-              }
-            : null,
-          screenshots: instanceScreenshots,
-          has_section_overrides: instanceSectionOverrides.length > 0,
-          section_overrides: instanceSectionOverrides,
-        };
-      });
-
-      // Flatten element_groups join
-      const elementGroup = check.element_groups;
-
-      // Add latest analysis data and screenshots
-      const analysis = analysisMap.get(check.id);
-      const checkScreenshots = screenshotsMap.get(check.id) || [];
-      const checkSectionOverrides = sectionOverridesMap.get(check.id) || [];
-
-      acc.push({
-        ...check,
-        element_group_slug: elementGroup?.slug || null,
-        element_groups: elementGroup ? { name: elementGroup.name } : undefined, // Keep for JOIN compatibility
+    // Add analysis data to each section
+    const sectionsWithData = sections.map((section: any) => {
+      const analysis = analysisMap.get(section.id);
+      const screenshots = screenshotsMap.get(section.id) || [];
+      const sectionOverrides = sectionOverridesMap.get(section.id) || [];
+      return {
+        ...section,
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
         latest_reasoning: analysis?.ai_reasoning || null,
@@ -216,15 +183,69 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
               recommendations: analysis.recommendations,
             }
           : null,
-        screenshots: checkScreenshots,
-        instances,
-        instance_count: instances.length,
-        has_section_overrides: checkSectionOverrides.length > 0,
-        section_overrides: checkSectionOverrides,
-      });
-    }
-    return acc;
-  }, []);
+        screenshots,
+        has_section_overrides: sectionOverrides.length > 0,
+        section_overrides: sectionOverrides,
+      };
+    });
+
+    // Calculate aggregate status for the instance (worst status wins)
+    const statuses = sectionsWithData.map(s => s.latest_status).filter(Boolean);
+    const aggregateStatus = statuses.includes('non_compliant')
+      ? 'non_compliant'
+      : statuses.includes('insufficient_information')
+        ? 'insufficient_information'
+        : statuses.includes('compliant')
+          ? 'compliant'
+          : null;
+
+    return {
+      id: representative.id, // Use first section's ID as instance ID
+      check_type: 'element', // Virtual type for UI compatibility
+      check_name: representative.instance_label,
+      instance_label: representative.instance_label,
+      element_group_id: representative.element_group_id,
+      element_group_slug: elementGroup?.slug || null,
+      element_groups: elementGroup ? { name: elementGroup.name } : undefined,
+      assessment_id: representative.assessment_id,
+      latest_status: aggregateStatus,
+      instances: sectionsWithData, // All sections for this instance
+      instance_count: sectionsWithData.length,
+      screenshots: [], // Instance-level has no screenshots
+      has_section_overrides: sectionsWithData.some(s => s.has_section_overrides),
+    };
+  });
+
+  // Process standalone section checks
+  const standaloneChecks = standaloneSections.map((check: any) => {
+    const analysis = analysisMap.get(check.id);
+    const checkScreenshots = screenshotsMap.get(check.id) || [];
+    const checkSectionOverrides = sectionOverridesMap.get(check.id) || [];
+    const elementGroup = check.element_groups;
+
+    return {
+      ...check,
+      element_group_slug: elementGroup?.slug || null,
+      element_groups: elementGroup ? { name: elementGroup.name } : undefined,
+      latest_status: analysis?.compliance_status || null,
+      latest_confidence: analysis?.confidence || null,
+      latest_reasoning: analysis?.ai_reasoning || null,
+      latest_analysis: analysis?.violations
+        ? {
+            violations: analysis.violations,
+            recommendations: analysis.recommendations,
+          }
+        : null,
+      screenshots: checkScreenshots,
+      instances: [],
+      instance_count: 0,
+      has_section_overrides: checkSectionOverrides.length > 0,
+      section_overrides: checkSectionOverrides,
+    };
+  });
+
+  // Combine element instances and standalone sections
+  const checks = [...elementInstances, ...standaloneChecks];
   console.log(`[Perf] Process checks: ${Date.now() - t4}ms`);
 
   if (!assessment) {
