@@ -174,6 +174,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       const sectionOverrides = sectionOverridesMap.get(section.id) || [];
       return {
         ...section,
+        element_group_name: elementGroup?.name || null,
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
         latest_reasoning: analysis?.ai_reasoning || null,
@@ -205,6 +206,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
       check_name: representative.instance_label,
       instance_label: representative.instance_label,
       element_group_id: representative.element_group_id,
+      element_group_name: elementGroup?.name || null,
       element_group_slug: elementGroup?.slug || null,
       element_groups: elementGroup ? { name: elementGroup.name } : undefined,
       assessment_id: representative.assessment_id,
@@ -225,6 +227,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
     return {
       ...check,
+      element_group_name: elementGroup?.name || null,
       element_group_slug: elementGroup?.slug || null,
       element_groups: elementGroup ? { name: elementGroup.name } : undefined,
       latest_status: analysis?.compliance_status || null,

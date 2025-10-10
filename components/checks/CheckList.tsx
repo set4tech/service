@@ -107,12 +107,27 @@ export function CheckList({
     if (checkMode === 'element') {
       // Group by element group name, then by instance_label
       filtered.forEach(check => {
+        console.log('[CheckList] Processing check in element mode:', {
+          id: check.id,
+          code_section_number: check.code_section_number,
+          element_group_id: check.element_group_id,
+          element_group_name: check.element_group_name,
+          instance_label: check.instance_label,
+          check_type: check.check_type,
+        });
+
         // Only show checks that belong to an element group
         if (!check.element_group_id || !check.instance_label) {
+          console.log('[CheckList] Skipping check - missing element_group_id or instance_label:', {
+            element_group_id: check.element_group_id,
+            instance_label: check.instance_label,
+          });
           return;
         }
 
         const groupName = check.element_group_name || 'Other';
+        console.log('[CheckList] Adding to group:', groupName);
+
         if (!mainGroups.has(groupName)) {
           mainGroups.set(groupName, []);
         }

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   // 2. Get section mappings for this element group
   const { data: mappings, error: mappingsError } = await supabase
-    .from('element_group_section_mappings')
+    .from('element_section_mappings')
     .select('section_key')
     .eq('element_group_id', elementGroup.id);
 
