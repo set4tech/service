@@ -230,51 +230,53 @@ The `pdf_scale` column stores the user's preferred rendering scale for viewing f
 
 ### `checks`
 
-Individual compliance checks for code sections within an assessment.
+Individual compliance checks for code sections within an assessment. All checks are flat section checks (no parent/child hierarchy).
 
 **Schema:**
 
-| Column                 | Type                           | Description                                                        |
-| ---------------------- | ------------------------------ | ------------------------------------------------------------------ |
-| `id`                   | UUID PK                        | Primary key                                                        |
-| `assessment_id`        | UUID FK → assessments.id       | Assessment reference (CASCADE delete)                              |
-| `code_section_key`     | VARCHAR(255) FK → sections.key | Code section reference (RESTRICT delete)                           |
-| `code_section_number`  | VARCHAR(100)                   | Section number (e.g., "11B-401.1")                                 |
-| `code_section_title`   | TEXT                           | Section title                                                      |
-| `check_name`           | VARCHAR(255)                   | Custom check name                                                  |
-| `check_location`       | VARCHAR(255)                   | Location identifier                                                |
-| `parent_check_id`      | UUID FK → checks.id            | Parent template check                                              |
-| `instance_number`      | INTEGER                        | Instance number (0=template, 1+=instances) (default 1)             |
-| `instance_label`       | TEXT                           | Human-readable label (e.g., "Door 2 - North Entrance")             |
-| `check_type`           | TEXT                           | 'section' or 'element' (default 'section')                         |
-| `element_group_id`     | UUID FK → element_groups.id    | Element group reference (SET NULL delete)                          |
-| `element_sections`     | TEXT[]                         | Array of section_keys for element checks                           |
-| `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                          |
-| `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                       |
-| `status`               | VARCHAR(50)                    | Current status (default 'pending')                                 |
-| `requires_review`      | BOOLEAN                        | Requires human review (default FALSE)                              |
-| `manual_override`      | TEXT                           | Manual judgment: compliant, non_compliant, not_applicable, or NULL |
-| `manual_override_note` | TEXT                           | Explanation for manual override                                    |
-| `manual_override_at`   | TIMESTAMPTZ                    | When manual override was set                                       |
-| `manual_override_by`   | TEXT                           | User who set the manual override                                   |
-| `created_at`           | TIMESTAMPTZ                    | Creation timestamp                                                 |
-| `updated_at`           | TIMESTAMPTZ                    | Last update timestamp (auto-updated by trigger)                    |
+| Column                 | Type                           | Description                                                                    |
+| ---------------------- | ------------------------------ | ------------------------------------------------------------------------------ |
+| `id`                   | UUID PK                        | Primary key                                                                    |
+| `assessment_id`        | UUID FK → assessments.id       | Assessment reference (CASCADE delete)                                          |
+| `code_section_key`     | VARCHAR(255) FK → sections.key | Code section reference (RESTRICT delete)                                       |
+| `code_section_number`  | VARCHAR(100)                   | Section number (e.g., "11B-401.1")                                             |
+| `code_section_title`   | TEXT                           | Section title                                                                  |
+| `check_name`           | VARCHAR(255)                   | Custom check name                                                              |
+| `check_location`       | VARCHAR(255)                   | Location identifier                                                            |
+| `instance_label`       | TEXT                           | Groups element checks (e.g., "Door 1", "Door 2"); NULL for standalone sections |
+| `check_type`           | TEXT                           | Always 'section' (default 'section')                                           |
+| `element_group_id`     | UUID FK → element_groups.id    | Element group reference (SET NULL delete); NULL for standalone section checks  |
+| `element_sections`     | TEXT[]                         | DEPRECATED: No longer used                                                     |
+| `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                                      |
+| `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                                   |
+| `status`               | VARCHAR(50)                    | Current status (default 'pending')                                             |
+| `requires_review`      | BOOLEAN                        | Requires human review (default FALSE)                                          |
+| `manual_override`      | TEXT                           | Manual judgment: compliant, non_compliant, not_applicable, or NULL             |
+| `manual_override_note` | TEXT                           | Explanation for manual override                                                |
+| `manual_override_at`   | TIMESTAMPTZ                    | When manual override was set                                                   |
+| `manual_override_by`   | TEXT                           | User who set the manual override                                               |
+| `created_at`           | TIMESTAMPTZ                    | Creation timestamp                                                             |
+| `updated_at`           | TIMESTAMPTZ                    | Last update timestamp (auto-updated by trigger)                                |
+
+**Architecture Notes:**
+
+- **Flat Structure**: All checks are section-level checks (no parent/child hierarchy)
+- **Element Grouping**: Multiple sections for the same element instance share `element_group_id` + `instance_label`
+- **Example**: "Door 1" has 10 section checks, all with `element_group_id='doors'` and `instance_label='Door 1'`
 
 **Indexes:**
 
 - `idx_assessment_section` on `(assessment_id, code_section_key)`
 - `idx_checks_code_section_key` on `code_section_key`
-- `idx_checks_parent_check_id` on `parent_check_id`
-- `idx_checks_instance_number` on `instance_number`
 - `idx_checks_type` on `check_type`
 - `idx_checks_element_group` on `element_group_id`
 - `idx_checks_element_sections` GIN on `element_sections`
 - `idx_checks_manual_override` on `manual_override` (partial WHERE NOT NULL)
-- `unique_check_per_section` UNIQUE on `(assessment_id, code_section_number, parent_check_id, instance_number) NULLS NOT DISTINCT`
+- `unique_check_per_section` UNIQUE on `(assessment_id, code_section_number, instance_label)` WHERE `check_type='section' AND instance_label IS NOT NULL`
 
 **Constraints:**
 
-- `checks_check_type_check`: check_type must be 'section' or 'element'
+- `checks_check_type_check`: check_type must be 'section' or 'element' (deprecated: all checks are 'section' now)
 - `checks_manual_override_check`: manual_override must be 'compliant', 'non_compliant', or 'not_applicable'
 
 **Trigger:**

@@ -41,19 +41,30 @@ cp .env.example .env
 
 ### Environment Setup
 
-Required environment variables (see CLAUDE.md for full details):
+We use a **trunk-based development** workflow with separate dev and production environments:
+
+- **Development**: Local + Vercel previews (dev Supabase, dev S3)
+- **Production**: Live app (prod Supabase, prod S3)
+
+**Quick Setup**:
+
+1. Follow [TRUNK_BASED_SETUP_PLAN.md](./TRUNK_BASED_SETUP_PLAN.md) for initial environment setup
+2. See [DEVELOPMENT.md](./DEVELOPMENT.md) for daily workflow
+
+Required environment variables (see `.env.example`):
 
 ```bash
 # Supabase
-SUPABASE_URL=your-project-url
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_KEY=your-service-key
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-key
 
 # AWS S3
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your-key
 AWS_SECRET_ACCESS_KEY=your-secret
-S3_BUCKET_NAME=your-bucket
+AWS_S3_BUCKET_NAME=your-bucket
+NEXT_PUBLIC_S3_BUCKET_NAME=your-bucket
 
 # AI Providers
 OPENAI_API_KEY=your-openai-key
@@ -67,6 +78,12 @@ ANTHROPIC_API_KEY=your-anthropic-key
 npm run dev
 # Open http://localhost:3000
 ```
+
+## Deployment
+
+- **main branch** → Auto-deploys to production (Vercel)
+- **Feature branches** → Auto-creates preview deploys with dev environment
+- **CI/CD**: GitHub Actions runs tests on all PRs to main
 
 ### Run Tests
 
@@ -365,9 +382,14 @@ See `CLAUDE.md` for development guidelines and coding standards.
 
 ## Documentation
 
-- `CLAUDE.md` - Development guidelines, architecture, patterns
-- `DATABASE_SCHEMA.md` - Complete database schema and relationships
-- `APPLICABILITY_FILTERING_README.md` - AI filtering system details
+- **Setup & Deployment**
+  - `TRUNK_BASED_SETUP_PLAN.md` - Complete setup guide for dev/prod environments
+  - `DEVELOPMENT.md` - Daily development workflows and best practices
+- **Architecture & Development**
+  - `CLAUDE.md` - Development guidelines, architecture, patterns
+  - `DATABASE_SCHEMA.md` - Complete database schema and relationships
+- **Features**
+  - `APPLICABILITY_FILTERING_README.md` - AI filtering system details
 
 ## Example Data
 
