@@ -23,9 +23,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`h-full ${inter.variable} ${plexMono.variable}`}>
-      <body className="h-full overflow-hidden font-sans antialiased bg-paper text-ink-900">
-        {children}
-      </body>
+      <body className="h-full font-sans antialiased bg-paper text-ink-900">{children}</body>
     </html>
   );
 }
