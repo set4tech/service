@@ -55,7 +55,125 @@ export async function GET() {
       const payload = typeof job!.payload === 'string' ? JSON.parse(job!.payload) : job!.payload;
       const jobType = job?.type || 'analysis';
 
-      if (jobType === 'batch_analysis') {
+      if (jobType === 'element_group_assessment') {
+        // Handle element group meta-job: expand into individual batch_analysis jobs
+        console.log(`[Queue] Expanding element_group_assessment job ${id}`);
+
+        const {
+          checkIds,
+          batchGroupId,
+          totalBatches,
+          screenshotUrls,
+          screenshots,
+          buildingContext,
+          customPrompt,
+          extraContext,
+          provider,
+          modelName,
+          assessmentId: _assessmentId,
+          elementGroupId: _elementGroupId,
+          instanceLabel,
+        } = payload;
+
+        // Fetch all checks with their section info
+        const { data: checks } = await supabase
+          .from('checks')
+          .select('id, code_section_key, code_section_number, code_section_title')
+          .in('id', checkIds)
+          .order('code_section_number', { ascending: true });
+
+        if (!checks || checks.length === 0) {
+          throw new Error(`No checks found for element group job ${id}`);
+        }
+
+        console.log(`[Queue] Creating ${checks.length} batch jobs for element "${instanceLabel}"`);
+
+        // Fetch all sections in parallel
+        const sectionKeys = checks.map(c => c.code_section_key);
+        const { data: sections } = await supabase
+          .from('sections')
+          .select('key, number, title, paragraphs')
+          .in('key', sectionKeys)
+          .eq('never_relevant', false);
+
+        const sectionMap = new Map(sections?.map(s => [s.key, s]) || []);
+
+        // Get run counts for all checks in parallel
+        const runCountPromises = checks.map(c =>
+          supabase
+            .from('analysis_runs')
+            .select('*', { count: 'exact', head: true })
+            .eq('check_id', c.id)
+            .then(({ count }) => ({ checkId: c.id, count: count || 0 }))
+        );
+        const runCounts = await Promise.all(runCountPromises);
+        const runCountMap = Object.fromEntries(runCounts.map(r => [r.checkId, r.count]));
+
+        // Create individual batch_analysis jobs
+        for (let i = 0; i < checks.length; i++) {
+          const check = checks[i];
+          const batchNum = i + 1;
+          const section = sectionMap.get(check.code_section_key);
+
+          let codeSection: any;
+          if (section) {
+            const paragraphs = section.paragraphs || [];
+            const text = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
+            codeSection = {
+              key: section.key,
+              number: section.number || '',
+              title: section.title || '',
+              text,
+            };
+          } else {
+            codeSection = {
+              key: check.code_section_key || 'unknown',
+              number: check.code_section_number || '',
+              title: check.code_section_title || '',
+              text: 'Section text not available',
+            };
+          }
+
+          const runNumber = runCountMap[check.id] + 1;
+          const childJobId = crypto.randomUUID();
+
+          await kv.hset(`job:${childJobId}`, {
+            id: childJobId,
+            type: 'batch_analysis',
+            payload: JSON.stringify({
+              checkId: check.id,
+              batch: [codeSection],
+              batchNum,
+              totalBatches,
+              batchGroupId,
+              runNumber,
+              screenshotUrls,
+              screenshots,
+              check,
+              buildingContext,
+              customPrompt,
+              extraContext,
+              provider,
+              modelName,
+            }),
+            status: 'pending',
+            attempts: 0,
+            maxAttempts: 3,
+            createdAt: Date.now(),
+          });
+          await kv.lpush('queue:analysis', childJobId);
+        }
+
+        console.log(
+          `[Queue] Successfully expanded element_group_assessment job ${id} into ${checks.length} batch jobs`
+        );
+
+        // Mark meta-job as completed
+        await kv.hset(`job:${id}`, {
+          status: 'completed',
+          completedAt: Date.now(),
+        });
+      } else if (jobType === 'batch_analysis') {
         // Handle batch analysis jobs
         const {
           checkId,

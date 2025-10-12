@@ -66,9 +66,33 @@ export async function runAI(
       // Convert screenshots to base64 inline data
       for (const url of req.screenshots) {
         const response = await fetch(url);
+
+        if (!response.ok) {
+          console.error(
+            `[Analysis] Failed to fetch screenshot: ${response.status} ${response.statusText}`
+          );
+          continue; // Skip this screenshot
+        }
+
         const buffer = await response.arrayBuffer();
         const base64 = Buffer.from(buffer).toString('base64');
-        const mimeType = response.headers.get('content-type') || 'image/png';
+        let mimeType = response.headers.get('content-type') || 'image/png';
+
+        // Fix incorrect MIME types from S3
+        if (mimeType === 'application/xml' || mimeType === 'text/xml') {
+          console.warn(
+            `[Analysis] Got XML MIME type from S3, likely an error response. Defaulting to image/png`
+          );
+          mimeType = 'image/png';
+        }
+
+        // Ensure it's a valid image MIME type
+        if (!mimeType.startsWith('image/')) {
+          console.warn(`[Analysis] Non-image MIME type: ${mimeType}, defaulting to image/png`);
+          mimeType = 'image/png';
+        }
+
+        console.log(`[Analysis] Screenshot MIME type: ${mimeType}`);
 
         parts.push({
           inlineData: {

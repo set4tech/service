@@ -180,6 +180,14 @@ function useCheckData(
 
           if (isCancelled) return;
 
+          console.log('[useCheckData] Progress response for element check:', {
+            checkId,
+            inProgress: progress.inProgress,
+            completed: progress.completed,
+            total: progress.total,
+            willSetAssessing: progress.inProgress || false,
+          });
+
           setData({
             check,
             childChecks: sorted,
@@ -204,6 +212,14 @@ function useCheckData(
         ]);
 
         if (isCancelled) return;
+
+        console.log('[useCheckData] Progress response for standalone check:', {
+          checkId,
+          inProgress: progress.inProgress,
+          completed: progress.completed,
+          total: progress.total,
+          willSetAssessing: progress.inProgress || false,
+        });
 
         // Set all state
         setData({
@@ -485,11 +501,32 @@ export function CodeDetailPanel({
   const handleAssess = async () => {
     if (!checkId) return;
 
+    // Prevent double-clicks
+    if (assessing) {
+      console.log('[CodeDetailPanel] Assessment already in progress, ignoring click');
+      return;
+    }
+
+    console.log('[CodeDetailPanel] Starting assessment for check:', checkId);
+    console.log('[CodeDetailPanel] Check details:', {
+      checkId,
+      elementGroupId: activeCheck?.element_group_id,
+      instanceLabel: activeCheck?.instance_label,
+      checkType: activeCheck?.check_type,
+      childChecksCount: childChecks.length,
+    });
+
     setAssessing(true);
     setAssessmentError(null);
     localStorage.setItem('lastSelectedAIModel', selectedModel);
 
     try {
+      console.log('[CodeDetailPanel] Sending assess request with:', {
+        aiProvider: selectedModel,
+        hasCustomPrompt: !!customPrompt.trim(),
+        hasExtraContext: !!extraContext.trim(),
+      });
+
       const response = await fetch(`/api/checks/${checkId}/assess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -509,10 +546,19 @@ export function CodeDetailPanel({
         throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
       }
 
+      console.log('[CodeDetailPanel] Assess response:', {
+        ok: response.ok,
+        status: response.status,
+        data,
+      });
+
       if (!response.ok) {
         throw new Error(data.error || 'Assessment failed');
       }
+
+      console.log('[CodeDetailPanel] Assessment initiated successfully');
     } catch (err: any) {
+      console.error('[CodeDetailPanel] Assessment error:', err);
       setAssessmentError(err.message);
       setAssessing(false);
     }

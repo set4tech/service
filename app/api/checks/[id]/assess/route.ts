@@ -78,47 +78,55 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Check not found' }, { status: 404 });
     }
 
+    console.log(`[Assess] Check loaded:`, {
+      checkId,
+      checkType: check.check_type,
+      elementGroupId: check.element_group_id,
+      instanceLabel: check.instance_label,
+      instanceNumber: check.instance_number,
+      parentCheckId: check.parent_check_id,
+      sectionKey: check.code_section_key,
+    });
+
     // 2. Get project variables
     const assessment = check.assessments as any;
     const project = assessment?.projects;
     const buildingContext = project?.extracted_variables || {};
 
-    // 3. Fetch code section from Supabase (flat structure - one section per check)
-    const sectionKey = check.code_section_key;
+    // 3. Check if this is an element-grouped check
+    const isElementGrouped = !!check.element_group_id && !!check.instance_label;
+    console.log(`[Assess] Is element-grouped check: ${isElementGrouped}`, {
+      elementGroupId: check.element_group_id,
+      instanceLabel: check.instance_label,
+    });
 
-    if (!sectionKey) {
-      return NextResponse.json({ error: 'Check has no section key' }, { status: 400 });
+    let sectionChecks: any[] = [check]; // Default to just this check
+    if (isElementGrouped) {
+      // Find all section checks that belong to this element instance
+      const { data: siblings, error: siblingsError } = await supabase
+        .from('checks')
+        .select('id, code_section_key, code_section_number, code_section_title, assessment_id')
+        .eq('assessment_id', check.assessment_id)
+        .eq('element_group_id', check.element_group_id)
+        .eq('instance_label', check.instance_label)
+        .order('code_section_number', { ascending: true });
+
+      if (!siblingsError && siblings && siblings.length > 0) {
+        sectionChecks = siblings;
+        console.log(
+          `[Assess] Found ${sectionChecks.length} section checks for element "${check.instance_label}"`
+        );
+      } else {
+        console.log(`[Assess] No siblings found, error:`, siblingsError);
+      }
     }
 
-    const { data: section, error: sectionError } = await supabase
-      .from('sections')
-      .select('key, number, title, paragraphs')
-      .eq('key', sectionKey)
-      .eq('never_relevant', false)
-      .single();
+    console.log(`[Assess] Will assess ${sectionChecks.length} section(s)`);
 
-    let codeSection: any;
+    // 4. Fetch all screenshots for ALL checks in this element group
+    const checkIds = sectionChecks.map(c => c.id);
+    console.log(`[Assess] Fetching screenshots for ${checkIds.length} checks`);
 
-    if (!sectionError && section) {
-      const paragraphs = section.paragraphs || [];
-      const text = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
-
-      codeSection = {
-        key: section.key,
-        number: section.number || '',
-        title: section.title || '',
-        text: text || 'Section text not available',
-      };
-    } else {
-      codeSection = {
-        key: check.code_section_key || 'unknown',
-        number: check.code_section_number || '',
-        title: check.code_section_title || '',
-        text: 'Section text not available',
-      };
-    }
-
-    // 4. Fetch all screenshots with presigned URLs
     const { data: screenshotData, error: screenshotsError } = await supabase
       .from('screenshots')
       .select(
@@ -128,7 +136,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         screenshot_check_assignments!inner(check_id)
       `
       )
-      .eq('screenshot_check_assignments.check_id', checkId)
+      .in('screenshot_check_assignments.check_id', checkIds)
       .order('created_at', { ascending: true });
 
     const screenshots = screenshotData?.map((s: any) => ({
@@ -140,72 +148,66 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Failed to fetch screenshots' }, { status: 500 });
     }
 
+    console.log(`[Assess] Found ${screenshots?.length || 0} screenshots`);
+
     const screenshotUrls = await Promise.all(
       (screenshots || []).map(async s => await getPresignedUrl(s.screenshot_url))
     );
 
-    // 5. Create single batch with single section (flat structure)
-    const batch = [codeSection];
+    // 5. Mark all checks as processing immediately
+    await supabase.from('checks').update({ status: 'processing' }).in('id', checkIds);
+
+    // 6. Prepare job metadata
     const batchGroupId = crypto.randomUUID();
-
-    console.log(`[Assess] Check ${checkId}: Assessing section ${codeSection.number}`);
-
-    // 6. Get starting run number
-    const { count } = await supabase
-      .from('analysis_runs')
-      .select('*', { count: 'exact', head: true })
-      .eq('check_id', checkId);
-    const runNumber = (count || 0) + 1;
-
-    // 7. Queue analysis job in background
+    const totalBatches = sectionChecks.length;
     const { provider, modelName } = getModelConfig(aiProvider);
-    const jobId = crypto.randomUUID();
 
-    console.log(`[Assess] Queuing analysis for check ${checkId}, jobId ${jobId}`);
+    console.log(`[Assess] Creating element-group meta-job for ${totalBatches} sections:`, {
+      batchGroupId,
+      totalBatches,
+      isElementGrouped,
+      elementLabel: check.instance_label,
+    });
 
-    await kv.hset(`job:${jobId}`, {
-      id: jobId,
-      type: 'batch_analysis',
+    // 7. Create a single META-job that will be expanded by queue processor
+    const metaJobId = crypto.randomUUID();
+    await kv.hset(`job:${metaJobId}`, {
+      id: metaJobId,
+      type: 'element_group_assessment',
       payload: JSON.stringify({
-        checkId,
-        batch,
-        batchNum: 1,
-        totalBatches: 1,
+        checkIds: sectionChecks.map(c => c.id),
         batchGroupId,
-        runNumber,
+        totalBatches,
         screenshotUrls,
         screenshots,
-        check,
         buildingContext,
         customPrompt,
         extraContext,
         provider,
         modelName,
+        assessmentId: check.assessment_id,
+        elementGroupId: check.element_group_id,
+        instanceLabel: check.instance_label,
       }),
       status: 'pending',
       attempts: 0,
       maxAttempts: 3,
       createdAt: Date.now(),
     });
-    await kv.lpush('queue:analysis', jobId);
+    await kv.lpush('queue:analysis', metaJobId);
 
-    console.log(
-      `[Assess] Successfully queued analysis for check ${checkId}, batchGroupId ${batchGroupId}`
-    );
+    console.log(`[Assess] Queued meta-job ${metaJobId} for ${totalBatches} sections`);
 
-    // Mark check as processing
-    await supabase.from('checks').update({ status: 'processing' }).eq('id', checkId);
-
-    // Note: Queue processing happens via cron job (runs every minute)
-    console.log('[Assess] Job queued - cron will process within 60 seconds');
-
-    // Return immediately
-    return NextResponse.json({
+    // 8. Return response IMMEDIATELY
+    const responsePayload = {
       success: true,
       batchGroupId,
-      totalBatches: 1,
-      message: `Assessment queued. Processing in background.`,
-    });
+      totalBatches,
+      message: `Assessment queued. Processing ${totalBatches} section(s) in background.`,
+    };
+    console.log(`[Assess] Returning response:`, responsePayload);
+
+    return NextResponse.json(responsePayload);
   } catch (error: any) {
     console.error('=== ASSESSMENT ERROR ===');
     console.error('Check ID:', checkId);

@@ -635,12 +635,29 @@ export function CheckList({
                                           `Instance ${check.instance_number}`}
                                       </span>
                                     )}
-                                    {check.sections?.length > 0 && (
-                                      <span className="text-xs text-gray-500">
-                                        ({check.sections.length}{' '}
-                                        {check.sections.length === 1 ? 'section' : 'sections'})
-                                      </span>
-                                    )}
+                                    {(() => {
+                                      // Count screenshots from both possible data structures:
+                                      // - check.instances (from server-side grouping in page.tsx)
+                                      // - check.sections (from client-side grouping in this component)
+                                      const sections = check.instances || check.sections || [];
+                                      const totalScreenshots = sections.reduce(
+                                        (sum: number, s: any) => sum + (s.screenshots?.length || 0),
+                                        0
+                                      );
+                                      console.log(
+                                        `[CheckList] ${check.instance_label}: ${totalScreenshots} screenshots | sections=${sections.length} | hasInstances=${!!check.instances} | hasSections=${!!check.sections}`
+                                      );
+                                      sections.forEach((s: any, idx: number) => {
+                                        console.log(
+                                          `  Section ${idx}: id=${s.id?.substring(0, 8)} screenshots=${s.screenshots?.length || 0}`
+                                        );
+                                      });
+                                      return totalScreenshots > 0 ? (
+                                        <span className="text-xs text-gray-500 ml-2">
+                                          📷 {totalScreenshots}
+                                        </span>
+                                      ) : null;
+                                    })()}
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
                                     {check.manual_override && (
@@ -648,18 +665,6 @@ export function CheckList({
                                         Manual
                                       </span>
                                     )}
-                                    {(() => {
-                                      const totalScreenshots = (check.sections || []).reduce(
-                                        (sum: number, s: any) => sum + (s.screenshots?.length || 0),
-                                        0
-                                      );
-                                      return totalScreenshots > 0 ? (
-                                        <span className="text-xs text-gray-500">
-                                          {totalScreenshots}{' '}
-                                          {totalScreenshots === 1 ? 'screenshot' : 'screenshots'}
-                                        </span>
-                                      ) : null;
-                                    })()}
                                   </div>
                                 </>
                               ) : (
