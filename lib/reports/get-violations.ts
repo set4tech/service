@@ -88,7 +88,6 @@ export async function getProjectViolations(
       check_type,
       element_group_name,
       instance_label,
-      parent_check_id,
       latest_analysis_runs(
         id,
         compliance_status,
