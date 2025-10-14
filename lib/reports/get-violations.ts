@@ -46,6 +46,7 @@ export interface ProjectViolationsData {
 export async function getProjectViolations(
   projectId: string
 ): Promise<ProjectViolationsData | null> {
+  console.log('[getProjectViolations] Starting for projectId:', projectId);
   const supabase = supabaseAdmin();
 
   // Get project info
@@ -55,8 +56,10 @@ export async function getProjectViolations(
     .eq('id', projectId)
     .single();
 
+  console.log('[getProjectViolations] Project query result:', { project, error: projectError });
+
   if (projectError || !project) {
-    console.error('Failed to fetch project:', projectError);
+    console.error('[getProjectViolations] Failed to fetch project:', projectError);
     return null;
   }
 
@@ -69,13 +72,19 @@ export async function getProjectViolations(
     .limit(1)
     .single();
 
+  console.log('[getProjectViolations] Assessment query result:', {
+    assessment,
+    error: assessmentError,
+  });
+
   if (assessmentError || !assessment) {
-    console.error('Failed to fetch assessment:', assessmentError);
+    console.error('[getProjectViolations] Failed to fetch assessment:', assessmentError);
     return null;
   }
 
   // Get all checks for this assessment with their latest analysis (batch query)
-  const { data: allChecks, error: checksError } = await supabase
+  let allChecks;
+  const { data: checksData, error: checksError } = await supabase
     .from('checks')
     .select(
       `
@@ -104,9 +113,54 @@ export async function getProjectViolations(
     .eq('assessment_id', assessment.id);
 
   if (checksError) {
-    console.error('Failed to fetch checks:', checksError);
-    return null;
+    console.error('[getProjectViolations] Failed to fetch checks with nested query:', checksError);
+    console.error('[getProjectViolations] Error details:', JSON.stringify(checksError, null, 2));
+
+    // Fallback: Try without nested query and fetch analysis runs separately
+    const { data: checksOnly, error: checksOnlyError } = await supabase
+      .from('checks')
+      .select(
+        'id, check_name, code_section_key, code_section_number, manual_override, human_readable_title, check_type, element_group_name, instance_label'
+      )
+      .eq('assessment_id', assessment.id);
+
+    if (checksOnlyError || !checksOnly) {
+      console.error('[getProjectViolations] Fallback also failed:', checksOnlyError);
+      return null;
+    }
+
+    // Fetch latest analysis runs separately
+    const checkIds = checksOnly.map(c => c.id);
+    const { data: latestRuns } = await supabase
+      .from('latest_analysis_runs')
+      .select(
+        'id, check_id, compliance_status, ai_reasoning, confidence, raw_ai_response, violations, recommendations, batch_group_id, total_batches'
+      )
+      .in('check_id', checkIds);
+
+    // Merge the data
+    const latestRunsMap = new Map(latestRuns?.map(r => [r.check_id, r]) || []);
+    const mergedChecks = checksOnly.map(check => ({
+      ...check,
+      latest_analysis_runs: latestRunsMap.get(check.id) || null,
+    }));
+
+    console.log(
+      '[getProjectViolations] Using fallback approach, found',
+      mergedChecks.length,
+      'checks'
+    );
+    allChecks = mergedChecks;
+  } else {
+    console.log(
+      '[getProjectViolations] Nested query succeeded, found',
+      checksData?.length || 0,
+      'checks'
+    );
+    allChecks = checksData;
   }
+
+  console.log('[getProjectViolations] Total checks loaded:', allChecks?.length || 0);
 
   // Fetch all section overrides for all checks
   const checkIds = (allChecks || []).map((c: any) => c.id);
