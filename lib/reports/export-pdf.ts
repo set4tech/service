@@ -269,26 +269,25 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
         return; // Skip if no bounds
       }
 
-      // Account for zoom level differences between capture and render
+      // Bounds are stored in base PDF pixels (scale 1) regardless of capture zoom level
+      // The viewer's screenToContent function normalizes coordinates by dividing by transform.scale
+      // So zoom_level is just metadata - we only need to scale by the renderScale we're using here
       const renderScale = 2.0;
-      const captureZoom = violation.bounds.zoom_level || 1.0;
-      const zoomRatio = renderScale / captureZoom;
 
       console.log('[PDF Export] Violation bounds:', {
         checkId: violation.checkId,
         originalBounds: violation.bounds,
-        captureZoom,
         renderScale,
-        zoomRatio,
         viewportDims: { width: viewport.width, height: viewport.height },
       });
 
-      // Convert PDF coordinates to viewport coordinates, then to image coordinates
-      const viewportX = violation.bounds.x * zoomRatio;
-      const viewportY = violation.bounds.y * zoomRatio;
-      const viewportW = violation.bounds.width * zoomRatio;
-      const viewportH = violation.bounds.height * zoomRatio;
+      // Scale bounds from base PDF pixels (scale 1) to viewport pixels (scale 2.0)
+      const viewportX = violation.bounds.x * renderScale;
+      const viewportY = violation.bounds.y * renderScale;
+      const viewportW = violation.bounds.width * renderScale;
+      const viewportH = violation.bounds.height * renderScale;
 
+      // Convert viewport coordinates to PDF page image coordinates
       const x = imgX + (viewportX / viewport.width) * imgWidth;
       const y = imgY + (viewportY / viewport.height) * imgHeight;
       const w = (viewportW / viewport.width) * imgWidth;
