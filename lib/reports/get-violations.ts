@@ -46,7 +46,6 @@ export interface ProjectViolationsData {
 export async function getProjectViolations(
   projectId: string
 ): Promise<ProjectViolationsData | null> {
-  console.log('[getProjectViolations] Starting for projectId:', projectId);
   const supabase = supabaseAdmin();
 
   // Get project info
@@ -55,8 +54,6 @@ export async function getProjectViolations(
     .select('id, name, pdf_url, unannotated_drawing_url, extracted_variables')
     .eq('id', projectId)
     .single();
-
-  console.log('[getProjectViolations] Project query result:', { project, error: projectError });
 
   if (projectError || !project) {
     console.error('[getProjectViolations] Failed to fetch project:', projectError);
@@ -71,11 +68,6 @@ export async function getProjectViolations(
     .order('started_at', { ascending: false })
     .limit(1)
     .single();
-
-  console.log('[getProjectViolations] Assessment query result:', {
-    assessment,
-    error: assessmentError,
-  });
 
   if (assessmentError || !assessment) {
     console.error('[getProjectViolations] Failed to fetch assessment:', assessmentError);
@@ -112,14 +104,8 @@ export async function getProjectViolations(
     )
     .eq('assessment_id', assessment.id);
 
-  console.log('[getProjectViolations] Checks query result:', {
-    count: allChecks?.length || 0,
-    error: checksError,
-  });
-
   if (checksError) {
     console.error('[getProjectViolations] Failed to fetch checks:', checksError);
-    console.error('[getProjectViolations] Error details:', JSON.stringify(checksError, null, 2));
     return null;
   }
 
@@ -141,8 +127,6 @@ export async function getProjectViolations(
 
   // All checks are flat section checks now
   const checksForViolations = allChecks || [];
-
-  console.log(`[getProjectViolations] Processing ${checksForViolations.length} checks`);
 
   if (!checksForViolations || checksForViolations.length === 0) {
     return {
