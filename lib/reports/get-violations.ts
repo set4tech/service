@@ -133,7 +133,7 @@ export async function getProjectViolations(
       projectId: project.id,
       projectName: project.name,
       assessmentId: assessment.id,
-      pdfUrl: project.unannotated_drawing_url || project.pdf_url, // Use unannotated version if available
+      pdfUrl: project.pdf_url, // Use pdf_url (the one used for screenshots in assessment page)
       violations: [],
       buildingParams: project.extracted_variables,
       codeInfo: undefined,
@@ -169,7 +169,28 @@ export async function getProjectViolations(
       ? check.latest_analysis_runs[0]
       : check.latest_analysis_runs;
 
-    // Check for section-level overrides first
+    // FIRST: Check-level manual override takes highest precedence
+    // If a user manually marks the entire check, that's the final decision
+    if (check.manual_override) {
+      // Exclude checks marked as compliant, not_applicable, or excluded
+      if (
+        check.manual_override === 'compliant' ||
+        check.manual_override === 'not_applicable' ||
+        check.manual_override === 'excluded'
+      ) {
+        return false;
+      }
+
+      // Include checks marked as non_compliant or insufficient_information
+      if (
+        check.manual_override === 'non_compliant' ||
+        check.manual_override === 'insufficient_information'
+      ) {
+        return true;
+      }
+    }
+
+    // SECOND: Check for section-level overrides
     const checkSectionOverrides = sectionOverridesMap.get(check.id) || [];
     if (checkSectionOverrides.length > 0) {
       // If ANY section override is non_compliant, include this check
@@ -190,27 +211,7 @@ export async function getProjectViolations(
       }
     }
 
-    // If manual_override is set on the check, it takes precedence over AI analysis
-    if (check.manual_override) {
-      // Exclude checks marked as compliant, not_applicable, or excluded
-      if (
-        check.manual_override === 'compliant' ||
-        check.manual_override === 'not_applicable' ||
-        check.manual_override === 'excluded'
-      ) {
-        return false;
-      }
-
-      // Include checks marked as non_compliant or insufficient_information
-      if (
-        check.manual_override === 'non_compliant' ||
-        check.manual_override === 'insufficient_information'
-      ) {
-        return true;
-      }
-    }
-
-    // If no manual override, use AI analysis result
+    // THIRD: If no overrides, use AI analysis result
     const isNonCompliant = latestAnalysis?.compliance_status === 'non_compliant';
     const needsMoreInfo = latestAnalysis?.compliance_status === 'needs_more_info';
 
@@ -222,7 +223,7 @@ export async function getProjectViolations(
       projectId: project.id,
       projectName: project.name,
       assessmentId: assessment.id,
-      pdfUrl: project.unannotated_drawing_url || project.pdf_url, // Use unannotated version if available
+      pdfUrl: project.pdf_url, // Use pdf_url (the one used for screenshots in assessment page)
       violations: [],
       buildingParams: project.extracted_variables,
       codeInfo,
@@ -533,7 +534,7 @@ export async function getProjectViolations(
     projectId: project.id,
     projectName: project.name,
     assessmentId: assessment.id,
-    pdfUrl: project.unannotated_drawing_url || project.pdf_url, // Use unannotated version if available
+    pdfUrl: project.pdf_url, // Use pdf_url (the one used for screenshots in assessment page)
     violations,
     buildingParams: project.extracted_variables,
     codeInfo,
