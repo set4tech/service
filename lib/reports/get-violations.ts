@@ -82,9 +82,8 @@ export async function getProjectViolations(
     return null;
   }
 
-  // Get all checks for this assessment with their latest analysis (batch query)
-  let allChecks;
-  const { data: checksData, error: checksError } = await supabase
+  // Get all checks for this assessment with their latest analysis (single query)
+  const { data: allChecks, error: checksError } = await supabase
     .from('checks')
     .select(
       `
@@ -112,55 +111,16 @@ export async function getProjectViolations(
     )
     .eq('assessment_id', assessment.id);
 
+  console.log('[getProjectViolations] Checks query result:', {
+    count: allChecks?.length || 0,
+    error: checksError,
+  });
+
   if (checksError) {
-    console.error('[getProjectViolations] Failed to fetch checks with nested query:', checksError);
+    console.error('[getProjectViolations] Failed to fetch checks:', checksError);
     console.error('[getProjectViolations] Error details:', JSON.stringify(checksError, null, 2));
-
-    // Fallback: Try without nested query and fetch analysis runs separately
-    const { data: checksOnly, error: checksOnlyError } = await supabase
-      .from('checks')
-      .select(
-        'id, check_name, code_section_key, code_section_number, manual_override, human_readable_title, check_type, element_group_name, instance_label'
-      )
-      .eq('assessment_id', assessment.id);
-
-    if (checksOnlyError || !checksOnly) {
-      console.error('[getProjectViolations] Fallback also failed:', checksOnlyError);
-      return null;
-    }
-
-    // Fetch latest analysis runs separately
-    const checkIds = checksOnly.map(c => c.id);
-    const { data: latestRuns } = await supabase
-      .from('latest_analysis_runs')
-      .select(
-        'id, check_id, compliance_status, ai_reasoning, confidence, raw_ai_response, violations, recommendations, batch_group_id, total_batches'
-      )
-      .in('check_id', checkIds);
-
-    // Merge the data
-    const latestRunsMap = new Map(latestRuns?.map(r => [r.check_id, r]) || []);
-    const mergedChecks = checksOnly.map(check => ({
-      ...check,
-      latest_analysis_runs: latestRunsMap.get(check.id) || null,
-    }));
-
-    console.log(
-      '[getProjectViolations] Using fallback approach, found',
-      mergedChecks.length,
-      'checks'
-    );
-    allChecks = mergedChecks;
-  } else {
-    console.log(
-      '[getProjectViolations] Nested query succeeded, found',
-      checksData?.length || 0,
-      'checks'
-    );
-    allChecks = checksData;
+    return null;
   }
-
-  console.log('[getProjectViolations] Total checks loaded:', allChecks?.length || 0);
 
   // Fetch all section overrides for all checks
   const checkIds = (allChecks || []).map((c: any) => c.id);
