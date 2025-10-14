@@ -94,8 +94,9 @@ export async function getProjectViolations(
       manual_override,
       human_readable_title,
       check_type,
-      element_group_name,
+      element_group_id,
       instance_label,
+      element_groups(name),
       latest_analysis_runs(
         id,
         compliance_status,
@@ -361,6 +362,11 @@ export async function getProjectViolations(
       ? check.latest_analysis_runs[0]
       : check.latest_analysis_runs;
 
+    // Extract element group name from nested object (Supabase returns as array or single object)
+    const elementGroupName = Array.isArray((check as any).element_groups)
+      ? (check as any).element_groups[0]?.name
+      : (check as any).element_groups?.name || null;
+
     // Get source URL from pre-fetched sections (with parent fallback)
     const section = sectionsMap.get(check.code_section_key);
     let sourceUrl = section?.source_url || '';
@@ -491,7 +497,7 @@ export async function getProjectViolations(
           sourceLabel,
           humanReadableTitle: check.human_readable_title,
           checkType: check.check_type,
-          elementGroupName: check.element_group_name,
+          elementGroupName,
           instanceLabel: check.instance_label,
         });
       }
@@ -533,7 +539,7 @@ export async function getProjectViolations(
         sourceLabel,
         humanReadableTitle: check.human_readable_title,
         checkType: check.check_type,
-        elementGroupName: check.element_group_name,
+        elementGroupName,
         instanceLabel: check.instance_label,
       });
     }
