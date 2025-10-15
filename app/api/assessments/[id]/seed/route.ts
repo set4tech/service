@@ -187,14 +187,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         code_section_title: s.title,
         check_name: `${s.number} - ${s.title}`,
         status: 'pending',
-        parent_check_id: null,
-        instance_number: 1,
+        check_type: 'section',
+        instance_label: null, // Section checks have no instance label
       }));
 
-      await supabase.from('checks').upsert(checkRows, {
-        onConflict: 'assessment_id,code_section_number,parent_check_id,instance_number',
-        ignoreDuplicates: true,
-      });
+      // Use insert since we're seeding - duplicates shouldn't happen during initial seed
+      const { error: insertError } = await supabase.from('checks').insert(checkRows);
+
+      if (insertError) {
+        console.error('[Seed API] Error inserting checks:', insertError);
+        // Log but continue - might be duplicate keys if user refreshed during seeding
+      }
     }
 
     // Log decisions
