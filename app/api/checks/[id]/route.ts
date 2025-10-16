@@ -27,20 +27,7 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = supabaseAdmin();
 
-  // First, delete any child instances that reference this check as parent
-  const { error: childDeleteError } = await supabase
-    .from('checks')
-    .delete()
-    .eq('parent_check_id', id);
-
-  if (childDeleteError) {
-    return NextResponse.json(
-      { error: `Failed to delete child instances: ${childDeleteError.message}` },
-      { status: 400 }
-    );
-  }
-
-  // Then delete the check itself
+  // Delete the check - CASCADE constraints will handle related records
   const { error } = await supabase.from('checks').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ ok: true });
