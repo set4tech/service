@@ -207,12 +207,12 @@ export function ViolationsSummary({
         ];
       }
 
-      // Create ONE violation marker per check (using first screenshot only)
+      // Create ONE violation marker per check (but include ALL screenshots)
       const screenshots = (check.screenshots || []).sort(
         (a: any, b: any) => a.page_number - b.page_number
       );
       if (screenshots.length > 0) {
-        // Use only the first screenshot (earliest page)
+        // Use first screenshot as primary
         const screenshot = screenshots[0];
         const violationDetail = violationDetails[0];
 
@@ -231,7 +231,24 @@ export function ViolationsSummary({
             ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
             : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
 
-        if (screenshot.crop_coordinates && screenshot.page_number) {
+        // Map all screenshots to ViolationScreenshot format
+        const allScreenshots = screenshots
+          .filter((s: any) => s.crop_coordinates && s.page_number)
+          .map((s: any) => ({
+            id: s.id,
+            url: s.screenshot_url || '',
+            thumbnailUrl: s.thumbnail_url || '',
+            pageNumber: s.page_number,
+            bounds: {
+              x: s.crop_coordinates.x,
+              y: s.crop_coordinates.y,
+              width: s.crop_coordinates.width,
+              height: s.crop_coordinates.height,
+              zoom_level: s.crop_coordinates.zoom_level || 1,
+            },
+          }));
+
+        if (screenshot.crop_coordinates && screenshot.page_number && allScreenshots.length > 0) {
           result.push({
             checkId: check.id,
             checkName: check.check_name || check.code_section_title || '',
@@ -250,6 +267,7 @@ export function ViolationsSummary({
             screenshotUrl: screenshot.screenshot_url || '',
             thumbnailUrl: screenshot.thumbnail_url || '',
             screenshotId: screenshot.id,
+            allScreenshots, // Include all screenshots
             reasoning,
             recommendations,
             confidence,
@@ -289,6 +307,7 @@ export function ViolationsSummary({
           screenshotUrl: '',
           thumbnailUrl: '',
           screenshotId: '',
+          allScreenshots: [], // Empty array when no screenshots
           reasoning,
           recommendations,
           confidence,

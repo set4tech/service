@@ -210,26 +210,42 @@ export function CheckList({
     }
   };
 
-  const handleDeleteInstance = async (instanceId: string, instanceLabel: string) => {
-    if (!confirm(`Delete "${instanceLabel}"? This cannot be undone.`)) {
+  const handleDeleteInstance = async (check: any, instanceLabel: string) => {
+    // Get all section IDs for this instance
+    const sections = check.sections || [check];
+    const checkIds = sections.map((s: any) => s.id);
+
+    if (
+      !confirm(
+        `Delete "${instanceLabel}"? This will delete ${checkIds.length} checks and cannot be undone.`
+      )
+    ) {
       return;
     }
 
-    setDeletingCheckId(instanceId);
+    setDeletingCheckId(check.id);
 
     try {
-      const response = await fetch(`/api/checks/${instanceId}`, {
-        method: 'DELETE',
-      });
+      // Delete all section checks in parallel
+      const deletePromises = checkIds.map((id: string) =>
+        fetch(`/api/checks/${id}`, { method: 'DELETE' })
+      );
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to delete instance');
+      const responses = await Promise.all(deletePromises);
+
+      // Check if any deletions failed
+      const failures = responses.filter(r => !r.ok);
+      if (failures.length > 0) {
+        throw new Error(`Failed to delete ${failures.length} of ${checkIds.length} checks`);
       }
 
-      // Call parent callback to update state
+      console.log(
+        `[CheckList] Successfully deleted ${checkIds.length} checks for "${instanceLabel}"`
+      );
+
+      // Call parent callback to update state for each deleted check
       if (onCheckDeleted) {
-        onCheckDeleted(instanceId);
+        checkIds.forEach((id: string) => onCheckDeleted(id));
       } else {
         // Fallback to reload if no callback provided
         window.location.reload();
@@ -729,7 +745,7 @@ export function CheckList({
                               onClick={e => {
                                 e.stopPropagation();
                                 handleDeleteInstance(
-                                  check.id,
+                                  check,
                                   check.instance_label || `Instance ${check.instance_number}`
                                 );
                               }}
@@ -868,7 +884,7 @@ export function CheckList({
                                   onClick={e => {
                                     e.stopPropagation();
                                     handleDeleteInstance(
-                                      instance.id,
+                                      instance,
                                       instance.instance_label ||
                                         `Instance ${instance.instance_number}`
                                     );

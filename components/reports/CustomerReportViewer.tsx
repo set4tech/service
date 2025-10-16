@@ -22,6 +22,7 @@ interface Props {
 
 export function CustomerReportViewer({ data }: Props) {
   const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
+  const [currentScreenshotIndex, setCurrentScreenshotIndex] = useState(0);
   const [modalViolation, setModalViolation] = useState<ViolationMarker | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [exporting, setExporting] = useState(false);
@@ -40,10 +41,52 @@ export function CustomerReportViewer({ data }: Props) {
   }, []);
 
   const handleViolationClick = useCallback((violation: ViolationMarker) => {
+    console.log('[CustomerReportViewer] handleViolationClick called', {
+      checkId: violation.checkId,
+      allScreenshots: violation.allScreenshots,
+      screenshotCount: violation.allScreenshots.length,
+    });
+
     // Just navigate to the violation and center it, don't open modal
-    setCurrentPage(violation.pageNumber);
+    // Reset to first screenshot when clicking a new violation
+    setCurrentScreenshotIndex(0);
+    const firstScreenshot = violation.allScreenshots[0] || violation;
+
+    console.log('[CustomerReportViewer] First screenshot:', {
+      id: firstScreenshot.id,
+      pageNumber: firstScreenshot.pageNumber,
+      bounds: firstScreenshot.bounds,
+    });
+
+    setCurrentPage(firstScreenshot.pageNumber || violation.pageNumber);
     setSelectedViolation(violation);
   }, []);
+
+  // Screenshot navigation handlers (for PDF viewer arrows)
+  const handleNextScreenshot = useCallback(() => {
+    if (!selectedViolation || selectedViolation.allScreenshots.length <= 1) return;
+
+    const nextIndex = Math.min(
+      currentScreenshotIndex + 1,
+      selectedViolation.allScreenshots.length - 1
+    );
+    if (nextIndex !== currentScreenshotIndex) {
+      setCurrentScreenshotIndex(nextIndex);
+      const nextScreenshot = selectedViolation.allScreenshots[nextIndex];
+      setCurrentPage(nextScreenshot.pageNumber);
+    }
+  }, [selectedViolation, currentScreenshotIndex]);
+
+  const handlePrevScreenshot = useCallback(() => {
+    if (!selectedViolation || selectedViolation.allScreenshots.length <= 1) return;
+
+    const prevIndex = Math.max(currentScreenshotIndex - 1, 0);
+    if (prevIndex !== currentScreenshotIndex) {
+      setCurrentScreenshotIndex(prevIndex);
+      const prevScreenshot = selectedViolation.allScreenshots[prevIndex];
+      setCurrentPage(prevScreenshot.pageNumber);
+    }
+  }, [selectedViolation, currentScreenshotIndex]);
 
   const handleViolationDetailsClick = useCallback((violation: ViolationMarker) => {
     // Open the modal with full details
@@ -52,8 +95,27 @@ export function CustomerReportViewer({ data }: Props) {
   }, []);
 
   // Compute highlighted violation ID for centering in PDF viewer
+  // Include screenshot index so we highlight the correct bbox
+  // Use ::: as delimiter since both IDs are UUIDs that contain dashes
   const highlightedViolationId = selectedViolation
-    ? `${selectedViolation.checkId}-${selectedViolation.screenshotId}`
+    ? `${selectedViolation.checkId}:::${selectedViolation.allScreenshots[currentScreenshotIndex]?.id || selectedViolation.screenshotId}`
+    : null;
+
+  console.log('[CustomerReportViewer] highlightedViolationId:', {
+    highlightedViolationId,
+    selectedViolation: selectedViolation?.checkId,
+    currentScreenshotIndex,
+    screenshotId: selectedViolation?.allScreenshots[currentScreenshotIndex]?.id,
+  });
+
+  // Get current screenshot info for display
+  const currentScreenshotInfo = selectedViolation
+    ? {
+        current: currentScreenshotIndex + 1,
+        total: selectedViolation.allScreenshots.length,
+        canGoPrev: currentScreenshotIndex > 0,
+        canGoNext: currentScreenshotIndex < selectedViolation.allScreenshots.length - 1,
+      }
     : null;
 
   const handleCloseModal = useCallback(() => {
@@ -505,6 +567,18 @@ export function CustomerReportViewer({ data }: Props) {
           onPageChange={handlePageChange}
           highlightedViolationId={highlightedViolationId}
           disableLayers={true}
+          screenshotNavigation={
+            currentScreenshotInfo && currentScreenshotInfo.total > 1
+              ? {
+                  current: currentScreenshotInfo.current,
+                  total: currentScreenshotInfo.total,
+                  onNext: handleNextScreenshot,
+                  onPrev: handlePrevScreenshot,
+                  canGoNext: currentScreenshotInfo.canGoNext,
+                  canGoPrev: currentScreenshotInfo.canGoPrev,
+                }
+              : undefined
+          }
         />
       </div>
 

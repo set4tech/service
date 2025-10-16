@@ -114,6 +114,7 @@ export function PDFViewer({
   onPageChange,
   highlightedViolationId,
   disableLayers = false,
+  screenshotNavigation,
 }: {
   pdfUrl: string;
   assessmentId?: string;
@@ -128,6 +129,14 @@ export function PDFViewer({
   onPageChange?: (page: number) => void;
   highlightedViolationId?: string | null;
   disableLayers?: boolean;
+  screenshotNavigation?: {
+    current: number;
+    total: number;
+    onNext: () => void;
+    onPrev: () => void;
+    canGoNext: boolean;
+    canGoPrev: boolean;
+  };
 }) {
   const assessmentId = propAssessmentId || activeCheck?.assessment_id;
 
@@ -205,7 +214,50 @@ export function PDFViewer({
   // Memoize violation groups to avoid recalculating on every render
   const violationGroups = useMemo(() => {
     if (!readOnly || violationMarkers.length === 0) return [];
-    return groupOverlappingViolations(violationMarkers, state.pageNumber);
+
+    // Expand violations to create separate markers for each screenshot
+    const expandedMarkers: ViolationMarkerType[] = [];
+
+    violationMarkers.forEach(violation => {
+      // Add marker for each screenshot in allScreenshots array
+      if (violation.allScreenshots && violation.allScreenshots.length > 0) {
+        violation.allScreenshots.forEach(screenshot => {
+          expandedMarkers.push({
+            ...violation,
+            screenshotId: screenshot.id,
+            screenshotUrl: screenshot.url,
+            thumbnailUrl: screenshot.thumbnailUrl,
+            pageNumber: screenshot.pageNumber,
+            bounds: screenshot.bounds,
+          });
+        });
+      } else {
+        // Fallback to original violation if no allScreenshots
+        expandedMarkers.push(violation);
+      }
+    });
+
+    console.log('[PDFViewer] Expanded markers:', {
+      originalCount: violationMarkers.length,
+      expandedCount: expandedMarkers.length,
+      forPage: state.pageNumber,
+      sample: expandedMarkers[0]
+        ? {
+            checkId: expandedMarkers[0].checkId,
+            screenshotId: expandedMarkers[0].screenshotId,
+            pageNumber: expandedMarkers[0].pageNumber,
+            bounds: expandedMarkers[0].bounds,
+          }
+        : null,
+    });
+
+    const groups = groupOverlappingViolations(expandedMarkers, state.pageNumber);
+    console.log('[PDFViewer] Grouped markers:', {
+      groupCount: groups.length,
+      totalMarkers: groups.reduce((sum, g) => sum + g.violations.length, 0),
+    });
+
+    return groups;
   }, [readOnly, violationMarkers, state.pageNumber]);
 
   // Store latest onPageChange callback in a ref to avoid unnecessary re-renders
@@ -216,33 +268,93 @@ export function PDFViewer({
 
   // Center on highlighted violation when it changes
   useEffect(() => {
+    console.log('[PDFViewer] Centering effect triggered', {
+      readOnly,
+      highlightedViolationId,
+      hasCanvas: !!canvasRef.current,
+      hasViewport: !!viewportRef.current,
+      currentPage: state.pageNumber,
+      violationMarkersCount: violationMarkers.length,
+    });
+
     if (!readOnly || !highlightedViolationId || !canvasRef.current || !viewportRef.current) {
+      console.log('[PDFViewer] Skipping - preconditions not met');
       return;
     }
 
-    // Find the violation marker
-    const violation = violationMarkers.find(
-      v => `${v.checkId}-${v.screenshotId}` === highlightedViolationId
-    );
+    // Parse highlightedViolationId to extract checkId and screenshotId
+    // Use ::: as delimiter since both IDs are UUIDs that contain dashes
+    const [checkId, screenshotId] = highlightedViolationId.split(':::');
+    console.log('[PDFViewer] Parsed IDs:', { checkId, screenshotId });
 
-    if (!violation || violation.pageNumber !== state.pageNumber) {
+    // Find the violation marker by checkId
+    const violation = violationMarkers.find(v => v.checkId === checkId);
+
+    if (!violation) {
+      console.log('[PDFViewer] No violation found for checkId:', checkId);
       return;
     }
 
-    // Skip centering if violation has no valid bounds (e.g., no screenshot)
-    const bounds = violation.bounds;
-    const hasValidBounds = bounds.width > 0 && bounds.height > 0;
-    if (!hasValidBounds) {
+    console.log('[PDFViewer] Found violation:', {
+      checkId: violation.checkId,
+      allScreenshotsCount: violation.allScreenshots?.length,
+      screenshotId: violation.screenshotId,
+    });
+
+    // Find the specific screenshot in allScreenshots array
+    const screenshot =
+      violation.allScreenshots?.find(s => s.id === screenshotId) ||
+      (violation.screenshotId === screenshotId
+        ? {
+            pageNumber: violation.pageNumber,
+            bounds: violation.bounds,
+          }
+        : null);
+
+    if (!screenshot) {
+      console.log('[PDFViewer] No screenshot found for screenshotId:', screenshotId);
+      return;
+    }
+
+    console.log('[PDFViewer] Found screenshot:', {
+      screenshotId,
+      pageNumber: screenshot.pageNumber,
+      bounds: screenshot.bounds,
+      currentPage: state.pageNumber,
+    });
+
+    // Check if we're on the right page
+    if (screenshot.pageNumber !== state.pageNumber) {
       console.log(
-        '[PDFViewer] Skipping center - violation has no valid bounds:',
-        violation.checkId
+        '[PDFViewer] Wrong page - need:',
+        screenshot.pageNumber,
+        'current:',
+        state.pageNumber
       );
       return;
     }
 
+    // Skip centering if violation has no valid bounds (e.g., no screenshot)
+    const bounds = screenshot.bounds;
+    const hasValidBounds = bounds.width > 0 && bounds.height > 0;
+    if (!hasValidBounds) {
+      console.log(
+        '[PDFViewer] Skipping center - violation has no valid bounds:',
+        violation.checkId,
+        bounds
+      );
+      return;
+    }
+
+    console.log('[PDFViewer] Proceeding with centering on bounds:', bounds);
+
     // Small delay to ensure canvas is rendered
     const timeoutId = setTimeout(() => {
-      if (!viewportRef.current) return;
+      console.log('[PDFViewer] Executing centering after delay');
+      if (!viewportRef.current) {
+        console.log('[PDFViewer] No viewport ref!');
+        return;
+      }
 
       // Calculate center of violation bounds
       const centerX = bounds.x + bounds.width / 2;
@@ -258,6 +370,16 @@ export function PDFViewer({
       const tx = viewportCenterX - centerX * currentScale;
       const ty = viewportCenterY - centerY * currentScale;
 
+      console.log('[PDFViewer] Calculated centering transform:', {
+        centerX,
+        centerY,
+        viewportCenterX,
+        viewportCenterY,
+        currentScale,
+        tx,
+        ty,
+      });
+
       // Enable smooth transition for centering
       setSmoothTransition(true);
 
@@ -266,6 +388,8 @@ export function PDFViewer({
         type: 'SET_TRANSFORM',
         payload: { scale: currentScale, tx, ty },
       });
+
+      console.log('[PDFViewer] Dispatched SET_TRANSFORM');
 
       // Disable smooth transition after animation completes
       const transitionTimeout = setTimeout(() => {
@@ -1266,6 +1390,54 @@ export function PDFViewer({
         </div>
       )}
 
+      {/* Screenshot navigation arrows (top-left) */}
+      {screenshotNavigation && (
+        <div className="absolute top-3 left-3 z-50 flex items-center gap-2 pointer-events-auto max-w-[500px]">
+          <button
+            onClick={screenshotNavigation.onPrev}
+            disabled={!screenshotNavigation.canGoPrev}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg shadow-lg hover:bg-gray-50 hover:border-blue-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-300"
+            title="Show previous relevant area of drawing"
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            <span className="whitespace-nowrap">Previous Area</span>
+          </button>
+          <div className="flex flex-col items-center px-4 py-2 text-xs bg-white border-2 border-blue-500 rounded-lg shadow-lg">
+            <div className="font-semibold text-blue-600 mb-0.5">
+              <span className="text-blue-600">{screenshotNavigation.current}</span>
+              <span className="text-gray-400 mx-1">/</span>
+              <span className="text-gray-600">{screenshotNavigation.total}</span>
+            </div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">
+              Relevant Areas
+            </div>
+          </div>
+          <button
+            onClick={screenshotNavigation.onNext}
+            disabled={!screenshotNavigation.canGoNext}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg shadow-lg hover:bg-gray-50 hover:border-blue-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-300"
+            title="Show next relevant area of drawing"
+          >
+            <span className="whitespace-nowrap">Next Area</span>
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <div className="absolute top-3 right-3 z-50 flex items-center gap-2 pointer-events-auto">
         <button
           aria-label="Zoom out"
@@ -1413,10 +1585,12 @@ export function PDFViewer({
             {readOnly &&
               violationGroups.map((group, groupIdx) => {
                 // Check if any violation in this group is highlighted
+                // Use ::: as delimiter since both IDs are UUIDs that contain dashes
                 const isHighlighted = highlightedViolationId
-                  ? group.violations.some(
-                      v => `${v.checkId}-${v.screenshotId}` === highlightedViolationId
-                    )
+                  ? group.violations.some(v => {
+                      const highlightedId = `${v.checkId}:::${v.screenshotId}`;
+                      return highlightedId === highlightedViolationId;
+                    })
                   : false;
 
                 return (

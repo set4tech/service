@@ -1,17 +1,26 @@
 import { supabaseAdmin } from '@/lib/supabase-server';
 
+export interface ViolationScreenshot {
+  id: string;
+  url: string;
+  thumbnailUrl: string;
+  pageNumber: number;
+  bounds: { x: number; y: number; width: number; height: number; zoom_level: number };
+}
+
 export interface ViolationMarker {
   checkId: string;
   checkName: string;
   codeSectionKey: string;
   codeSectionNumber: string;
-  pageNumber: number;
-  bounds: { x: number; y: number; width: number; height: number; zoom_level: number };
+  pageNumber: number; // Page of the first/primary screenshot
+  bounds: { x: number; y: number; width: number; height: number; zoom_level: number }; // Bounds of first/primary screenshot
   severity: 'minor' | 'moderate' | 'major' | 'needs_more_info';
   description: string;
-  screenshotUrl: string;
-  thumbnailUrl: string;
-  screenshotId: string;
+  screenshotUrl: string; // Primary/first screenshot URL (for backward compatibility)
+  thumbnailUrl: string; // Primary/first screenshot thumbnail (for backward compatibility)
+  screenshotId: string; // Primary/first screenshot ID (for backward compatibility)
+  allScreenshots: ViolationScreenshot[]; // All screenshots for this violation, sorted by page number
   reasoning?: string;
   recommendations?: string[];
   confidence?: string;
@@ -310,6 +319,13 @@ export async function getProjectViolations(
   // Build violations from non-compliant checks
   const violations: ViolationMarker[] = [];
 
+  // Fetch PDF page dimensions to validate coordinates (currently unused, reserved for future validation)
+  const _pdfDimensions = new Map<number, { width: number; height: number }>();
+
+  // We'll validate coordinates against reasonable bounds
+  // Typical architectural drawings are 6000-8000px wide at natural scale (currently unused, reserved for future validation)
+  const _MAX_REASONABLE_DIMENSION = 12000; // pixels
+
   // Fetch all analysis runs for batched checks
   const batchGroupIds = new Set<string>();
   const checksWithBatches = new Map<string, any[]>();
@@ -435,9 +451,9 @@ export async function getProjectViolations(
     // Deduplicate recommendations
     recommendations = Array.from(new Set(recommendations));
 
-    // Create ONE violation marker per check (using first screenshot only)
+    // Create ONE violation marker per check (but include ALL screenshots)
     if (screenshots && screenshots.length > 0) {
-      // Use only the first screenshot
+      // Use first screenshot as primary
       const screenshot = screenshots[0];
       const violationDetail = violationDetails[0];
 
@@ -456,7 +472,24 @@ export async function getProjectViolations(
           ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
           : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
 
-      if (screenshot.crop_coordinates && screenshot.page_number) {
+      // Map all screenshots to ViolationScreenshot format
+      const allScreenshots: ViolationScreenshot[] = screenshots
+        .filter(s => s.crop_coordinates && s.page_number) // Only include valid screenshots
+        .map(s => ({
+          id: s.id,
+          url: s.screenshot_url,
+          thumbnailUrl: s.thumbnail_url,
+          pageNumber: s.page_number,
+          bounds: {
+            x: s.crop_coordinates.x,
+            y: s.crop_coordinates.y,
+            width: s.crop_coordinates.width,
+            height: s.crop_coordinates.height,
+            zoom_level: s.crop_coordinates.zoom_level || 1,
+          },
+        }));
+
+      if (screenshot.crop_coordinates && screenshot.page_number && allScreenshots.length > 0) {
         violations.push({
           checkId: check.id,
           checkName: check.check_name,
@@ -475,6 +508,7 @@ export async function getProjectViolations(
           screenshotUrl: screenshot.screenshot_url,
           thumbnailUrl: screenshot.thumbnail_url,
           screenshotId: screenshot.id,
+          allScreenshots, // Include all screenshots
           reasoning,
           recommendations,
           confidence,
@@ -517,6 +551,7 @@ export async function getProjectViolations(
         screenshotUrl: '',
         thumbnailUrl: '',
         screenshotId: '',
+        allScreenshots: [], // Empty array when no screenshots
         reasoning,
         recommendations,
         confidence,

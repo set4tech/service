@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { ViolationMarker } from '@/lib/reports/get-violations';
 import { CodeSection } from '@/types/analysis';
 import { SectionContentDisplay } from '@/components/checks/panels/SectionContentDisplay';
@@ -27,27 +27,34 @@ export function ViolationDetailModal({
   totalViolations,
   currentIndex,
 }: Props) {
+  const [currentScreenshotIndex, setCurrentScreenshotIndex] = useState(0);
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [section, setSection] = useState<CodeSection | null>(null);
   const [sectionLoading, setSectionLoading] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
-  const [imageLoaded, setImageLoaded] = useState(false);
   const imageLoadedRef = useRef<Set<string>>(new Set());
+
+  // Get current screenshot from allScreenshots array
+  const currentScreenshot = violation.allScreenshots[currentScreenshotIndex];
+  const totalScreenshots = violation.allScreenshots.length;
 
   // Reset state when violation changes
   useEffect(() => {
-    // Check if image was already loaded before
-    const imageKey = violation.screenshotUrl || 'no-image';
-    if (imageLoadedRef.current.has(imageKey)) {
-      setImageLoaded(true);
-    } else {
-      setImageLoaded(false);
-    }
-
+    // Reset screenshot index when switching violations
+    setCurrentScreenshotIndex(0);
     setSectionLoading(true);
-    setLoading(true);
-  }, [violation.checkId, violation.screenshotUrl]);
+  }, [violation.checkId]);
+
+  // Reset image loaded state when screenshot changes
+  useEffect(() => {
+    const imageKey = currentScreenshot?.url || violation.screenshotUrl || 'no-image';
+    if (imageLoadedRef.current.has(imageKey)) {
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+  }, [currentScreenshotIndex, currentScreenshot?.url, violation.screenshotUrl]);
 
   // Fetch section content
   useEffect(() => {
@@ -93,17 +100,18 @@ export function ViolationDetailModal({
     fetchSection();
   }, [violation.codeSectionKey]);
 
-  // Fetch presigned URL for screenshot
+  // Fetch presigned URL for current screenshot
   useEffect(() => {
-    if (!violation.screenshotUrl) {
-      setImageLoaded(true); // No image to load
+    const screenshotUrlToFetch = currentScreenshot?.url || violation.screenshotUrl;
+
+    if (!screenshotUrlToFetch) {
       setLoading(false);
       imageLoadedRef.current.add('no-image');
       return;
     }
 
     // Check cache first
-    const cachedUrl = screenshotUrlCache.get(violation.screenshotUrl);
+    const cachedUrl = screenshotUrlCache.get(screenshotUrlToFetch);
     if (cachedUrl) {
       setScreenshotUrl(cachedUrl);
       setLoading(false);
@@ -116,39 +124,87 @@ export function ViolationDetailModal({
         const res = await fetch('/api/screenshots/presign-view', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ screenshotUrl: violation.screenshotUrl }),
+          body: JSON.stringify({ screenshotUrl: screenshotUrlToFetch }),
         });
 
         if (res.ok) {
           const data = await res.json();
           setScreenshotUrl(data.screenshot);
           // Cache the presigned URL
-          screenshotUrlCache.set(violation.screenshotUrl, data.screenshot);
-        } else {
-          setImageLoaded(true); // Don't block on error
+          screenshotUrlCache.set(screenshotUrlToFetch, data.screenshot);
         }
       } catch (err) {
         console.error('Failed to fetch screenshot:', err);
-        setImageLoaded(true); // Don't block on error
       } finally {
         setLoading(false);
       }
     };
 
     fetchScreenshot();
-  }, [violation.screenshotUrl]);
+  }, [currentScreenshotIndex, currentScreenshot?.url, violation.screenshotUrl]);
 
-  // Close on Escape key
+  // Screenshot navigation handlers
+  const handleNextScreenshot = useCallback(() => {
+    if (currentScreenshotIndex < totalScreenshots - 1) {
+      setCurrentScreenshotIndex(currentScreenshotIndex + 1);
+    }
+  }, [currentScreenshotIndex, totalScreenshots]);
+
+  const handlePrevScreenshot = useCallback(() => {
+    if (currentScreenshotIndex > 0) {
+      setCurrentScreenshotIndex(currentScreenshotIndex - 1);
+    }
+  }, [currentScreenshotIndex]);
+
+  // Keyboard shortcuts
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowRight') onNext();
-      if (e.key === 'ArrowLeft') onPrev();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape to close
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      // Ctrl/Cmd + Arrow keys for screenshot navigation (within current violation)
+      if ((e.ctrlKey || e.metaKey) && totalScreenshots > 1) {
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          handleNextScreenshot();
+          return;
+        }
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          handlePrevScreenshot();
+          return;
+        }
+      }
+
+      // Arrow keys alone for violation navigation
+      if (!e.ctrlKey && !e.metaKey) {
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          onNext();
+          return;
+        }
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          onPrev();
+          return;
+        }
+      }
     };
 
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose, onNext, onPrev]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    onClose,
+    onNext,
+    onPrev,
+    currentScreenshotIndex,
+    totalScreenshots,
+    handleNextScreenshot,
+    handlePrevScreenshot,
+  ]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -165,8 +221,8 @@ export function ViolationDetailModal({
     }
   };
 
-  // Check if everything is loaded (including image)
-  const isFullyLoaded = !sectionLoading && !loading && imageLoaded;
+  // Only show loading for section content initially
+  const isSectionReady = !sectionLoading;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -207,140 +263,233 @@ export function ViolationDetailModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Loading spinner overlay */}
-          {!isFullyLoaded && (
+          {/* Show section loading spinner initially, then show content */}
+          {!isSectionReady ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
                 <p className="text-sm text-gray-600">Loading violation details...</p>
               </div>
             </div>
-          )}
-
-          {/* Content (rendered but hidden until loaded) */}
-          <div className={isFullyLoaded ? 'animate-fadeIn' : 'hidden'}>
-            <style jsx>{`
-              @keyframes fadeIn {
-                from {
-                  opacity: 0;
-                  transform: translateY(4px);
-                }
-                to {
-                  opacity: 1;
-                  transform: translateY(0);
-                }
-              }
-              .animate-fadeIn {
-                animation: fadeIn 0.3s ease-out;
-              }
-            `}</style>
-            {/* Code Section */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-medium text-ink-700">Code Section</h3>
-                {violation.sourceUrl && (
-                  <a
-                    href={violation.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
-                  >
-                    See Original Code
-                    <svg
-                      width="12"
-                      height="12"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      className="flex-shrink-0"
+          ) : (
+            <div>
+              {/* Code Section */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-sm font-medium text-ink-700">Code Section</h3>
+                  {violation.sourceUrl && (
+                    <a
+                      href={violation.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                      />
-                    </svg>
-                  </a>
+                      See Original Code
+                      <svg
+                        width="12"
+                        height="12"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        className="flex-shrink-0"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        />
+                      </svg>
+                    </a>
+                  )}
+                </div>
+                <div className="text-lg font-mono text-ink-900">{violation.codeSectionNumber}</div>
+                {violation.checkName && (
+                  <div className="text-sm text-ink-500 mt-1">{violation.checkName}</div>
                 )}
               </div>
-              <div className="text-lg font-mono text-ink-900">{violation.codeSectionNumber}</div>
-              {violation.checkName && (
-                <div className="text-sm text-ink-500 mt-1">{violation.checkName}</div>
+
+              {/* Code Section Content */}
+              <div className="mb-6 pb-6 border-b border-gray-200">
+                <SectionContentDisplay
+                  section={section}
+                  loading={false}
+                  error={sectionError}
+                  isElementCheck={false}
+                  sections={section ? [section] : []}
+                  check={null}
+                />
+              </div>
+
+              {/* Screenshot */}
+              {totalScreenshots > 0 && screenshotUrl && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-700">Evidence</h3>
+                    {totalScreenshots > 1 && (
+                      <div className="text-xs text-gray-600 font-medium">
+                        Screenshot {currentScreenshotIndex + 1} of {totalScreenshots}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Screenshot navigation controls (only show if multiple screenshots) */}
+                  {totalScreenshots > 1 && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <button
+                        onClick={handlePrevScreenshot}
+                        disabled={currentScreenshotIndex === 0}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Previous screenshot (Ctrl+Left)"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 19l-7-7 7-7"
+                          />
+                        </svg>
+                        Prev
+                      </button>
+                      <button
+                        onClick={handleNextScreenshot}
+                        disabled={currentScreenshotIndex === totalScreenshots - 1}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Next screenshot (Ctrl+Right)"
+                      >
+                        Next
+                        <svg
+                          width="14"
+                          height="14"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 relative">
+                    {/* Loading spinner overlay for image */}
+                    {loading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-90 z-10">
+                        <div className="text-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2" />
+                          <p className="text-xs text-gray-600">Loading screenshot...</p>
+                        </div>
+                      </div>
+                    )}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={screenshotUrl}
+                      alt="Violation evidence"
+                      className={`w-full h-auto transition-opacity duration-200 ${loading ? 'opacity-0' : 'opacity-100'}`}
+                      loading="eager"
+                      onLoad={() => {
+                        setLoading(false);
+                        const urlToCache = currentScreenshot?.url || violation.screenshotUrl;
+                        if (urlToCache) {
+                          imageLoadedRef.current.add(urlToCache);
+                        }
+                      }}
+                      onError={() => {
+                        setLoading(false);
+                      }}
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Page {currentScreenshot?.pageNumber || violation.pageNumber}
+                  </div>
+
+                  {/* Thumbnail strip (only show if multiple screenshots) */}
+                  {totalScreenshots > 1 && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <div className="flex gap-2 overflow-x-auto pb-2">
+                        {violation.allScreenshots.map((screenshot, index) => {
+                          // Need to get presigned URL for each thumbnail
+                          // For now, we'll use the thumbnail URL directly since it's an S3 path
+                          // In a real implementation, you might want to presign these too
+                          return (
+                            <button
+                              key={screenshot.id}
+                              onClick={() => setCurrentScreenshotIndex(index)}
+                              className={clsx(
+                                'flex-shrink-0 relative w-20 h-20 rounded-lg overflow-hidden border-2 transition-all hover:scale-105',
+                                currentScreenshotIndex === index
+                                  ? 'border-blue-500 shadow-lg'
+                                  : 'border-gray-300 opacity-70 hover:opacity-100'
+                              )}
+                              title={`Screenshot ${index + 1} (Page ${screenshot.pageNumber})`}
+                            >
+                              {/* Placeholder for thumbnail - in production, you'd want to presign these too */}
+                              <div className="w-full h-full bg-gray-200 flex items-center justify-center text-xs text-gray-600">
+                                <div className="text-center">
+                                  <div className="font-semibold">#{index + 1}</div>
+                                  <div className="text-[10px]">Pg {screenshot.pageNumber}</div>
+                                </div>
+                              </div>
+                              {currentScreenshotIndex === index && (
+                                <div className="absolute inset-0 bg-blue-500 bg-opacity-10 pointer-events-none" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Reasoning */}
+              {violation.reasoning && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Analysis</h3>
+                  <div className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3 whitespace-pre-wrap">
+                    {violation.reasoning}
+                  </div>
+                </div>
+              )}
+
+              {/* Recommendations */}
+              {violation.recommendations && violation.recommendations.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Recommendations</h3>
+                  <ul className="space-y-2">
+                    {violation.recommendations.map((rec, idx) => (
+                      <li
+                        key={idx}
+                        className="text-sm text-gray-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2"
+                      >
+                        <span className="text-blue-600 font-bold mt-0.5">•</span>
+                        <span>{rec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Confidence */}
+              {violation.confidence && (
+                <div className="text-xs text-gray-500 mt-4 text-center">
+                  Analysis confidence: {violation.confidence}
+                </div>
               )}
             </div>
-
-            {/* Code Section Content */}
-            <div className="mb-6 pb-6 border-b border-gray-200">
-              <SectionContentDisplay
-                section={section}
-                loading={false}
-                error={sectionError}
-                isElementCheck={false}
-                sections={section ? [section] : []}
-                check={null}
-              />
-            </div>
-
-            {/* Screenshot */}
-            {violation.screenshotUrl && screenshotUrl && (
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Evidence</h3>
-                <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={screenshotUrl}
-                    alt="Violation evidence"
-                    className="w-full h-auto"
-                    loading="eager"
-                    onLoad={() => {
-                      setImageLoaded(true);
-                      if (violation.screenshotUrl) {
-                        imageLoadedRef.current.add(violation.screenshotUrl);
-                      }
-                    }}
-                    onError={() => setImageLoaded(true)}
-                  />
-                </div>
-                <div className="text-xs text-gray-500 mt-1">Page {violation.pageNumber}</div>
-              </div>
-            )}
-
-            {/* Reasoning */}
-            {violation.reasoning && (
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Analysis</h3>
-                <div className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3 whitespace-pre-wrap">
-                  {violation.reasoning}
-                </div>
-              </div>
-            )}
-
-            {/* Recommendations */}
-            {violation.recommendations && violation.recommendations.length > 0 && (
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Recommendations</h3>
-                <ul className="space-y-2">
-                  {violation.recommendations.map((rec, idx) => (
-                    <li
-                      key={idx}
-                      className="text-sm text-gray-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2"
-                    >
-                      <span className="text-blue-600 font-bold mt-0.5">•</span>
-                      <span>{rec}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Confidence */}
-            {violation.confidence && (
-              <div className="text-xs text-gray-500 mt-4 text-center">
-                Analysis confidence: {violation.confidence}
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Footer with Navigation */}
@@ -361,7 +510,11 @@ export function ViolationDetailModal({
           </button>
 
           <div className="text-sm text-gray-600">
-            Use arrow keys to navigate • Press Esc to close
+            {totalScreenshots > 1 ? (
+              <>Arrows: violations • Ctrl+Arrows: screenshots • Esc: close</>
+            ) : (
+              <>Use arrow keys to navigate • Press Esc to close</>
+            )}
           </div>
 
           <button
