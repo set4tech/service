@@ -215,6 +215,15 @@ export function CheckList({
     const sections = check.sections || [check];
     const checkIds = sections.map((s: any) => s.id);
 
+    console.log('[CheckList] handleDeleteInstance called:', {
+      instanceLabel,
+      checkId: check.id,
+      hasSections: !!check.sections,
+      sectionsLength: check.sections?.length || 0,
+      checkIdsLength: checkIds.length,
+      checkKeys: Object.keys(check),
+    });
+
     if (
       !confirm(
         `Delete "${instanceLabel}"? This will delete ${checkIds.length} checks and cannot be undone.`
