@@ -111,12 +111,22 @@ export async function GET(request: NextRequest) {
       throw sectionsError;
     }
 
-    // Exclude intro sections (sections ending in .1) from the main list
+    // Exclude intro sections (sections ending in .1 titled "General" or "Scope")
     // These are section group introductions that will be shown contextually
-    // Pattern matches: 11B-203.1, 11B-404.2.1, etc.
+    // We identify them by title rather than depth, as some .1 sections at any depth
+    // may be titled "General" (intro) while others have specific titles (real requirements)
     filteredSections = filteredSections.filter((section: any) => {
-      const parts = section.number.split(/[.-]/);
-      return parts[parts.length - 1] !== '1';
+      // Only filter sections ending in .1
+      if (!section.number.endsWith('.1')) {
+        return true;
+      }
+
+      // Check if this is an intro section by title
+      const titleClean = (section.title || '').trim().replace(/\.$/, '').toLowerCase();
+      const isIntroSection = titleClean === 'general' || titleClean === 'scope';
+
+      // Keep all non-intro sections, exclude intro sections
+      return !isIntroSection;
     });
 
     // Format sections for frontend consumption
