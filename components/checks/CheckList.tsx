@@ -212,7 +212,8 @@ export function CheckList({
 
   const handleDeleteInstance = async (check: any, instanceLabel: string) => {
     // Get all section IDs for this instance
-    const sections = check.sections || [check];
+    // Use check.instances first (server-side grouped data), then check.sections (client-side grouped data)
+    const sections = check.instances || check.sections || [check];
     const checkIds = sections.map((s: any) => s.id);
 
     console.log('[CheckList] handleDeleteInstance called:', {
