@@ -327,7 +327,9 @@ See `DATABASE_SCHEMA.md` for complete schema documentation.
 - `checks` - Compliance checks
 - `analysis_runs` - AI assessment history
 - `screenshots` - Evidence images
-- `element_groups`, `element_section_mappings` - Element-based checking
+- `element_groups`, `element_group_section_mappings` - Element-based checking
+- `section_overrides` - Per-section overrides within element checks
+- `compliance_sessions`, `section_checks` - Alternative compliance workflow (client viewer)
 
 **Connection:**
 Always use the Supabase pooler connection (see CLAUDE.md for details).

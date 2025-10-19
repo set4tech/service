@@ -246,7 +246,7 @@ Individual compliance checks for code sections within an assessment. All checks 
 | `instance_label`       | TEXT                           | Groups element checks (e.g., "Door 1", "Door 2"); NULL for standalone sections |
 | `check_type`           | TEXT                           | Always 'section' (default 'section')                                           |
 | `element_group_id`     | UUID FK → element_groups.id    | Element group reference (SET NULL delete); NULL for standalone section checks  |
-| `element_sections`     | TEXT[]                         | DEPRECATED: No longer used                                                     |
+| `human_readable_title` | TEXT                           | Optional human-readable title for the check                                    |
 | `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                                      |
 | `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                                   |
 | `status`               | VARCHAR(50)                    | Current status (default 'pending')                                             |
@@ -277,7 +277,7 @@ Individual compliance checks for code sections within an assessment. All checks 
 **Constraints:**
 
 - `checks_check_type_check`: check_type must be 'section' or 'element' (deprecated: all checks are 'section' now)
-- `checks_manual_override_check`: manual_override must be 'compliant', 'non_compliant', or 'not_applicable'
+- `checks_manual_override_check`: manual_override must be 'compliant', 'non_compliant', 'not_applicable', or 'insufficient_information'
 
 **Trigger:**
 
@@ -303,24 +303,24 @@ Reusable groupings of related code sections by building element.
 
 ---
 
-### `element_section_mappings`
+### `element_group_section_mappings`
 
 Maps element groups to applicable code sections.
 
 **Schema:**
 
-| Column             | Type                        | Description                              |
-| ------------------ | --------------------------- | ---------------------------------------- |
-| `id`               | UUID PK                     | Primary key                              |
-| `element_group_id` | UUID FK → element_groups.id | Element group reference (CASCADE delete) |
-| `section_key`      | TEXT FK → sections.key      | Section reference (CASCADE delete)       |
-| `created_at`       | TIMESTAMPTZ                 | Creation timestamp                       |
+| Column             | Type                           | Description                              |
+| ------------------ | ------------------------------ | ---------------------------------------- |
+| `id`               | UUID PK                        | Primary key                              |
+| `element_group_id` | UUID FK → element_groups.id    | Element group reference (CASCADE delete) |
+| `section_key`      | VARCHAR(255) FK → sections.key | Section reference (CASCADE delete)       |
+| `created_at`       | TIMESTAMPTZ                    | Creation timestamp                       |
 
 **Indexes:**
 
-- `idx_element_mappings_group` on `element_group_id`
-- `idx_element_mappings_section` on `section_key`
-- `element_section_mappings_element_group_id_section_key_key` UNIQUE on `(element_group_id, section_key)`
+- `idx_element_section_mappings_element` on `element_group_id`
+- `idx_element_section_mappings_section` on `section_key`
+- `element_group_section_mappings_element_group_id_section_key_key` UNIQUE on `(element_group_id, section_key)`
 
 **Available Element Groups:**
 
@@ -529,6 +529,97 @@ Templates contain variables like `{{code_section}}`, `{{building_type}}` that ar
 
 ---
 
+### `compliance_sessions`
+
+Alternative compliance workflow sessions (client-facing compliance viewer).
+
+**Schema:**
+
+| Column       | Type                  | Description                            |
+| ------------ | --------------------- | -------------------------------------- |
+| `id`         | UUID PK               | Primary key                            |
+| `project_id` | UUID FK → projects.id | Project reference (CASCADE delete)     |
+| `code_id`    | TEXT                  | Building code identifier               |
+| `status`     | TEXT                  | Session status (default 'in_progress') |
+| `created_at` | TIMESTAMPTZ           | Creation timestamp                     |
+| `updated_at` | TIMESTAMPTZ           | Last update timestamp                  |
+
+**Indexes:**
+
+- `idx_compliance_sessions_project_id` on `project_id`
+
+**Purpose:**
+Used by the client-facing compliance viewer (`/compliance/[projectId]`) as an alternative to the full assessment workflow.
+
+---
+
+### `section_checks`
+
+Section-level checks within compliance sessions.
+
+**Schema:**
+
+| Column            | Type                             | Description                                               |
+| ----------------- | -------------------------------- | --------------------------------------------------------- |
+| `id`              | UUID PK                          | Primary key                                               |
+| `session_id`      | UUID FK → compliance_sessions.id | Compliance session reference (CASCADE delete)             |
+| `section_key`     | TEXT NOT NULL                    | Section reference                                         |
+| `section_number`  | TEXT NOT NULL                    | Section number (e.g., "11B-404.2.6")                      |
+| `section_title`   | TEXT NOT NULL                    | Section title                                             |
+| `status`          | TEXT NOT NULL                    | Status (default 'pending')                                |
+| `is_cloneable`    | BOOLEAN                          | Whether section allows multiple instances (default FALSE) |
+| `screenshots`     | TEXT[]                           | Array of screenshot URLs (default '{}')                   |
+| `analysis_result` | JSONB                            | AI analysis results                                       |
+| `instances`       | JSONB                            | Multiple instances data (for cloneable sections)          |
+| `created_at`      | TIMESTAMPTZ                      | Creation timestamp                                        |
+| `updated_at`      | TIMESTAMPTZ                      | Last update timestamp                                     |
+
+**Indexes:**
+
+- `idx_section_checks_session_id` on `session_id`
+- `idx_section_checks_section_key` on `section_key`
+
+**Purpose:**
+Simplified check structure for the compliance viewer workflow, separate from the main `checks` table.
+
+---
+
+### `section_overrides`
+
+Per-section compliance overrides within element checks.
+
+**Schema:**
+
+| Column            | Type                | Description                                         |
+| ----------------- | ------------------- | --------------------------------------------------- |
+| `id`              | UUID PK             | Primary key                                         |
+| `check_id`        | UUID FK → checks.id | Check reference (CASCADE delete)                    |
+| `section_key`     | TEXT NOT NULL       | Section being overridden                            |
+| `section_number`  | TEXT NOT NULL       | Section number                                      |
+| `override_status` | TEXT NOT NULL       | Status: compliant, non_compliant, or not_applicable |
+| `note`            | TEXT                | Explanation for override                            |
+| `created_at`      | TIMESTAMPTZ         | Creation timestamp                                  |
+| `updated_at`      | TIMESTAMPTZ         | Last update timestamp (auto-updated by trigger)     |
+
+**Indexes:**
+
+- `idx_section_overrides_check_id` on `check_id`
+- `idx_section_overrides_section_key` on `section_key`
+- `section_overrides_check_id_section_key_key` UNIQUE on `(check_id, section_key)`
+
+**Constraints:**
+
+- `section_overrides_override_status_check`: override_status must be 'compliant', 'non_compliant', or 'not_applicable'
+
+**Trigger:**
+
+- `section_overrides_updated_at`: Auto-updates `updated_at` on modification
+
+**Purpose:**
+Allows fine-grained overrides of individual sections within element-based checks (where one check covers multiple code sections).
+
+---
+
 ## Entity Relationship Diagram
 
 ```
@@ -564,15 +655,21 @@ Templates contain variables like `{{code_section}}`, `{{building_type}}` that ar
        │
        ├─────────┐ N:1
        │         ▼
-       │    ┌──────────────────┐       ┌────────────────────────────┐
-       │    │ element_groups   │──────▶│ element_section_mappings   │
-       │    └──────────────────┘  1:N  └────────────────────────────┘
+       │    ┌──────────────────┐       ┌──────────────────────────────────┐
+       │    │ element_groups   │──────▶│ element_group_section_mappings   │
+       │    └──────────────────┘  1:N  └──────────────────────────────────┘
        │                                        │
        │                                        │ N:1
        │                                        ▼
        │                                  ┌──────────┐
        │                                  │ sections │
        │                                  └──────────┘
+       │ 1:N
+       ├─────────┐
+       │         ▼
+       │    ┌───────────────────┐
+       │    │ section_overrides │
+       │    └───────────────────┘
        │ 1:N
        ▼
 ┌──────────────┐
@@ -599,6 +696,20 @@ Templates contain variables like `{{code_section}}`, `{{building_type}}` that ar
                         ┌──────────┐
                         │ sections │
                         └──────────┘
+
+┌─────────────┐
+│  projects   │
+└──────┬──────┘
+       │ 1:N
+       ▼
+┌─────────────────────┐
+│ compliance_sessions │
+└──────┬──────────────┘
+       │ 1:N
+       ▼
+┌──────────────────┐
+│ section_checks   │
+└──────────────────┘
 ```
 
 ## Key Patterns
@@ -615,7 +726,7 @@ Templates contain variables like `{{code_section}}`, `{{building_type}}` that ar
 The `checks.manual_override` field allows human reviewers to override AI:
 
 - Takes precedence over any `analysis_runs` results
-- Values: 'compliant', 'non_compliant', 'not_applicable', or NULL
+- Values: 'compliant', 'non_compliant', 'not_applicable', 'insufficient_information', or NULL
 - Includes timestamp (`manual_override_at`) and user tracking
 - Setting to NULL reverts to AI assessment
 
