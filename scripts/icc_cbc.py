@@ -20,31 +20,49 @@ from s3 import RawICCS3, BUCKET_NAME
 from schema import Code, Section, Subsection, TableBlock
 
 
+# California patterns
 # section number is like 11B-229 or 1102A
 # Uses negative lookahead (?!\.\d) to prevent matching subsections like 11B-228.3
-# Supports both 11B-XXX and XXXXXA formats
-SECTION_NUMBER_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)(?!\.\d)"
+CA_SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)(?!\.\d)"
 # subsection number is like 11B-101.1 or 1102A.3
-# Updated to support multi-level subsections: (?:\.\d+)+ matches one or more levels
-# Examples: 11B-213.3 (1 level), 11B-213.3.1 (2 levels), 11B-228.3.2.1 (3 levels)
-SUBSECTION_NUMBER_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)(?:\.\d+)+"
+CA_SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)(?:\.\d+)+"
+
+# NYC patterns
+# section number is like 1101, 1104 (4 digits without dots)
+NYC_SECTION_REGEX = r"\d{4}(?!\.\d)"
+# subsection number is like 1101.1, 1104.2.3.1 (4 digits + dot + digits)
+NYC_SUBSECTION_REGEX = r"\d{4}(?:\.\d+)+"
+
+# Mapping of state to regex patterns
+REGEX_PATTERNS = {
+    "CA": {
+        "section": CA_SECTION_REGEX,
+        "subsection": CA_SUBSECTION_REGEX,
+    },
+    "NY": {
+        "section": NYC_SECTION_REGEX,
+        "subsection": NYC_SUBSECTION_REGEX,
+    },
+}
 
 
-def find_section_links(text: str) -> list[str]:
+def find_section_links(text: str, state: str = "CA") -> list[str]:
     """In each text para, there are links of the form
     'Section 11B-106.5'. Identify them and return a list of strings.
 
     """
-    url_re = re.compile(SECTION_NUMBER_REGEX)
+    pattern = REGEX_PATTERNS[state]["section"]
+    url_re = re.compile(pattern)
     return url_re.findall(text)
 
 
-def find_subsection_links(text: str) -> list[str]:
+def find_subsection_links(text: str, state: str = "CA") -> list[str]:
     """In each text para, there are links of the form
     'Section 11B-106.5'. Identify them and return a list of strings.
 
     """
-    url_re = re.compile(SUBSECTION_NUMBER_REGEX)
+    pattern = REGEX_PATTERNS[state]["subsection"]
+    url_re = re.compile(pattern)
     return url_re.findall(text)
 
 
@@ -211,12 +229,27 @@ REGION = "us-east-2" if ENV == "prod" else "us-east-1"
 
 class State(Enum):
     california = "CA"
+    new_york = "NY"
 
 
 class HTMLProcessor(ABC):
     @abstractmethod
     def process(self, html: str) -> str:
         ...
+
+
+def generate_nyc_url(section_number: str) -> str:
+    """Generate NYC building code URL with proper section anchors."""
+    base_url = "https://codes.iccsafe.org/content/NYCBC2022P1"
+    if not section_number:
+        return base_url
+
+    section_clean = section_number.replace("Section ", "").strip()
+    # NYC sections are like 1101, 1104, 1101.1, etc.
+    # Anchor format: NYCBC2022P1_Ch11_Sec1101
+    main_section = section_clean.split(".")[0] if "." in section_clean else section_clean
+    anchor = f"NYCBC2022P1_Ch11_Sec{section_clean.replace('.', '_')}"
+    return f"{base_url}/chapter-11-accessibility#{anchor}"
 
 
 def generate_california_url(section_number: str) -> str:
@@ -278,13 +311,36 @@ def generate_california_url(section_number: str) -> str:
     return base_url
 
 
+def generate_section_url(section_number: str, state: str) -> str:
+    """Generate section URL based on state."""
+    if state == "CA":
+        return generate_california_url(section_number)
+    elif state == "NY":
+        return generate_nyc_url(section_number)
+    else:
+        return ""
+
+
 def main(args):
     test_mode_str = " (TEST MODE)" if getattr(args, "test", False) else ""
-    logger.info(f"Starting ICC scraper for {args.state} {args.version}{test_mode_str}")
-    chapter_to_key = {
-        "11a": "CHAPTER 11A HOUSING ACCESSIBILITY - 2025 CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
-        "11b": "Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - California Building Code Volumes 1 and 2, Title 24, Part 2.html",
-    }
+    dry_run_str = " (DRY RUN - no S3 upload)" if getattr(args, "dry_run", False) else ""
+    logger.info(f"Starting ICC scraper for {args.state} {args.version}{test_mode_str}{dry_run_str}")
+
+    # State-specific chapter configuration
+    if args.state == "CA":
+        chapter_to_key = {
+            "11a": "CHAPTER 11A HOUSING ACCESSIBILITY - 2025 CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+            "11b": "Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - California Building Code Volumes 1 and 2, Title 24, Part 2.html",
+        }
+        chapters = ["11a", "11b"]
+    elif args.state == "NY":
+        chapter_to_key = {
+            "11": "CHAPTER 11 ACCESSIBILITY - 2022 NEW YORK CITY BUILDING CODE.html",
+        }
+        chapters = ["11"]
+    else:
+        raise ValueError(f"Unsupported state: {args.state}")
+
     raw_code_s3 = RawICCS3(args.state, args.version, chapter_to_key)
 
     # Use dictionaries for deduplication
@@ -292,8 +348,8 @@ def main(args):
     all_tables = []
     all_figures = []
 
-    # Process chapters 11a and 11b
-    for chapter in ["11a", "11b"]:
+    # Process chapters
+    for chapter in chapters:
         logger.info(f"Processing chapter {chapter}")
         html = raw_code_s3.chapter(chapter)
         soup = BeautifulSoup(html, "html.parser")
@@ -329,7 +385,7 @@ def main(args):
                 continue
 
             section_header_text = section_header_element.get_text()
-            section_number_list = find_section_links(section_header_text)
+            section_number_list = find_section_links(section_header_text, args.state)
 
             if len(section_number_list) != 1:
                 logger.warning(
@@ -362,7 +418,7 @@ def main(args):
                 number=section_number,
                 title=section_title,
                 subsections=[],
-                source_url=generate_california_url(section_number),
+                source_url=generate_section_url(section_number, args.state),
                 figures=[],  # Initialize figures list
             )
 
@@ -371,8 +427,8 @@ def main(args):
     # it can be level1, level2 or level2_title
     pattern = re.compile(r"level\d|level\d_title")
 
-    # Process subsections from chapters 11a and 11b
-    for chapter in ["11a", "11b"]:
+    # Process subsections from all chapters
+    for chapter in chapters:
         html = raw_code_s3.chapter(chapter)
         soup = BeautifulSoup(html, "html.parser")
 
@@ -393,7 +449,7 @@ def main(args):
                 subsection_header_text = subsection.find(
                     "span", class_=pattern
                 ).get_text()
-            subsection_number_list = find_subsection_links(subsection_header_text)
+            subsection_number_list = find_subsection_links(subsection_header_text, args.state)
             if not len(subsection_number_list) == 1:
                 logger.warning(
                     f"Expected subsection number, got {subsection_number_list}"
@@ -414,8 +470,8 @@ def main(args):
             paras = []
             for para in subsection.find_all("p"):
                 paras.append(para.get_text())
-                links.extend(find_subsection_links(para.get_text()))
-                links.extend(find_section_links(para.get_text()))
+                links.extend(find_subsection_links(para.get_text(), args.state))
+                links.extend(find_section_links(para.get_text(), args.state))
 
             # Use dictionary - last one wins
             subsections_dict[subsection_number] = Subsection(
@@ -550,26 +606,45 @@ def main(args):
             logger.warning(f"Could not attach {fig_type} {fig_number} to any section")
 
     # Create Code object with all sections
+    if args.state == "CA":
+        source_id = "CBC_Chapter11A_11B"
+        title = "California Building Code - Chapters 11A & 11B Accessibility"
+        source_url = "https://codes.iccsafe.org/content/CABC2025P1"
+    elif args.state == "NY":
+        source_id = "NYCBC_Chapter11"
+        title = "New York City Building Code - Chapter 11 Accessibility"
+        source_url = "https://codes.iccsafe.org/content/NYCBC2022P1"
+    else:
+        source_id = f"{args.state}_Code"
+        title = f"{args.state} Building Code"
+        source_url = ""
+
     code = Code(
         provider="ICC",
         version=args.version,
         jurisdiction=args.state,
-        source_id="CBC_Chapter11A_11B",
-        title="California Building Code - Chapters 11A & 11B Accessibility",
-        source_url="https://codes.iccsafe.org/content/CABC2025P1",
+        source_id=source_id,
+        title=title,
+        source_url=source_url,
         sections=processed_sections,
     )
 
     # dump the Code object to json
-    output_filename = f"cbc_{args.state}_{args.version}.json"
+    # Use state-specific code abbreviations
+    code_prefix = "cbc" if args.state == "CA" else f"ibc_{args.state.lower()}"
+    output_filename = f"{code_prefix}_{args.version}.json"
     with open(output_filename, "w") as f:
         json.dump(code.model_dump(), f, indent=2)
 
     # upload to s3
-    s3 = boto3.resource("s3")
-    s3.Bucket(BUCKET_NAME).upload_file(
-        output_filename, f"cleaned/{args.state}/{args.version}/cbc_chapters11a_11b.json"
-    )
+    if not getattr(args, "dry_run", False):
+        s3 = boto3.resource("s3")
+        s3_key = f"cleaned/{args.state}/{args.version}/{output_filename}"
+        s3.Bucket(BUCKET_NAME).upload_file(output_filename, s3_key)
+        logger.info(f"Uploaded to S3: {s3_key}")
+    else:
+        logger.info("Dry run mode - skipping S3 upload")
+
     logger.info(f"Extracted {len(processed_sections)} sections")
     logger.info(f"Extracted {len(all_tables)} tables and {len(all_figures)} figures")
 
@@ -614,6 +689,11 @@ if __name__ == "__main__":
         "--test",
         action="store_true",
         help="Test mode - process only first few elements to avoid errors",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Dry run - process and save JSON locally but don't upload to S3",
     )
     args = parser.parse_args()
     main(args)
