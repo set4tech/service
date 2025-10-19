@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ViolationListSidebar } from '@/components/reports/ViolationListSidebar';
 import { ViolationMarker } from '@/lib/reports/get-violations';
+import { processChecksToViolations } from '@/lib/reports/process-violations';
 
 // Dynamically load PDF viewer (client-side only)
 const PDFViewer = dynamic(
@@ -108,217 +109,23 @@ export function ViolationsSummary({
     return { totalSections, assessed, analyzing, pct };
   }, [checks]);
 
-  // Transform checks to violations
+  // Transform checks to violations using shared logic
   const violations = useMemo(() => {
-    const result: ViolationMarker[] = [];
-
     // Build list of all checks to process
     // Include all checks (both element and section) plus any cloned instances
     const allChecks: any[] = [];
     checks.forEach(check => {
-      // Include the check itself
-      allChecks.push(check);
-      // Also add any cloned instances
-      if (check.instances && Array.isArray(check.instances)) {
+      // For element instances (top-level items with instances array), add each section check
+      if (check.instances && Array.isArray(check.instances) && check.instances.length > 0) {
         allChecks.push(...check.instances);
+      } else {
+        // For standalone section checks, add the check itself
+        allChecks.push(check);
       }
     });
 
-    allChecks.forEach(check => {
-      // Check for section-level overrides first (same logic as get-violations.ts)
-      const checkSectionOverrides = check.section_overrides || [];
-      if (checkSectionOverrides.length > 0) {
-        // If ANY section override is non_compliant, include this check
-        const hasNonCompliantSection = checkSectionOverrides.some(
-          (override: any) => override.override_status === 'non_compliant'
-        );
-        if (!hasNonCompliantSection) {
-          // If no non-compliant sections, skip this check
-          return;
-        }
-        // Continue to create violation marker below
-      } else {
-        // No section overrides, use standard logic
-        // Skip excluded/not applicable checks (MATCH get-violations.ts logic)
-        if (
-          check.manual_override === 'not_applicable' ||
-          check.manual_override === 'excluded' ||
-          check.manual_override === 'compliant'
-        ) {
-          return;
-        }
-
-        // For element checks, skip if element_sections is empty (all sections excluded)
-        if (
-          check.check_type === 'element' &&
-          (!check.element_sections || check.element_sections.length === 0)
-        ) {
-          return;
-        }
-
-        // Determine if non-compliant or needs more info
-        const isNonCompliant =
-          check.manual_override === 'non_compliant' || check.latest_status === 'non_compliant';
-
-        const needsMoreInfo =
-          check.manual_override === 'insufficient_information' ||
-          check.latest_status === 'needs_more_info';
-
-        if (!isNonCompliant && !needsMoreInfo) return;
-      }
-
-      // Parse violations from latest analysis
-      let violationDetails: Array<{
-        description: string;
-        severity: 'minor' | 'moderate' | 'major';
-      }> = [];
-      let reasoning = '';
-      let recommendations: string[] = [];
-      let confidence = '';
-
-      // Get data from check's latest analysis
-      if (check.latest_analysis) {
-        try {
-          const analysis =
-            typeof check.latest_analysis === 'string'
-              ? JSON.parse(check.latest_analysis)
-              : check.latest_analysis;
-
-          if (analysis.violations && Array.isArray(analysis.violations)) {
-            violationDetails = analysis.violations;
-          }
-          if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
-            recommendations = analysis.recommendations;
-          }
-          reasoning = analysis.reasoning || check.latest_reasoning || '';
-          confidence = analysis.confidence || check.latest_confidence || '';
-        } catch (err) {
-          console.error('Failed to parse analysis:', err);
-        }
-      }
-
-      // If no violations in analysis, create generic one
-      if (violationDetails.length === 0) {
-        violationDetails = [
-          {
-            description: `Non-compliant with ${check.code_section_number || check.code_section_key}`,
-            severity: 'moderate',
-          },
-        ];
-      }
-
-      // Create ONE violation marker per check (but include ALL screenshots)
-      const screenshots = (check.screenshots || []).sort(
-        (a: any, b: any) => a.page_number - b.page_number
-      );
-      if (screenshots.length > 0) {
-        // Use first screenshot as primary
-        const screenshot = screenshots[0];
-        const violationDetail = violationDetails[0];
-
-        // Determine severity - use needs_more_info if that's the status, otherwise use violation detail
-        const checkStatus = check.manual_override || check.latest_status;
-        let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-        if (checkStatus === 'needs_more_info') {
-          severity = 'needs_more_info';
-        } else if (violationDetail?.severity) {
-          severity = violationDetail.severity;
-        }
-
-        const description =
-          violationDetail?.description ||
-          (checkStatus === 'needs_more_info'
-            ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
-            : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
-
-        // Map all screenshots to ViolationScreenshot format
-        const allScreenshots = screenshots
-          .filter((s: any) => s.crop_coordinates && s.page_number)
-          .map((s: any) => ({
-            id: s.id,
-            url: s.screenshot_url || '',
-            thumbnailUrl: s.thumbnail_url || '',
-            pageNumber: s.page_number,
-            bounds: {
-              x: s.crop_coordinates.x,
-              y: s.crop_coordinates.y,
-              width: s.crop_coordinates.width,
-              height: s.crop_coordinates.height,
-              zoom_level: s.crop_coordinates.zoom_level || 1,
-            },
-          }));
-
-        if (screenshot.crop_coordinates && screenshot.page_number && allScreenshots.length > 0) {
-          result.push({
-            checkId: check.id,
-            checkName: check.check_name || check.code_section_title || '',
-            codeSectionKey: check.code_section_key || '',
-            codeSectionNumber: check.code_section_number || check.code_section_key || '',
-            pageNumber: screenshot.page_number,
-            bounds: {
-              x: screenshot.crop_coordinates.x,
-              y: screenshot.crop_coordinates.y,
-              width: screenshot.crop_coordinates.width,
-              height: screenshot.crop_coordinates.height,
-              zoom_level: screenshot.crop_coordinates.zoom_level || 1,
-            },
-            severity,
-            description,
-            screenshotUrl: screenshot.screenshot_url || '',
-            thumbnailUrl: screenshot.thumbnail_url || '',
-            screenshotId: screenshot.id,
-            allScreenshots, // Include all screenshots
-            reasoning,
-            recommendations,
-            confidence,
-            checkType: check.check_type,
-            elementGroupName: check.element_group_name,
-            instanceLabel: check.instance_label,
-          });
-        }
-      } else {
-        // No screenshots - create generic violation
-        const violationDetail = violationDetails[0];
-
-        // Determine severity - use needs_more_info if that's the status, otherwise use violation detail
-        const checkStatus = check.manual_override || check.latest_status;
-        let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-        if (checkStatus === 'needs_more_info') {
-          severity = 'needs_more_info';
-        } else if (violationDetail?.severity) {
-          severity = violationDetail.severity;
-        }
-
-        const description =
-          violationDetail?.description ||
-          (checkStatus === 'needs_more_info'
-            ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
-            : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
-
-        result.push({
-          checkId: check.id,
-          checkName: check.check_name || check.code_section_title || '',
-          codeSectionKey: check.code_section_key || '',
-          codeSectionNumber: check.code_section_number || check.code_section_key || '',
-          pageNumber: 1,
-          bounds: { x: 0, y: 0, width: 0, height: 0, zoom_level: 1 },
-          severity,
-          description,
-          screenshotUrl: '',
-          thumbnailUrl: '',
-          screenshotId: '',
-          allScreenshots: [], // Empty array when no screenshots
-          reasoning,
-          recommendations,
-          confidence,
-          checkType: check.check_type,
-          elementGroupName: check.element_group_name,
-          instanceLabel: check.instance_label,
-        });
-      }
-    });
-
-    return result;
+    // Use shared violation processing logic
+    return processChecksToViolations(allChecks);
   }, [checks]);
 
   const handleViolationClick = (violation: ViolationMarker) => {

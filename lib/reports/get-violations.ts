@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { processChecksToViolations } from './process-violations';
 
 export interface ViolationScreenshot {
   id: string;
@@ -172,111 +173,24 @@ export async function getProjectViolations(
     }
   }
 
-  // Filter to non-compliant and needs_more_info checks
-  const nonCompliantChecks = checksForViolations.filter((check: any) => {
-    const latestAnalysis = Array.isArray(check.latest_analysis_runs)
-      ? check.latest_analysis_runs[0]
-      : check.latest_analysis_runs;
+  // Batch fetch all screenshots for all checks (in batches to avoid query size limits)
+  const allCheckIds = checksForViolations.map((c: any) => c.id);
+  let assignments: any[] = [];
 
-    // FIRST: Check-level manual override takes highest precedence
-    // If a user manually marks the entire check, that's the final decision
-    if (check.manual_override) {
-      // Exclude checks marked as compliant, not_applicable, or excluded
-      if (
-        check.manual_override === 'compliant' ||
-        check.manual_override === 'not_applicable' ||
-        check.manual_override === 'excluded'
-      ) {
-        return false;
-      }
+  // Process in batches of 1000 to avoid Supabase query limits
+  const batchSize = 1000;
+  for (let i = 0; i < allCheckIds.length; i += batchSize) {
+    const batch = allCheckIds.slice(i, i + batchSize);
+    const { data, error } = await supabase
+      .from('screenshot_check_assignments')
+      .select('check_id, screenshot_id')
+      .in('check_id', batch);
 
-      // Include checks marked as non_compliant or insufficient_information
-      if (
-        check.manual_override === 'non_compliant' ||
-        check.manual_override === 'insufficient_information'
-      ) {
-        return true;
-      }
+    if (error) {
+      console.error('[getProjectViolations] Assignment query error:', error);
+    } else if (data) {
+      assignments.push(...data);
     }
-
-    // SECOND: Check for section-level overrides
-    const checkSectionOverrides = sectionOverridesMap.get(check.id) || [];
-    if (checkSectionOverrides.length > 0) {
-      // If ANY section override is non_compliant, include this check
-      const hasNonCompliantSection = checkSectionOverrides.some(
-        (override: any) => override.override_status === 'non_compliant'
-      );
-      if (hasNonCompliantSection) {
-        return true;
-      }
-
-      // If all sections are compliant or not_applicable, exclude this check
-      const allCompliantOrNA = checkSectionOverrides.every(
-        (override: any) =>
-          override.override_status === 'compliant' || override.override_status === 'not_applicable'
-      );
-      if (allCompliantOrNA) {
-        return false;
-      }
-    }
-
-    // THIRD: If no overrides, use AI analysis result
-    const isNonCompliant = latestAnalysis?.compliance_status === 'non_compliant';
-    const needsMoreInfo = latestAnalysis?.compliance_status === 'needs_more_info';
-
-    return isNonCompliant || needsMoreInfo;
-  });
-
-  if (nonCompliantChecks.length === 0) {
-    return {
-      projectId: project.id,
-      projectName: project.name,
-      assessmentId: assessment.id,
-      pdfUrl: project.pdf_url, // Use pdf_url (the one used for screenshots in assessment page)
-      violations: [],
-      buildingParams: project.extracted_variables,
-      codeInfo,
-    };
-  }
-
-  // Batch fetch sections for all unique keys (including parent info for URL fallback)
-  const uniqueSectionKeys = Array.from(
-    new Set(nonCompliantChecks.map((c: any) => c.code_section_key).filter(Boolean))
-  );
-
-  const { data: sectionsData } = await supabase
-    .from('sections')
-    .select('key, source_url, number, parent_key')
-    .in('key', uniqueSectionKeys);
-
-  const sectionsMap = new Map(sectionsData?.map(s => [s.key, s]) || []);
-
-  // Batch fetch parent sections for URL fallback
-  const parentKeys = Array.from(
-    new Set(sectionsData?.map(s => s.parent_key).filter(Boolean) || [])
-  );
-
-  let parentSectionsMap = new Map();
-  if (parentKeys.length > 0) {
-    const { data: parentSections } = await supabase
-      .from('sections')
-      .select('key, source_url')
-      .in('key', parentKeys);
-
-    parentSectionsMap = new Map(parentSections?.map(p => [p.key, p]) || []);
-  }
-
-  // Batch fetch all screenshots for non-compliant checks
-  const nonCompliantCheckIds = nonCompliantChecks.map((c: any) => c.id);
-
-  // First get all screenshot assignments for these checks
-  const { data: assignments, error: assignmentError } = await supabase
-    .from('screenshot_check_assignments')
-    .select('check_id, screenshot_id')
-    .in('check_id', nonCompliantCheckIds);
-
-  if (assignmentError) {
-    console.error('[getProjectViolations] Assignment query error:', assignmentError);
   }
 
   // Get unique screenshot IDs
@@ -316,60 +230,50 @@ export async function getProjectViolations(
     }
   });
 
-  // Build violations from non-compliant checks
-  const violations: ViolationMarker[] = [];
+  // Batch fetch sections for source URLs
+  const uniqueSectionKeys = Array.from(
+    new Set(checksForViolations.map((c: any) => c.code_section_key).filter(Boolean))
+  );
 
-  // Fetch PDF page dimensions to validate coordinates (currently unused, reserved for future validation)
-  const _pdfDimensions = new Map<number, { width: number; height: number }>();
+  const { data: sectionsData } = await supabase
+    .from('sections')
+    .select('key, source_url, number, parent_key')
+    .in('key', uniqueSectionKeys);
 
-  // We'll validate coordinates against reasonable bounds
-  // Typical architectural drawings are 6000-8000px wide at natural scale (currently unused, reserved for future validation)
-  const _MAX_REASONABLE_DIMENSION = 12000; // pixels
+  const sectionsMap = new Map(sectionsData?.map(s => [s.key, s]) || []);
 
-  // Fetch all analysis runs for batched checks
-  const batchGroupIds = new Set<string>();
-  const checksWithBatches = new Map<string, any[]>();
+  // Batch fetch parent sections for URL fallback
+  const parentKeys = Array.from(
+    new Set(sectionsData?.map(s => s.parent_key).filter(Boolean) || [])
+  );
 
-  for (const check of nonCompliantChecks) {
-    const latestAnalysis = Array.isArray(check.latest_analysis_runs)
-      ? check.latest_analysis_runs[0]
-      : check.latest_analysis_runs;
+  let parentSectionsMap = new Map();
+  if (parentKeys.length > 0) {
+    const { data: parentSections } = await supabase
+      .from('sections')
+      .select('key, source_url')
+      .in('key', parentKeys);
 
-    if (latestAnalysis?.batch_group_id && latestAnalysis?.total_batches > 1) {
-      batchGroupIds.add(latestAnalysis.batch_group_id);
-    }
+    parentSectionsMap = new Map(parentSections?.map(p => [p.key, p]) || []);
   }
 
-  // Fetch all runs for batched checks
-  if (batchGroupIds.size > 0) {
-    const { data: batchedRuns } = await supabase
-      .from('analysis_runs')
-      .select(
-        'id, check_id, batch_group_id, compliance_status, ai_reasoning, confidence, raw_ai_response, violations, recommendations'
-      )
-      .in('batch_group_id', Array.from(batchGroupIds));
+  // Attach screenshots and section overrides to checks for shared processing
+  const checksWithScreenshots = checksForViolations.map((check: any) => {
+    const checkScreenshots = screenshotsByCheck.get(check.id) || [];
+    const checkSectionOverrides = sectionOverridesMap.get(check.id) || [];
+    return {
+      ...check,
+      screenshots: checkScreenshots,
+      section_overrides: checkSectionOverrides,
+    };
+  });
 
-    // Group by check_id
-    batchedRuns?.forEach((run: any) => {
-      if (!checksWithBatches.has(run.check_id)) {
-        checksWithBatches.set(run.check_id, []);
-      }
-      checksWithBatches.get(run.check_id)!.push(run);
-    });
-  }
+  // Use shared violation processing logic
+  const violations = processChecksToViolations(checksWithScreenshots);
 
-  for (const check of nonCompliantChecks) {
-    const latestAnalysis = Array.isArray(check.latest_analysis_runs)
-      ? check.latest_analysis_runs[0]
-      : check.latest_analysis_runs;
-
-    // Extract element group name from nested object (Supabase returns as array or single object)
-    const elementGroupName = Array.isArray((check as any).element_groups)
-      ? (check as any).element_groups[0]?.name
-      : (check as any).element_groups?.name || null;
-
-    // Get source URL from pre-fetched sections (with parent fallback)
-    const section = sectionsMap.get(check.code_section_key);
+  // Add source URLs to violations
+  violations.forEach(violation => {
+    const section = sectionsMap.get(violation.codeSectionKey);
     let sourceUrl = section?.source_url || '';
 
     // Fallback to parent section's source_url if child doesn't have one
@@ -380,190 +284,9 @@ export async function getProjectViolations(
 
     const sourceLabel = section?.number ? `CBC ${section.number}` : '';
 
-    // Get screenshots from pre-fetched map and sort by page number
-    const screenshots = (screenshotsByCheck.get(check.id) || []).sort(
-      (a, b) => a.page_number - b.page_number
-    );
-
-    // Parse violations from AI response - aggregate from all batches if applicable
-    const violationDetails: Array<{
-      description: string;
-      severity: 'minor' | 'moderate' | 'major';
-    }> = [];
-    let recommendations: string[] = [];
-    let reasoning = '';
-    let confidence = '';
-
-    // Check if this is a batched analysis
-    const batchedRuns = checksWithBatches.get(check.id);
-    const analysisRuns = batchedRuns && batchedRuns.length > 0 ? batchedRuns : [latestAnalysis];
-
-    // Aggregate violations and recommendations from all runs
-    for (const analysis of analysisRuns) {
-      if (!analysis) continue;
-
-      // Take reasoning and confidence from the first run
-      if (!reasoning && analysis.ai_reasoning) {
-        reasoning = analysis.ai_reasoning;
-      }
-      if (!confidence && analysis.confidence) {
-        confidence = analysis.confidence;
-      }
-
-      // Use violations from the dedicated column (parsed during analysis)
-      if (analysis.violations && Array.isArray(analysis.violations)) {
-        violationDetails.push(...analysis.violations);
-      }
-
-      if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
-        recommendations.push(...analysis.recommendations);
-      }
-
-      // Fallback: try parsing from raw_ai_response if violations column is empty
-      if (analysis.violations?.length === 0 || !analysis.violations) {
-        try {
-          let aiResponse = analysis.raw_ai_response;
-
-          if (typeof aiResponse === 'string') {
-            // Strip markdown code fences if present (```json ... ```)
-            let cleaned = aiResponse.trim();
-            if (cleaned.startsWith('```json')) {
-              cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-            } else if (cleaned.startsWith('```')) {
-              cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
-            }
-            aiResponse = JSON.parse(cleaned);
-          }
-
-          if (aiResponse?.violations && Array.isArray(aiResponse.violations)) {
-            violationDetails.push(...aiResponse.violations);
-          }
-
-          if (aiResponse?.recommendations && Array.isArray(aiResponse.recommendations)) {
-            recommendations.push(...aiResponse.recommendations);
-          }
-        } catch (err) {
-          console.error('[getProjectViolations] Failed to parse AI response:', err);
-        }
-      }
-    }
-
-    // Deduplicate recommendations
-    recommendations = Array.from(new Set(recommendations));
-
-    // Create ONE violation marker per check (but include ALL screenshots)
-    if (screenshots && screenshots.length > 0) {
-      // Use first screenshot as primary
-      const screenshot = screenshots[0];
-      const violationDetail = violationDetails[0];
-
-      // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
-      const checkStatus = check.manual_override || latestAnalysis?.compliance_status;
-      let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-      if (checkStatus === 'needs_more_info') {
-        severity = 'needs_more_info';
-      } else if (violationDetail?.severity) {
-        severity = violationDetail.severity;
-      }
-
-      const description =
-        violationDetail?.description ||
-        (checkStatus === 'needs_more_info'
-          ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
-          : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
-
-      // Map all screenshots to ViolationScreenshot format
-      const allScreenshots: ViolationScreenshot[] = screenshots
-        .filter(s => s.crop_coordinates && s.page_number) // Only include valid screenshots
-        .map(s => ({
-          id: s.id,
-          url: s.screenshot_url,
-          thumbnailUrl: s.thumbnail_url,
-          pageNumber: s.page_number,
-          bounds: {
-            x: s.crop_coordinates.x,
-            y: s.crop_coordinates.y,
-            width: s.crop_coordinates.width,
-            height: s.crop_coordinates.height,
-            zoom_level: s.crop_coordinates.zoom_level || 1,
-          },
-        }));
-
-      if (screenshot.crop_coordinates && screenshot.page_number && allScreenshots.length > 0) {
-        violations.push({
-          checkId: check.id,
-          checkName: check.check_name,
-          codeSectionKey: check.code_section_key,
-          codeSectionNumber: check.code_section_number || check.code_section_key,
-          pageNumber: screenshot.page_number,
-          bounds: {
-            x: screenshot.crop_coordinates.x,
-            y: screenshot.crop_coordinates.y,
-            width: screenshot.crop_coordinates.width,
-            height: screenshot.crop_coordinates.height,
-            zoom_level: screenshot.crop_coordinates.zoom_level || 1,
-          },
-          severity,
-          description,
-          screenshotUrl: screenshot.screenshot_url,
-          thumbnailUrl: screenshot.thumbnail_url,
-          screenshotId: screenshot.id,
-          allScreenshots, // Include all screenshots
-          reasoning,
-          recommendations,
-          confidence,
-          sourceUrl,
-          sourceLabel,
-          humanReadableTitle: check.human_readable_title,
-          checkType: check.check_type,
-          elementGroupName,
-          instanceLabel: check.instance_label,
-        });
-      }
-    } else {
-      // No screenshots - create a generic marker (we'll handle this case in the UI)
-      const violationDetail = violationDetails[0];
-
-      // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
-      const checkStatus = check.manual_override || latestAnalysis?.compliance_status;
-      let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-      if (checkStatus === 'needs_more_info') {
-        severity = 'needs_more_info';
-      } else if (violationDetail?.severity) {
-        severity = violationDetail.severity;
-      }
-
-      const description =
-        violationDetail?.description ||
-        (checkStatus === 'needs_more_info'
-          ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
-          : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
-
-      violations.push({
-        checkId: check.id,
-        checkName: check.check_name,
-        codeSectionKey: check.code_section_key,
-        codeSectionNumber: check.code_section_number || check.code_section_key,
-        pageNumber: 1, // Default to first page if no screenshot
-        bounds: { x: 0, y: 0, width: 0, height: 0, zoom_level: 1 },
-        severity,
-        description,
-        screenshotUrl: '',
-        thumbnailUrl: '',
-        screenshotId: '',
-        allScreenshots: [], // Empty array when no screenshots
-        reasoning,
-        recommendations,
-        confidence,
-        sourceUrl,
-        sourceLabel,
-        humanReadableTitle: check.human_readable_title,
-        checkType: check.check_type,
-        elementGroupName,
-        instanceLabel: check.instance_label,
-      });
-    }
-  }
+    violation.sourceUrl = sourceUrl;
+    violation.sourceLabel = sourceLabel;
+  });
 
   return {
     projectId: project.id,
