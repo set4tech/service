@@ -11,7 +11,8 @@ describe('Violations Processing Consistency', () => {
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
         code_section_number: '11B-404',
         code_section_title: 'Doors.',
-        manual_override: null,
+        manual_status: null,
+        is_excluded: false,
         check_type: 'section',
         element_group_id: 'element-group-doors',
         instance_label: 'Door 1',
@@ -51,7 +52,8 @@ describe('Violations Processing Consistency', () => {
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-603.2',
         code_section_number: '11B-603.2',
         code_section_title: 'Door swing.',
-        manual_override: null,
+        manual_status: null,
+        is_excluded: false,
         check_type: 'section',
         element_group_id: 'element-group-doors',
         instance_label: 'Door 1',
@@ -91,7 +93,8 @@ describe('Violations Processing Consistency', () => {
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-213.3.5',
         code_section_number: '11B-213.3.5',
         code_section_title: 'Mirrors.',
-        manual_override: 'compliant',
+        manual_status: 'compliant',
+        is_excluded: false,
         check_type: 'section',
         latest_status: 'non_compliant',
         latest_analysis_runs: {
@@ -128,7 +131,8 @@ describe('Violations Processing Consistency', () => {
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-304.4',
         code_section_number: '11B-304.4',
         code_section_title: 'Door swing',
-        manual_override: null,
+        manual_status: null,
+        is_excluded: false,
         check_type: 'section',
         latest_status: 'needs_more_info',
         latest_analysis_runs: {
@@ -165,7 +169,7 @@ describe('Violations Processing Consistency', () => {
     expect(violation2?.severity).toBe('major');
     expect(violation2?.description).toContain('swings into');
 
-    // Verify check-3 is NOT included (manual override to compliant)
+    // Verify check-3 is NOT included (manual status to compliant)
     const violation3 = violations.find(v => v.checkId === 'check-3');
     expect(violation3).toBeUndefined();
 
@@ -177,27 +181,18 @@ describe('Violations Processing Consistency', () => {
     expect(violation4?.pageNumber).toBe(1); // Default page
   });
 
-  it('should handle section overrides correctly', () => {
-    const checksWithSectionOverrides: CheckWithAnalysis[] = [
+  it('should handle excluded checks correctly', () => {
+    const checksWithExclusions: CheckWithAnalysis[] = [
       {
-        id: 'check-with-override',
-        check_name: 'Element Check',
+        id: 'check-excluded',
+        check_name: 'Excluded Check',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
         code_section_number: '11B-404',
         code_section_title: 'Doors.',
-        manual_override: null,
-        check_type: 'element',
-        section_overrides: [
-          {
-            section_key: 'section-1',
-            override_status: 'non_compliant',
-          },
-          {
-            section_key: 'section-2',
-            override_status: 'compliant',
-          },
-        ],
-        latest_status: 'compliant', // Should be ignored due to section override
+        manual_status: null,
+        is_excluded: true, // Excluded from assessment
+        check_type: 'section',
+        latest_status: 'non_compliant', // Should be ignored due to exclusion
         screenshots: [
           {
             id: 'screenshot-1',
@@ -215,24 +210,15 @@ describe('Violations Processing Consistency', () => {
         ],
       },
       {
-        id: 'check-all-compliant',
-        check_name: 'All Compliant Check',
+        id: 'check-not-excluded',
+        check_name: 'Not Excluded Check',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-603.2',
         code_section_number: '11B-603.2',
         code_section_title: 'Door swing.',
-        manual_override: null,
-        check_type: 'element',
-        section_overrides: [
-          {
-            section_key: 'section-3',
-            override_status: 'compliant',
-          },
-          {
-            section_key: 'section-4',
-            override_status: 'not_applicable',
-          },
-        ],
-        latest_status: 'non_compliant', // Should be ignored due to section overrides
+        manual_status: null,
+        is_excluded: false,
+        check_type: 'section',
+        latest_status: 'non_compliant',
         screenshots: [
           {
             id: 'screenshot-2',
@@ -251,21 +237,22 @@ describe('Violations Processing Consistency', () => {
       },
     ];
 
-    const violations = processChecksToViolations(checksWithSectionOverrides);
+    const violations = processChecksToViolations(checksWithExclusions);
 
-    // Should only include first check (has non_compliant section override)
+    // Should only include second check (first is excluded)
     expect(violations).toHaveLength(1);
-    expect(violations[0].checkId).toBe('check-with-override');
+    expect(violations[0].checkId).toBe('check-not-excluded');
   });
 
-  it('should handle manual overrides with priority', () => {
-    const checksWithManualOverrides: CheckWithAnalysis[] = [
+  it('should handle manual status with priority', () => {
+    const checksWithManualStatus: CheckWithAnalysis[] = [
       {
         id: 'check-manual-non-compliant',
         check_name: 'Manually Non-Compliant',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
         code_section_number: '11B-404',
-        manual_override: 'non_compliant',
+        manual_status: 'non_compliant',
+        is_excluded: false,
         latest_status: 'compliant', // Should be ignored
         latest_analysis_runs: {
           compliance_status: 'compliant', // Should be ignored
@@ -290,7 +277,8 @@ describe('Violations Processing Consistency', () => {
         check_name: 'Manually Compliant',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-603.2',
         code_section_number: '11B-603.2',
-        manual_override: 'compliant',
+        manual_status: 'compliant',
+        is_excluded: false,
         latest_status: 'non_compliant', // Should be ignored
         latest_analysis_runs: {
           compliance_status: 'non_compliant', // Should be ignored
@@ -312,9 +300,9 @@ describe('Violations Processing Consistency', () => {
       },
     ];
 
-    const violations = processChecksToViolations(checksWithManualOverrides);
+    const violations = processChecksToViolations(checksWithManualStatus);
 
-    // Should only include first check (manual override to non_compliant)
+    // Should only include first check (manual status to non_compliant)
     expect(violations).toHaveLength(1);
     expect(violations[0].checkId).toBe('check-manual-non-compliant');
   });

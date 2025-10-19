@@ -93,7 +93,8 @@ export async function getProjectViolations(
       check_name,
       code_section_key,
       code_section_number,
-      manual_override,
+      manual_status,
+      is_excluded,
       human_readable_title,
       check_type,
       element_group_id,
@@ -118,22 +119,6 @@ export async function getProjectViolations(
     console.error('[getProjectViolations] Failed to fetch checks:', checksError);
     return null;
   }
-
-  // Fetch all section overrides for all checks
-  const checkIds = (allChecks || []).map((c: any) => c.id);
-  const { data: sectionOverrides } = await supabase
-    .from('section_overrides')
-    .select('check_id, section_key, section_number, override_status, note')
-    .in('check_id', checkIds);
-
-  // Create a map of check_id -> section overrides
-  const sectionOverridesMap = new Map<string, any[]>();
-  sectionOverrides?.forEach((override: any) => {
-    if (!sectionOverridesMap.has(override.check_id)) {
-      sectionOverridesMap.set(override.check_id, []);
-    }
-    sectionOverridesMap.get(override.check_id)!.push(override);
-  });
 
   // All checks are flat section checks now
   const checksForViolations = allChecks || [];
@@ -257,14 +242,12 @@ export async function getProjectViolations(
     parentSectionsMap = new Map(parentSections?.map(p => [p.key, p]) || []);
   }
 
-  // Attach screenshots and section overrides to checks for shared processing
+  // Attach screenshots to checks for shared processing
   const checksWithScreenshots = checksForViolations.map((check: any) => {
     const checkScreenshots = screenshotsByCheck.get(check.id) || [];
-    const checkSectionOverrides = sectionOverridesMap.get(check.id) || [];
     return {
       ...check,
       screenshots: checkScreenshots,
-      section_overrides: checkSectionOverrides,
     };
   });
 

@@ -6,16 +6,13 @@ export interface CheckWithAnalysis {
   code_section_key?: string;
   code_section_number?: string;
   code_section_title?: string;
-  manual_override?: string | null;
+  manual_status?: string | null;
+  is_excluded?: boolean;
   check_type?: string;
   element_group_id?: string;
   instance_label?: string;
   human_readable_title?: string;
   element_group_name?: string;
-  section_overrides?: Array<{
-    section_key: string;
-    override_status: string;
-  }>;
   latest_analysis_runs?: {
     compliance_status?: string;
     ai_reasoning?: string;
@@ -62,74 +59,24 @@ export function processChecksToViolations(checks: CheckWithAnalysis[]): Violatio
   const violations: ViolationMarker[] = [];
 
   for (const check of checks) {
-    let shouldInclude = false;
-    let decisionSource: 'manual' | 'section' | 'ai' | null = null;
-
-    // PRIORITY 1: Check-level manual override (highest precedence)
-    if (check.manual_override) {
-      if (
-        check.manual_override === 'non_compliant' ||
-        check.manual_override === 'insufficient_information'
-      ) {
-        shouldInclude = true;
-        decisionSource = 'manual';
-      } else if (
-        check.manual_override === 'compliant' ||
-        check.manual_override === 'not_applicable'
-      ) {
-        shouldInclude = false;
-        decisionSource = 'manual';
-      }
+    // Skip excluded checks
+    if (check.is_excluded) {
+      continue;
     }
 
-    // PRIORITY 2: Section-level overrides (only if no manual override)
-    if (decisionSource === null) {
-      const checkSectionOverrides = check.section_overrides || [];
-      if (checkSectionOverrides.length > 0) {
-        // If ANY section is non_compliant, include this check
-        const hasNonCompliantSection = checkSectionOverrides.some(
-          override => override.override_status === 'non_compliant'
-        );
-        if (hasNonCompliantSection) {
-          shouldInclude = true;
-          decisionSource = 'section';
-        } else {
-          // If all sections are compliant or not_applicable, exclude this check
-          const allCompliantOrNA = checkSectionOverrides.every(
-            override =>
-              override.override_status === 'compliant' ||
-              override.override_status === 'not_applicable'
-          );
-          if (allCompliantOrNA) {
-            shouldInclude = false;
-            decisionSource = 'section';
-          }
-          // If mixed or has other statuses, fall through to AI analysis
-        }
-      }
-    }
+    // Effective status: manual_status overrides AI analysis
+    const effectiveStatus =
+      check.manual_status ||
+      check.latest_status ||
+      check.latest_analysis_runs?.compliance_status;
 
-    // PRIORITY 3: AI analysis (only if no manual override or section override decision)
-    if (decisionSource === null) {
-      const latestAnalysis = check.latest_analysis_runs;
-      const aiStatus = check.latest_status || latestAnalysis?.compliance_status;
-
-      if (
-        aiStatus === 'non_compliant' ||
-        aiStatus === 'needs_more_info' ||
-        aiStatus === 'violation'
-      ) {
-        shouldInclude = true;
-        decisionSource = 'ai';
-      } else if (aiStatus === 'compliant' || aiStatus === 'not_applicable') {
-        shouldInclude = false;
-        decisionSource = 'ai';
-      }
-      // If no AI status, don't include (not assessed)
-    }
-
-    // Skip if we determined this should not be included
-    if (!shouldInclude) {
+    // Only include if non-compliant or needs more info
+    if (
+      effectiveStatus !== 'non_compliant' &&
+      effectiveStatus !== 'needs_more_info' &&
+      effectiveStatus !== 'insufficient_information' &&
+      effectiveStatus !== 'violation'
+    ) {
       continue;
     }
 
@@ -225,9 +172,8 @@ export function processChecksToViolations(checks: CheckWithAnalysis[]): Violatio
       const violationDetail = violationDetails[0];
 
       // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
-      const checkStatus = check.manual_override || check.latest_status || latestAnalysis?.compliance_status;
       let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-      if (checkStatus === 'needs_more_info' || checkStatus === 'insufficient_information') {
+      if (effectiveStatus === 'needs_more_info' || effectiveStatus === 'insufficient_information') {
         severity = 'needs_more_info';
       } else if (violationDetail?.severity) {
         severity = violationDetail.severity;
@@ -289,9 +235,8 @@ export function processChecksToViolations(checks: CheckWithAnalysis[]): Violatio
       // No screenshots - create a generic marker
       const violationDetail = violationDetails[0];
 
-      const checkStatus = check.manual_override || check.latest_status || latestAnalysis?.compliance_status;
       let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-      if (checkStatus === 'needs_more_info' || checkStatus === 'insufficient_information') {
+      if (effectiveStatus === 'needs_more_info' || effectiveStatus === 'insufficient_information') {
         severity = 'needs_more_info';
       } else if (violationDetail?.severity) {
         severity = violationDetail.severity;
