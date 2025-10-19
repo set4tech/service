@@ -41,21 +41,21 @@ describe('useCheckData hook behavior', () => {
       const groupedChecks = createMockGroupedChecks(3);
 
       // First check has no override
-      groupedChecks[0].manual_override = null;
+      groupedChecks[0].manual_status = null;
 
       // Second check (will be active) has override
       groupedChecks[1].id = 'active-check-id';
-      groupedChecks[1].manual_override = 'compliant';
-      groupedChecks[1].manual_override_note = 'Test note';
+      groupedChecks[1].manual_status = 'compliant';
+      groupedChecks[1].manual_status_note = 'Test note';
 
       // Third check has different override
-      groupedChecks[2].manual_override = 'non_compliant';
+      groupedChecks[2].manual_status = 'non_compliant';
 
       // The active check should be check-1, so we should get its override
       const activeCheck = groupedChecks.find(c => c.id === 'active-check-id');
 
-      expect(activeCheck?.manual_override).toBe('compliant');
-      expect(activeCheck?.manual_override_note).toBe('Test note');
+      expect(activeCheck?.manual_status).toBe('compliant');
+      expect(activeCheck?.manual_status_note).toBe('Test note');
     });
   });
 

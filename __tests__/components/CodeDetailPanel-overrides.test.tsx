@@ -20,32 +20,32 @@ describe('CodeDetailPanel - Manual Override State Management', () => {
       const checks = createMockGroupedChecks(3);
 
       // First check has compliant override
-      checks[0].manual_override = 'compliant';
-      checks[0].manual_override_note = 'First check note';
+      checks[0].manual_status = 'compliant';
+      checks[0].manual_status_note = 'First check note';
 
       // Second check (active) has non_compliant override
-      checks[1].manual_override = 'non_compliant';
-      checks[1].manual_override_note = 'Active check note';
+      checks[1].manual_status = 'non_compliant';
+      checks[1].manual_status_note = 'Active check note';
 
       // Active check should show its own override
       const activeCheck = checks[1];
 
-      expect(activeCheck.manual_override).toBe('non_compliant');
-      expect(activeCheck.manual_override_note).toBe('Active check note');
+      expect(activeCheck.manual_status).toBe('non_compliant');
+      expect(activeCheck.manual_status_note).toBe('Active check note');
 
       // Not the first check's override
-      expect(activeCheck.manual_override).not.toBe(checks[0].manual_override);
+      expect(activeCheck.manual_status).not.toBe(checks[0].manual_status);
     });
 
     it('should handle active check with no override', () => {
       const checks = createMockGroupedChecks(2);
 
-      checks[0].manual_override = 'compliant';
-      checks[1].manual_override = null;
+      checks[0].manual_status = 'compliant';
+      checks[1].manual_status = null;
 
       const activeCheck = checks[1];
 
-      expect(activeCheck.manual_override).toBeNull();
+      expect(activeCheck.manual_status).toBeNull();
     });
   });
 
@@ -54,19 +54,19 @@ describe('CodeDetailPanel - Manual Override State Management', () => {
       const checks = createMockGroupedChecks(3);
 
       // Set different overrides
-      checks[0].manual_override = 'compliant';
-      checks[1].manual_override = 'non_compliant';
-      checks[2].manual_override = null;
+      checks[0].manual_status = 'compliant';
+      checks[1].manual_status = 'non_compliant';
+      checks[2].manual_status = null;
 
       // Simulate navigation from check 0 to check 1
       const previousCheck = checks[0];
       const nextCheck = checks[1];
 
-      expect(previousCheck.manual_override).toBe('compliant');
-      expect(nextCheck.manual_override).toBe('non_compliant');
+      expect(previousCheck.manual_status).toBe('compliant');
+      expect(nextCheck.manual_status).toBe('non_compliant');
 
       // Override should change when switching
-      expect(previousCheck.manual_override).not.toBe(nextCheck.manual_override);
+      expect(previousCheck.manual_status).not.toBe(nextCheck.manual_status);
     });
 
     it('should load override data from childChecks array, not stale closure', () => {
@@ -74,18 +74,18 @@ describe('CodeDetailPanel - Manual Override State Management', () => {
       const activeCheckId = checks[0].id;
 
       // Initial state
-      checks[0].manual_override = 'compliant';
+      checks[0].manual_status = 'compliant';
 
       // Simulate childChecks update after save
       const updatedChecks = checks.map(c =>
-        c.id === activeCheckId ? { ...c, manual_override: 'non_compliant' } : c
+        c.id === activeCheckId ? { ...c, manual_status: 'non_compliant' } : c
       );
 
       // Find check again from updated array (simulating re-find in promise callback)
       const currentActiveChild = updatedChecks.find(c => c.id === activeCheckId);
 
       // Should get updated value, not stale value
-      expect(currentActiveChild?.manual_override).toBe('non_compliant');
+      expect(currentActiveChild?.manual_status).toBe('non_compliant');
     });
   });
 
@@ -94,7 +94,7 @@ describe('CodeDetailPanel - Manual Override State Management', () => {
       const checks = createMockGroupedChecks(3);
       const checkToUpdate = checks[1];
 
-      expect(checkToUpdate.manual_override).toBeNull();
+      expect(checkToUpdate.manual_status).toBeNull();
 
       // Simulate save
       const newOverride = 'compliant';
@@ -102,35 +102,35 @@ describe('CodeDetailPanel - Manual Override State Management', () => {
 
       const updatedChecks = checks.map(c =>
         c.id === checkToUpdate.id
-          ? { ...c, manual_override: newOverride, manual_override_note: newNote }
+          ? { ...c, manual_status: newOverride, manual_status_note: newNote }
           : c
       );
 
       const updatedCheck = updatedChecks.find(c => c.id === checkToUpdate.id);
 
-      expect(updatedCheck?.manual_override).toBe(newOverride);
-      expect(updatedCheck?.manual_override_note).toBe(newNote);
+      expect(updatedCheck?.manual_status).toBe(newOverride);
+      expect(updatedCheck?.manual_status_note).toBe(newNote);
 
       // Other checks should be unchanged
-      expect(updatedChecks[0].manual_override).toBe(checks[0].manual_override);
-      expect(updatedChecks[2].manual_override).toBe(checks[2].manual_override);
+      expect(updatedChecks[0].manual_status).toBe(checks[0].manual_status);
+      expect(updatedChecks[2].manual_status).toBe(checks[2].manual_status);
     });
 
     it('should preserve other check overrides when updating one check', () => {
       const checks = createMockGroupedChecks(3);
 
-      checks[0].manual_override = 'compliant';
-      checks[1].manual_override = 'non_compliant';
-      checks[2].manual_override = null;
+      checks[0].manual_status = 'compliant';
+      checks[1].manual_status = 'non_compliant';
+      checks[2].manual_status = null;
 
       // Update check 1
       const updatedChecks = checks.map(c =>
-        c.id === checks[1].id ? { ...c, manual_override: 'not_applicable' } : c
+        c.id === checks[1].id ? { ...c, manual_status: 'not_applicable' } : c
       );
 
-      expect(updatedChecks[0].manual_override).toBe('compliant'); // Unchanged
-      expect(updatedChecks[1].manual_override).toBe('not_applicable'); // Changed
-      expect(updatedChecks[2].manual_override).toBeNull(); // Unchanged
+      expect(updatedChecks[0].manual_status).toBe('compliant'); // Unchanged
+      expect(updatedChecks[1].manual_status).toBe('not_applicable'); // Changed
+      expect(updatedChecks[2].manual_status).toBeNull(); // Unchanged
     });
   });
 
@@ -205,14 +205,14 @@ describe('CodeDetailPanel - Manual Override State Management', () => {
       expect(checks.length).toBe(0);
     });
 
-    it('should handle undefined manual_override gracefully', () => {
+    it('should handle undefined manual_status gracefully', () => {
       const check = createMockCheck();
-      delete (check as any).manual_override;
+      delete (check as any).manual_status;
 
-      expect(check.manual_override).toBeUndefined();
+      expect(check.manual_status).toBeUndefined();
 
       // Should coalesce to null
-      const override = check.manual_override || null;
+      const override = check.manual_status || null;
       expect(override).toBeNull();
     });
 

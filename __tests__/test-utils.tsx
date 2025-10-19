@@ -19,8 +19,9 @@ export const createMockCheck = (overrides: Record<string, unknown> = {}) => ({
   assessment_id: 'test-assessment-id',
   element_group_id: null as string | null,
   instance_label: null as string | null,
-  manual_override: null as string | null,
-  manual_override_note: null as string | null,
+  manual_status: null as string | null,
+  manual_status_note: null as string | null,
+  is_excluded: false,
   ...overrides,
 });
 
@@ -34,8 +35,9 @@ export const createMockGroupedChecks = (count: number = 3) => {
     element_group_id: 'element-group-1',
     instance_label: 'Doors 12',
     assessment_id: 'test-assessment-id',
-    manual_override: null as string | null,
-    manual_override_note: null as string | null,
+    manual_status: null as string | null,
+    manual_status_note: null as string | null,
+    is_excluded: false,
   }));
 };
 
