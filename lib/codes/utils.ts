@@ -38,17 +38,11 @@ export function getChapterFilters(selectedCodeIds: string[]): Array<{
   const seenChapters = new Set<string>();
 
   for (const codeId of selectedCodeIds) {
-    if (
-      (codeId === CODE_IDS.CBC_11A || codeId === CODE_IDS.CBC_11A_11B_COMBINED) &&
-      !seenChapters.has('11A')
-    ) {
+    if (codeId === CODE_IDS.CBC_11A && !seenChapters.has('11A')) {
       filters.push({ name: '11A', test: CHAPTER_FILTERS['11A'] });
       seenChapters.add('11A');
     }
-    if (
-      (codeId === CODE_IDS.CBC_11B || codeId === CODE_IDS.CBC_11A_11B_COMBINED) &&
-      !seenChapters.has('11B')
-    ) {
+    if (codeId === CODE_IDS.CBC_11B && !seenChapters.has('11B')) {
       filters.push({ name: '11B', test: CHAPTER_FILTERS['11B'] });
       seenChapters.add('11B');
     }
@@ -65,7 +59,5 @@ export function getChapterFilters(selectedCodeIds: string[]): Array<{
  * @returns Array of unique real code IDs to query from the database
  */
 export function getRealCodeIds(selectedCodeIds: string[]): string[] {
-  return Array.from(
-    new Set(selectedCodeIds.map((id) => CODE_MAPPING[id] || id))
-  );
+  return Array.from(new Set(selectedCodeIds.map(id => CODE_MAPPING[id] || id)));
 }

@@ -84,15 +84,15 @@ export function CheckList({
 
     // Filter out checks marked as not_applicable
     let result = sourceChecks.filter(c => {
-      if (c.manual_override === 'not_applicable') return false;
+      if (c.manual_status === 'not_applicable') return false;
       return true;
     });
 
     // Filter by unassessed status if enabled
     if (showUnassessedOnly) {
       result = result.filter(c => {
-        // Check is assessed if it has manual_override or latest_status
-        const isAssessed = c.manual_override || c.latest_status;
+        // Check is assessed if it has manual_status or latest_status
+        const isAssessed = c.manual_status || c.latest_status;
         return !isAssessed;
       });
     }
@@ -348,9 +348,9 @@ export function CheckList({
       );
     }
     // Prioritize manual override
-    if (check.manual_override === 'compliant') return '✓';
-    if (check.manual_override === 'non_compliant') return '✗';
-    if (check.manual_override === 'insufficient_information') return '?';
+    if (check.manual_status === 'compliant') return '✓';
+    if (check.manual_status === 'non_compliant') return '✗';
+    if (check.manual_status === 'insufficient_information') return '?';
     // Fall back to AI assessment
     if (check.latest_status === 'compliant') return '✓';
     if (check.latest_status === 'non_compliant') return '✗';
@@ -361,9 +361,9 @@ export function CheckList({
     // Check if currently processing (analyzing)
     if (isActivelyProcessing(check)) return 'text-blue-600';
     // Prioritize manual override
-    if (check.manual_override === 'compliant') return 'text-green-600 font-bold';
-    if (check.manual_override === 'non_compliant') return 'text-red-600 font-bold';
-    if (check.manual_override === 'insufficient_information') return 'text-yellow-600 font-bold';
+    if (check.manual_status === 'compliant') return 'text-green-600 font-bold';
+    if (check.manual_status === 'non_compliant') return 'text-red-600 font-bold';
+    if (check.manual_status === 'insufficient_information') return 'text-yellow-600 font-bold';
     // Fall back to AI assessment
     if (check.latest_status === 'compliant') return 'text-green-600';
     if (check.latest_status === 'non_compliant') return 'text-red-600';
@@ -686,7 +686,7 @@ export function CheckList({
                                     })()}
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    {check.manual_override && (
+                                    {check.manual_status && (
                                       <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
                                         Manual
                                       </span>
@@ -705,7 +705,7 @@ export function CheckList({
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    {check.manual_override && (
+                                    {check.manual_status && (
                                       <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
                                         Manual
                                       </span>
@@ -877,7 +877,7 @@ export function CheckList({
                                         {instance.instance_label ||
                                           `Instance ${instance.instance_number}`}
                                       </div>
-                                      {instance.manual_override && (
+                                      {instance.manual_status && (
                                         <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
                                           Manual
                                         </span>

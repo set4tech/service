@@ -72,13 +72,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     // Prepare update data
     const updateData: any = {
-      manual_override: override,
-      manual_override_note: note || null,
-      manual_override_at: override ? new Date().toISOString() : null,
+      manual_status: override,
+      manual_status_note: note || null,
+      manual_status_at: override ? new Date().toISOString() : null,
       // When setting override, ensure status is not 'processing'
       status: override ? 'completed' : undefined,
       // TODO: Add user tracking when auth is implemented
-      // manual_override_by: user.id,
+      // manual_status_by: user.id,
     };
 
     // Update the check
