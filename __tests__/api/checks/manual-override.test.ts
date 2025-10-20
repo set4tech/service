@@ -28,15 +28,15 @@ describe('POST /api/checks/[id]/manual-override', () => {
 
       // Expected database update
       const expectedUpdate = {
-        manual_override: override,
-        manual_override_note: note,
-        manual_override_at: expect.any(String),
+        manual_status: override,
+        manual_status_note: note,
+        manual_status_at: expect.any(String),
         status: 'completed',
       };
 
       // Verify the update data structure is correct
-      expect(expectedUpdate.manual_override).toBe(override);
-      expect(expectedUpdate.manual_override_note).toBe(note);
+      expect(expectedUpdate.manual_status).toBe(override);
+      expect(expectedUpdate.manual_status_note).toBe(note);
       expect(expectedUpdate.status).toBe('completed');
     });
 
@@ -45,14 +45,14 @@ describe('POST /api/checks/[id]/manual-override', () => {
       const override = null;
 
       const expectedUpdate = {
-        manual_override: null,
-        manual_override_note: null,
-        manual_override_at: null,
+        manual_status: null,
+        manual_status_note: null,
+        manual_status_at: null,
         status: undefined, // Don't change status when clearing
       };
 
-      expect(expectedUpdate.manual_override).toBeNull();
-      expect(expectedUpdate.manual_override_at).toBeNull();
+      expect(expectedUpdate.manual_status).toBeNull();
+      expect(expectedUpdate.manual_status_at).toBeNull();
     });
 
     it('should save override without note', async () => {
@@ -66,11 +66,11 @@ describe('POST /api/checks/[id]/manual-override', () => {
 
       // Note should be null in database
       const expectedUpdate = {
-        manual_override: override,
-        manual_override_note: null,
+        manual_status: override,
+        manual_status_note: null,
       };
 
-      expect(expectedUpdate.manual_override_note).toBeNull();
+      expect(expectedUpdate.manual_status_note).toBeNull();
     });
   });
 
@@ -210,8 +210,8 @@ describe('POST /api/checks/[id]/manual-override', () => {
       const checkId = 'test-check-id';
       const check = createMockCheck({
         id: checkId,
-        manual_override: 'compliant',
-        manual_override_note: 'Test note',
+        manual_status: 'compliant',
+        manual_status_note: 'Test note',
       });
 
       const expectedResponse = {
@@ -219,7 +219,7 @@ describe('POST /api/checks/[id]/manual-override', () => {
       };
 
       expect(expectedResponse.check.id).toBe(checkId);
-      expect(expectedResponse.check.manual_override).toBe('compliant');
+      expect(expectedResponse.check.manual_status).toBe('compliant');
     });
   });
 

@@ -118,7 +118,7 @@ describe('useManualOverride', () => {
 
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ check: { id: 'check-1', manual_override: 'compliant' } }),
+        json: async () => ({ check: { id: 'check-1', manual_status: 'compliant' } }),
       });
 
       act(() => {

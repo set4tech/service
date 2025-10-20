@@ -195,16 +195,16 @@ export async function GET() {
         // Check if manual override exists - if so, skip this job
         const { data: checkData } = await supabase
           .from('checks')
-          .select('manual_override, status, check_type')
+          .select('manual_status, status, check_type')
           .eq('id', checkId)
           .single();
 
-        if (checkData?.manual_override) {
+        if (checkData?.manual_status) {
           console.log(`[Queue] Check ${checkId} has manual override, skipping analysis job ${id}`);
           await kv.hset(`job:${id}`, {
             status: 'cancelled',
             cancelledAt: Date.now(),
-            cancelReason: 'manual_override_set',
+            cancelReason: 'manual_status_set',
           });
           continue;
         }

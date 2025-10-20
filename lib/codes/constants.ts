@@ -9,7 +9,7 @@
 export const CODE_IDS = {
   CBC_11A: 'ICC+CBC_Chapter11A+2025+CA',
   CBC_11B: 'ICC+CBC_Chapter11B+2025+CA',
-  CBC_11A_11B_COMBINED: 'ICC+CBC_Chapter11A_11B+2025+CA',
+  NYCBC_11B: 'ICC+NYCBC_Chapter11+2025+NY',
 } as const;
 
 /**
@@ -17,8 +17,9 @@ export const CODE_IDS = {
  * The database stores a single combined code, but the API exposes them separately.
  */
 export const CODE_MAPPING: Record<string, string> = {
-  [CODE_IDS.CBC_11A]: CODE_IDS.CBC_11A_11B_COMBINED,
-  [CODE_IDS.CBC_11B]: CODE_IDS.CBC_11A_11B_COMBINED,
+  [CODE_IDS.CBC_11A]: CODE_IDS.CBC_11A,
+  [CODE_IDS.CBC_11B]: CODE_IDS.CBC_11B,
+  [CODE_IDS.NYCBC_11B]: CODE_IDS.NYCBC_11B,
 };
 
 /**
@@ -48,10 +49,9 @@ export const EXCLUDED_SECTION_IDS = {
 
   // General/scoping sections that only contain references to other sections
   GENERAL_SCOPING: [
-    639, 111, 117, 118, 124, 157, 158, 167, 172, 177, 179, 180, 181, 185, 186,
-    191, 192, 200, 201, 205, 207, 208, 209, 212, 213, 221, 222, 227, 228, 230,
-    231, 234, 235, 253, 256, 260, 266, 271, 279, 282, 283, 294, 298, 301, 304,
-    312, 326, 362, 399, 486, 531, 617,
+    639, 111, 117, 118, 124, 157, 158, 167, 172, 177, 179, 180, 181, 185, 186, 191, 192, 200, 201,
+    205, 207, 208, 209, 212, 213, 221, 222, 227, 228, 230, 231, 234, 235, 253, 256, 260, 266, 271,
+    279, 282, 283, 294, 298, 301, 304, 312, 326, 362, 399, 486, 531, 617,
   ],
 } as const;
 
@@ -63,12 +63,9 @@ export const ALL_EXCLUDED_SECTIONS = Object.values(EXCLUDED_SECTION_IDS).flat();
 /**
  * Code IDs that are currently supported and should be exposed via the API
  */
-export const SUPPORTED_CODE_IDS = [
-  CODE_IDS.CBC_11A,
-  CODE_IDS.CBC_11B,
-] as const;
+export const SUPPORTED_CODE_IDS = [CODE_IDS.CBC_11A, CODE_IDS.CBC_11B, CODE_IDS.NYCBC_11B] as const;
 
 // Type exports for better type safety
-export type CodeId = typeof CODE_IDS[keyof typeof CODE_IDS];
-export type SupportedCodeId = typeof SUPPORTED_CODE_IDS[number];
+export type CodeId = (typeof CODE_IDS)[keyof typeof CODE_IDS];
+export type SupportedCodeId = (typeof SUPPORTED_CODE_IDS)[number];
 export type ChapterName = keyof typeof CHAPTER_FILTERS;

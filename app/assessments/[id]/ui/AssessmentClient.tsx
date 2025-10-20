@@ -38,9 +38,53 @@ interface Codebook {
   name: string;
 }
 
+interface ScreenshotData {
+  id: string;
+  screenshot_url: string;
+  thumbnail_url?: string;
+  caption?: string;
+  page_number?: number;
+  [key: string]: unknown;
+}
+
+interface CheckInstance {
+  id: string;
+  instance_label: string;
+  instance_number: number;
+  screenshots?: ScreenshotData[];
+  [key: string]: unknown;
+}
+
+interface CheckData {
+  id: string;
+  code_section_key?: string;
+  element_group_id?: string | null;
+  latest_status?: string | null;
+  status?: string;
+  manual_override?: string | null;
+  has_section_overrides?: boolean;
+  screenshots?: ScreenshotData[];
+  instances?: CheckInstance[];
+  instance_count?: number;
+  parent_check_id?: string | null;
+  [key: string]: unknown;
+}
+
+interface AssessmentData {
+  id: string;
+  project_id: string;
+  pdf_url?: string | null;
+  projects?: {
+    name?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 interface Props {
-  assessment: any;
-  checks: any[];
+  assessment: AssessmentData;
+  checks: CheckData[];
+  rpcViolations?: ViolationMarker[]; // RPC data already filtered to violations
   progress: { totalChecks: number; completed: number; pct: number };
   buildingInfo: BuildingInfo;
   codebooks: Codebook[];
@@ -49,6 +93,7 @@ interface Props {
 export default function AssessmentClient({
   assessment,
   checks: initialChecks,
+  rpcViolations,
   progress: _initialProgress,
   buildingInfo,
   codebooks,
@@ -57,24 +102,29 @@ export default function AssessmentClient({
 
   // Debug: Log screenshots on initial load
   useEffect(() => {
-    const checksWithScreenshots = initialChecks.filter((c: any) => c.screenshots?.length > 0);
+    const checksWithScreenshots = initialChecks.filter(
+      c => c.screenshots?.length && c.screenshots.length > 0
+    );
     const instancesWithScreenshots = initialChecks
-      .flatMap((c: any) => c.instances || [])
-      .filter((i: any) => i.screenshots?.length > 0);
+      .flatMap(c => c.instances || [])
+      .filter(i => i.screenshots?.length && i.screenshots.length > 0);
 
+    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
     console.log(
       '[AssessmentClient] Initial checks with screenshots:',
       checksWithScreenshots.length
     );
+    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
     console.log(
       '[AssessmentClient] Initial INSTANCES with screenshots:',
       instancesWithScreenshots.length
     );
 
-    instancesWithScreenshots.slice(0, 5).forEach((i: any) => {
-      console.log(`  - ${i.instance_label}: ${i.screenshots.length} screenshots`);
+    instancesWithScreenshots.slice(0, 5).forEach(i => {
+      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
+      console.log(`  - ${i.instance_label}: ${i.screenshots?.length ?? 0} screenshots`);
     });
-  }, []);
+  }, [initialChecks]);
   const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary' | 'gallery'>(
     'section'
   );
@@ -180,8 +230,8 @@ export default function AssessmentClient({
     const allCheckIds: string[] = [];
     checks.forEach(check => {
       allCheckIds.push(check.id);
-      if (check.instances?.length > 0) {
-        check.instances.forEach((instance: any) => {
+      if (check.instances?.length && check.instances.length > 0) {
+        check.instances.forEach(instance => {
           allCheckIds.push(instance.id);
         });
       }
@@ -209,7 +259,7 @@ export default function AssessmentClient({
     }
   };
 
-  const handleCheckAdded = (newCheck: any) => {
+  const handleCheckAdded = (newCheck: CheckData) => {
     // Add the new check to the state
     setChecks(prevChecks => {
       // Find the parent check
@@ -221,7 +271,7 @@ export default function AssessmentClient({
           if (c.id === newCheck.parent_check_id) {
             return {
               ...c,
-              instances: [...(c.instances || []), newCheck],
+              instances: [...(c.instances || []), newCheck as CheckInstance],
               instance_count: (c.instance_count || 0) + 1,
             };
           }
@@ -246,12 +296,14 @@ export default function AssessmentClient({
     // Remove the check from the state
     setChecks(prevChecks => {
       // First check if it's a top-level check
-      let deletedCheck = prevChecks.find(c => c.id === checkId);
+      let deletedCheck: CheckData | CheckInstance | undefined = prevChecks.find(
+        c => c.id === checkId
+      );
 
       // If not found in top-level, search in instances
       if (!deletedCheck) {
         for (const parentCheck of prevChecks) {
-          const instance = (parentCheck.instances || []).find((inst: any) => inst.id === checkId);
+          const instance = (parentCheck.instances || []).find(inst => inst.id === checkId);
           if (instance) {
             deletedCheck = instance;
             break;
@@ -279,10 +331,10 @@ export default function AssessmentClient({
 
       // If it's an instance with a visible parent, remove from parent's instances array
       return prevChecks.map(c => {
-        if (c.id === deletedCheck.parent_check_id) {
+        if (c.id === deletedCheck?.parent_check_id) {
           return {
             ...c,
-            instances: (c.instances || []).filter((inst: any) => inst.id !== checkId),
+            instances: (c.instances || []).filter(inst => inst.id !== checkId),
             instance_count: Math.max((c.instance_count || 0) - 1, 0),
           };
         }
@@ -303,9 +355,9 @@ export default function AssessmentClient({
 
     // If not found, search within instances
     for (const check of checks) {
-      if (check.instances?.length > 0) {
-        const instance = check.instances.find((i: any) => i.id === activeCheckId);
-        if (instance) return instance;
+      if (check.instances?.length && check.instances.length > 0) {
+        const instance = check.instances.find(i => i.id === activeCheckId);
+        if (instance) return instance as CheckData;
       }
     }
 
@@ -319,6 +371,7 @@ export default function AssessmentClient({
   });
 
   useEffect(() => {
+    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
     console.log('[AssessmentClient] Effect triggered', {
       checksLength: checks.length,
       isSeeding,
@@ -326,6 +379,7 @@ export default function AssessmentClient({
     });
 
     if (checks.length === 0 && !isSeeding && !hasSeedAttempted) {
+      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
       console.log('[AssessmentClient] Starting seed process for assessment:', assessment.id);
       setIsSeeding(true);
       setHasSeedAttempted(true);
@@ -334,6 +388,7 @@ export default function AssessmentClient({
       // Fetch first batch immediately
       fetch(`/api/assessments/${assessment.id}/seed`, { method: 'POST' })
         .then(async response => {
+          // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
           console.log('[AssessmentClient] Seed response received:', response.status, response.ok);
 
           if (!response.ok) {
@@ -343,6 +398,7 @@ export default function AssessmentClient({
           }
 
           const data = await response.json();
+          // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
           console.log('[AssessmentClient] Seed data:', data);
 
           // Set initial progress
@@ -354,6 +410,7 @@ export default function AssessmentClient({
 
           // Only reload if we actually got some checks
           if (data.included > 0) {
+            // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
             console.log('[AssessmentClient] Reloading to show first batch...');
             setTimeout(() => window.location.reload(), 500);
           } else {
@@ -397,6 +454,7 @@ export default function AssessmentClient({
 
           if (seedRes.ok) {
             const seedData = await seedRes.json();
+            // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
             console.log('[AssessmentClient] Batch processed:', seedData);
 
             // Refresh checks if we got new ones
@@ -504,8 +562,8 @@ export default function AssessmentClient({
                 return { ...check, screenshots };
               }
               // Update instance within check if it matches
-              if (check.instances?.length > 0) {
-                const updatedInstances = check.instances.map((instance: any) =>
+              if (check.instances?.length && check.instances.length > 0) {
+                const updatedInstances = check.instances.map(instance =>
                   instance.id === activeCheckId ? { ...instance, screenshots } : instance
                 );
                 if (updatedInstances !== check.instances) {
@@ -578,7 +636,7 @@ export default function AssessmentClient({
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-900">
-              {(assessment.projects as any)?.name || 'Compliance Checks'}
+              {assessment.projects?.name || 'Compliance Checks'}
             </h2>
             <div className="flex items-center gap-2">
               <Link
@@ -710,6 +768,7 @@ export default function AssessmentClient({
           {checkMode === 'summary' ? (
             <ViolationsSummary
               checks={checks}
+              rpcViolations={rpcViolations}
               onCheckSelect={handleCheckSelect}
               onViolationSelect={violation => {
                 setSelectedViolation(violation);
@@ -717,7 +776,7 @@ export default function AssessmentClient({
               }}
               buildingInfo={buildingInfo}
               codebooks={codebooks}
-              pdfUrl={assessment.pdf_url}
+              pdfUrl={assessment.pdf_url ?? undefined}
               projectName={assessment.projects?.name}
               assessmentId={assessment.id}
               embedded={true}
@@ -824,8 +883,8 @@ export default function AssessmentClient({
                               return { ...c, ...checkWithOverrides, instances: c.instances };
                             }
                             // Update instance within check if it matches
-                            if (c.instances?.length > 0) {
-                              const updatedInstances = c.instances.map((instance: any) =>
+                            if (c.instances?.length && c.instances.length > 0) {
+                              const updatedInstances = c.instances.map(instance =>
                                 instance.id === checkWithOverrides.id
                                   ? { ...instance, ...checkWithOverrides }
                                   : instance
@@ -848,10 +907,10 @@ export default function AssessmentClient({
                   try {
                     const res = await fetch(`/api/assessments/${assessment.id}/checks`);
                     if (res.ok) {
-                      const updatedChecks = await res.json();
+                      const updatedChecks = (await res.json()) as CheckData[];
                       setChecks(updatedChecks);
                       // Close the detail panel if the active check was deleted
-                      if (!updatedChecks.find((c: any) => c.id === activeCheck?.id)) {
+                      if (!updatedChecks.find(c => c.id === activeCheck?.id)) {
                         setShowDetailPanel(false);
                         setActiveCheckId(null);
                       }

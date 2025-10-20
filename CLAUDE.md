@@ -267,12 +267,6 @@ _Code Sections & Elements_
 - `GET /api/element-groups` - List element groups
 - `GET /api/element-groups/[slug]/sections` - Get sections for element group
 
-_Compliance & Initialization_
-
-- `POST /api/compliance/initialize` - Initialize compliance session
-- `POST /api/compliance/sections` - Get applicable sections
-- `POST /api/compliance/sections-batch` - Batch check sections
-
 _PDF Management_
 
 - `POST /api/pdf/upload` - Upload PDF
@@ -410,73 +404,41 @@ element_groups (1) ──> (many) element_section_mappings ──> (many) sectio
 
 **Important**: Always use the **pooler** connection (IPv4 compatible), not the direct connection.
 
-### Production Database
-
-Connection string for production queries:
-
-```bash
-PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "YOUR_QUERY_HERE"
-```
-
-**Connection Details:**
-
-- **Project**: `grosxzvvmhakkxybeuwu.supabase.co`
-- **Host**: `aws-1-us-east-1.pooler.supabase.com`
-- **Port**: `6543` (pooler port, NOT 5432)
-- **User**: `postgres.grosxzvvmhakkxybeuwu` (project-scoped username)
-- **Database**: `postgres`
-- **Password**: `beiajs3&!!jfSJAB12` (must be URL-encoded: `&` → `%26`, `!` → `%21`)
-- **SSL**: Required (set `PGSSLMODE=require`)
-
 ### Development Database
 
 Connection string for development queries:
 
 ```bash
-PGSSLMODE=require psql "postgresql://postgres:utroligbra%21%21@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -c "YOUR_QUERY_HERE"
+PGSSLMODE=require psql "postgresql://postgres.yfkrmsieuupgggyuqddk:utroligbra%21%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "YOUR_QUERY_HERE"
 ```
 
 **Connection Details:**
 
 - **Project**: `yfkrmsieuupgggyuqddk.supabase.co`
-- **Host**: `aws-0-us-west-1.pooler.supabase.com`
-- **Port**: `6543` (pooler port, NOT 5432)
-- **User**: `postgres` (or `postgres.yfkrmsieuupgggyuqddk`)
+- **Host**: `aws-1-us-east-1.pooler.supabase.com` (IPv4 pooler)
+- **Port**: `5432` (pooler port)
+- **User**: `postgres.yfkrmsieuupgggyuqddk` (project-scoped username)
 - **Database**: `postgres`
 - **Password**: `utroligbra!!` (must be URL-encoded: `!` → `%21`)
 - **SSL**: Required (set `PGSSLMODE=require`)
 
 ### Important Notes
 
-- The direct connection (`db.grosxzvvmhakkxybeuwu.supabase.co:5432`) is IPv6-only and won't work on IPv4 networks
-- Special characters in passwords must be URL-encoded in connection strings
-- Always use port 6543 for pooler connections
-- SSL mode is required for all connections
+- The direct connection (`db.yfkrmsieuupgggyuqddk.supabase.co`) is IPv6-only and times out on IPv4 networks
+- Always use the pooler connection for IPv4 compatibility
+- Special characters in passwords must be URL-encoded in connection strings (`!` → `%21`, `&` → `%26`)
+- Username for pooler connections must be project-scoped: `postgres.yfkrmsieuupgggyuqddk`
+- SSL mode is required (set `PGSSLMODE=require`)
 
 ### Common Query Patterns
 
-**Production:**
-
 ```bash
 # List all tables
-PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "\dt"
+PGSSLMODE=require psql "postgresql://postgres.yfkrmsieuupgggyuqddk:utroligbra%21%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "\dt"
 
 # Describe table schema
-PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "\d table_name"
+PGSSLMODE=require psql "postgresql://postgres.yfkrmsieuupgggyuqddk:utroligbra%21%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "\d table_name"
 
 # Run custom query
-PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "SELECT * FROM projects LIMIT 10"
-```
-
-**Development:**
-
-```bash
-# List all tables
-PGSSLMODE=require psql "postgresql://postgres:utroligbra%21%21@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -c "\dt"
-
-# Describe table schema
-PGSSLMODE=require psql "postgresql://postgres:utroligbra%21%21@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -c "\d table_name"
-
-# Run custom query
-PGSSLMODE=require psql "postgresql://postgres:utroligbra%21%21@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -c "SELECT * FROM projects LIMIT 10"
+PGSSLMODE=require psql "postgresql://postgres.yfkrmsieuupgggyuqddk:utroligbra%21%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "SELECT * FROM projects LIMIT 10"
 ```

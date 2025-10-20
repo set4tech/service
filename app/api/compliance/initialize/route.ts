@@ -28,8 +28,20 @@ export async function POST(request: NextRequest) {
     if (sessionError) throw sessionError;
 
     // Fetch sections from the API endpoint
-    const baseUrl =
-      process.env.NEXT_PUBLIC_API_URL || `http://localhost:${process.env.PORT || 3000}`;
+    // Use the request host to construct the URL - works in all environments
+    const host = request.headers.get('host');
+
+    if (!host) {
+      throw new Error('Missing host header - cannot make internal API call');
+    }
+
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
+    console.log(
+      `[compliance/initialize] Fetching sections from: ${baseUrl}/api/compliance/sections?codeId=${codeId}`
+    );
+
     const sectionsResponse = await fetch(`${baseUrl}/api/compliance/sections?codeId=${codeId}`);
 
     if (!sectionsResponse.ok) {
