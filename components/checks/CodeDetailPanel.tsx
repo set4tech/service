@@ -1091,6 +1091,66 @@ export function CodeDetailPanel({
                 <TableRenderer tables={section.tables} />
               </div>
             )}
+
+            {/* Referenced Sections */}
+            {section.references && section.references.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Referenced Sections ({section.references.length})
+                </div>
+                <div className="space-y-4">
+                  {section.references.map((ref, idx) => (
+                    <div
+                      key={ref.key || idx}
+                      className="bg-blue-50 border-l-4 border-blue-500 rounded p-4"
+                    >
+                      <div className="mb-3">
+                        <div className="font-mono text-sm font-bold text-blue-900">
+                          {ref.number}
+                        </div>
+                        <div className="text-sm font-medium text-gray-900 mt-1">{ref.title}</div>
+                      </div>
+
+                      {/* Referenced Section Text/Summary */}
+                      {ref.text && (
+                        <div className="mb-3">
+                          <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+                            Section Summary
+                          </div>
+                          <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-white p-2 rounded border border-blue-200">
+                            {ref.text}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Referenced Section Requirements/Paragraphs */}
+                      {ref.requirements && ref.requirements.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                            Explanation
+                          </div>
+                          <div className="space-y-2">
+                            {ref.requirements.map((req, reqIdx) => {
+                              const text = typeof req === 'string' ? req : req.text || '';
+                              return (
+                                <div key={reqIdx} className="text-sm text-gray-800 leading-relaxed">
+                                  <div className="text-xs text-gray-500 font-mono mb-1">
+                                    Paragraph {reqIdx + 1}
+                                  </div>
+                                  <div className="pl-3 border-l-2 border-blue-300 bg-white p-2 rounded">
+                                    {text}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
