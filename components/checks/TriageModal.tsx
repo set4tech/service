@@ -46,10 +46,10 @@ export function TriageModal({ sections, onClose, onSave }: TriageModalProps) {
         }
 
         // Fetch section data from database
-        const response = await fetch('/api/compliance/sections-batch', {
+        const response = await fetch('/api/sections/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sectionKeys }),
+          body: JSON.stringify({ keys: sectionKeys }),
         });
 
         if (!response.ok) {

@@ -27,7 +27,7 @@ describe('useCheckData hook behavior', () => {
       setupFetchMock({
         '/api/checks/check-1': { check: mainCheck },
         '/api/checks?assessment_id': siblings,
-        '/api/compliance/sections': createMockCodeSection(),
+        '/api/code-sections/': createMockCodeSection(), // Updated endpoint
         '/api/checks/check-1/analysis-runs': { runs: [] },
         '/api/checks/check-1/assessment-progress': { inProgress: false },
       });
@@ -68,7 +68,7 @@ describe('useCheckData hook behavior', () => {
 
       setupFetchMock({
         '/api/checks/test-check-id': { check: standaloneCheck },
-        '/api/compliance/sections': createMockCodeSection(),
+        '/api/code-sections/': createMockCodeSection(), // Updated endpoint
         '/api/checks/test-check-id/analysis-runs': { runs: [] },
         '/api/checks/test-check-id/assessment-progress': { inProgress: false },
       });

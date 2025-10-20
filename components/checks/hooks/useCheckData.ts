@@ -96,11 +96,7 @@ export function useCheckData(checkId: string | null, sectionKey: string | null) 
       setLoading(true);
       setError(null);
 
-      fetch('/api/compliance/sections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sectionKey: activeChild.code_section_key }),
-      })
+      fetch(`/api/code-sections/${activeChild.code_section_key}`)
         .then(res => res.json())
         .then(data => {
           if (data.error) {
@@ -140,19 +136,15 @@ export function useCheckData(checkId: string | null, sectionKey: string | null) 
       return;
     }
 
-    // Load all sections in parallel
-    Promise.all(
-      sectionKeys.map(key =>
-        fetch('/api/compliance/sections', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sectionKey: key }),
-        }).then(res => res.json())
-      )
-    )
-      .then(results => {
-        const loadedSections = results.filter(data => !data.error);
-        setSections(loadedSections);
+    // Load all sections using batch endpoint
+    fetch('/api/sections/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: sectionKeys }),
+    })
+      .then(res => res.json())
+      .then(sections => {
+        setSections(sections || []);
         setActiveSectionIndex(0);
         setLoading(false);
       })

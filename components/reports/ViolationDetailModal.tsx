@@ -75,11 +75,7 @@ export function ViolationDetailModal({
       setSectionLoading(true);
       setSectionError(null);
       try {
-        const res = await fetch('/api/compliance/sections', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sectionKey: violation.codeSectionKey }),
-        });
+        const res = await fetch(`/api/code-sections/${violation.codeSectionKey}`);
 
         if (res.ok) {
           const data = await res.json();
