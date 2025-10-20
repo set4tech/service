@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { normalizeVariables } from '@/lib/variables';
 import AssessmentClient from './ui/AssessmentClient';
+import { headers } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -40,10 +41,19 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const typedAssessment = assessment as unknown as AssessmentWithProject;
 
   // Get ALL checks for the assessment (for CheckList component)
-  const checksResponse = await fetch(
-    `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/assessments/${id}/checks`,
-    { cache: 'no-store' }
-  );
+  const headersList = await headers();
+  const host = headersList.get('host');
+
+  if (!host) {
+    throw new Error('Missing host header - cannot fetch checks');
+  }
+
+  const protocol = host.includes('localhost') ? 'http' : 'https';
+  const baseUrl = `${protocol}://${host}`;
+
+  const checksResponse = await fetch(`${baseUrl}/api/assessments/${id}/checks`, {
+    cache: 'no-store',
+  });
   const checks = checksResponse.ok ? await checksResponse.json() : [];
 
   // Get violations using RPC (already filtered - for ViolationsSummary component)

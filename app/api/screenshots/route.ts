@@ -167,15 +167,25 @@ export async function POST(req: NextRequest) {
   if (process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY) {
     // Use the request host to construct the URL - works in all environments
     const host = req.headers.get('host');
-    const protocol = host?.includes('localhost') ? 'http' : 'https';
+
+    if (!host) {
+      console.error('[screenshots] Missing host header, cannot trigger OCR extraction');
+      return NextResponse.json({ screenshot });
+    }
+
+    const protocol = host.includes('localhost') ? 'http' : 'https';
     const baseUrl = `${protocol}://${host}`;
+
+    console.log(
+      `[screenshots] Triggering OCR extraction at: ${baseUrl}/api/screenshots/${screenshot.id}/extract-text`
+    );
 
     // Fire and forget - don't await
     fetch(`${baseUrl}/api/screenshots/${screenshot.id}/extract-text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-    }).catch(() => {
-      // Silently ignore OCR trigger failures
+    }).catch(err => {
+      console.error('[screenshots] OCR trigger failed:', err);
     });
   }
 
