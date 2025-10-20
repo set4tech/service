@@ -165,14 +165,16 @@ export async function POST(req: NextRequest) {
   // 3. Trigger background OCR extraction (non-blocking)
   // Only run if we have API keys configured
   if (process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY) {
+    // Use the request host to construct the URL - works in all environments
+    const host = req.headers.get('host');
+    const protocol = host?.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
     // Fire and forget - don't await
-    fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/screenshots/${screenshot.id}/extract-text`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }
-    ).catch(() => {
+    fetch(`${baseUrl}/api/screenshots/${screenshot.id}/extract-text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => {
       // Silently ignore OCR trigger failures
     });
   }
