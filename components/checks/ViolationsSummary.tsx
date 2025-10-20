@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ViolationListSidebar } from '@/components/reports/ViolationListSidebar';
 import { ViolationMarker } from '@/lib/reports/get-violations';
-import { processChecksToViolations } from '@/lib/reports/process-violations';
+import { processRpcRowsToViolations } from '@/lib/reports/process-violations';
 
 // Dynamically load PDF viewer (client-side only)
 const PDFViewer = dynamic(
@@ -35,6 +35,7 @@ interface Codebook {
 
 interface Props {
   checks: any[];
+  rpcViolations?: any[]; // Pre-filtered violation data from RPC
   onCheckSelect: (checkId: string, sectionKey?: string) => void;
   onViolationSelect?: (violation: ViolationMarker | null) => void; // Notify parent of selected violation
   buildingInfo: BuildingInfo;
@@ -47,6 +48,7 @@ interface Props {
 
 export function ViolationsSummary({
   checks,
+  rpcViolations,
   onCheckSelect,
   onViolationSelect,
   buildingInfo: _buildingInfo,
@@ -111,8 +113,13 @@ export function ViolationsSummary({
 
   // Transform checks to violations using shared logic
   const violations = useMemo(() => {
+    // If we have pre-filtered RPC data, use it directly
+    if (rpcViolations && rpcViolations.length > 0) {
+      return processRpcRowsToViolations(rpcViolations);
+    }
+
+    // Otherwise, filter checks and process them
     // Build list of all checks to process
-    // Include all checks (both element and section) plus any cloned instances
     const allChecks: any[] = [];
     checks.forEach(check => {
       // For element instances (top-level items with instances array), add each section check
@@ -124,9 +131,40 @@ export function ViolationsSummary({
       }
     });
 
-    // Use shared violation processing logic
-    return processChecksToViolations(allChecks);
-  }, [checks]);
+    // Filter to only violations (like the RPC does)
+    const violationChecks = allChecks.filter(check => {
+      const effectiveStatus = check.manual_status || check.latest_status;
+      return (
+        effectiveStatus === 'non_compliant' ||
+        effectiveStatus === 'insufficient_information' ||
+        effectiveStatus === 'needs_more_info'
+      );
+    });
+
+    // Map API format to RPC format that processRpcRowsToViolations expects
+    const rpcFormattedChecks = violationChecks.map(check => ({
+      check_id: check.id,
+      check_name: check.check_name,
+      code_section_key: check.code_section_key,
+      code_section_number: check.code_section_number,
+      code_section_title: check.code_section_title,
+      manual_status: check.manual_status,
+      effective_status: check.manual_status || check.latest_status,
+      is_excluded: check.is_excluded,
+      human_readable_title: check.human_readable_title,
+      check_type: check.check_type,
+      instance_label: check.instance_label,
+      element_group_name: check.element_group_name,
+      compliance_status: check.latest_status,
+      ai_reasoning: check.latest_reasoning,
+      confidence: check.latest_confidence,
+      violations: check.latest_analysis?.violations,
+      recommendations: check.latest_analysis?.recommendations,
+      screenshots: check.screenshots,
+    }));
+
+    return processRpcRowsToViolations(rpcFormattedChecks);
+  }, [checks, rpcViolations]);
 
   const handleViolationClick = (violation: ViolationMarker) => {
     console.log('[ViolationsSummary] handleViolationClick:', violation);

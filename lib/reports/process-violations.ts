@@ -47,164 +47,87 @@ export interface CheckWithAnalysis {
       zoom_level?: number;
     };
   }>;
-  element_groups?: {
-    name: string;
-  } | Array<{ name: string }>;
+  element_groups?:
+    | {
+        name: string;
+      }
+    | Array<{ name: string }>;
 }
 
-/**
- * Shared logic to process checks into violations for both customer report and summary view
- */
-export function processChecksToViolations(checks: CheckWithAnalysis[]): ViolationMarker[] {
+export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
+  /* Get the list of violations from the RPC to show in the summary panels.
+  This is only the highl evel stats, dont care about the details. */
   const violations: ViolationMarker[] = [];
 
-  for (const check of checks) {
-    // Skip excluded checks
-    if (check.is_excluded) {
-      continue;
-    }
-
-    // Effective status: manual_status overrides AI analysis
-    const effectiveStatus =
-      check.manual_status ||
-      check.latest_status ||
-      check.latest_analysis_runs?.compliance_status;
-
-    // Only include if non-compliant or needs more info
-    if (
-      effectiveStatus !== 'non_compliant' &&
-      effectiveStatus !== 'needs_more_info' &&
-      effectiveStatus !== 'insufficient_information' &&
-      effectiveStatus !== 'violation'
-    ) {
-      continue;
-    }
-
-    // Extract element group name from nested object
-    const elementGroupName = Array.isArray(check.element_groups)
-      ? check.element_groups[0]?.name
-      : check.element_groups?.name || check.element_group_name || undefined;
-
-    // Get screenshots and sort by page number
-    const screenshots = (check.screenshots || []).sort(
-      (a, b) => a.page_number - b.page_number
-    );
-
-    // Parse violations from AI response
+  for (const check of rows) {
     const violationDetails: Array<{
       description: string;
-      severity: 'minor' | 'moderate' | 'major';
+      severity: 'minor' | 'moderate' | 'major' | 'needs_more_info';
     }> = [];
+
+    if (check.violations && Array.isArray(check.violations)) {
+      violationDetails.push(...check.violations);
+    }
     let recommendations: string[] = [];
-    let reasoning = '';
-    let confidence = '';
+    if (check.recommendations && Array.isArray(check.recommendations)) {
+      recommendations.push(...check.recommendations);
+    }
+    recommendations = Array.from(new Set(recommendations));
+    const screenshots = check.screenshots || [];
+    const sortedScreenshots = screenshots.sort((a: any, b: any) => a.page_number - b.page_number);
 
-    // Try to get from latest_analysis_runs first (database format)
-    const latestAnalysis = check.latest_analysis_runs;
-    if (latestAnalysis) {
-      if (latestAnalysis.ai_reasoning) {
-        reasoning = latestAnalysis.ai_reasoning;
-      }
-      if (latestAnalysis.confidence) {
-        confidence = latestAnalysis.confidence;
-      }
-      if (latestAnalysis.violations && Array.isArray(latestAnalysis.violations)) {
-        violationDetails.push(...latestAnalysis.violations);
-      }
-      if (latestAnalysis.recommendations && Array.isArray(latestAnalysis.recommendations)) {
-        recommendations.push(...latestAnalysis.recommendations);
-      }
+    // Calculate severity before if/else so it's available in both branches
+    const violationDetail = violationDetails[0];
 
-      // Fallback: try parsing from raw_ai_response if violations column is empty
-      if (violationDetails.length === 0 && latestAnalysis.raw_ai_response) {
-        try {
-          let aiResponse: any = latestAnalysis.raw_ai_response;
+    // Determine severity from violation details or status
+    let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
 
-          if (typeof aiResponse === 'string') {
-            // Strip markdown code fences if present
-            let cleaned = aiResponse.trim();
-            if (cleaned.startsWith('```json')) {
-              cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-            } else if (cleaned.startsWith('```')) {
-              cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
-            }
-            aiResponse = JSON.parse(cleaned);
-          }
-
-          if (aiResponse?.violations && Array.isArray(aiResponse.violations)) {
-            violationDetails.push(...aiResponse.violations);
-          }
-          if (aiResponse?.recommendations && Array.isArray(aiResponse.recommendations)) {
-            recommendations.push(...aiResponse.recommendations);
-          }
-        } catch (err) {
-          console.error('[processChecksToViolations] Failed to parse AI response:', err);
-        }
-      }
-    } else if (check.latest_analysis) {
-      // Try to get from latest_analysis (client-side format)
-      try {
-        const analysis =
-          typeof check.latest_analysis === 'string'
-            ? JSON.parse(check.latest_analysis)
-            : check.latest_analysis;
-
-        if (analysis.violations && Array.isArray(analysis.violations)) {
-          violationDetails.push(...analysis.violations);
-        }
-        if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
-          recommendations.push(...analysis.recommendations);
-        }
-        reasoning = reasoning || check.latest_reasoning || '';
-        confidence = confidence || check.latest_confidence || '';
-      } catch (err) {
-        console.error('[processChecksToViolations] Failed to parse analysis:', err);
-      }
+    // First priority: Check if effective_status indicates needs_more_info
+    if (
+      check.effective_status === 'needs_more_info' ||
+      check.effective_status === 'insufficient_information'
+    ) {
+      severity = 'needs_more_info';
+    }
+    // Second priority: Use severity from violation details if available
+    else if (violationDetail?.severity) {
+      severity = violationDetail.severity;
+    }
+    // Log when severity is not found to help debug
+    else if (violationDetails.length > 0) {
+      console.warn(
+        `[processRpcRowsToViolations] Check ${check.check_id} has violations but no severity field:`,
+        JSON.stringify(violationDetails[0]).substring(0, 100)
+      );
     }
 
-    // Deduplicate recommendations
-    recommendations = Array.from(new Set(recommendations));
-
-    // Create ONE violation marker per check (but include ALL screenshots)
-    if (screenshots.length > 0) {
-      // Use first screenshot as primary
-      const screenshot = screenshots[0];
-      const violationDetail = violationDetails[0];
-
-      // Determine severity - use needs_more_info if that's the status, otherwise use violation detail or default to moderate
-      let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-      if (effectiveStatus === 'needs_more_info' || effectiveStatus === 'insufficient_information') {
-        severity = 'needs_more_info';
-      } else if (violationDetail?.severity) {
-        severity = violationDetail.severity;
-      }
-
+    if (sortedScreenshots.length > 0) {
+      const screenshot = sortedScreenshots[0];
       const description =
         violationDetail?.description ||
         (severity === 'needs_more_info'
           ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
           : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
 
-      // Map all screenshots to ViolationScreenshot format
-      const allScreenshots: ViolationScreenshot[] = screenshots
-        .filter(s => s.crop_coordinates && s.page_number)
-        .map(s => ({
+      const allScreenshots: ViolationScreenshot[] = sortedScreenshots
+        .filter((s: any) => s.crop_coordinates && s.page_number)
+        .map((s: any) => ({
           id: s.id,
           url: s.screenshot_url,
           thumbnailUrl: s.thumbnail_url,
           pageNumber: s.page_number,
           bounds: {
-            x: s.crop_coordinates!.x,
-            y: s.crop_coordinates!.y,
-            width: s.crop_coordinates!.width,
-            height: s.crop_coordinates!.height,
-            zoom_level: s.crop_coordinates!.zoom_level || 1,
+            x: s.crop_coordinates.x,
+            y: s.crop_coordinates.y,
+            width: s.crop_coordinates.width,
+            height: s.crop_coordinates.height,
+            zoom_level: s.crop_coordinates.zoom_level || 1,
           },
         }));
 
       if (screenshot.crop_coordinates && screenshot.page_number && allScreenshots.length > 0) {
         violations.push({
-          checkId: check.id,
+          checkId: check.check_id,
           checkName: check.check_name || check.code_section_title || '',
           codeSectionKey: check.code_section_key || '',
           codeSectionNumber: check.code_section_number || check.code_section_key || '',
@@ -220,53 +143,41 @@ export function processChecksToViolations(checks: CheckWithAnalysis[]): Violatio
           description,
           screenshotUrl: screenshot.screenshot_url,
           thumbnailUrl: screenshot.thumbnail_url,
-          screenshotId: screenshot.id,
+          screenshotId: screenshot.id || `${check.check_id}-primary`,
           allScreenshots,
-          reasoning,
+          reasoning: check.ai_reasoning || '',
           recommendations,
-          confidence,
+          confidence: check.confidence?.toString() || '',
           humanReadableTitle: check.human_readable_title,
           checkType: check.check_type as 'section' | 'element' | undefined,
-          elementGroupName,
+          elementGroupName: check.element_group_name,
           instanceLabel: check.instance_label,
+          sourceUrl: check.source_url || check.parent_source_url || '',
+          sourceLabel: check.section_number ? `CBC ${check.section_number}` : '',
         });
       }
     } else {
-      // No screenshots - create a generic marker
-      const violationDetail = violationDetails[0];
-
-      let severity: 'minor' | 'moderate' | 'major' | 'needs_more_info' = 'moderate';
-      if (effectiveStatus === 'needs_more_info' || effectiveStatus === 'insufficient_information') {
-        severity = 'needs_more_info';
-      } else if (violationDetail?.severity) {
-        severity = violationDetail.severity;
-      }
-
-      const description =
-        violationDetail?.description ||
-        (severity === 'needs_more_info'
-          ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
-          : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
-
+      // No screenshots - create violation without screenshot data
+      // Use 'no-screenshot' as screenshotId to ensure unique keys
       violations.push({
-        checkId: check.id,
+        checkId: check.check_id,
         checkName: check.check_name || check.code_section_title || '',
         codeSectionKey: check.code_section_key || '',
         codeSectionNumber: check.code_section_number || check.code_section_key || '',
         pageNumber: 1,
         bounds: { x: 0, y: 0, width: 0, height: 0, zoom_level: 1 },
         severity,
-        description,
+        description: `Non-compliant with ${check.code_section_number || check.code_section_key}`,
         screenshotUrl: '',
         thumbnailUrl: '',
-        screenshotId: '',
+        screenshotId: 'no-screenshot',
         allScreenshots: [],
-        reasoning,
+        reasoning: check.ai_reasoning || '',
         recommendations,
-        confidence,
+        confidence: check.confidence?.toString() || '',
         humanReadableTitle: check.human_readable_title,
         checkType: check.check_type as 'section' | 'element' | undefined,
-        elementGroupName,
+        elementGroupName: check.element_group_name,
         instanceLabel: check.instance_label,
       });
     }
@@ -274,3 +185,6 @@ export function processChecksToViolations(checks: CheckWithAnalysis[]): Violatio
 
   return violations;
 }
+
+// Export alias for ViolationsSummary component which works with checks data
+export const processChecksToViolations = processRpcRowsToViolations;

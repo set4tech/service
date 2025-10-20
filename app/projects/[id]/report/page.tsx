@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function ProjectReportPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const { id: assessmentId } = await params;
 
   // Skip all auth checks in development
   const isLocalDev = process.env.VERCEL_ENV !== 'production';
@@ -17,18 +17,19 @@ export default async function ProjectReportPage({ params }: { params: Promise<{ 
   if (!isLocalDev) {
     // In production, check if user is a Vercel team member
     const cookieStore = await cookies();
-    const isVercelTeamMember = cookieStore.get('_vercel_jwt') || cookieStore.get('_vercel_no_index');
+    const isVercelTeamMember =
+      cookieStore.get('_vercel_jwt') || cookieStore.get('_vercel_no_index');
 
     // If not a team member, check for password authentication
     if (!isVercelTeamMember) {
-      const isAuthenticated = await isAuthenticatedForReport(id);
+      const isAuthenticated = await isAuthenticatedForReport(assessmentId);
       if (!isAuthenticated) {
-        redirect(`/projects/${id}/report/login`);
+        redirect(`/assessments/${assessmentId}/report/login`);
       }
     }
   }
 
-  const data = await getProjectViolations(id);
+  const data = await getProjectViolations(assessmentId);
 
   if (!data) {
     return (
