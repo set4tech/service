@@ -101,7 +101,6 @@ SELECT
   ar.raw_ai_response,
   ar.violations,
   ar.recommendations,
-  -- Select the aggregated screenshot array
   cs.screenshots,
   sec.source_url,
   sec.number,
