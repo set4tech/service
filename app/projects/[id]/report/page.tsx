@@ -24,7 +24,7 @@ export default async function ProjectReportPage({ params }: { params: Promise<{ 
     if (!isVercelTeamMember) {
       const isAuthenticated = await isAuthenticatedForReport(assessmentId);
       if (!isAuthenticated) {
-        redirect(`/assessments/${assessmentId}/report/login`);
+        redirect(`/projects/${assessmentId}/report/login`);
       }
     }
   }
