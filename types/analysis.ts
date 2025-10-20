@@ -49,6 +49,7 @@ export interface CodeSection {
     number: string;
     title: string;
     text?: string;
+    requirements?: Array<string | { text: string; [key: string]: any }>;
   }>;
   parent_key?: string;
   parent_section?: {

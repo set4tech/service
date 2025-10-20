@@ -80,13 +80,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       // Fetch latest analysis runs and screenshots for all checks
       const checkIds = filteredChecksData.map((c: any) => c.id);
-      const [{ data: latestAnalysis }, { data: allScreenshots }] = await Promise.all([
+      const [{ data: allAnalysisRuns }, { data: allScreenshots }] = await Promise.all([
         supabase
-          .from('latest_analysis_runs')
+          .from('analysis_runs')
           .select(
-            'check_id, compliance_status, confidence, ai_reasoning, violations, recommendations'
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
           )
-          .in('check_id', checkIds),
+          .in('check_id', checkIds)
+          .order('run_number', { ascending: false }),
         supabase
           .from('screenshot_check_assignments')
           .select(
@@ -100,8 +101,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           .order('screenshots(created_at)', { ascending: true }),
       ]);
 
-      // Create analysis map
-      const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
+      // Create analysis map - get latest run per check (highest run_number)
+      const analysisMap = new Map();
+      (allAnalysisRuns || []).forEach((run: any) => {
+        if (!analysisMap.has(run.check_id)) {
+          analysisMap.set(run.check_id, run);
+        }
+      });
 
       // Create screenshots map
       const screenshotsMap = new Map<string, any[]>();
@@ -277,13 +283,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
 
     // Fetch latest analysis runs for all checks (reusing checkIds from above)
-    const { data: latestAnalysis } = await supabase
-      .from('latest_analysis_runs')
-      .select('check_id, compliance_status, confidence, ai_reasoning, violations, recommendations')
-      .in('check_id', checkIds);
+    const { data: allAnalysisRuns } = await supabase
+      .from('analysis_runs')
+      .select(
+        'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
+      )
+      .in('check_id', checkIds)
+      .order('run_number', { ascending: false });
 
-    // Create analysis map
-    const analysisMap = new Map((latestAnalysis || []).map(a => [a.check_id, a]));
+    // Create analysis map - get latest run per check (highest run_number)
+    const analysisMap = new Map();
+    (allAnalysisRuns || []).forEach((run: any) => {
+      if (!analysisMap.has(run.check_id)) {
+        analysisMap.set(run.check_id, run);
+      }
+    });
 
     // Create screenshots map
     const screenshotsMap = new Map<string, any[]>();

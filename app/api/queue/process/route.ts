@@ -92,11 +92,47 @@ export async function GET() {
         const sectionKeys = checks.map(c => c.code_section_key);
         const { data: sections } = await supabase
           .from('sections')
-          .select('key, number, title, paragraphs')
+          .select('key, number, title, text, paragraphs')
           .in('key', sectionKeys)
           .eq('never_relevant', false);
 
         const sectionMap = new Map(sections?.map(s => [s.key, s]) || []);
+
+        // Fetch all references for these sections
+        console.log(`[Queue] Fetching references for ${sectionKeys.length} sections`);
+        const { data: references } = await supabase
+          .from('section_references')
+          .select('source_section_key, target_section_key')
+          .in('source_section_key', sectionKeys);
+
+        // Get all unique referenced section keys
+        const referencedKeys = Array.from(
+          new Set(references?.map(r => r.target_section_key) || [])
+        );
+        console.log(`[Queue] Found ${referencedKeys.length} unique referenced sections`);
+
+        // Fetch the actual referenced section content
+        let referencedSections: any[] = [];
+        if (referencedKeys.length > 0) {
+          const { data: refSections } = await supabase
+            .from('sections')
+            .select('key, number, title, text, paragraphs')
+            .in('key', referencedKeys)
+            .eq('never_relevant', false);
+          referencedSections = refSections || [];
+        }
+
+        // Build maps for easy lookup
+        const referencedSectionMap = new Map(referencedSections.map(s => [s.key, s]));
+        const referencesMap = new Map<string, string[]>();
+
+        // Group references by source section
+        references?.forEach(ref => {
+          if (!referencesMap.has(ref.source_section_key)) {
+            referencesMap.set(ref.source_section_key, []);
+          }
+          referencesMap.get(ref.source_section_key)!.push(ref.target_section_key);
+        });
 
         // Get run counts for all checks in parallel
         const runCountPromises = checks.map(c =>
@@ -118,12 +154,37 @@ export async function GET() {
           let codeSection: any;
           if (section) {
             const paragraphs = section.paragraphs || [];
-            const text = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
+            const paragraphsText = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
+
+            // Get referenced sections for this section
+            const refKeys = referencesMap.get(section.key) || [];
+            const references = refKeys
+              .map(refKey => {
+                const refSection = referencedSectionMap.get(refKey);
+                if (refSection) {
+                  const refParagraphs = refSection.paragraphs || [];
+                  const refParagraphsText = Array.isArray(refParagraphs)
+                    ? refParagraphs.join('\n\n')
+                    : '';
+                  return {
+                    key: refSection.key,
+                    number: refSection.number,
+                    title: refSection.title,
+                    text: refSection.text || '',
+                    paragraphs: refParagraphsText,
+                  };
+                }
+                return null;
+              })
+              .filter(r => r !== null);
+
             codeSection = {
               key: section.key,
               number: section.number || '',
               title: section.title || '',
-              text,
+              text: section.text || '',
+              paragraphs: paragraphsText,
+              references,
             };
           } else {
             codeSection = {
@@ -131,6 +192,8 @@ export async function GET() {
               number: check.code_section_number || '',
               title: check.code_section_title || '',
               text: 'Section text not available',
+              paragraphs: '',
+              references: [],
             };
           }
 
@@ -219,9 +282,38 @@ export async function GET() {
           continue;
         }
 
-        // Build prompt
+        // Build prompt with main sections and their references
         const sectionsText = batch
-          .map((s: any) => `## Section ${s.number} - ${s.title}\n\n${s.text}`)
+          .map((s: any) => {
+            let text = `## Section ${s.number} - ${s.title}\n\n`;
+
+            // Add section summary if available
+            if (s.text) {
+              text += `### Section Summary\n${s.text}\n\n`;
+            }
+
+            // Add section paragraphs/requirements
+            if (s.paragraphs) {
+              text += `### Requirements\n${s.paragraphs}\n\n`;
+            }
+
+            // Add referenced sections if any
+            if (s.references && s.references.length > 0) {
+              text += `### Referenced Code Sections (must be satisfied for compliance):\n\n`;
+
+              s.references.forEach((ref: any) => {
+                text += `#### ${ref.number} - ${ref.title}\n`;
+                if (ref.text) {
+                  text += `${ref.text}\n\n`;
+                }
+                if (ref.paragraphs) {
+                  text += `${ref.paragraphs}\n\n`;
+                }
+              });
+            }
+
+            return text.trim();
+          })
           .join('\n\n---\n\n');
 
         let prompt = customPrompt;
@@ -264,10 +356,12 @@ For each section, determine:
 3. **reasoning**: Brief (1-2 sentences) explanation specific to THIS section
 
 Guidelines:
+- **IMPORTANT**: When a section includes "Referenced Code Sections", you MUST assess compliance with BOTH the main section AND all referenced sections. A section is only compliant if ALL requirements (including referenced sections) are met.
+- Referenced sections provide critical details (e.g., mounting heights, clearances, force requirements) that are required for compliance.
 - Use "not_applicable" generously for items not typically shown on architectural floor plans (signage, finish schedules, detailed mounting heights, etc.)
 - Use "needs_more_info" ONLY when information SHOULD be present but is missing
 - Be specific and concise in your reasoning
-- If you find violations, note them clearly with severity
+- If you find violations, note them clearly with severity and specify whether the violation is in the main section or a referenced section
 
 Return your response as a JSON object with this exact structure:
 {

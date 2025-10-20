@@ -120,10 +120,12 @@ LEFT JOIN sections sec ON sec.key = c.code_section_key
 LEFT JOIN sections parent_sec ON parent_sec.key = sec.parent_key
 LEFT JOIN codes code ON code.id = sec.code_id
 
-WHERE a.id = assessment_uuid
+WHERE a.id = '1c26cec6-080d-4725-8d09-c13feb518c47'
   AND c.is_excluded IS false
-  AND ((manual_status IN ('non_compliant', 'insufficient_information'))
-       OR compliance_status IN ('non_compliant', 'needs_more_info'))
+  AND manual_status not in  ('not_applicable', 'compliant')
+  AND ((manual_status IN ('non_compliant', 'insufficient_information')
+       OR compliance_status IN ('non_compliant', 'needs_more_info')))
 
 ORDER BY ar.check_id
+  
 $$ LANGUAGE sql STABLE;

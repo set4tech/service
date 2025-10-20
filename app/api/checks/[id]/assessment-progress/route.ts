@@ -79,23 +79,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const totalBatches = latestRun.total_batches || 0;
     const completedBatches = runs?.length || 0;
-    const inProgress = completedBatches < totalBatches;
-
-    // RACE CONDITION FIX: If this batch is complete BUT check status is still 'processing',
-    // it means a NEW batch was just queued but hasn't executed yet.
-    // In this case, we're waiting for the new batch to start.
-    if (!inProgress && check.status === 'processing') {
-      console.log(
-        `[Progress] Check ${checkId}: Previous batch complete but status=processing. New batch queued, not executed yet.`
-      );
-      return NextResponse.json({
-        inProgress: true,
-        completed: 0,
-        total: checkIds.length, // Assume assessing all siblings
-        batchGroupId: null,
-        runs: [],
-      });
-    }
+    // If check status is 'completed', don't show as in progress even if batches incomplete
+    // This handles cases where batch jobs failed/stopped but we have some analysis results
+    const inProgress = check.status !== 'completed' && completedBatches < totalBatches;
 
     console.log(
       `[Progress] Check ${checkId}: ${completedBatches}/${totalBatches} batches, inProgress=${inProgress}, elementGrouped=${isElementGrouped}`

@@ -30,17 +30,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const refKeys = references.map(r => r.target_section_key);
       const { data: refSections } = await supabase
         .from('sections')
-        .select('key, number, title, paragraphs')
+        .select('key, number, title, text, paragraphs')
         .in('key', refKeys);
 
       if (refSections) {
         for (const refSection of refSections) {
-          const paragraphs = refSection.paragraphs || [];
-          const fullText = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
           referencedSections.push({
-            section: refSection,
-            paragraphs,
-            fullText,
+            key: refSection.key,
+            number: refSection.number,
+            title: refSection.title,
+            text: refSection.text,
+            requirements: refSection.paragraphs,
           });
         }
       }
