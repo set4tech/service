@@ -48,8 +48,16 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     throw new Error('Missing host header - cannot fetch checks');
   }
 
-  const protocol = host.includes('localhost') ? 'http' : 'https';
+  // More robust protocol detection for local development
+  const isLocal =
+    host.includes('localhost') ||
+    host.includes('127.0.0.1') ||
+    host.includes('[::1]') || // IPv6 loopback
+    host.startsWith('192.168.');
+  const protocol = isLocal ? 'http' : 'https';
   const baseUrl = `${protocol}://${host}`;
+
+  console.log(`[DEBUG] Fetching checks from: ${baseUrl}/api/assessments/${id}/checks`);
 
   const checksResponse = await fetch(`${baseUrl}/api/assessments/${id}/checks`, {
     cache: 'no-store',

@@ -35,7 +35,13 @@ export async function POST(request: NextRequest) {
       throw new Error('Missing host header - cannot make internal API call');
     }
 
-    const protocol = host.includes('localhost') ? 'http' : 'https';
+    // More robust protocol detection for local development
+    const isLocal =
+      host.includes('localhost') ||
+      host.includes('127.0.0.1') ||
+      host.includes('[::1]') || // IPv6 loopback
+      host.startsWith('192.168.');
+    const protocol = isLocal ? 'http' : 'https';
     const baseUrl = `${protocol}://${host}`;
 
     console.log(
