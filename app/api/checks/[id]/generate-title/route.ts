@@ -25,11 +25,7 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
         code_section_number,
         code_section_title,
         check_name,
-        element_group_id,
-        latest_analysis_runs(
-          compliance_status,
-          ai_reasoning
-        )
+        element_group_id
       `
       )
       .eq('id', checkId)
@@ -39,6 +35,15 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
       console.error('[generate-title] Failed to fetch check:', checkError);
       return NextResponse.json({ error: 'Check not found' }, { status: 404 });
     }
+
+    // Get latest analysis run
+    const { data: latestAnalysis } = await supabase
+      .from('analysis_runs')
+      .select('compliance_status, ai_reasoning')
+      .eq('check_id', checkId)
+      .order('run_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     // Get element group name if applicable
     let elementType: string | undefined;
@@ -63,11 +68,6 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
 
       sectionText = section?.text;
     }
-
-    // Extract AI reasoning from latest analysis
-    const latestAnalysis = Array.isArray(check.latest_analysis_runs)
-      ? check.latest_analysis_runs[0]
-      : check.latest_analysis_runs;
 
     const aiReasoning = latestAnalysis?.ai_reasoning;
 
