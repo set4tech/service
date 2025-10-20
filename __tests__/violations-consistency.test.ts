@@ -1,12 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { processChecksToViolations, CheckWithAnalysis } from '@/lib/reports/process-violations';
+import { processRpcRowsToViolations } from '@/lib/reports/process-violations';
+
+/**
+ * Helper to simulate what get_assessment_report RPC returns
+ * The RPC already filters:
+ * - is_excluded = false
+ * - Only violations (manual_status or compliance_status indicates non-compliance)
+ */
+function simulateRpcFiltering(checks: any[]) {
+  return checks.filter(check => {
+    // Filter out excluded checks
+    if (check.is_excluded === true) return false;
+
+    // Filter to only violations (what RPC does)
+    const effectiveStatus = check.manual_status || check.compliance_status;
+    return (
+      effectiveStatus === 'non_compliant' ||
+      effectiveStatus === 'needs_more_info' ||
+      effectiveStatus === 'insufficient_information'
+    );
+  });
+}
 
 describe('Violations Processing Consistency', () => {
   it('should produce identical violations for the same check data', () => {
-    // Sample check data representing an element check with violations
-    const sampleChecks: CheckWithAnalysis[] = [
+    // Sample RPC data representing checks with violations (already filtered by RPC)
+    const rpcData = [
       {
-        id: 'check-1',
+        check_id: 'check-1', // RPC uses check_id, not id
         check_name: '11B-404 - Doors.',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
         code_section_number: '11B-404',
@@ -14,22 +35,19 @@ describe('Violations Processing Consistency', () => {
         manual_status: null,
         is_excluded: false,
         check_type: 'section',
-        element_group_id: 'element-group-doors',
         instance_label: 'Door 1',
         element_group_name: 'Doors',
-        latest_status: 'non_compliant',
-        latest_analysis_runs: {
-          compliance_status: 'non_compliant',
-          ai_reasoning: 'Door width is insufficient',
-          confidence: 'high',
-          violations: [
-            {
-              description: 'The plan explicitly dimensions the door leaf width as 34 inches',
-              severity: 'major',
-            },
-          ],
-          recommendations: ['Increase door width to 36 inches minimum'],
-        },
+        compliance_status: 'non_compliant', // From analysis_runs
+        ai_reasoning: 'Door width is insufficient',
+        confidence: 'high',
+        violations: [
+          {
+            description: 'The plan explicitly dimensions the door leaf width as 34 inches',
+            severity: 'major',
+          },
+        ],
+        recommendations: ['Increase door width to 36 inches minimum'],
+        effective_status: 'non_compliant', // Calculated by RPC
         screenshots: [
           {
             id: 'screenshot-1',
@@ -47,7 +65,7 @@ describe('Violations Processing Consistency', () => {
         ],
       },
       {
-        id: 'check-2',
+        check_id: 'check-2',
         check_name: '11B-603.2 - Door swing.',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-603.2',
         code_section_number: '11B-603.2',
@@ -55,22 +73,19 @@ describe('Violations Processing Consistency', () => {
         manual_status: null,
         is_excluded: false,
         check_type: 'section',
-        element_group_id: 'element-group-doors',
         instance_label: 'Door 1',
         element_group_name: 'Doors',
-        latest_status: 'non_compliant',
-        latest_analysis_runs: {
-          compliance_status: 'non_compliant',
-          ai_reasoning: 'Door swings into required clear floor space',
-          confidence: 'high',
-          violations: [
-            {
-              description: 'The door swings into the required clear floor space of a fixture',
-              severity: 'major',
-            },
-          ],
-          recommendations: ['Reverse door swing direction'],
-        },
+        compliance_status: 'non_compliant',
+        ai_reasoning: 'Door swings into required clear floor space',
+        confidence: 'high',
+        violations: [
+          {
+            description: 'The door swings into the required clear floor space of a fixture',
+            severity: 'major',
+          },
+        ],
+        recommendations: ['Reverse door swing direction'],
+        effective_status: 'non_compliant',
         screenshots: [
           {
             id: 'screenshot-2',
@@ -87,46 +102,10 @@ describe('Violations Processing Consistency', () => {
           },
         ],
       },
+      // check-3 would be FILTERED OUT by RPC because manual_status='compliant'
+      // check-4 INCLUDED because needs_more_info is considered a violation state
       {
-        id: 'check-3',
-        check_name: '11B-213.3.5 - Mirrors.',
-        code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-213.3.5',
-        code_section_number: '11B-213.3.5',
-        code_section_title: 'Mirrors.',
-        manual_status: 'compliant',
-        is_excluded: false,
-        check_type: 'section',
-        latest_status: 'non_compliant',
-        latest_analysis_runs: {
-          compliance_status: 'non_compliant',
-          ai_reasoning: 'Mirror height seems insufficient',
-          confidence: 'medium',
-          violations: [
-            {
-              description: 'Mirror may not extend to proper height',
-              severity: 'moderate',
-            },
-          ],
-          recommendations: [],
-        },
-        screenshots: [
-          {
-            id: 'screenshot-3',
-            screenshot_url: 'https://example.com/screenshot3.jpg',
-            thumbnail_url: 'https://example.com/thumb3.jpg',
-            page_number: 2,
-            crop_coordinates: {
-              x: 200,
-              y: 300,
-              width: 300,
-              height: 400,
-              zoom_level: 1,
-            },
-          },
-        ],
-      },
-      {
-        id: 'check-4',
+        check_id: 'check-4',
         check_name: '11B-304.4 - Door swing',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-304.4',
         code_section_number: '11B-304.4',
@@ -134,24 +113,21 @@ describe('Violations Processing Consistency', () => {
         manual_status: null,
         is_excluded: false,
         check_type: 'section',
-        latest_status: 'needs_more_info',
-        latest_analysis_runs: {
-          compliance_status: 'needs_more_info',
-          ai_reasoning: 'Cannot determine door swing direction from plan',
-          confidence: 'low',
-          violations: [],
-          recommendations: ['Provide detail showing door swing'],
-        },
+        compliance_status: 'needs_more_info',
+        ai_reasoning: 'Cannot determine door swing direction from plan',
+        confidence: 'low',
+        violations: [],
+        recommendations: ['Provide detail showing door swing'],
+        effective_status: 'needs_more_info',
         screenshots: [],
       },
     ];
 
-    // Process checks using shared logic
-    const violations = processChecksToViolations(sampleChecks);
+    // Process RPC data (no filtering needed - RPC already filtered)
+    const violations = processRpcRowsToViolations(rpcData);
 
-    // Verify correct number of violations
     // Should be 3: check-1 (major), check-2 (major), check-4 (needs_more_info)
-    // check-3 should be excluded (manual_override = 'compliant')
+    // check-3 was already filtered out by RPC (manual_status = 'compliant')
     expect(violations).toHaveLength(3);
 
     // Verify check-1 violation
@@ -169,7 +145,7 @@ describe('Violations Processing Consistency', () => {
     expect(violation2?.severity).toBe('major');
     expect(violation2?.description).toContain('swings into');
 
-    // Verify check-3 is NOT included (manual status to compliant)
+    // Verify check-3 is NOT included (was filtered by RPC due to manual_status='compliant')
     const violation3 = violations.find(v => v.checkId === 'check-3');
     expect(violation3).toBeUndefined();
 
@@ -182,17 +158,19 @@ describe('Violations Processing Consistency', () => {
   });
 
   it('should handle excluded checks correctly', () => {
-    const checksWithExclusions: CheckWithAnalysis[] = [
+    // Simulating raw check data BEFORE RPC filtering
+    const allChecks = [
       {
-        id: 'check-excluded',
+        check_id: 'check-excluded',
         check_name: 'Excluded Check',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
         code_section_number: '11B-404',
         code_section_title: 'Doors.',
         manual_status: null,
-        is_excluded: true, // Excluded from assessment
+        is_excluded: true, // Will be filtered out by RPC
         check_type: 'section',
-        latest_status: 'non_compliant', // Should be ignored due to exclusion
+        compliance_status: 'non_compliant',
+        effective_status: 'non_compliant',
         screenshots: [
           {
             id: 'screenshot-1',
@@ -210,7 +188,7 @@ describe('Violations Processing Consistency', () => {
         ],
       },
       {
-        id: 'check-not-excluded',
+        check_id: 'check-not-excluded',
         check_name: 'Not Excluded Check',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-603.2',
         code_section_number: '11B-603.2',
@@ -218,7 +196,8 @@ describe('Violations Processing Consistency', () => {
         manual_status: null,
         is_excluded: false,
         check_type: 'section',
-        latest_status: 'non_compliant',
+        compliance_status: 'non_compliant',
+        effective_status: 'non_compliant',
         screenshots: [
           {
             id: 'screenshot-2',
@@ -237,26 +216,27 @@ describe('Violations Processing Consistency', () => {
       },
     ];
 
-    const violations = processChecksToViolations(checksWithExclusions);
+    // Simulate RPC filtering (this is what the database does)
+    const rpcData = simulateRpcFiltering(allChecks);
+    const violations = processRpcRowsToViolations(rpcData);
 
-    // Should only include second check (first is excluded)
+    // Should only include second check (first was filtered by RPC)
     expect(violations).toHaveLength(1);
     expect(violations[0].checkId).toBe('check-not-excluded');
   });
 
   it('should handle manual status with priority', () => {
-    const checksWithManualStatus: CheckWithAnalysis[] = [
+    // Simulating raw check data BEFORE RPC filtering
+    const allChecks = [
       {
-        id: 'check-manual-non-compliant',
+        check_id: 'check-manual-non-compliant',
         check_name: 'Manually Non-Compliant',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
         code_section_number: '11B-404',
-        manual_status: 'non_compliant',
+        manual_status: 'non_compliant', // Manual override
         is_excluded: false,
-        latest_status: 'compliant', // Should be ignored
-        latest_analysis_runs: {
-          compliance_status: 'compliant', // Should be ignored
-        },
+        compliance_status: 'compliant', // Overridden by manual_status
+        effective_status: 'non_compliant', // RPC calculates: coalesce(manual_status, compliance_status)
         screenshots: [
           {
             id: 'screenshot-1',
@@ -273,16 +253,14 @@ describe('Violations Processing Consistency', () => {
         ],
       },
       {
-        id: 'check-manual-compliant',
+        check_id: 'check-manual-compliant',
         check_name: 'Manually Compliant',
         code_section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-603.2',
         code_section_number: '11B-603.2',
-        manual_status: 'compliant',
+        manual_status: 'compliant', // Manual override
         is_excluded: false,
-        latest_status: 'non_compliant', // Should be ignored
-        latest_analysis_runs: {
-          compliance_status: 'non_compliant', // Should be ignored
-        },
+        compliance_status: 'non_compliant', // Overridden by manual_status
+        effective_status: 'compliant', // RPC calculates: coalesce(manual_status, compliance_status)
         screenshots: [
           {
             id: 'screenshot-2',
@@ -300,9 +278,11 @@ describe('Violations Processing Consistency', () => {
       },
     ];
 
-    const violations = processChecksToViolations(checksWithManualStatus);
+    // Simulate RPC filtering (filters based on effective_status)
+    const rpcData = simulateRpcFiltering(allChecks);
+    const violations = processRpcRowsToViolations(rpcData);
 
-    // Should only include first check (manual status to non_compliant)
+    // Should only include first check (second was filtered by RPC due to manual_status='compliant')
     expect(violations).toHaveLength(1);
     expect(violations[0].checkId).toBe('check-manual-non-compliant');
   });

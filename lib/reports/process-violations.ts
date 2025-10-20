@@ -185,6 +185,3 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
 
   return violations;
 }
-
-// Export alias for ViolationsSummary component which works with checks data
-export const processChecksToViolations = processRpcRowsToViolations;
