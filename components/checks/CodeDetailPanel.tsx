@@ -44,11 +44,7 @@ async function fetchSection(key: string): Promise<CodeSection> {
     return sectionCache.get(key)!;
   }
 
-  const response = await fetch('/api/compliance/sections', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sectionKey: key }),
-  });
+  const response = await fetch(`/api/code-sections/${key}`);
 
   const data = await response.json();
   if (data.error) throw new Error(data.error);
