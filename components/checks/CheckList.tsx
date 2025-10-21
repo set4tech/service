@@ -3,6 +3,31 @@ import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { CloneCheckModal } from './modals/CloneCheckModal';
 
+// Natural sort comparator for section numbers (handles numeric parts correctly)
+function naturalCompare(a: string, b: string): number {
+  const regex = /(\d+)|(\D+)/g;
+  const aParts = a.match(regex) || [];
+  const bParts = b.match(regex) || [];
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || '';
+    const bPart = bParts[i] || '';
+
+    const aNum = parseInt(aPart, 10);
+    const bNum = parseInt(bPart, 10);
+
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      // Both are numbers, compare numerically
+      if (aNum !== bNum) return aNum - bNum;
+    } else {
+      // At least one is not a number, compare as strings
+      if (aPart !== bPart) return aPart.localeCompare(bPart);
+    }
+  }
+
+  return 0;
+}
+
 interface CheckListProps {
   checks: any[];
   checkMode?: 'section' | 'element';
@@ -107,26 +132,12 @@ export function CheckList({
     if (checkMode === 'element') {
       // Group by element group name, then by instance_label
       filtered.forEach(check => {
-        console.log('[CheckList] Processing check in element mode:', {
-          id: check.id,
-          code_section_number: check.code_section_number,
-          element_group_id: check.element_group_id,
-          element_group_name: check.element_group_name,
-          instance_label: check.instance_label,
-          check_type: check.check_type,
-        });
-
         // Only show checks that belong to an element group
         if (!check.element_group_id || !check.instance_label) {
-          console.log('[CheckList] Skipping check - missing element_group_id or instance_label:', {
-            element_group_id: check.element_group_id,
-            instance_label: check.instance_label,
-          });
           return;
         }
 
         const groupName = check.element_group_name || 'Other';
-        console.log('[CheckList] Adding to group:', groupName);
 
         if (!mainGroups.has(groupName)) {
           mainGroups.set(groupName, []);
@@ -165,15 +176,15 @@ export function CheckList({
         mainGroups.get(mainPrefix)!.push(check);
       });
 
-      // Sort each group by section number
+      // Sort each group by section number using natural sort
       mainGroups.forEach(group => {
         group.sort((a, b) =>
-          (a.code_section_number || '').localeCompare(b.code_section_number || '')
+          naturalCompare(a.code_section_number || '', b.code_section_number || '')
         );
       });
     }
 
-    return Array.from(mainGroups.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return Array.from(mainGroups.entries()).sort(([a], [b]) => naturalCompare(a, b));
   }, [filtered, checkMode]);
 
   const toggleSection = (section: string) => {
@@ -670,14 +681,6 @@ export function CheckList({
                                         (sum: number, s: any) => sum + (s.screenshots?.length || 0),
                                         0
                                       );
-                                      console.log(
-                                        `[CheckList] ${check.instance_label}: ${totalScreenshots} screenshots | sections=${sections.length} | hasInstances=${!!check.instances} | hasSections=${!!check.sections}`
-                                      );
-                                      sections.forEach((s: any, idx: number) => {
-                                        console.log(
-                                          `  Section ${idx}: id=${s.id?.substring(0, 8)} screenshots=${s.screenshots?.length || 0}`
-                                        );
-                                      });
                                       return totalScreenshots > 0 ? (
                                         <span className="text-xs text-gray-500 ml-2">
                                           📷 {totalScreenshots}
