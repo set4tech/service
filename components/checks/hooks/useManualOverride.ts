@@ -30,9 +30,9 @@ export function useManualOverride(
       .then(res => res.json())
       .then(checkData => {
         if (checkData.check) {
-          setManualOverride(checkData.check.manual_override || null);
-          setManualOverrideNote(checkData.check.manual_override_note || '');
-          setShowOverrideNote(!!checkData.check.manual_override_note);
+          setManualOverride(checkData.check.manual_status || null);
+          setManualOverrideNote(checkData.check.manual_status_note || '');
+          setShowOverrideNote(!!checkData.check.manual_status_note);
         }
       })
       .catch(err => {

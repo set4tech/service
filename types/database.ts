@@ -19,10 +19,10 @@ export interface Check {
   prompt_template_id?: string;
   actual_prompt_used?: string;
   status: 'pending' | 'completed' | 'failed';
-  manual_override?: ComplianceOverrideStatus | null;
-  manual_override_note?: string | null;
-  manual_override_at?: string | null;
-  manual_override_by?: string | null;
+  manual_status?: ComplianceOverrideStatus | null;
+  manual_status_note?: string | null;
+  manual_status_at?: string | null;
+  manual_status_by?: string | null;
   project_id?: string;
   created_at?: string;
   updated_at?: string;
@@ -131,6 +131,6 @@ export interface SectionResult {
   status: 'compliant' | 'non_compliant' | 'not_applicable';
   reasoning: string;
   confidence?: 'high' | 'medium' | 'low';
-  manual_override?: ComplianceOverrideStatus | null;
-  manual_override_note?: string | null;
+  manual_status?: ComplianceOverrideStatus | null;
+  manual_status_note?: string | null;
 }

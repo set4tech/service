@@ -80,8 +80,7 @@ export function ViolationsSummary({
 
     // Exclude not_applicable and insufficient_information from totals
     const applicableChecks = allChecks.filter(
-      c =>
-        c.manual_override !== 'not_applicable' && c.manual_override !== 'insufficient_information'
+      c => c.manual_status !== 'not_applicable' && c.manual_status !== 'insufficient_information'
     );
     const totalSections = applicableChecks.length;
 
@@ -89,9 +88,9 @@ export function ViolationsSummary({
     const assessed = applicableChecks.filter(
       c =>
         c.latest_status ||
-        (c.manual_override &&
-          c.manual_override !== 'not_applicable' &&
-          c.manual_override !== 'insufficient_information') ||
+        (c.manual_status &&
+          c.manual_status !== 'not_applicable' &&
+          c.manual_status !== 'insufficient_information') ||
         c.has_section_overrides
     ).length;
 
@@ -113,8 +112,11 @@ export function ViolationsSummary({
 
   // Transform checks to violations using shared logic
   const violations = useMemo(() => {
+    console.log('[ViolationsSummary] Recomputing violations, checks.length:', checks.length);
+
     // If we have pre-filtered RPC data, use it directly
     if (rpcViolations && rpcViolations.length > 0) {
+      console.log('[ViolationsSummary] Using RPC violations:', rpcViolations.length);
       return processRpcRowsToViolations(rpcViolations);
     }
 
@@ -131,15 +133,30 @@ export function ViolationsSummary({
       }
     });
 
+    console.log('[ViolationsSummary] All checks to filter:', allChecks.length);
+
     // Filter to only violations (like the RPC does)
     const violationChecks = allChecks.filter(check => {
       const effectiveStatus = check.manual_status || check.latest_status;
-      return (
+      const isViolation =
         effectiveStatus === 'non_compliant' ||
         effectiveStatus === 'insufficient_information' ||
-        effectiveStatus === 'needs_more_info'
-      );
+        effectiveStatus === 'needs_more_info';
+
+      if (check.manual_status) {
+        console.log('[ViolationsSummary] Check with manual_status:', {
+          id: check.id,
+          manual_status: check.manual_status,
+          latest_status: check.latest_status,
+          effectiveStatus,
+          isViolation,
+        });
+      }
+
+      return isViolation;
     });
+
+    console.log('[ViolationsSummary] Filtered violation checks:', violationChecks.length);
 
     // Map API format to RPC format that processRpcRowsToViolations expects
     const rpcFormattedChecks = violationChecks.map(check => ({
@@ -163,7 +180,9 @@ export function ViolationsSummary({
       screenshots: check.screenshots,
     }));
 
-    return processRpcRowsToViolations(rpcFormattedChecks);
+    const processedViolations = processRpcRowsToViolations(rpcFormattedChecks);
+    console.log('[ViolationsSummary] Final processed violations:', processedViolations.length);
+    return processedViolations;
   }, [checks, rpcViolations]);
 
   const handleViolationClick = (violation: ViolationMarker) => {

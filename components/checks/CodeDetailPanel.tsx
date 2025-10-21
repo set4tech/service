@@ -14,8 +14,8 @@ interface Check {
   id: string;
   check_type?: string;
   code_section_key?: string;
-  manual_override?: string | null;
-  manual_override_note?: string;
+  manual_status?: string | null;
+  manual_status_note?: string;
   element_groups?: {
     name?: string;
   };
@@ -192,8 +192,8 @@ function useCheckData(
             analysisRuns: runs,
             assessing: progress.inProgress || false,
             // Load the active child's override, not the first check's override
-            manualOverride: activeChild?.manual_override || null,
-            manualOverrideNote: activeChild?.manual_override_note || '',
+            manualOverride: activeChild?.manual_status || null,
+            manualOverrideNote: activeChild?.manual_status_note || '',
             showSingleSectionOnly: !!filterToSectionKey,
           });
           setLoading(false);
@@ -225,8 +225,8 @@ function useCheckData(
           sections: section ? [section] : [],
           analysisRuns: runs,
           assessing: progress.inProgress || false,
-          manualOverride: check.manual_override || null,
-          manualOverrideNote: check.manual_override_note || '',
+          manualOverride: check.manual_status || null,
+          manualOverrideNote: check.manual_status_note || '',
           showSingleSectionOnly: false,
         });
         setLoading(false);
@@ -361,8 +361,8 @@ export function CodeDetailPanel({
         // This ensures we get the latest override data even if childChecks was updated during the async operation
         const currentActiveChild = childChecks.find(c => c.id === activeChildCheckId);
         if (currentActiveChild) {
-          setManualOverride(currentActiveChild.manual_override || null);
-          setManualOverrideNote(currentActiveChild.manual_override_note || '');
+          setManualOverride(currentActiveChild.manual_status || null);
+          setManualOverrideNote(currentActiveChild.manual_status_note || '');
         }
       })
       .catch(err => {
@@ -470,7 +470,7 @@ export function CodeDetailPanel({
       if (childChecks.length > 0 && effectiveCheckId) {
         const updatedChildChecks = childChecks.map(c =>
           c.id === effectiveCheckId
-            ? { ...c, manual_override: manualOverride, manual_override_note: manualOverrideNote }
+            ? { ...c, manual_status: manualOverride, manual_status_note: manualOverrideNote }
             : c
         );
         setChildChecks(updatedChildChecks);

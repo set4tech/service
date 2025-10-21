@@ -61,7 +61,7 @@ interface CheckData {
   element_group_id?: string | null;
   latest_status?: string | null;
   status?: string;
-  manual_override?: string | null;
+  manual_status?: string | null;
   has_section_overrides?: boolean;
   screenshots?: ScreenshotData[];
   instances?: CheckInstance[];
@@ -162,14 +162,14 @@ export default function AssessmentClient({
   // Calculate progress dynamically from checks state (all checks, not filtered)
   const progress = useMemo(() => {
     // Exclude checks marked as not_applicable from total count
-    const applicableChecks = checks.filter(c => c.manual_override !== 'not_applicable');
+    const applicableChecks = checks.filter(c => c.manual_status !== 'not_applicable');
     const totalChecks = applicableChecks.length;
     // Count checks with AI assessment OR manual override OR section overrides (but not not_applicable)
     const completed = applicableChecks.filter(
       c =>
         c.latest_status ||
         c.status === 'completed' ||
-        (c.manual_override && c.manual_override !== 'not_applicable') ||
+        (c.manual_status && c.manual_status !== 'not_applicable') ||
         c.has_section_overrides
     ).length;
     const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
@@ -826,11 +826,17 @@ export default function AssessmentClient({
                 }}
                 onCheckUpdate={async () => {
                   // Refetch all checks to refresh violations list
+                  console.log('[AssessmentClient] onCheckUpdate called - refetching checks');
                   try {
                     const res = await fetch(`/api/assessments/${assessment.id}/checks`);
                     if (res.ok) {
                       const updatedChecks = await res.json();
+                      console.log(
+                        '[AssessmentClient] Fetched updated checks:',
+                        updatedChecks.length
+                      );
                       setChecks(updatedChecks);
+                      console.log('[AssessmentClient] Checks state updated');
                     }
                   } catch (error) {
                     console.error('Failed to refetch checks:', error);

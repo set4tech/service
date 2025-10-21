@@ -36,9 +36,9 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
       .then(res => res.json())
       .then(data => {
         if (data.check) {
-          setManualOverride(data.check.manual_override || null);
-          setManualOverrideNote(data.check.manual_override_note || '');
-          setShowOverrideNote(!!data.check.manual_override_note);
+          setManualOverride(data.check.manual_status || null);
+          setManualOverrideNote(data.check.manual_status_note || '');
+          setShowOverrideNote(!!data.check.manual_status_note);
         }
       })
       .catch(err => console.error('Failed to load check data:', err));
@@ -104,6 +104,12 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
   const handleSaveOverride = async () => {
     if (!violation.checkId || !manualOverride) return;
 
+    console.log('[ViolationDetailPanel] Saving override:', {
+      checkId: violation.checkId,
+      override: manualOverride,
+      note: manualOverrideNote,
+    });
+
     setSavingOverride(true);
     setOverrideError(null);
 
@@ -123,8 +129,12 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
         throw new Error(data.error || 'Failed to save override');
       }
 
+      console.log('[ViolationDetailPanel] Override saved successfully, calling onCheckUpdate');
+
       // Notify parent to refresh violations list
       onCheckUpdate();
+
+      console.log('[ViolationDetailPanel] Closing panel');
 
       // Close panel after successful save
       onClose();

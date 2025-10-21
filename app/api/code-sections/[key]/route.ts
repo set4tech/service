@@ -5,6 +5,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { key } = await params;
   const supabase = supabaseAdmin();
 
+  console.log('[GET /api/code-sections/[key]] Requested key:', key);
+  console.log('[GET /api/code-sections/[key]] Key length:', key.length);
+  console.log('[GET /api/code-sections/[key]] Key ends with:', key.slice(-10));
+
   try {
     // Fetch section from Supabase
     const { data: section, error: sectionError } = await supabase
@@ -15,7 +19,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .single();
 
     if (sectionError || !section) {
-      return NextResponse.json({ error: 'Section not found' }, { status: 404 });
+      console.error('[GET /api/code-sections/[key]] Section not found:', {
+        requestedKey: key,
+        error: sectionError,
+      });
+      return NextResponse.json(
+        {
+          error: 'Section not found',
+          requestedKey: key,
+        },
+        { status: 404 }
+      );
     }
 
     // Fetch references

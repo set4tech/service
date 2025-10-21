@@ -1313,10 +1313,10 @@ export function PDFViewer({
   // Stable callbacks for ElevationCapturePrompt to prevent infinite re-renders
   const handleElevationSave = useCallback(
     (elementGroupId: string, caption: string) => {
-      console.log('[PDFViewer] ElevationCapturePrompt onSave called, closing modal');
-      setShowElevationPrompt(false);
-      // Capture as elevation, DO NOT clear selection (stay in screenshot mode)
+      console.log('[PDFViewer] ElevationCapturePrompt onSave called');
+      // IMPORTANT: Capture FIRST while selection still exists, THEN close modal
       capture('current', 'elevation', elementGroupId, caption);
+      setShowElevationPrompt(false);
       // Refocus viewport to restore keyboard handling
       setTimeout(() => viewportRef.current?.focus(), 0);
     },
