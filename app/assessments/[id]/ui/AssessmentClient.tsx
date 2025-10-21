@@ -768,7 +768,7 @@ export default function AssessmentClient({
           {checkMode === 'summary' ? (
             <ViolationsSummary
               checks={checks}
-              rpcViolations={undefined} // Don't use stale RPC data - compute from fresh checks
+              rpcViolations={_rpcViolations}
               onCheckSelect={handleCheckSelect}
               onViolationSelect={violation => {
                 setSelectedViolation(violation);
@@ -826,17 +826,11 @@ export default function AssessmentClient({
                 }}
                 onCheckUpdate={async () => {
                   // Refetch all checks to refresh violations list
-                  console.log('[AssessmentClient] onCheckUpdate called - refetching checks');
                   try {
                     const res = await fetch(`/api/assessments/${assessment.id}/checks`);
                     if (res.ok) {
                       const updatedChecks = await res.json();
-                      console.log(
-                        '[AssessmentClient] Fetched updated checks:',
-                        updatedChecks.length
-                      );
                       setChecks(updatedChecks);
-                      console.log('[AssessmentClient] Checks state updated');
                     }
                   } catch (error) {
                     console.error('Failed to refetch checks:', error);

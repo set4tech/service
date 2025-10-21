@@ -79,7 +79,6 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
         return res.json();
       })
       .then(data => {
-        console.log('Section data:', data);
         // Convert the API response to CodeSection format
         const section: CodeSection = {
           key: data.key,
@@ -104,12 +103,6 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
   const handleSaveOverride = async () => {
     if (!violation.checkId || !manualOverride) return;
 
-    console.log('[ViolationDetailPanel] Saving override:', {
-      checkId: violation.checkId,
-      override: manualOverride,
-      note: manualOverrideNote,
-    });
-
     setSavingOverride(true);
     setOverrideError(null);
 
@@ -129,12 +122,8 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
         throw new Error(data.error || 'Failed to save override');
       }
 
-      console.log('[ViolationDetailPanel] Override saved successfully, calling onCheckUpdate');
-
       // Notify parent to refresh violations list
       onCheckUpdate();
-
-      console.log('[ViolationDetailPanel] Closing panel');
 
       // Close panel after successful save
       onClose();
