@@ -166,6 +166,12 @@ function useCheckData(
           const activeChild = sorted.find(c => c.id === activeChildId);
 
           // Load data for active child in parallel
+          console.log('[useCheckData] Loading section for element check:', {
+            activeChildId,
+            code_section_key: activeChild?.code_section_key,
+            checkId,
+          });
+
           const [section, runs, progress] = await Promise.all([
             activeChildId && activeChild?.code_section_key
               ? fetchSection(activeChild.code_section_key)
@@ -173,6 +179,11 @@ function useCheckData(
             fetchAnalysisRuns(checkId!),
             fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
           ]);
+
+          console.log('[useCheckData] Section loaded:', {
+            hasSection: !!section,
+            sectionKey: section?.key,
+          });
 
           if (isCancelled) return;
 
@@ -1011,6 +1022,11 @@ export function CodeDetailPanel({
 
       {/* Section Content - preserving exact structure from lines 1376-1544 */}
       <div className="overflow-y-auto p-4" style={{ height: `${sectionContentHeight}%` }}>
+        {!section && !panelLoading && (
+          <div className="text-sm text-gray-500 text-center py-8">
+            No section data available. Check console for details.
+          </div>
+        )}
         {section && (
           <div className="space-y-6">
             {/* Section Header */}

@@ -65,17 +65,29 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. Determine instance label (auto-generate if not provided)
-  // Count existing instances by finding unique instance_labels for this element group
-  const { data: existingLabels } = await supabase
-    .from('checks')
-    .select('instance_label')
-    .eq('assessment_id', assessmentId)
-    .eq('element_group_id', elementGroup.id)
-    .not('instance_label', 'is', null);
+  let label: string;
 
-  const uniqueLabels = new Set((existingLabels || []).map((c: any) => c.instance_label));
-  const nextNumber = uniqueLabels.size + 1;
-  const label = instanceLabel || `${elementGroup.name} ${nextNumber}`;
+  if (instanceLabel) {
+    label = instanceLabel;
+  } else {
+    // Auto-generate a unique label by finding the next available number
+    const { data: existingLabels } = await supabase
+      .from('checks')
+      .select('instance_label')
+      .eq('assessment_id', assessmentId)
+      .eq('element_group_id', elementGroup.id)
+      .not('instance_label', 'is', null);
+
+    const existingLabelSet = new Set((existingLabels || []).map((c: any) => c.instance_label));
+
+    // Find the next available number
+    let nextNumber = 1;
+    while (existingLabelSet.has(`${elementGroup.name} ${nextNumber}`)) {
+      nextNumber++;
+    }
+
+    label = `${elementGroup.name} ${nextNumber}`;
+  }
 
   console.log('[create-element] Creating section checks with:', {
     assessment_id: assessmentId,
