@@ -128,10 +128,6 @@ export default function AssessmentClient({
   const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary' | 'gallery'>(
     'section'
   );
-  const [pendingCheckSelection, setPendingCheckSelection] = useState<{
-    checkId: string;
-    sectionKey?: string;
-  } | null>(null);
 
   // Restore saved mode after hydration to avoid mismatch
   useEffect(() => {
@@ -149,35 +145,6 @@ export default function AssessmentClient({
       }
     }
   }, [assessment.id]);
-
-  // Handle pending check selection after mode change
-  useEffect(() => {
-    if (pendingCheckSelection && checkMode !== 'summary' && checkMode !== 'gallery') {
-      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-      console.log('[AssessmentClient] Processing pending check selection:', {
-        checkId: pendingCheckSelection.checkId,
-        sectionKey: pendingCheckSelection.sectionKey,
-        currentMode: checkMode,
-      });
-
-      setActiveCheckId(pendingCheckSelection.checkId);
-      setShowDetailPanel(true);
-
-      if (pendingCheckSelection.sectionKey) {
-        setFilterToSectionKey(pendingCheckSelection.sectionKey);
-      } else {
-        setFilterToSectionKey(null);
-      }
-
-      // Update URL hash
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', `#${pendingCheckSelection.checkId}`);
-      }
-
-      // Clear pending selection
-      setPendingCheckSelection(null);
-    }
-  }, [pendingCheckSelection, checkMode]);
 
   // Filter checks by mode (skip filtering for summary/gallery modes)
   const displayedChecks = useMemo(() => {
@@ -278,31 +245,21 @@ export default function AssessmentClient({
       }
     }
 
-    // Determine mode from actual check data (more reliable than violation.checkType)
+    // Determine mode from actual check data
     const hasElementGroup = actualCheck?.element_group_id != null;
     const targetMode = hasElementGroup ? 'element' : 'section';
 
-    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-    console.log('[AssessmentClient] Editing check:', {
-      checkId: violation.checkId,
-      violationCheckType: violation.checkType,
-      actualCheckElementGroupId: actualCheck?.element_group_id,
-      hasElementGroup,
-      elementGroup: violation.elementGroupName,
-      instanceLabel: violation.instanceLabel,
-      targetMode,
-      currentMode: checkMode,
-    });
-
-    // Switch to the appropriate mode
+    // Switch mode and select check in one go
     setCheckMode(targetMode);
     localStorage.setItem(`checkMode-${assessment.id}`, targetMode);
+    setActiveCheckId(violation.checkId);
+    setShowDetailPanel(true);
+    setFilterToSectionKey(violation.codeSectionKey || null);
 
-    // Set pending check selection - the useEffect will handle it after mode change
-    setPendingCheckSelection({
-      checkId: violation.checkId,
-      sectionKey: violation.codeSectionKey,
-    });
+    // Update URL hash
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `#${violation.checkId}`);
+    }
   };
 
   const handleMoveToNextCheck = () => {
