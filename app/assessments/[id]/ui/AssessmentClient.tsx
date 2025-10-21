@@ -93,7 +93,7 @@ interface Props {
 export default function AssessmentClient({
   assessment,
   checks: initialChecks,
-  rpcViolations,
+  rpcViolations: _rpcViolations,
   progress: _initialProgress,
   buildingInfo,
   codebooks,
@@ -768,7 +768,7 @@ export default function AssessmentClient({
           {checkMode === 'summary' ? (
             <ViolationsSummary
               checks={checks}
-              rpcViolations={rpcViolations}
+              rpcViolations={undefined} // Don't use stale RPC data - compute from fresh checks
               onCheckSelect={handleCheckSelect}
               onViolationSelect={violation => {
                 setSelectedViolation(violation);

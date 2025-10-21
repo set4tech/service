@@ -915,9 +915,16 @@ export function PDFViewer({
         showElevationPrompt,
       });
 
+      // IMPORTANT: Ignore ALL keyboard events when elevation prompt is open
+      // Otherwise typing in the caption field can trigger PDFViewer shortcuts (like 's' toggling screenshot mode)
+      if (showElevationPrompt) {
+        console.log('[PDFViewer] Elevation prompt is open, ignoring keyboard event');
+        return;
+      }
+
       // Handle screenshot mode shortcuts - check selection individually for each key
       // Skip if elevation prompt is open (let the modal handle keyboard input)
-      if (currentState.screenshotMode && !e.repeat && !showElevationPrompt) {
+      if (currentState.screenshotMode && !e.repeat) {
         const k = e.key.toLowerCase();
         console.log('[PDFViewer] Key pressed in screenshot mode:', {
           key: k,
