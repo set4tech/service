@@ -9,6 +9,7 @@ interface Props {
   selectedViolation: ViolationMarker | null;
   onViolationClick: (violation: ViolationMarker) => void;
   onViolationDetailsClick?: (violation: ViolationMarker) => void;
+  onEditCheck?: (violation: ViolationMarker) => void; // New: Navigate to edit check in CodeDetailPanel
   currentPage: number;
   assessmentId?: string;
   onSeverityFilterChange?: (severities: Set<string>) => void;
@@ -21,6 +22,7 @@ export function ViolationListSidebar({
   selectedViolation,
   onViolationClick,
   onViolationDetailsClick,
+  onEditCheck,
   currentPage: _currentPage,
   assessmentId,
   onSeverityFilterChange,
@@ -366,31 +368,58 @@ export function ViolationListSidebar({
                           )}
                         </div>
                       </div>
-                      {/* Details button */}
-                      {onViolationDetailsClick && (
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            onViolationDetailsClick(violation);
-                          }}
-                          className="flex-shrink-0 p-2 rounded-lg hover:bg-white transition-colors"
-                          title="View details"
-                        >
-                          <svg
-                            className="w-4 h-4 text-ink-500"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
+                      <div className="flex flex-col gap-1">
+                        {/* Edit Check button */}
+                        {onEditCheck && (
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              onEditCheck(violation);
+                            }}
+                            className="flex-shrink-0 p-2 rounded-lg hover:bg-accent-50 hover:text-accent-700 transition-colors group"
+                            title="Edit check details, screenshots, and prompt"
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                        </button>
-                      )}
+                            <svg
+                              className="w-4 h-4 text-ink-500 group-hover:text-accent-600"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                              />
+                            </svg>
+                          </button>
+                        )}
+                        {/* Details button */}
+                        {onViolationDetailsClick && (
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              onViolationDetailsClick(violation);
+                            }}
+                            className="flex-shrink-0 p-2 rounded-lg hover:bg-white transition-colors"
+                            title="View details"
+                          >
+                            <svg
+                              className="w-4 h-4 text-ink-500"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

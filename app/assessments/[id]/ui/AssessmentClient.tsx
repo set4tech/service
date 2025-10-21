@@ -128,6 +128,10 @@ export default function AssessmentClient({
   const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary' | 'gallery'>(
     'section'
   );
+  const [pendingCheckSelection, setPendingCheckSelection] = useState<{
+    checkId: string;
+    sectionKey?: string;
+  } | null>(null);
 
   // Restore saved mode after hydration to avoid mismatch
   useEffect(() => {
@@ -145,6 +149,35 @@ export default function AssessmentClient({
       }
     }
   }, [assessment.id]);
+
+  // Handle pending check selection after mode change
+  useEffect(() => {
+    if (pendingCheckSelection && checkMode !== 'summary' && checkMode !== 'gallery') {
+      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
+      console.log('[AssessmentClient] Processing pending check selection:', {
+        checkId: pendingCheckSelection.checkId,
+        sectionKey: pendingCheckSelection.sectionKey,
+        currentMode: checkMode,
+      });
+
+      setActiveCheckId(pendingCheckSelection.checkId);
+      setShowDetailPanel(true);
+
+      if (pendingCheckSelection.sectionKey) {
+        setFilterToSectionKey(pendingCheckSelection.sectionKey);
+      } else {
+        setFilterToSectionKey(null);
+      }
+
+      // Update URL hash
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', `#${pendingCheckSelection.checkId}`);
+      }
+
+      // Clear pending selection
+      setPendingCheckSelection(null);
+    }
+  }, [pendingCheckSelection, checkMode]);
 
   // Filter checks by mode (skip filtering for summary/gallery modes)
   const displayedChecks = useMemo(() => {
@@ -223,6 +256,53 @@ export default function AssessmentClient({
     if (typeof window !== 'undefined') {
       window.history.replaceState(null, '', `#${checkId}`);
     }
+  };
+
+  const handleEditCheck = (violation: ViolationMarker) => {
+    // Find the actual check to determine its type reliably
+    let actualCheck: CheckData | null = null;
+
+    // Search in all checks
+    actualCheck = checks.find(c => c.id === violation.checkId) || null;
+
+    // If not found directly, search in instances
+    if (!actualCheck) {
+      for (const check of checks) {
+        if (check.instances?.length) {
+          const instance = check.instances.find(i => i.id === violation.checkId);
+          if (instance) {
+            actualCheck = instance as CheckData;
+            break;
+          }
+        }
+      }
+    }
+
+    // Determine mode from actual check data (more reliable than violation.checkType)
+    const hasElementGroup = actualCheck?.element_group_id != null;
+    const targetMode = hasElementGroup ? 'element' : 'section';
+
+    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
+    console.log('[AssessmentClient] Editing check:', {
+      checkId: violation.checkId,
+      violationCheckType: violation.checkType,
+      actualCheckElementGroupId: actualCheck?.element_group_id,
+      hasElementGroup,
+      elementGroup: violation.elementGroupName,
+      instanceLabel: violation.instanceLabel,
+      targetMode,
+      currentMode: checkMode,
+    });
+
+    // Switch to the appropriate mode
+    setCheckMode(targetMode);
+    localStorage.setItem(`checkMode-${assessment.id}`, targetMode);
+
+    // Set pending check selection - the useEffect will handle it after mode change
+    setPendingCheckSelection({
+      checkId: violation.checkId,
+      sectionKey: violation.codeSectionKey,
+    });
   };
 
   const handleMoveToNextCheck = () => {
@@ -774,6 +854,7 @@ export default function AssessmentClient({
                 setSelectedViolation(violation);
                 setShowDetailPanel(!!violation);
               }}
+              onEditCheck={handleEditCheck}
               buildingInfo={buildingInfo}
               codebooks={codebooks}
               pdfUrl={assessment.pdf_url ?? undefined}

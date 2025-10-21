@@ -38,6 +38,7 @@ interface Props {
   rpcViolations?: any[]; // Pre-filtered violation data from RPC
   onCheckSelect: (checkId: string, sectionKey?: string) => void;
   onViolationSelect?: (violation: ViolationMarker | null) => void; // Notify parent of selected violation
+  onEditCheck?: (violation: ViolationMarker) => void; // Navigate to edit check in CodeDetailPanel
   buildingInfo: BuildingInfo;
   codebooks: Codebook[];
   pdfUrl?: string;
@@ -51,6 +52,7 @@ export function ViolationsSummary({
   rpcViolations,
   onCheckSelect,
   onViolationSelect,
+  onEditCheck,
   buildingInfo: _buildingInfo,
   codebooks: _codebooks,
   pdfUrl,
@@ -195,6 +197,7 @@ export function ViolationsSummary({
           violations={violations}
           selectedViolation={selectedViolation}
           onViolationClick={handleViolationClick}
+          onEditCheck={onEditCheck}
           currentPage={1}
           assessmentId={assessmentId}
           onSeverityFilterChange={setSeverityFilter}
@@ -278,6 +281,7 @@ export function ViolationsSummary({
           violations={violations}
           selectedViolation={selectedViolation}
           onViolationClick={handleViolationClick}
+          onEditCheck={onEditCheck}
           currentPage={currentPage}
           assessmentId={assessmentId}
           onSeverityFilterChange={setSeverityFilter}
