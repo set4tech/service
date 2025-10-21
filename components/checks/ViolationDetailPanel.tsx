@@ -19,9 +19,10 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
   const [showOverrideNote, setShowOverrideNote] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
   const [overrideError, setOverrideError] = useState<string | null>(null);
-  const [presignedUrls, setPresignedUrls] = useState<
-    Record<string, { screenshot: string; thumbnail: string }>
-  >({});
+  const [presignedUrls, setPresignedUrls] = useState<{
+    screenshots: string[];
+    thumbnails: string[];
+  }>({ screenshots: [], thumbnails: [] });
   const [previewScreenshot, setPreviewScreenshot] = useState<string | null>(null);
   const [sectionData, setSectionData] = useState<CodeSection | null>(null);
   const [loadingSection, setLoadingSection] = useState(false);
@@ -44,27 +45,33 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
       .catch(err => console.error('Failed to load check data:', err));
   }, [violation.checkId]);
 
-  // Fetch presigned URLs for screenshots
+  // Fetch presigned URLs for all screenshots
   useEffect(() => {
-    if (!violation.screenshotUrl) return;
+    if (!violation.allScreenshots || violation.allScreenshots.length === 0) return;
 
     (async () => {
       try {
+        const screenshotUrls = violation.allScreenshots.map(s => s.url);
+        const thumbnailUrls = violation.allScreenshots.map(s => s.thumbnailUrl);
+
         const res = await fetch('/api/screenshots/presign-view', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            screenshotUrl: violation.screenshotUrl,
-            thumbnailUrl: violation.thumbnailUrl,
+            screenshotUrls,
+            thumbnailUrls,
           }),
         });
         const data = await res.json();
-        setPresignedUrls({ [violation.screenshotId]: data });
+        setPresignedUrls({
+          screenshots: data.presignedUrls || [],
+          thumbnails: data.presignedThumbnails || [],
+        });
       } catch (err) {
-        console.error('Failed to get presigned URL:', err);
+        console.error('Failed to get presigned URLs:', err);
       }
     })();
-  }, [violation.screenshotUrl, violation.thumbnailUrl, violation.screenshotId]);
+  }, [violation.allScreenshots]);
 
   // Fetch section data
   useEffect(() => {
@@ -397,33 +404,35 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
         </div>
 
         {/* Screenshots */}
-        {violation.screenshotUrl && (
+        {violation.allScreenshots && violation.allScreenshots.length > 0 && (
           <div>
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Screenshot
+              Screenshots ({violation.allScreenshots.length})
             </div>
-            <div className="border rounded-lg overflow-hidden bg-gray-50">
-              {presignedUrls[violation.screenshotId]?.thumbnail ? (
-                <button
-                  onClick={() =>
-                    setPreviewScreenshot(presignedUrls[violation.screenshotId]?.screenshot)
-                  }
-                  className="w-full hover:opacity-90 transition-opacity"
-                >
-                  <img
-                    src={presignedUrls[violation.screenshotId].thumbnail}
-                    alt="Violation screenshot"
-                    className="w-full h-auto"
-                  />
-                </button>
-              ) : (
-                <div className="w-full h-40 flex items-center justify-center text-sm text-gray-500">
-                  Loading screenshot...
+            <div className="space-y-3">
+              {violation.allScreenshots.map((screenshot, idx) => (
+                <div key={screenshot.id} className="border rounded-lg overflow-hidden bg-gray-50">
+                  {presignedUrls.thumbnails[idx] ? (
+                    <button
+                      onClick={() => setPreviewScreenshot(presignedUrls.screenshots[idx])}
+                      className="w-full hover:opacity-90 transition-opacity"
+                    >
+                      <img
+                        src={presignedUrls.thumbnails[idx]}
+                        alt={`Violation screenshot ${idx + 1}`}
+                        className="w-full h-auto"
+                      />
+                    </button>
+                  ) : (
+                    <div className="w-full h-40 flex items-center justify-center text-sm text-gray-500">
+                      Loading screenshot {idx + 1}...
+                    </div>
+                  )}
+                  <div className="px-3 py-2 bg-white border-t text-xs text-gray-600">
+                    Page {screenshot.pageNumber}
+                  </div>
                 </div>
-              )}
-              <div className="px-3 py-2 bg-white border-t text-xs text-gray-600">
-                Page {violation.pageNumber}
-              </div>
+              ))}
             </div>
           </div>
         )}
