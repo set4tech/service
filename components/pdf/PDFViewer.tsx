@@ -237,27 +237,7 @@ export function PDFViewer({
       }
     });
 
-    console.log('[PDFViewer] Expanded markers:', {
-      originalCount: violationMarkers.length,
-      expandedCount: expandedMarkers.length,
-      forPage: state.pageNumber,
-      sample: expandedMarkers[0]
-        ? {
-            checkId: expandedMarkers[0].checkId,
-            screenshotId: expandedMarkers[0].screenshotId,
-            pageNumber: expandedMarkers[0].pageNumber,
-            bounds: expandedMarkers[0].bounds,
-          }
-        : null,
-    });
-
-    const groups = groupOverlappingViolations(expandedMarkers, state.pageNumber);
-    console.log('[PDFViewer] Grouped markers:', {
-      groupCount: groups.length,
-      totalMarkers: groups.reduce((sum, g) => sum + g.violations.length, 0),
-    });
-
-    return groups;
+    return groupOverlappingViolations(expandedMarkers, state.pageNumber);
   }, [readOnly, violationMarkers, state.pageNumber]);
 
   // Store latest onPageChange callback in a ref to avoid unnecessary re-renders
@@ -268,38 +248,17 @@ export function PDFViewer({
 
   // Center on highlighted violation when it changes
   useEffect(() => {
-    console.log('[PDFViewer] Centering effect triggered', {
-      readOnly,
-      highlightedViolationId,
-      hasCanvas: !!canvasRef.current,
-      hasViewport: !!viewportRef.current,
-      currentPage: state.pageNumber,
-      violationMarkersCount: violationMarkers.length,
-    });
-
     if (!readOnly || !highlightedViolationId || !canvasRef.current || !viewportRef.current) {
-      console.log('[PDFViewer] Skipping - preconditions not met');
       return;
     }
 
     // Parse highlightedViolationId to extract checkId and screenshotId
     // Use ::: as delimiter since both IDs are UUIDs that contain dashes
     const [checkId, screenshotId] = highlightedViolationId.split(':::');
-    console.log('[PDFViewer] Parsed IDs:', { checkId, screenshotId });
 
     // Find the violation marker by checkId
     const violation = violationMarkers.find(v => v.checkId === checkId);
-
-    if (!violation) {
-      console.log('[PDFViewer] No violation found for checkId:', checkId);
-      return;
-    }
-
-    console.log('[PDFViewer] Found violation:', {
-      checkId: violation.checkId,
-      allScreenshotsCount: violation.allScreenshots?.length,
-      screenshotId: violation.screenshotId,
-    });
+    if (!violation) return;
 
     // Find the specific screenshot in allScreenshots array
     const screenshot =
@@ -311,50 +270,19 @@ export function PDFViewer({
           }
         : null);
 
-    if (!screenshot) {
-      console.log('[PDFViewer] No screenshot found for screenshotId:', screenshotId);
-      return;
-    }
-
-    console.log('[PDFViewer] Found screenshot:', {
-      screenshotId,
-      pageNumber: screenshot.pageNumber,
-      bounds: screenshot.bounds,
-      currentPage: state.pageNumber,
-    });
+    if (!screenshot) return;
 
     // Check if we're on the right page
-    if (screenshot.pageNumber !== state.pageNumber) {
-      console.log(
-        '[PDFViewer] Wrong page - need:',
-        screenshot.pageNumber,
-        'current:',
-        state.pageNumber
-      );
-      return;
-    }
+    if (screenshot.pageNumber !== state.pageNumber) return;
 
     // Skip centering if violation has no valid bounds (e.g., no screenshot)
     const bounds = screenshot.bounds;
     const hasValidBounds = bounds.width > 0 && bounds.height > 0;
-    if (!hasValidBounds) {
-      console.log(
-        '[PDFViewer] Skipping center - violation has no valid bounds:',
-        violation.checkId,
-        bounds
-      );
-      return;
-    }
-
-    console.log('[PDFViewer] Proceeding with centering on bounds:', bounds);
+    if (!hasValidBounds) return;
 
     // Small delay to ensure canvas is rendered
     const timeoutId = setTimeout(() => {
-      console.log('[PDFViewer] Executing centering after delay');
-      if (!viewportRef.current) {
-        console.log('[PDFViewer] No viewport ref!');
-        return;
-      }
+      if (!viewportRef.current) return;
 
       // Calculate center of violation bounds
       const centerX = bounds.x + bounds.width / 2;
@@ -370,16 +298,6 @@ export function PDFViewer({
       const tx = viewportCenterX - centerX * currentScale;
       const ty = viewportCenterY - centerY * currentScale;
 
-      console.log('[PDFViewer] Calculated centering transform:', {
-        centerX,
-        centerY,
-        viewportCenterX,
-        viewportCenterY,
-        currentScale,
-        tx,
-        ty,
-      });
-
       // Enable smooth transition for centering
       setSmoothTransition(true);
 
@@ -388,8 +306,6 @@ export function PDFViewer({
         type: 'SET_TRANSFORM',
         payload: { scale: currentScale, tx, ty },
       });
-
-      console.log('[PDFViewer] Dispatched SET_TRANSFORM');
 
       // Disable smooth transition after animation completes
       const transitionTimeout = setTimeout(() => {
@@ -458,7 +374,6 @@ export function PDFViewer({
         // Check cache first
         const cached = PRESIGN_CACHE.get(pdfUrl);
         if (cached && cached.expiresAt > Date.now()) {
-          console.log('[PDFViewer] Using cached presigned URL');
           if (!cancelled) setPresignedUrl(cached.url);
           if (!cancelled) setLoadingUrl(false);
           return;
@@ -467,7 +382,6 @@ export function PDFViewer({
         // Check if request is already in-flight
         let inflightPromise = PRESIGN_INFLIGHT.get(pdfUrl);
         if (!inflightPromise) {
-          console.log('[PDFViewer] Fetching new presigned URL');
           inflightPromise = (async () => {
             const presign = await fetch('/api/pdf/presign', {
               method: 'POST',
@@ -490,8 +404,6 @@ export function PDFViewer({
           })();
 
           PRESIGN_INFLIGHT.set(pdfUrl, inflightPromise);
-        } else {
-          console.log('[PDFViewer] Waiting for in-flight presign request');
         }
 
         const url = await inflightPromise;
@@ -525,7 +437,6 @@ export function PDFViewer({
     if (!presignedUrl) return;
     let cancelled = false;
     (async () => {
-      console.log('[PDFViewer] Starting PDF load from presigned URL');
       const loadingTask = pdfjs.getDocument({
         url: presignedUrl,
         // Enable streaming and range requests for large files
@@ -534,28 +445,9 @@ export function PDFViewer({
         disableRange: false,
       });
 
-      // Track loading progress - log only at 10% intervals
-      let lastLoggedPercent = -1;
-      loadingTask.onProgress = (progress: any) => {
-        if (progress.total) {
-          const percent = Math.floor((progress.loaded / progress.total) * 100);
-          if (percent >= lastLoggedPercent + 10) {
-            console.log(
-              `[PDFViewer] Loading progress: ${percent}% (${progress.loaded} / ${progress.total} bytes)`
-            );
-            lastLoggedPercent = percent;
-          }
-        } else if (lastLoggedPercent < 0) {
-          // Log once if total is unknown
-          console.log(`[PDFViewer] Loading progress: ${progress.loaded} bytes (total unknown)`);
-          lastLoggedPercent = 0;
-        }
-      };
-
       try {
         const doc = await loadingTask.promise;
         if (cancelled) return;
-        console.log('[PDFViewer] PDF loaded successfully, pages:', doc.numPages);
         setPdfDoc(doc);
         setPage(null);
         setOcConfig(null);
@@ -898,39 +790,20 @@ export function PDFViewer({
   // Keyboard shortcuts
   useEffect(() => {
     const el = viewportRef.current;
-    if (!el) {
-      console.log('[PDFViewer] No viewport element, cannot attach keyboard listener');
-      return;
-    }
-    console.log('[PDFViewer] Attaching keyboard listener to viewport element');
+    if (!el) return;
+
     const onKey = (e: KeyboardEvent) => {
       // Get fresh state from stateRef to avoid stale closure
       const currentState = stateRef.current;
 
-      console.log('[PDFViewer] Key pressed:', {
-        key: e.key,
-        screenshotMode: currentState.screenshotMode,
-        hasSelection: !!currentState.selection,
-        repeat: e.repeat,
-        showElevationPrompt,
-      });
-
       // IMPORTANT: Ignore ALL keyboard events when elevation prompt is open
       // Otherwise typing in the caption field can trigger PDFViewer shortcuts (like 's' toggling screenshot mode)
-      if (showElevationPrompt) {
-        console.log('[PDFViewer] Elevation prompt is open, ignoring keyboard event');
-        return;
-      }
+      if (showElevationPrompt) return;
 
       // Handle screenshot mode shortcuts - check selection individually for each key
       // Skip if elevation prompt is open (let the modal handle keyboard input)
       if (currentState.screenshotMode && !e.repeat) {
         const k = e.key.toLowerCase();
-        console.log('[PDFViewer] Key pressed in screenshot mode:', {
-          key: k,
-          hasSelection: !!currentState.selection,
-          showElevationPrompt,
-        });
 
         // These shortcuts require a selection
         if (currentState.selection) {
@@ -940,7 +813,6 @@ export function PDFViewer({
             return;
           }
           if (k === 'e') {
-            console.log('[PDFViewer] E key pressed, opening elevation prompt');
             e.preventDefault();
             setShowElevationPrompt(true);
             return;
@@ -982,7 +854,6 @@ export function PDFViewer({
     };
     el.addEventListener('keydown', onKey);
     return () => {
-      console.log('[PDFViewer] Removing keyboard listener from viewport element');
       el.removeEventListener('keydown', onKey);
     };
   }, [state.screenshotMode, state.numPages, state.pageNumber, readOnly, zoom, showElevationPrompt]);
@@ -1110,42 +981,18 @@ export function PDFViewer({
       elementGroupId?: string,
       caption?: string
     ) => {
-      console.log('[PDFViewer] capture() called:', {
-        target,
-        screenshotType,
-        elementGroupId,
-        caption,
-        readOnly,
-        hasPage: !!page,
-        capturingRef: capturingRef.current,
-        stateRef: stateRef.current,
-        selection: stateRef.current?.selection,
-      });
       try {
         // Use stateRef for fresh state without causing dependency issues
         const currentState = stateRef.current;
-        if (readOnly || !currentState.selection || !page) {
-          console.log('[PDFViewer] Early return from capture:', {
-            readOnly,
-            hasSelection: !!currentState.selection,
-            hasPage: !!page,
-          });
-          return;
-        }
-        if (capturingRef.current) {
-          console.log('[PDFViewer] Already capturing, skipping');
-          return;
-        }
+        if (readOnly || !currentState.selection || !page) return;
+        if (capturingRef.current) return;
         capturingRef.current = true;
 
         const savedSelection = { ...currentState.selection };
 
         // Only clear selection for plan screenshots (not elevations)
         if (screenshotType === 'plan') {
-          console.log('[PDFViewer] Clearing selection (plan screenshot)');
           dispatch({ type: 'CLEAR_SELECTION' });
-        } else {
-          console.log('[PDFViewer] NOT clearing selection (elevation screenshot)');
         }
 
         let targetCheckId = activeCheck?.id;
@@ -1254,14 +1101,12 @@ export function PDFViewer({
         // Extract text from PDF region for elevations
         let extractedText = '';
         if (screenshotType === 'elevation' && page) {
-          console.log('[PDFViewer] Extracting text from region for elevation screenshot');
           extractedText = await extractTextFromRegion(page, {
             x: sx,
             y: sy,
             width: sw,
             height: sh,
           });
-          console.log('[PDFViewer] Extracted text:', extractedText);
         }
 
         await fetch('/api/screenshots', {
@@ -1286,20 +1131,12 @@ export function PDFViewer({
           }),
         });
 
-        console.log('[PDFViewer] Calling onScreenshotSaved callback');
         onScreenshotSaved?.();
       } catch (err) {
         alert('Failed to save screenshot.');
-
         console.error('[PDFViewer] capture failed:', err);
       } finally {
         capturingRef.current = false;
-        console.log(
-          '[PDFViewer] Capture complete. screenshotType:',
-          screenshotType,
-          'selection still exists:',
-          !!stateRef.current?.selection
-        );
       }
     },
     [
@@ -1320,7 +1157,6 @@ export function PDFViewer({
   // Stable callbacks for ElevationCapturePrompt to prevent infinite re-renders
   const handleElevationSave = useCallback(
     (elementGroupId: string, caption: string) => {
-      console.log('[PDFViewer] ElevationCapturePrompt onSave called');
       // IMPORTANT: Capture FIRST while selection still exists, THEN close modal
       capture('current', 'elevation', elementGroupId, caption);
       setShowElevationPrompt(false);
@@ -1331,7 +1167,6 @@ export function PDFViewer({
   );
 
   const handleElevationCancel = useCallback(() => {
-    console.log('[PDFViewer] ElevationCapturePrompt onCancel called, closing modal');
     setShowElevationPrompt(false);
     // Refocus viewport to restore keyboard handling
     setTimeout(() => viewportRef.current?.focus(), 0);
