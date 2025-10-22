@@ -15,7 +15,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .select(
         '*, element_groups(name), sections!code_section_key(floorplan_relevant, never_relevant)'
       )
-      .eq('assessment_id', id);
+      .eq('assessment_id', id)
+      .limit(10000); // Override Supabase default 1000 row limit
 
     // Filter by element group if specified
     if (elementGroup) {
@@ -42,7 +43,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .select(
           '*, element_groups(name), sections!code_section_key(floorplan_relevant, never_relevant)'
         )
-        .eq('assessment_id', id);
+        .eq('assessment_id', id)
+        .limit(10000); // Override Supabase default 1000 row limit
 
       // Apply element group filter to search as well
       if (elementGroup) {
