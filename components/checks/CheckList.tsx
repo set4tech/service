@@ -35,7 +35,7 @@ interface CheckListProps {
   onSelect: (id: string) => void;
   assessmentId?: string;
   onCheckAdded?: (newCheck: any) => void;
-  onCheckDeleted?: (checkId: string) => void;
+  onInstanceDeleted?: (elementGroupId: string, instanceLabel: string) => void;
   refetchChecks?: () => Promise<void>;
 }
 
@@ -46,7 +46,7 @@ export function CheckList({
   onSelect,
   assessmentId,
   onCheckAdded,
-  onCheckDeleted,
+  onInstanceDeleted,
   refetchChecks,
 }: CheckListProps) {
   const [query, setQuery] = useState('');
@@ -222,57 +222,30 @@ export function CheckList({
   };
 
   const handleDeleteInstance = async (check: any, instanceLabel: string) => {
-    // Get all section IDs for this instance
-    // Use check.sections (client-side grouped data from element mode grouping)
-    const sections = check.sections || [check];
-    const checkIds = sections.map((s: any) => s.id).filter(Boolean);
-
-    console.log('[CheckList] handleDeleteInstance called:', {
-      instanceLabel,
-      checkId: check.id,
-      hasSections: !!check.sections,
-      sectionsLength: check.sections?.length || 0,
-      checkIdsLength: checkIds.length,
-      checkKeys: Object.keys(check),
-      firstSection: check.sections?.[0],
-      sectionKeys: check.sections?.[0] ? Object.keys(check.sections[0]) : [],
-      checkIds,
-    });
-
-    if (
-      !confirm(
-        `Delete "${instanceLabel}"? This will delete ${checkIds.length} checks and cannot be undone.`
-      )
-    ) {
+    if (!confirm(`Delete "${instanceLabel}"?`)) {
       return;
     }
 
     setDeletingCheckId(check.id);
 
     try {
-      // Delete all section checks in parallel
-      const deletePromises = checkIds.map((id: string) =>
-        fetch(`/api/checks/${id}`, { method: 'DELETE' })
+      // Single DELETE request
+      const response = await fetch(
+        `/api/assessments/${assessmentId}/element-instances?` +
+          `element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(instanceLabel)}`,
+        { method: 'DELETE' }
       );
 
-      const responses = await Promise.all(deletePromises);
-
-      // Check if any deletions failed
-      const failures = responses.filter(r => !r.ok);
-      if (failures.length > 0) {
-        throw new Error(`Failed to delete ${failures.length} of ${checkIds.length} checks`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Delete failed');
       }
+      const result = await response.json();
+      console.log(`[CheckList] Deleted ${result.deleted_count} checks for "${instanceLabel}"`);
 
-      console.log(
-        `[CheckList] Successfully deleted ${checkIds.length} checks for "${instanceLabel}"`
-      );
-
-      // Call parent callback to update state for each deleted check
-      if (onCheckDeleted) {
-        checkIds.forEach((id: string) => onCheckDeleted(id));
-      } else {
-        // Fallback to reload if no callback provided
-        window.location.reload();
+      // Instant UI update - no refetch needed!
+      if (onInstanceDeleted) {
+        onInstanceDeleted(check.element_group_id, instanceLabel);
       }
     } catch (error: any) {
       console.error('Delete error:', error);

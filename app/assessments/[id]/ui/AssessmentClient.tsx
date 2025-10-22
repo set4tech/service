@@ -329,59 +329,25 @@ export default function AssessmentClient({
     }
   };
 
-  const handleCheckDeleted = (checkId: string) => {
-    // Remove the check from the state
-    setChecks(prevChecks => {
-      // First check if it's a top-level check
-      let deletedCheck: CheckData | CheckInstance | undefined = prevChecks.find(
-        c => c.id === checkId
-      );
+  const handleInstanceDeleted = (elementGroupId: string, instanceLabel: string) => {
+    // Remove all checks for this element instance with a single filter operation
+    setChecks(prevChecks =>
+      prevChecks.filter(
+        c => !(c.element_group_id === elementGroupId && c.instance_label === instanceLabel)
+      )
+    );
 
-      // If not found in top-level, search in instances
-      if (!deletedCheck) {
-        for (const parentCheck of prevChecks) {
-          const instance = (parentCheck.instances || []).find(inst => inst.id === checkId);
-          if (instance) {
-            deletedCheck = instance;
-            break;
-          }
-        }
-      }
-
-      if (!deletedCheck) {
-        console.error('[handleCheckDeleted] Check not found:', checkId);
-        return prevChecks;
-      }
-
-      // If it's a top-level check, remove it from main array
-      if (!deletedCheck.parent_check_id) {
-        return prevChecks.filter(c => c.id !== checkId);
-      }
-
-      // Check if parent exists in checks array (templates with instance_number=0 are filtered out)
-      const parentExists = prevChecks.some(c => c.id === deletedCheck.parent_check_id);
-
-      // If parent doesn't exist in UI (e.g., it's a template), treat as top-level deletion
-      if (!parentExists) {
-        return prevChecks.filter(c => c.id !== checkId);
-      }
-
-      // If it's an instance with a visible parent, remove from parent's instances array
-      return prevChecks.map(c => {
-        if (c.id === deletedCheck?.parent_check_id) {
-          return {
-            ...c,
-            instances: (c.instances || []).filter(inst => inst.id !== checkId),
-            instance_count: Math.max((c.instance_count || 0) - 1, 0),
-          };
-        }
-        return c;
-      });
-    });
-
-    // If the deleted check was active, clear the active check
-    if (activeCheckId === checkId) {
+    // Clear active check if it was in the deleted instance
+    if (
+      activeCheck?.element_group_id === elementGroupId &&
+      activeCheck?.instance_label === instanceLabel
+    ) {
       setActiveCheckId(null);
+      setShowDetailPanel(false);
+      // Clear URL hash
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
     }
   };
 
@@ -829,7 +795,7 @@ export default function AssessmentClient({
               onSelect={handleCheckSelect}
               assessmentId={assessment.id}
               onCheckAdded={handleCheckAdded}
-              onCheckDeleted={handleCheckDeleted}
+              onInstanceDeleted={handleInstanceDeleted}
               refetchChecks={refetchChecks}
             />
           )}
