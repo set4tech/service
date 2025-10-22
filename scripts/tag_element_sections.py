@@ -108,14 +108,31 @@ def get_element_group_ids(supabase: Client):
     return {row['slug']: row['id'] for row in response.data}
 
 def fetch_sections(supabase: Client):
-    response = supabase.table('sections').select('key, number, title, text, paragraphs').eq('drawing_assessable', True).order('number').execute()
-    return [{
-        'key': r['key'],
-        'number': r['number'] or '',
-        'title': r['title'] or '',
-        'text': r['text'] or '',
-        'paragraphs': r['paragraphs'] or []
-    } for r in response.data]
+    # Fetch ALL sections using pagination to overcome Supabase 1000-row limit
+    all_sections = []
+    page_size = 1000
+    offset = 0
+
+    while True:
+        response = supabase.table('sections').select('key, number, title, text, paragraphs').eq('drawing_assessable', True).order('number').range(offset, offset + page_size - 1).execute()
+
+        if not response.data:
+            break
+
+        all_sections.extend([{
+            'key': r['key'],
+            'number': r['number'] or '',
+            'title': r['title'] or '',
+            'text': r['text'] or '',
+            'paragraphs': r['paragraphs'] or []
+        } for r in response.data])
+
+        if len(response.data) < page_size:
+            break
+
+        offset += page_size
+
+    return all_sections
 
 def fetch_ancestors(supabase: Client, number):
     """
@@ -141,8 +158,19 @@ def fetch_ancestors(supabase: Client, number):
     if not candidates:
         return []
 
-    response = supabase.table('sections').select('number, title').in_('number', candidates).execute()
-    return [row['title'] for row in response.data if row['title']]
+    # Retry logic for network errors
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = supabase.table('sections').select('number, title').in_('number', candidates).execute()
+            return [row['title'] for row in response.data if row['title']]
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(1 * (attempt + 1))  # Exponential backoff
+                continue
+            else:
+                print(f"   ⚠ Failed to fetch ancestors for {number}: {e}")
+                return []  # Return empty on failure
 
 # ---------------------------
 # Text matching
@@ -220,14 +248,19 @@ def match_keywords(section, ancestor_titles):
 # Optional LLM sweep
 # ---------------------------
 
-def llm_classify(section, ancestor_titles):
+def llm_classify_batch(sections_with_ancestors):
     """
-    Return a Python set of labels among {'doors','bathrooms','kitchens'}.
-    No confidences; empty set if none.
+    Classify multiple sections in a single API call.
+
+    Args:
+        sections_with_ancestors: List of tuples (section, ancestor_titles)
+
+    Returns:
+        Dict mapping section index to set of labels
     """
     api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        return set()
+    if not api_key or not sections_with_ancestors:
+        return {}
 
     try:
         import requests
@@ -237,41 +270,55 @@ def llm_classify(section, ancestor_titles):
             "You label building code clauses with any of these tags: doors, bathrooms, kitchens. "
             "Tag ONLY if the clause itself contains prescriptive content for that element type. "
             "Do NOT tag definitions, scoping, or clauses that merely point elsewhere. "
-            "Multi-label is allowed. Return ONLY a JSON array of strings, e.g., [\"doors\",\"kitchens\"] or []."
+            "Multi-label is allowed. You will receive multiple sections at once. "
+            "Return a JSON object with 'results' array containing one entry per section in order, "
+            "each with 'index' (0-based) and 'labels' (array of tags). "
+            "Example: {\"results\": [{\"index\": 0, \"labels\": [\"doors\"]}, {\"index\": 1, \"labels\": []}]}"
         )
 
-        # Extract paragraphs text
-        paragraphs_text = []
-        if section.get('paragraphs') and isinstance(section['paragraphs'], list):
-            paragraphs_text = section['paragraphs']
+        # Build batch payload
+        sections_payload = []
+        for idx, (section, ancestor_titles) in enumerate(sections_with_ancestors):
+            paragraphs_text = []
+            if section.get('paragraphs') and isinstance(section['paragraphs'], list):
+                paragraphs_text = section['paragraphs']
 
-        user_payload = {
-            "number": section['number'],
-            "title": section['title'],
-            "text": section['text'],
-            "paragraphs": paragraphs_text,
-            "ancestor_titles": ancestor_titles,
-        }
+            sections_payload.append({
+                "index": idx,
+                "number": section['number'],
+                "title": section['title'],
+                "text": section['text'],
+                "paragraphs": paragraphs_text,
+                "ancestor_titles": ancestor_titles,
+            })
+
         data = {
             "model": "gpt-4o-mini",
             "messages": [
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)}
+                {"role": "user", "content": json.dumps({"sections": sections_payload}, ensure_ascii=False)}
             ],
             "temperature": 0.0,
-            "response_format": {"type": "json_object"}  # guardrail; we'll parse 'labels' key below
+            "response_format": {"type": "json_object"}
         }
-        # Ask the model to embed labels under a 'labels' property to be explicit
-        data["messages"][0]["content"] += " Respond with a JSON object: {\"labels\": [ ... ]}."
 
-        resp = requests.post(url, headers=headers, json=data, timeout=30)
+        resp = requests.post(url, headers=headers, json=data, timeout=60)
         resp.raise_for_status()
         out = resp.json()["choices"][0]["message"]["content"]
         parsed = json.loads(out)
-        labels = parsed.get("labels", [])
-        return set([l for l in labels if l in {"doors", "bathrooms", "kitchens"}])
-    except Exception:
-        return set()
+
+        # Parse results into dict
+        results = {}
+        for result in parsed.get("results", []):
+            idx = result.get("index")
+            labels = result.get("labels", [])
+            if idx is not None:
+                results[idx] = set([l for l in labels if l in {"doors", "bathrooms", "kitchens"}])
+
+        return results
+    except Exception as e:
+        print(f"   ⚠ LLM batch failed: {e}")
+        return {}
 
 # ---------------------------
 # CSV + DB
@@ -366,15 +413,23 @@ def main():
         results = []
         stage_stats = {'anchor': 0, 'keyword': 0, 'llm': 0, 'skipped': 0, 'unmatched': 0}
 
+        print(f"Processing {len(sections)} sections...")
+        sys.stdout.flush()
+
+        # First pass: anchor and keyword matching
+        untagged_sections = []  # Will collect sections that need LLM
+        BATCH_SIZE = 5
+
         for idx, s in enumerate(sections, 1):
             if idx % 50 == 0:
-                print(f"   Processed {idx}/{len(sections)} sections...")
+                print(f"   Processed {idx}/{len(sections)} sections... (anchors: {stage_stats['anchor']}, keywords: {stage_stats['keyword']}, skipped: {stage_stats['skipped']})")
+                sys.stdout.flush()
 
             ancestors = fetch_ancestors(supabase, s['number'])
 
             # Check definitional/scoping
             if is_def_or_scoping(s, ancestors):
-                results.append({**s, 'tags': set(), 'reason': 'Skipped: definitional/scoping'})
+                results.append({**s, 'tags': set(), 'reason': 'Skipped: definitional/scoping', 'ancestors': ancestors})
                 stage_stats['skipped'] += 1
                 continue
 
@@ -396,18 +451,42 @@ def main():
                 if not anchor_hits:  # Only count if not already counted
                     stage_stats['keyword'] += 1
 
-            # Stage B: optional LLM sweep for residuals
             if not tags and USE_LLM_SWEEP:
-                llm_hits = llm_classify(s, ancestors)
-                if llm_hits:
-                    tags |= llm_hits
-                    reasons.append(f"llm:{'/'.join(sorted(llm_hits))}")
-                    stage_stats['llm'] += 1
+                # Store for batch processing
+                untagged_sections.append((len(results), s, ancestors))
+                results.append({**s, 'tags': set(), 'reason': '', 'ancestors': ancestors})
+            else:
+                if not tags:
+                    stage_stats['unmatched'] += 1
+                results.append({**s, 'tags': tags, 'reason': ';'.join(reasons) if reasons else 'no match', 'ancestors': ancestors})
 
-            if not tags:
-                stage_stats['unmatched'] += 1
+        # Stage B: batch LLM processing
+        if USE_LLM_SWEEP and untagged_sections:
+            print(f"\n   Starting LLM batch processing for {len(untagged_sections)} untagged sections...")
+            sys.stdout.flush()
 
-            results.append({**s, 'tags': tags, 'reason': ';'.join(reasons) if reasons else 'no match'})
+            for batch_start in range(0, len(untagged_sections), BATCH_SIZE):
+                batch = untagged_sections[batch_start:batch_start + BATCH_SIZE]
+                batch_data = [(s, ancestors) for (_, s, ancestors) in batch]
+
+                if (batch_start // BATCH_SIZE) % 10 == 0:
+                    print(f"   LLM batch {batch_start // BATCH_SIZE + 1}/{(len(untagged_sections) + BATCH_SIZE - 1) // BATCH_SIZE}... ({stage_stats['llm']} classified)")
+                    sys.stdout.flush()
+
+                llm_results = llm_classify_batch(batch_data)
+
+                for batch_idx, (result_idx, s, ancestors) in enumerate(batch):
+                    llm_hits = llm_results.get(batch_idx, set())
+                    if llm_hits:
+                        results[result_idx]['tags'] = llm_hits
+                        results[result_idx]['reason'] = f"llm:{'/'.join(sorted(llm_hits))}"
+                        stage_stats['llm'] += 1
+                    else:
+                        results[result_idx]['reason'] = 'no match'
+                        stage_stats['unmatched'] += 1
+
+            print(f"   ✓ LLM processing complete: {stage_stats['llm']} sections tagged")
+            sys.stdout.flush()
 
         print(f"   Processed {len(sections)}/{len(sections)} sections\n")
 
