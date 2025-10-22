@@ -112,35 +112,52 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Create section checks directly (no parent element check)
-  const sectionChecks = sections.map(section => ({
-    assessment_id: assessmentId,
-    check_type: 'section',
-    check_name: `${label} - ${section.title}`,
-    code_section_key: section.key,
-    code_section_number: section.number,
-    code_section_title: section.title,
-    element_group_id: elementGroup.id,
-    instance_label: label,
-    status: 'pending',
-  }));
+  // Retry with " (1)" appended if we hit a duplicate
+  let currentLabel = label;
+  let createdChecks = null;
 
-  const { data: createdChecks, error: insertError } = await supabase
-    .from('checks')
-    .insert(sectionChecks)
-    .select('*, element_groups(name)');
+  // Keep trying with " (1)" appended until we succeed
+  while (!createdChecks) {
+    const sectionChecks = sections.map(section => ({
+      assessment_id: assessmentId,
+      check_type: 'section',
+      check_name: `${currentLabel} - ${section.title}`,
+      code_section_key: section.key,
+      code_section_number: section.number,
+      code_section_title: section.title,
+      element_group_id: elementGroup.id,
+      instance_label: currentLabel,
+      status: 'pending',
+    }));
 
-  if (insertError || !createdChecks || createdChecks.length === 0) {
-    console.error('[create-element] ❌ Error creating section checks:', insertError);
-    return NextResponse.json(
-      { error: `Failed to create section checks: ${insertError?.message || 'Unknown error'}` },
-      { status: 500 }
-    );
+    const result = await supabase
+      .from('checks')
+      .insert(sectionChecks)
+      .select('*, element_groups(name)');
+
+    if (result.error && result.error.code === '23505') {
+      // Duplicate found, append " (1)" and try again
+      console.log(
+        `[create-element] ℹ️ Duplicate found for "${currentLabel}", trying "${currentLabel} (1)"...`
+      );
+      currentLabel = `${currentLabel} (1)`;
+    } else if (result.error) {
+      // Some other error
+      console.error('[create-element] ❌ Error creating section checks:', result.error);
+      return NextResponse.json(
+        { error: `Failed to create section checks: ${result.error.message || 'Unknown error'}` },
+        { status: 500 }
+      );
+    } else {
+      // Success!
+      createdChecks = result.data;
+      console.log(
+        `[create-element] ✅ Created ${createdChecks.length} section checks for "${currentLabel}"`
+      );
+    }
   }
 
-  console.log(`[create-element] ✅ Created ${createdChecks.length} section checks for "${label}"`);
-
   // 6. Return first check as representative (for UI compatibility)
-  // Note: element_groups.name is already included via JOIN in select()
   const representativeCheck = createdChecks[0];
 
   return NextResponse.json({ check: representativeCheck });
