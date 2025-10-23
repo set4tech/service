@@ -28,7 +28,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .select('id')
         .eq('assessment_id', check.assessment_id)
         .eq('element_group_id', check.element_group_id)
-        .eq('instance_label', check.instance_label);
+        .eq('instance_label', check.instance_label)
+        .limit(10000); // Override Supabase default limit
 
       if (siblings && siblings.length > 0) {
         checkIds = siblings.map(s => s.id);

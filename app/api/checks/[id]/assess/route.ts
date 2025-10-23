@@ -109,7 +109,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .eq('assessment_id', check.assessment_id)
         .eq('element_group_id', check.element_group_id)
         .eq('instance_label', check.instance_label)
-        .order('code_section_number', { ascending: true });
+        .order('code_section_number', { ascending: true })
+        .limit(10000); // Override Supabase default limit
 
       if (!siblingsError && siblings && siblings.length > 0) {
         sectionChecks = siblings;

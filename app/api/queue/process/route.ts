@@ -8,23 +8,20 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   console.log('[Queue] Processing started at', new Date().toISOString());
 
-  const jobs: string[] = [];
+  const supabase = supabaseAdmin();
+  let processedCount = 0;
+
+  // Process jobs one at a time to prevent job loss on timeout
+  // Each job is only removed from queue immediately before processing
   for (let i = 0; i < 10; i++) {
     const id = await kv.rpop<string>('queue:analysis');
-    if (!id) break;
-    jobs.push(id);
-  }
+    if (!id) {
+      // Queue is empty
+      break;
+    }
 
-  if (jobs.length === 0) {
-    return NextResponse.json({ processed: 0 });
-  }
-
-  console.log(`[Queue] Processing ${jobs.length} job(s)`);
-  const supabase = supabaseAdmin();
-
-  for (const id of jobs) {
+    console.log(`[Queue] Processing job ${i + 1}/10: ${id}`);
     try {
-      console.log(`[Queue] Processing job ${id}`);
       const job = await kv.hgetall<{
         type: string;
         payload: string;
@@ -57,6 +54,7 @@ export async function GET() {
 
       if (jobType === 'element_group_assessment') {
         // Handle element group meta-job: expand into individual batch_analysis jobs
+        const expansionStartTime = Date.now();
         console.log(`[Queue] Expanding element_group_assessment job ${id}`);
 
         const {
@@ -227,8 +225,9 @@ export async function GET() {
           await kv.lpush('queue:analysis', childJobId);
         }
 
+        const expansionTimeMs = Date.now() - expansionStartTime;
         console.log(
-          `[Queue] Successfully expanded element_group_assessment job ${id} into ${checks.length} batch jobs`
+          `[Queue] Successfully expanded element_group_assessment job ${id} into ${checks.length} batch jobs in ${expansionTimeMs}ms`
         );
 
         // Mark meta-job as completed
@@ -529,6 +528,7 @@ Return your response as a JSON object with this exact structure:
 
       await kv.hset(`job:${id}`, { status: 'completed', completedAt: Date.now() });
       console.log(`[Queue] Job ${id} completed successfully`);
+      processedCount++;
     } catch (e: any) {
       console.error(`[Queue] Job ${id} failed:`, e?.message || e);
       const job = await kv.hgetall<{ attempts: number; maxAttempts: number }>(`job:${id}`);
@@ -542,9 +542,10 @@ Return your response as a JSON object with this exact structure:
         console.error(`[Queue] Job ${id} failed permanently after ${attempts} attempts`);
         await kv.hset(`job:${id}`, { status: 'failed', error: String(e?.message || e) });
       }
+      processedCount++;
     }
   }
 
-  console.log(`[Queue] Processed ${jobs.length} jobs`);
-  return NextResponse.json({ processed: jobs.length });
+  console.log(`[Queue] Processed ${processedCount} jobs`);
+  return NextResponse.json({ processed: processedCount });
 }
