@@ -162,16 +162,11 @@ function useCheckData(
             }
           }
 
-          const activeChildId = sorted.find(c => c.id === checkId)?.id || sorted[0]?.id || null;
+          // The checkId passed in IS the check that was clicked - use it directly
+          const activeChildId = checkId;
           const activeChild = sorted.find(c => c.id === activeChildId);
 
           // Load data for active child in parallel
-          console.log('[useCheckData] Loading section for element check:', {
-            activeChildId,
-            code_section_key: activeChild?.code_section_key,
-            checkId,
-          });
-
           const [section, runs, progress] = await Promise.all([
             activeChildId && activeChild?.code_section_key
               ? fetchSection(activeChild.code_section_key)
@@ -180,20 +175,7 @@ function useCheckData(
             fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
           ]);
 
-          console.log('[useCheckData] Section loaded:', {
-            hasSection: !!section,
-            sectionKey: section?.key,
-          });
-
           if (isCancelled) return;
-
-          console.log('[useCheckData] Progress response for element check:', {
-            checkId,
-            inProgress: progress.inProgress,
-            completed: progress.completed,
-            total: progress.total,
-            willSetAssessing: progress.inProgress || false,
-          });
 
           setData({
             check,
@@ -219,14 +201,6 @@ function useCheckData(
         ]);
 
         if (isCancelled) return;
-
-        console.log('[useCheckData] Progress response for standalone check:', {
-          checkId,
-          inProgress: progress.inProgress,
-          completed: progress.completed,
-          total: progress.total,
-          willSetAssessing: progress.inProgress || false,
-        });
 
         // Set all state
         setData({
@@ -316,44 +290,43 @@ export function CodeDetailPanel({
     },
   } = manualOverrideHook;
 
-  // Local state for things that change after initial load
-  const [childChecks, setChildChecks] = useState<any[]>([]);
+  // Local state for tab navigation (when user clicks section tabs within an element check)
   const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
-  const [sections, setSections] = useState<CodeSection[]>([]);
+  const [tabSections, setTabSections] = useState<CodeSection[]>([]);
   const [activeSectionIndex] = useState(0);
-  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
 
-  // Track the last synced checkId to prevent unnecessary re-syncs
-  const lastSyncedCheckIdRef = useRef<string | null>(null);
+  // Use hook data directly (childChecks, sections, analysisRuns)
+  const childChecks = initialChildChecks;
+  const sections = activeChildCheckId && tabSections.length > 0 ? tabSections : initialSections;
+  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>(initialAnalysisRuns);
 
-  // Sync initial data to local state when loading completes
-
+  // Reset tab state when checkId changes
   useEffect(() => {
-    if (!panelLoading && checkId !== lastSyncedCheckIdRef.current) {
-      lastSyncedCheckIdRef.current = checkId;
-      setChildChecks(initialChildChecks);
-      setActiveChildCheckId(initialActiveChildId);
-      setSections(initialSections);
-      setAnalysisRuns(initialAnalysisRuns);
-      setManualOverride(initialManualOverride);
-      setManualOverrideNote(initialManualOverrideNote);
-    }
-    // setManualOverride and setManualOverrideNote are stable functions from useState, safe to omit
+    setActiveChildCheckId(initialActiveChildId);
+    setTabSections([]);
+    setAnalysisRuns(initialAnalysisRuns);
+    setManualOverride(initialManualOverride);
+    setManualOverrideNote(initialManualOverrideNote);
   }, [
-    panelLoading,
     checkId,
-    initialChildChecks,
     initialActiveChildId,
-    initialSections,
     initialAnalysisRuns,
     initialManualOverride,
     initialManualOverrideNote,
+    setManualOverride,
+    setManualOverrideNote,
   ]);
 
-  // Handle child check changes (load new section)
+  // Handle tab switching (when user clicks section tabs within an element)
   const prevActiveChildRef = useRef<string | null>(null);
   useEffect(() => {
-    if (panelLoading || !activeChildCheckId || activeChildCheckId === prevActiveChildRef.current) {
+    // Only load section if user manually switched tabs (not initial load)
+    if (panelLoading || !activeChildCheckId || activeChildCheckId === initialActiveChildId) {
+      prevActiveChildRef.current = activeChildCheckId;
+      return;
+    }
+
+    if (activeChildCheckId === prevActiveChildRef.current) {
       return;
     }
 
@@ -366,22 +339,22 @@ export function CodeDetailPanel({
 
     fetchSection(sectionKey)
       .then(section => {
-        setSections([section]);
-
-        // Re-find the active check to avoid stale closure
-        // This ensures we get the latest override data even if childChecks was updated during the async operation
-        const currentActiveChild = childChecks.find(c => c.id === activeChildCheckId);
-        if (currentActiveChild) {
-          setManualOverride(currentActiveChild.manual_status || null);
-          setManualOverrideNote(currentActiveChild.manual_status_note || '');
-        }
+        setTabSections([section]);
+        setManualOverride(activeChild.manual_status || null);
+        setManualOverrideNote(activeChild.manual_status_note || '');
       })
       .catch(err => {
         console.error('Failed to load section:', err);
-        // Section not found (possibly never_relevant) - clear sections
-        setSections([]);
+        setTabSections([]);
       });
-  }, [activeChildCheckId, childChecks, panelLoading]);
+  }, [
+    activeChildCheckId,
+    childChecks,
+    panelLoading,
+    initialActiveChildId,
+    setManualOverride,
+    setManualOverrideNote,
+  ]);
 
   // Polling hook
   const handleAssessmentComplete = useCallback(() => {
@@ -476,16 +449,6 @@ export function CodeDetailPanel({
     try {
       // Save using the hook
       await saveOverride(effectiveCheckId);
-
-      // Update the current check's override in the childChecks array
-      if (childChecks.length > 0 && effectiveCheckId) {
-        const updatedChildChecks = childChecks.map(c =>
-          c.id === effectiveCheckId
-            ? { ...c, manual_status: manualOverride, manual_status_note: manualOverrideNote }
-            : c
-        );
-        setChildChecks(updatedChildChecks);
-      }
 
       // Navigate to next check if marking as not_applicable
       if (manualOverride === 'not_applicable') {
@@ -820,14 +783,6 @@ export function CodeDetailPanel({
   if (!sectionKey && childChecks.length === 0) return null;
 
   const isElementCheck = childChecks.length > 0;
-  console.log('[CodeDetailPanel] Rendering:', {
-    isElementCheck,
-    childChecksCount: childChecks.length,
-    sectionKey,
-  });
-
-  // [Continue with the rest of the JSX - importing from original lines 1104-2248]
-  // Due to length, I'll include the key parts and preserve exact structure...
 
   return (
     <div className="h-full flex flex-col bg-white border-r border-gray-200">
