@@ -10,17 +10,31 @@ export async function GET() {
 
   const supabase = supabaseAdmin();
   let processedCount = 0;
+  const startTime = Date.now();
+  const MAX_JOBS_PER_CALL = 25; // Increased from 10 to handle larger batches
+  const MAX_PROCESSING_TIME_MS = 50000; // 50 seconds (leave buffer for serverless timeout)
+
+  // First, check queue length for logging
+  const queueLength = await kv.llen('queue:analysis');
+  console.log(`[Queue] Queue length: ${queueLength} jobs`);
 
   // Process jobs one at a time to prevent job loss on timeout
   // Each job is only removed from queue immediately before processing
-  for (let i = 0; i < 10; i++) {
-    const id = await kv.rpop<string>('queue:analysis');
-    if (!id) {
-      // Queue is empty
+  for (let i = 0; i < MAX_JOBS_PER_CALL; i++) {
+    // Check if we're approaching timeout
+    if (Date.now() - startTime > MAX_PROCESSING_TIME_MS) {
+      console.log(`[Queue] Approaching timeout after ${i} jobs, stopping gracefully`);
       break;
     }
 
-    console.log(`[Queue] Processing job ${i + 1}/10: ${id}`);
+    const id = await kv.rpop<string>('queue:analysis');
+    if (!id) {
+      // Queue is empty
+      console.log(`[Queue] Queue empty after ${i} jobs`);
+      break;
+    }
+
+    console.log(`[Queue] Processing job ${i + 1}/${MAX_JOBS_PER_CALL}: ${id}`);
     try {
       const job = await kv.hgetall<{
         type: string;
@@ -478,12 +492,24 @@ Return your response as a JSON object with this exact structure:
         // Check if all batches are complete
         const { data: allRuns } = await supabase
           .from('analysis_runs')
-          .select('compliance_status')
+          .select('compliance_status, check_id')
           .eq('batch_group_id', batchGroupId);
 
+        console.log(
+          `[Queue] Batch ${batchNum}/${totalBatches} complete. Total runs for batch group: ${allRuns?.length || 0}`
+        );
+
         if (allRuns && allRuns.length === totalBatches) {
-          // All batches complete - update check status
-          await supabase.from('checks').update({ status: 'completed' }).eq('id', checkId);
+          // All batches complete! Get all unique check IDs from this batch group
+          const allCheckIds = Array.from(new Set(allRuns.map(r => r.check_id)));
+          console.log(
+            `[Queue] All ${totalBatches} batches complete! Marking ${allCheckIds.length} checks as completed`
+          );
+
+          // Update ALL checks associated with this batch group
+          await supabase.from('checks').update({ status: 'completed' }).in('id', allCheckIds);
+
+          console.log(`[Queue] ✅ Marked ${allCheckIds.length} checks as completed`);
         }
 
         console.log(`[Queue] Completed batch ${batchNum}/${totalBatches} for check ${checkId}`);
@@ -546,6 +572,23 @@ Return your response as a JSON object with this exact structure:
     }
   }
 
-  console.log(`[Queue] Processed ${processedCount} jobs`);
-  return NextResponse.json({ processed: processedCount });
+  // Check remaining queue length
+  const remainingJobs = await kv.llen('queue:analysis');
+  const elapsedMs = Date.now() - startTime;
+
+  console.log(
+    `[Queue] Finished processing. Processed: ${processedCount} jobs, Remaining: ${remainingJobs} jobs, Elapsed: ${elapsedMs}ms`
+  );
+
+  if (remainingJobs > 0) {
+    console.log(
+      `[Queue] ⚠️ Warning: ${remainingJobs} jobs still in queue. Will be processed on next poll.`
+    );
+  }
+
+  return NextResponse.json({
+    processed: processedCount,
+    remaining: remainingJobs,
+    elapsedMs,
+  });
 }

@@ -262,37 +262,151 @@ export default function AssessmentClient({
     }
   };
 
-  const handleMoveToNextCheck = () => {
-    // Flatten all checks and instances into a single list
-    const allCheckIds: string[] = [];
-    checks.forEach(check => {
-      allCheckIds.push(check.id);
-      if (check.instances?.length && check.instances.length > 0) {
-        check.instances.forEach(instance => {
-          allCheckIds.push(instance.id);
-        });
+  // Natural sort comparator (matches CheckList logic)
+  const naturalCompare = (a: string, b: string): number => {
+    const regex = /(\d+)|(\D+)/g;
+    const aParts = a.match(regex) || [];
+    const bParts = b.match(regex) || [];
+
+    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+      const aPart = aParts[i] || '';
+      const bPart = bParts[i] || '';
+      const aNum = parseInt(aPart, 10);
+      const bNum = parseInt(bPart, 10);
+
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        if (aNum !== bNum) return aNum - bNum;
+      } else {
+        if (aPart !== bPart) return aPart.localeCompare(bPart);
       }
+    }
+    return 0;
+  };
+
+  // Helper: Get all navigable check IDs in the SAME ORDER as displayed in CheckList
+  const getAllCheckIds = (checksList: CheckData[], mode: 'section' | 'element') => {
+    const ids: string[] = [];
+    const mainGroups = new Map<string, CheckData[]>();
+
+    // Group checks exactly like CheckList does
+    if (mode === 'element') {
+      checksList.forEach(check => {
+        if (!check.element_group_id || !(check as any).instance_label) return;
+        const groupName = (check as any).element_group_name || 'Other';
+        if (!mainGroups.has(groupName)) {
+          mainGroups.set(groupName, []);
+        }
+        mainGroups.get(groupName)!.push(check);
+      });
+      // Sort each group by instance label
+      mainGroups.forEach(group => {
+        group.sort((a, b) =>
+          ((a as any).instance_label || '').localeCompare((b as any).instance_label || '')
+        );
+      });
+    } else {
+      // Section mode: group by section prefix
+      checksList.forEach(check => {
+        const sectionNumber = (check as any).code_section_number || '';
+        const mainPrefix = sectionNumber.split('-')[0] || 'Other';
+        if (!mainGroups.has(mainPrefix)) {
+          mainGroups.set(mainPrefix, []);
+        }
+        mainGroups.get(mainPrefix)!.push(check);
+      });
+      // Sort each group by section number using natural sort
+      mainGroups.forEach(group => {
+        group.sort((a, b) =>
+          naturalCompare((a as any).code_section_number || '', (b as any).code_section_number || '')
+        );
+      });
+    }
+
+    // Sort groups by name/prefix
+    const sortedGroups = Array.from(mainGroups.entries()).sort(([a], [b]) => naturalCompare(a, b));
+
+    // Flatten into ID list, including instances
+    sortedGroups.forEach(([_, checks]) => {
+      checks.forEach(check => {
+        ids.push(check.id);
+        if (check.instances?.length) {
+          // Sort instances if they exist
+          const sortedInstances = [...check.instances].sort((a, b) =>
+            ((a as any).instance_label || '').localeCompare((b as any).instance_label || '')
+          );
+          sortedInstances.forEach(instance => ids.push(instance.id));
+        }
+      });
     });
 
-    // Find current check index
-    const currentIndex = allCheckIds.indexOf(activeCheckId || '');
+    return ids;
+  };
 
-    if (currentIndex === -1 || currentIndex === allCheckIds.length - 1) {
-      // No current check or at end of list - close panel
-      setShowDetailPanel(false);
-      setActiveCheckId(null);
-      // Clear URL hash
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  // Helper: Navigate to a check by ID
+  const navigateToCheck = (checkId: string | null) => {
+    setActiveCheckId(checkId);
+    setShowDetailPanel(!!checkId);
+    if (typeof window !== 'undefined') {
+      const url = checkId ? `#${checkId}` : window.location.pathname + window.location.search;
+      window.history.replaceState(null, '', url);
+    }
+  };
+
+  // Helper: Mark current check as compliant and optionally advance
+  const markCheckCompliant = async (checkId: string, autoAdvance = false) => {
+    try {
+      const res = await fetch(`/api/checks/${checkId}/manual-override`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ override: 'compliant', note: 'Marked via keyboard shortcut' }),
+      });
+
+      if (!res.ok) throw new Error('Failed to mark as compliant');
+
+      const { check: updatedCheck } = await res.json();
+
+      // Update local state
+      setChecks(prev =>
+        prev.map(c => {
+          if (c.id === updatedCheck.id) {
+            return { ...c, ...updatedCheck, instances: c.instances };
+          }
+          if (c.instances?.length) {
+            const updatedInstances = c.instances.map(inst =>
+              inst.id === updatedCheck.id ? { ...inst, ...updatedCheck } : inst
+            );
+            if (updatedInstances !== c.instances) {
+              return { ...c, instances: updatedInstances };
+            }
+          }
+          return c;
+        })
+      );
+
+      // Auto-advance to next check if requested
+      if (autoAdvance) {
+        const allIds = getAllCheckIds(
+          displayedChecks,
+          checkMode === 'element' ? 'element' : 'section'
+        );
+        const currentIdx = allIds.indexOf(checkId);
+        if (currentIdx < allIds.length - 1) {
+          navigateToCheck(allIds[currentIdx + 1]);
+        }
       }
+    } catch (error) {
+      console.error('[Keyboard Nav] Error marking as compliant:', error);
+    }
+  };
+
+  const handleMoveToNextCheck = () => {
+    const allIds = getAllCheckIds(checks, checkMode === 'element' ? 'element' : 'section');
+    const currentIdx = allIds.indexOf(activeCheckId || '');
+
+    if (currentIdx === -1 || currentIdx === allIds.length - 1) {
+      navigateToCheck(null);
     } else {
-      // Move to next check
-      const nextCheckId = allCheckIds[currentIndex + 1];
-      setActiveCheckId(nextCheckId);
-      // Update URL hash
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', `#${nextCheckId}`);
-      }
+      navigateToCheck(allIds[currentIdx + 1]);
     }
   };
 
@@ -584,6 +698,51 @@ export default function AssessmentClient({
 
     refetchScreenshots();
   }, [screenshotsChanged, activeCheckId]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    // Skip in summary/gallery modes
+    if (checkMode === 'summary' || checkMode === 'gallery') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      const mode = checkMode === 'element' ? 'element' : 'section';
+      const allIds = getAllCheckIds(displayedChecks, mode);
+      const currentIdx = allIds.indexOf(activeCheckId || '');
+
+      // Arrow Up/Down: Navigate between checks
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        let nextIdx = currentIdx;
+
+        if (e.key === 'ArrowUp' && currentIdx > 0) {
+          nextIdx = currentIdx - 1;
+        } else if (e.key === 'ArrowDown' && currentIdx < allIds.length - 1) {
+          nextIdx = currentIdx + 1;
+        }
+
+        if (nextIdx !== currentIdx) {
+          navigateToCheck(allIds[nextIdx]);
+          console.log(`[Keyboard] Navigated to check ${nextIdx + 1}/${allIds.length}`);
+        }
+      }
+
+      // Enter: Mark as compliant and advance
+      if (e.key === 'Enter' && activeCheckId) {
+        e.preventDefault();
+        console.log(`[Keyboard] Marking check as compliant: ${activeCheckId}`);
+        markCheckCompliant(activeCheckId, true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeCheckId, displayedChecks, checkMode]);
 
   return (
     <div className="fixed inset-0 flex overflow-hidden">
