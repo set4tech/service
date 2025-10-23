@@ -165,23 +165,14 @@ export function CheckList({
         group.sort((a, b) => (a.instance_label || '').localeCompare(b.instance_label || ''));
       });
     } else {
-      // Group by section prefix (original logic)
-      filtered.forEach(check => {
-        const sectionNumber = check.code_section_number || '';
-        const mainPrefix = sectionNumber.split('-')[0] || 'Other';
+      // Section mode: flat list, no grouping
+      // Sort all checks by section number using natural sort
+      const sortedChecks = [...filtered].sort((a, b) =>
+        naturalCompare(a.code_section_number || '', b.code_section_number || '')
+      );
 
-        if (!mainGroups.has(mainPrefix)) {
-          mainGroups.set(mainPrefix, []);
-        }
-        mainGroups.get(mainPrefix)!.push(check);
-      });
-
-      // Sort each group by section number using natural sort
-      mainGroups.forEach(group => {
-        group.sort((a, b) =>
-          naturalCompare(a.code_section_number || '', b.code_section_number || '')
-        );
-      });
+      // Return as single group with empty key for flat rendering
+      mainGroups.set('', sortedChecks);
     }
 
     return Array.from(mainGroups.entries()).sort(([a], [b]) => naturalCompare(a, b));
@@ -272,20 +263,51 @@ export function CheckList({
       return;
     }
 
+    // Find the check to get element_group_id and current instance_label
+    const check = filtered.find(c => c.id === checkId);
+    if (!check) {
+      alert('Check not found');
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/checks/${checkId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instance_label: newLabel }),
-      });
+      let response;
+
+      // If this is an element check, update ALL checks for this instance
+      if (check.element_group_id && check.instance_label && assessmentId) {
+        console.log('[CheckList] Bulk updating instance label:', {
+          checkId,
+          element_group_id: check.element_group_id,
+          old_label: check.instance_label,
+          new_label: newLabel,
+        });
+
+        response = await fetch(
+          `/api/assessments/${assessmentId}/element-instances?` +
+            `element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(check.instance_label)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newInstanceLabel: newLabel }),
+          }
+        );
+      } else {
+        // Fall back to single check update for non-element checks
+        console.log('[CheckList] Single check update:', { checkId, newLabel });
+        response = await fetch(`/api/checks/${checkId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instance_label: newLabel }),
+        });
+      }
 
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to update label');
       }
 
-      const { check } = await response.json();
-      console.log('Label updated successfully:', check);
+      const result = await response.json();
+      console.log('Label updated successfully:', result);
 
       // Refetch checks to get updated data first, then clear editing state
       if (refetchChecks) {
@@ -440,84 +462,84 @@ export function CheckList({
 
           return (
             <div key={mainPrefix} className="border-b border-gray-200">
-              {/* Main Section/Element Header */}
-              <div className="w-full flex items-center hover:bg-gray-50 transition-colors">
-                <button
-                  onClick={() => toggleSection(mainPrefix)}
-                  className="flex-1 px-3 py-2 flex items-center text-left"
-                >
-                  <svg
-                    width="10"
-                    height="10"
-                    className={clsx(
-                      'mr-2 transition-transform text-gray-500',
-                      isExpanded && 'rotate-90'
-                    )}
-                    fill="currentColor"
-                    viewBox="0 0 10 10"
-                  >
-                    <path d="M2 2l5 3-5 3z" />
-                  </svg>
-                  <span className="text-sm font-semibold text-gray-900">
-                    {checkMode === 'element' ? mainPrefix : `Section ${mainPrefix}`}
-                  </span>
-                  <span className="ml-auto text-xs text-gray-500">({displayChecks.length})</span>
-                </button>
-
-                {/* Add Element Button (only in element mode) */}
-                {checkMode === 'element' && elementGroupSlug && (
+              {/* Main Section/Element Header - only show in element mode */}
+              {checkMode === 'element' && (
+                <div className="w-full flex items-center hover:bg-gray-50 transition-colors">
                   <button
-                    onClick={async e => {
-                      e.stopPropagation();
-
-                      // Call create-element API directly (no template needed)
-                      try {
-                        const res = await fetch('/api/checks/create-element', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            assessmentId,
-                            elementGroupSlug,
-                          }),
-                        });
-
-                        if (res.ok) {
-                          const { check } = await res.json();
-                          onCheckAdded?.(check);
-                        } else {
-                          const data = await res.json();
-                          alert(
-                            `Failed to create element instance: ${data.error || 'Unknown error'}`
-                          );
-                        }
-                      } catch (error) {
-                        console.error('Error creating element instance:', error);
-                        alert('Failed to create element instance');
-                      }
-                    }}
-                    className="px-3 py-2 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
-                    title={`Add ${mainPrefix.toLowerCase().replace(/s$/, '')}`}
+                    onClick={() => toggleSection(mainPrefix)}
+                    className="flex-1 px-3 py-2 flex items-center text-left"
                   >
                     <svg
-                      width="16"
-                      height="16"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                      width="10"
+                      height="10"
+                      className={clsx(
+                        'mr-2 transition-transform text-gray-500',
+                        isExpanded && 'rotate-90'
+                      )}
+                      fill="currentColor"
+                      viewBox="0 0 10 10"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 4v16m8-8H4"
-                      />
+                      <path d="M2 2l5 3-5 3z" />
                     </svg>
+                    <span className="text-sm font-semibold text-gray-900">{mainPrefix}</span>
+                    <span className="ml-auto text-xs text-gray-500">({displayChecks.length})</span>
                   </button>
-                )}
-              </div>
+
+                  {/* Add Element Button (only in element mode) */}
+                  {elementGroupSlug && (
+                    <button
+                      onClick={async e => {
+                        e.stopPropagation();
+
+                        // Call create-element API directly (no template needed)
+                        try {
+                          const res = await fetch('/api/checks/create-element', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              assessmentId,
+                              elementGroupSlug,
+                            }),
+                          });
+
+                          if (res.ok) {
+                            const { check } = await res.json();
+                            onCheckAdded?.(check);
+                          } else {
+                            const data = await res.json();
+                            alert(
+                              `Failed to create element instance: ${data.error || 'Unknown error'}`
+                            );
+                          }
+                        } catch (error) {
+                          console.error('Error creating element instance:', error);
+                          alert('Failed to create element instance');
+                        }
+                      }}
+                      className="px-3 py-2 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
+                      title={`Add ${mainPrefix.toLowerCase().replace(/s$/, '')}`}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4v16m8-8H4"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Individual Checks */}
-              {isExpanded && (
+              {(checkMode === 'section' || isExpanded) && (
                 <div className="bg-gray-50">
                   {displayChecks.map(check => {
                     const hasInstances = check.instances && check.instances.length > 0;
