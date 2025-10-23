@@ -226,6 +226,13 @@ export default function AssessmentClient({
   };
 
   const handleEditCheck = (violation: ViolationMarker) => {
+    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
+    console.log('[handleEditCheck] Called with violation:', {
+      checkId: violation.checkId,
+      codeSectionKey: violation.codeSectionKey,
+      checkType: violation.checkType,
+    });
+
     // Find the actual check to determine its type reliably
     let actualCheck: CheckData | null = null;
 
@@ -245,9 +252,37 @@ export default function AssessmentClient({
       }
     }
 
+    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
+    console.log('[handleEditCheck] Found check:', {
+      found: !!actualCheck,
+      checkId: actualCheck?.id,
+      elementGroupId: actualCheck?.element_group_id,
+      totalChecksSearched: checks.length,
+    });
+
+    if (!actualCheck) {
+      console.error(
+        '[handleEditCheck] Check not found in checks array. CheckId:',
+        violation.checkId
+      );
+      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
+      console.log(
+        '[handleEditCheck] Available check IDs:',
+        checks.map(c => c.id)
+      );
+      console.log(
+        '[handleEditCheck] Available instance IDs:',
+        checks.flatMap(c => (c.instances || []).map(i => i.id))
+      );
+      return; // Don't proceed if check not found
+    }
+
     // Determine mode from actual check data
     const hasElementGroup = actualCheck?.element_group_id != null;
     const targetMode = hasElementGroup ? 'element' : 'section';
+
+    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
+    console.log('[handleEditCheck] Switching to mode:', targetMode);
 
     // Switch mode and select check in one go
     setCheckMode(targetMode);
