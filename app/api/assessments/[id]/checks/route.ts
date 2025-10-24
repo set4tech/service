@@ -217,15 +217,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json(checks);
     }
 
-    // No search - use original query
-    const { data: allChecks, error } = await query;
+    // No search - fetch all data in batches (Supabase has a 1000 row limit per query)
+    let allChecks: any[] = [];
+    let hasMore = true;
+    let offset = 0;
+    const batchSize = 1000;
 
-    if (error) {
-      return NextResponse.json(
-        { error: 'Failed to fetch checks', details: error.message },
-        { status: 500 }
-      );
+    while (hasMore) {
+      const { data: batch, error } = await query.range(offset, offset + batchSize - 1);
+
+      if (error) {
+        return NextResponse.json(
+          { error: 'Failed to fetch checks', details: error.message },
+          { status: 500 }
+        );
+      }
+
+      if (batch && batch.length > 0) {
+        allChecks = allChecks.concat(batch);
+        offset += batchSize;
+        hasMore = batch.length === batchSize; // Continue if we got a full batch
+      } else {
+        hasMore = false;
+      }
     }
+
+    console.log(
+      `[CHECKS API] Fetched ${allChecks.length} checks in ${Math.ceil(allChecks.length / batchSize)} batches`
+    );
 
     // Filter out checks for sections marked as never_relevant
     const filteredChecks = (allChecks || []).filter((check: any) => {
