@@ -515,7 +515,25 @@ Return your response as a JSON object with this exact structure:
         console.log(`[Queue] Completed batch ${batchNum}/${totalBatches} for check ${checkId}`);
       } else {
         // Handle legacy single analysis jobs
-        const { checkId, prompt, screenshots, provider } = payload;
+        const { checkId, prompt, screenshots, provider, fetchScreenshots } = payload;
+
+        // Fetch screenshots from database if needed (to avoid Redis OOM)
+        let screenshotsToUse = screenshots || [];
+        if (fetchScreenshots && !screenshots) {
+          console.log(`[Queue] Fetching screenshots from DB for check ${checkId}`);
+          const { data: screenshotAssignments } = await supabase
+            .from('screenshot_check_assignments')
+            .select('screenshots(screenshot_url)')
+            .eq('check_id', checkId);
+
+          screenshotsToUse =
+            screenshotAssignments?.map((a: any) => a.screenshots?.screenshot_url).filter(Boolean) ||
+            [];
+
+          console.log(
+            `[Queue] Fetched ${screenshotsToUse.length} screenshots for check ${checkId}`
+          );
+        }
 
         // next run number
         const { count } = await supabase
@@ -527,7 +545,7 @@ Return your response as a JSON object with this exact structure:
         const started = Date.now();
         const { model, raw, parsed } = await runAI({
           prompt,
-          screenshots: screenshots || [],
+          screenshots: screenshotsToUse,
           provider,
         });
         const execution_time_ms = Date.now() - started;
