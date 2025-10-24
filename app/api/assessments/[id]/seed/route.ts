@@ -83,11 +83,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .order('number');
 
     // Get element-mapped sections to exclude from section-by-section checks
-    const { data: elementMappings } = await supabase
+    // Check assessment-specific mappings first, then fall back to global
+    const { data: assessmentMappings } = await supabase
       .from('element_section_mappings')
-      .select('section_key');
+      .select('section_key')
+      .eq('assessment_id', id);
 
-    const elementSectionKeys = new Set(elementMappings?.map(m => m.section_key) || []);
+    let elementSectionKeys: Set<string>;
+
+    if (assessmentMappings && assessmentMappings.length > 0) {
+      // Use assessment-specific mappings
+      elementSectionKeys = new Set(assessmentMappings.map(m => m.section_key));
+    } else {
+      // Fall back to global mappings
+      const { data: globalMappings } = await supabase
+        .from('element_section_mappings')
+        .select('section_key')
+        .is('assessment_id', null);
+      elementSectionKeys = new Set(globalMappings?.map(m => m.section_key) || []);
+    }
 
     if (sectionsError || !allSections) {
       console.error('[Seed API] Database error:', sectionsError);

@@ -35,14 +35,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2. Get section mappings for this element group
-  const { data: mappings, error: mappingsError } = await supabase
-    .from('element_section_mappings')
-    .select('section_key')
-    .eq('element_group_id', elementGroup.id);
+  // 2. Get section mappings for this element group (assessment-specific or global)
+  const { data: sectionKeysData, error: mappingsError } = await supabase.rpc(
+    'get_element_sections',
+    {
+      p_element_group_id: elementGroup.id,
+      p_assessment_id: assessmentId,
+    }
+  );
 
   console.log('[create-element] Section mappings:', {
-    count: mappings?.length,
+    count: sectionKeysData?.length,
     error: mappingsError?.message,
   });
 
@@ -54,7 +57,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const sectionKeys = (mappings || []).map(m => m.section_key);
+  const sectionKeys = (sectionKeysData || []).map((sk: any) => sk.section_key);
 
   if (sectionKeys.length === 0) {
     console.log('[create-element] ❌ No section mappings found for:', elementGroupSlug);
