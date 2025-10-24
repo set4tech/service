@@ -18,31 +18,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const supabase = supabaseAdmin();
 
-    // Create assignments (is_original = false)
-    const assignments = checkIds.map(checkId => ({
-      screenshot_id: screenshotId,
-      check_id: checkId,
-      is_original: false,
-    }));
-
-    console.log('[ASSIGN] Creating assignments:', assignments);
-
-    const { data, error } = await supabase
-      .from('screenshot_check_assignments')
-      .insert(assignments)
-      .select();
+    // Use RPC function to assign to all checks in element instances (one query)
+    const { data, error } = await supabase.rpc('assign_screenshot_to_element_instances', {
+      p_screenshot_id: screenshotId,
+      p_check_ids: checkIds,
+    });
 
     if (error) {
       console.error('[ASSIGN] ❌ Error creating assignments:', error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    console.log('[ASSIGN] ✅ Successfully created assignments:', {
-      count: data.length,
-      assignments: data,
-    });
+    console.log('[ASSIGN] ✅ Assigned to', data?.assigned_count, 'checks');
 
-    return NextResponse.json({ assigned: data.length, assignments: data });
+    return NextResponse.json({ assigned: data?.assigned_count || 0 });
   } catch (error) {
     console.error('[ASSIGN] ❌ Failed to assign screenshot:', error);
     return NextResponse.json({ error: 'Failed to assign screenshot' }, { status: 500 });
