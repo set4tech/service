@@ -201,7 +201,7 @@ export function PDFViewer({
   const [layers, setLayers] = useState<PDFLayer[]>([]);
   const [layersVersion, setLayersVersion] = useState(0); // Increment when layers change
   const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [renderScale, setRenderScale] = useState(2); // Quality multiplier, NOT viewport scale
+  const [renderScale, setRenderScale] = useState(4); // Quality multiplier, NOT viewport scale (default 4x for better AI vision quality)
   const [savingScale, setSavingScale] = useState(false);
   const [smoothTransition, setSmoothTransition] = useState(false);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
@@ -421,7 +421,11 @@ export function PDFViewer({
         if (res.ok) {
           const data = await res.json();
           // Cap loaded scale to 2-8 range (renderScale is quality multiplier, not viewport scale)
-          if (data?.pdf_scale) setRenderScale(Math.min(8, Math.max(2, data.pdf_scale)));
+          // Default to 4x for better AI vision quality if previously set to 2x
+          if (data?.pdf_scale) {
+            const loadedScale = Math.min(8, Math.max(2, data.pdf_scale));
+            setRenderScale(loadedScale < 3 ? 4 : loadedScale);
+          }
         }
       } catch {
         // ignore
@@ -1073,6 +1077,8 @@ export function PDFViewer({
         t.height = th;
         t.getContext('2d')!.drawImage(out, 0, 0, tw, th);
 
+        // Use maximum quality PNG (quality param doesn't apply to PNG, but it's lossless by default)
+        // PNG is always lossless, so this ensures we get the full quality
         const [blob, thumb] = await Promise.all([
           new Promise<Blob>(resolve => out.toBlob(b => resolve(b!), 'image/png')),
           new Promise<Blob>(resolve => t.toBlob(b => resolve(b!), 'image/png')),
