@@ -29,7 +29,7 @@ CREATE INDEX idx_element_mappings_assessment ON element_section_mappings(assessm
 CREATE OR REPLACE FUNCTION get_element_sections(
   p_element_group_id uuid,
   p_assessment_id uuid
-) RETURNS TABLE (section_key text) AS $$
+) RETURNS TABLE (section_key character varying) AS $$
 BEGIN
   -- First check if there are any assessment-specific mappings
   IF EXISTS (
