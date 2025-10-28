@@ -323,7 +323,7 @@ AssessmentClient (main assessment page)
 
 - **Branch**: `dev`
 - **Deployment**: Vercel preview deployment
-- **Database**: Development Supabase instance (`yfkrmsieuupgggyuqddk.supabase.co`)
+- **Database**: Development Supabase instance (`prafecmdqiwgnsumlmqn.supabase.co`)
 - **S3**: Same bucket (shared with prod - `set4-data`)
 - **URL**: Staging domain
 
@@ -409,36 +409,36 @@ element_groups (1) ──> (many) element_section_mappings ──> (many) sectio
 Connection string for development queries:
 
 ```bash
-PGSSLMODE=require psql "postgresql://postgres.yfkrmsieuupgggyuqddk:utroligbra%21%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "YOUR_QUERY_HERE"
+PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "YOUR_QUERY_HERE"
 ```
 
 **Connection Details:**
 
-- **Project**: `yfkrmsieuupgggyuqddk.supabase.co`
+- **Project**: `prafecmdqiwgnsumlmqn.supabase.co`
 - **Host**: `aws-1-us-east-1.pooler.supabase.com` (IPv4 pooler)
 - **Port**: `5432` (pooler port)
-- **User**: `postgres.yfkrmsieuupgggyuqddk` (project-scoped username)
+- **User**: `postgres.prafecmdqiwgnsumlmqn` (project-scoped username)
 - **Database**: `postgres`
 - **Password**: `utroligbra!!` (must be URL-encoded: `!` → `%21`)
 - **SSL**: Required (set `PGSSLMODE=require`)
 
 ### Important Notes
 
-- The direct connection (`db.yfkrmsieuupgggyuqddk.supabase.co`) is IPv6-only and times out on IPv4 networks
+- The direct connection (`db.prafecmdqiwgnsumlmqn.supabase.co`) is IPv6-only and times out on IPv4 networks
 - Always use the pooler connection for IPv4 compatibility
 - Special characters in passwords must be URL-encoded in connection strings (`!` → `%21`, `&` → `%26`)
-- Username for pooler connections must be project-scoped: `postgres.yfkrmsieuupgggyuqddk`
+- Username for pooler connections must be project-scoped: `postgres.prafecmdqiwgnsumlmqn`
 - SSL mode is required (set `PGSSLMODE=require`)
 
 ### Common Query Patterns
 
 ```bash
 # List all tables
-PGSSLMODE=require psql "postgresql://postgres.yfkrmsieuupgggyuqddk:utroligbra%21%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "\dt"
+PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "\dt"
 
 # Describe table schema
-PGSSLMODE=require psql "postgresql://postgres.yfkrmsieuupgggyuqddk:utroligbra%21%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "\d table_name"
+PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "\d table_name"
 
 # Run custom query
-PGSSLMODE=require psql "postgresql://postgres.yfkrmsieuupgggyuqddk:utroligbra%21%21@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "SELECT * FROM projects LIMIT 10"
+PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "SELECT * FROM projects LIMIT 10"
 ```
