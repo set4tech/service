@@ -22,7 +22,8 @@ export interface ViolationMarker {
   thumbnailUrl: string; // Primary/first screenshot thumbnail (for backward compatibility)
   screenshotId: string; // Primary/first screenshot ID (for backward compatibility)
   allScreenshots: ViolationScreenshot[]; // All screenshots for this violation, sorted by page number
-  reasoning?: string;
+  reasoning?: string; // AI reasoning (fallback if no manual reasoning)
+  manualReasoning?: string; // Human reasoning from manual override (takes priority)
   recommendations?: string[];
   confidence?: string;
   sourceUrl?: string;

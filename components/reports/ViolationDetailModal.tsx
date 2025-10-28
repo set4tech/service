@@ -450,12 +450,21 @@ export function ViolationDetailModal({
                 </div>
               )}
 
-              {/* Reasoning */}
-              {violation.reasoning && (
+              {/* Reasoning - Prioritize manual reasoning over AI reasoning */}
+              {(violation.manualReasoning || violation.reasoning) && (
                 <div className="mb-4">
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">Analysis</h3>
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-sm font-medium text-gray-700">
+                      {violation.manualReasoning ? 'Manual Assessment' : 'AI Analysis'}
+                    </h3>
+                    {violation.manualReasoning && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                        Human Reviewed
+                      </span>
+                    )}
+                  </div>
                   <div className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3 whitespace-pre-wrap">
-                    {violation.reasoning}
+                    {violation.manualReasoning || violation.reasoning}
                   </div>
                 </div>
               )}
