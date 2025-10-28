@@ -1,444 +1,504 @@
-# Claude Development Guidelines
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This repository contains the main **service** application - a Next.js 15.5.3 application for AI-powered building code compliance assessment. The system analyzes architectural drawings against building codes (like California Building Code Chapter 11B) to identify compliance violations.
+AI-powered building code compliance assessment platform. Next.js 15.5.3 application that analyzes architectural drawings against building codes (California Building Code Chapter 11A/11B) to identify compliance violations.
 
-### Main Application
-
-- **Location**: Root directory (`/`)
-- **Name**: service
-- **Tech Stack**:
-  - Next.js 15.5.3 (App Router)
-  - React 19
-  - TypeScript 5.9
-  - Tailwind CSS 3.4.17
-  - Vercel Serverless Functions
-  - Supabase (PostgreSQL)
-  - AWS S3 (PDF/screenshot storage)
-
-### Important Notes
-
-- This is the ONLY Next.js application in the repository
-- All new features should be developed in this root service app
-- Uses Supabase PostgreSQL for all data storage
+**Tech Stack**: Next.js 15 (App Router), React 19, TypeScript 5.9, Tailwind CSS 3.4, Supabase (PostgreSQL), AWS S3, AI providers (Gemini, OpenAI, Anthropic)
 
 ### Branch Strategy
 
-- **`main`** - Production branch (deployed to production environment)
 - **`dev`** - Development branch (active development, deployed to staging)
-- Always develop new features in `dev` branch
-- Merge to `main` only after thorough testing
+- **`main`** - Production branch (deployed to production)
+- Always develop features in `dev` branch
+- Merge to `main` after thorough testing
+
+### Environment Setup
+
+- **Development**: Supabase project `prafecmdqiwgnsumlmqn` (staging)
+- **Production**: Supabase project `grosxzvvmhakkxybeuwu` (prod)
+- **S3**: Shared bucket `set4-data` across both environments
+- Database changes must be applied to BOTH environments separately
 
 ## Development Commands
 
 ```bash
-# Install dependencies
-npm install
+# Development
+npm install              # Install dependencies
+npm run dev             # Start dev server (http://localhost:3000)
+npm run build           # Build for production
+npm run start           # Start production server
 
-# Run development server
-npm run dev
+# Testing
+npm test                # Run unit tests (Vitest)
+npm run test:watch      # Run tests in watch mode
+npm run test:coverage   # Run tests with coverage report
+npm run test:e2e        # Run e2e tests (Playwright)
+npm run test:e2e:ui     # Run e2e tests with UI
+npm run test:e2e:debug  # Debug e2e tests
 
-# Build for production
-npm run build
-
-# Start production server
-npm run start
-
-# Run linting
-npm run lint
-
-# Run tests
-npm test
-npm run test:watch
-npm run test:coverage
+# Code Quality
+npm run lint            # Run ESLint
+npm run typecheck       # TypeScript type checking
+npm run format          # Format code with Prettier
+npm run format:check    # Check formatting without writing
 ```
 
-## Project Structure
+### Python Scripts (Data Processing)
 
-```
-/                                    # Root service app
-├── app/                            # Next.js app directory (App Router)
-│   ├── api/                       # API routes (serverless functions)
-│   │   ├── assessments/          # Assessment CRUD & seeding
-│   │   ├── checks/               # Compliance checks management
-│   │   ├── analysis/             # AI analysis runs
-│   │   ├── screenshots/          # Screenshot upload & presigning
-│   │   ├── projects/             # Project management
-│   │   ├── customers/            # Customer management
-│   │   └── element-groups/       # Element-based checking
-│   ├── assessments/[id]/         # Assessment detail page
-│   ├── projects/                  # Projects list & creation
-│   └── customers/                 # Customers list
-├── components/                     # Shared React components
-│   ├── checks/                    # Check list, detail panel
-│   ├── pdf/                       # PDF viewer with annotations
-│   ├── screenshots/               # Screenshot gallery
-│   ├── analysis/                  # AI analysis display
-│   └── ui/                        # Base UI components
-├── lib/                           # Utility libraries and helpers
-│   ├── ai/                        # AI provider integrations
-│   │   ├── analysis.ts           # AI analysis execution
-│   │   ├── types.ts              # AI response types
-│   │   └── constants.ts          # Default models/configs
-│   ├── supabase-server.ts        # Supabase client
-│   ├── s3.ts                     # S3 upload/presign
-│   └── prompt.ts                 # Prompt templating
-├── scripts/                       # Data processing & utilities
-│   ├── load_db/                  # Database loading scripts
-│   │   └── unified_code_upload_supabase.py
-│   ├── tag_element_sections.py   # Element-section mapping
-│   └── *.mjs                     # Analysis & debugging scripts
-├── __tests__/                     # Vitest test files
-└── package.json                   # Dependencies & scripts
+```bash
+# Setup Python environment (first time only)
+python -m venv venv
+source venv/bin/activate
+pip install supabase  # Main dependency
 
-# Python utilities (for data processing)
-scripts/
-├── load_db/unified_code_upload_supabase.py  # Load building codes
-├── tag_element_sections.py                   # Tag sections to elements
-└── schema.py                                  # Database schema definitions
+# Load building codes into database
+python scripts/load_db/unified_code_upload_supabase.py --file cbc_CA_2025.json
+
+# Map code sections to building elements (doors, ramps, etc.)
+python scripts/tag_element_sections.py
 ```
 
-## Core Features
+## Git Guidelines
 
-### 1. Compliance Assessment Workflow
+**IMPORTANT**: NEVER use these git commands:
 
-**End-to-end code compliance review system**
+- `git add -A` - Always stage specific files instead
+- `git add *` - Always stage specific files instead
+- `--no-verify` flag - Never skip hooks
 
-- **Project Setup**: Create customer → project → upload PDF drawings
-- **Assessment Creation**: Initialize assessment, auto-seed applicable code sections
-- **Check Modes**:
-  - **Section Mode**: Review by code section (e.g., 11B-404.2.6)
-  - **Element Mode**: Review by building element (e.g., Doors, Ramps)
-- **AI Analysis**: Multi-provider AI (Gemini, OpenAI, Anthropic) analyzes screenshots
-- **Manual Override**: Human reviewers can override AI judgments
-- **Progress Tracking**: Real-time progress bars, seeding status
+Always use explicit file paths: `git add path/to/file.ts`
 
-### 2. PDF Viewer & Screenshot Capture
+## Architecture Overview
 
-**Interactive plan viewer with annotation tools**
-
-- PDF.js-based viewer with pan/zoom
-- Screenshot capture with crop coordinates
-- S3 upload with presigned URLs
-- Thumbnail generation
-- Gallery view per check
-
-### 3. AI-Powered Analysis
-
-**Multi-provider AI compliance checking**
-
-- **Providers**: Gemini 2.5 Pro, GPT-4o, Claude Opus 4
-- **Analysis Types**:
-  - Single check analysis
-  - Batch analysis (multiple checks)
-  - Element-based (multiple sections per check)
-- **Response Structure**: Compliance status, confidence, violations, recommendations
-- **Audit Trail**: All analysis runs stored with full history
-
-### 4. Element-Based Checking
-
-**Group related code sections by building element**
-
-- Element groups (Doors, Ramps, Parking, etc.)
-- Each element maps to multiple code sections
-- Template + instances pattern (e.g., "Door 1", "Door 2")
-- Batch assessment of all sections for an element
-
-### 5. Check Cloning & Instances
-
-**Reusable check templates**
-
-- Clone checks for multiple instances (e.g., multiple doors)
-- Parent-child relationships (`parent_check_id`)
-- Instance numbering and custom labels
-- Inherited section mappings
-
-## Application Architecture
-
-### Data Flow
+### Core Workflow
 
 ```
 1. Project Creation
-   └→ Customer → Project → PDF Upload (S3)
+   Customer → Project → Upload PDF to S3
 
-2. Assessment Initialization
-   └→ Assessment created → Seeding starts
-   └→ AI filters applicable sections → Creates checks
+2. Assessment Initialization & Seeding
+   Create assessment → Start AI filtering (runs in background)
+   → AI evaluates ~800 code sections for applicability
+   → Creates checks for applicable sections
+   → Tracks progress (sections_processed/sections_total)
 
 3. Check Assessment
-   └→ User selects check → Views PDF → Captures screenshots
-   └→ Screenshots upload to S3 → Presigned URLs generated
-   └→ Run AI analysis → Store analysis_run
-   └→ Display results → Manual override if needed
+   Select check → View PDF → Capture screenshot → Upload to S3
+   → Run AI analysis (Gemini/OpenAI/Anthropic)
+   → Store analysis_run with results
+   → Manual override if needed
 
-4. Progress & Completion
-   └→ Track check completion (AI assessment OR manual override)
-   └→ Calculate progress percentage
-   └→ Generate compliance report
+4. Progress Tracking
+   Calculate completion: checks with (latest_analysis OR manual_override)
+   → Generate compliance report
 ```
 
-### Key Routes
+### Two Check Paradigms
 
-**Pages**
+**1. Section-Based Checks** (traditional)
 
-- `/` - Home / Projects list
-- `/customers` - Customers management
-- `/projects/new` - Create new project
-- `/assessments/start` - Start new assessment
-- `/assessments/[id]` - Assessment detail (main UI)
+- One check per code section (e.g., 11B-404.2.6)
+- Simple 1:1 mapping
+- Used for sections NOT mapped to elements
 
-**API Endpoints**
+**2. Element-Based Checks** (batch assessment)
 
-_Projects & Customers_
+- One check encompasses MULTIPLE code sections
+- Used for building elements: Doors, Ramps, Parking, Stairs, etc.
+- Template + instances pattern: "Door 1", "Door 2", etc.
+- `check_type = 'element'` and has `element_group_id`
+- Can clone template to create new instances (`parent_check_id`)
+- Each element maps to 5-20 related code sections
+- Single AI analysis assesses ALL sections at once
+- Results stored per-section in `section_overrides` table
 
-- `GET /api/projects` - List all projects
-- `POST /api/projects` - Create new project
-- `GET /api/projects/[id]` - Get project details
-- `PUT /api/projects/[id]` - Update project
-- `DELETE /api/projects/[id]` - Delete project
-- `POST /api/projects/[id]/assessment` - Create assessment for project
-- `POST /api/projects/[id]/extract` - Extract PDF metadata
-- `GET /api/customers` - List customers
-- `POST /api/customers` - Create customer
+### Key Data Models
 
-_Assessments_
+**Check Types**:
 
-- `GET /api/assessments` - List assessments
-- `POST /api/assessments` - Create assessment
-- `GET /api/assessments/[id]` - Get assessment details
-- `PUT /api/assessments/[id]` - Update assessment
-- `DELETE /api/assessments/[id]` - Delete assessment
-- `POST /api/assessments/[id]/seed` - Seed checks (AI filtering)
-- `GET /api/assessments/[id]/checks` - Get checks for assessment (with search/filter)
-- `GET /api/assessments/[id]/status` - Get assessment status
-- `PUT /api/assessments/[id]/pdf-scale` - Update PDF scale factor
-- `POST /api/assessments/[id]/exclude-section` - Exclude specific section
-- `POST /api/assessments/[id]/exclude-section-group` - Exclude section group
-
-_Checks_
-
-- `GET /api/checks` - List checks
-- `POST /api/checks` - Create check
-- `GET /api/checks/[id]` - Get check details
-- `PUT /api/checks/[id]` - Update check
-- `DELETE /api/checks/[id]` - Delete check
-- `POST /api/checks/[id]/assess` - Run AI analysis on check
-- `POST /api/checks/[id]/clone` - Clone check for new instance
-- `POST /api/checks/[id]/manual-override` - Set manual compliance judgment
-- `GET /api/checks/[id]/screenshots` - Get screenshots for check
-- `GET /api/checks/[id]/analysis-runs` - Get analysis history
-- `GET /api/checks/[id]/assessment-progress` - Get assessment progress
-- `GET /api/checks/[id]/prompt` - Get check prompt
-- `PUT /api/checks/[id]/prompt` - Update check prompt
-- `POST /api/checks/[id]/generate-title` - Generate AI title for check
-- `POST /api/checks/[id]/section-overrides` - Override section compliance
-- `POST /api/checks/create-element` - Create element-based check
-
-_Analysis_
-
-- `POST /api/analysis/run` - Run single analysis
-- `POST /api/analysis/batch` - Batch analysis (multiple checks)
-- `GET /api/analysis/[checkId]/history` - Get analysis history for check
-- `GET /api/analysis/[checkId]/latest` - Get latest analysis for check
-
-_Screenshots_
-
-- `GET /api/screenshots` - List screenshots
-- `POST /api/screenshots` - Create screenshot
-- `GET /api/screenshots/[id]` - Get screenshot details
-- `PUT /api/screenshots/[id]` - Update screenshot
-- `DELETE /api/screenshots/[id]` - Delete screenshot
-- `POST /api/screenshots/presign` - Get S3 presigned upload URL
-- `GET /api/screenshots/presign-view` - Get S3 presigned view URL
-- `POST /api/screenshots/[id]/assign` - Assign screenshot to check
-- `DELETE /api/screenshots/[id]/unassign/[checkId]` - Unassign from check
-- `GET /api/screenshots/[id]/assignments` - Get check assignments
-- `POST /api/screenshots/[id]/extract-text` - Extract text from screenshot
-- `POST /api/screenshots/cleanup` - Clean up orphaned screenshots
-
-_Code Sections & Elements_
-
-- `GET /api/codes` - List building codes
-- `GET /api/code-sections/[key]` - Get section by key
-- `POST /api/sections/[key]/mark-never-relevant` - Mark section never relevant
-- `POST /api/sections/[key]/mark-floorplan-relevant` - Mark section requires floorplan
-- `POST /api/sections/batch` - Batch fetch sections
-- `GET /api/element-groups` - List element groups
-- `GET /api/element-groups/[slug]/sections` - Get sections for element group
-
-_PDF Management_
-
-- `POST /api/pdf/upload` - Upload PDF
-- `POST /api/pdf/presign` - Get presigned PDF URL
-- `POST /api/upload` - General file upload
-- `POST /api/upload/presign` - Get presigned upload URL
-
-_Prompts_
-
-- `GET /api/prompts/templates` - Get prompt templates
-- `POST /api/prompts/preview` - Preview prompt with variables
-- `GET /api/prompts/[id]` - Get prompt by ID
-- `PUT /api/prompts/[id]` - Update prompt
-
-_Utilities_
-
-- `GET /api/health` - Health check endpoint
-- `POST /api/queue/process` - Process background queue
-- `GET /api/debug/check-summary` - Debug check summary
-- `POST /api/admin/migrate` - Run database migrations
-
-### Component Hierarchy
-
-```
-AssessmentClient (main assessment page)
-├── CheckList (left sidebar)
-│   ├── Search & filtering
-│   ├── Section/Element mode toggle
-│   ├── Grouped check list
-│   └── CloneCheckModal
-├── CodeDetailPanel (expandable right panel)
-│   ├── Section content display
-│   ├── AnalysisPanel (AI results)
-│   └── PromptEditor (edit prompts)
-├── PDFViewer (center panel)
-│   ├── PDF.js canvas rendering
-│   ├── Screenshot capture tool
-│   └── Active check highlighting
-└── ScreenshotGallery (bottom of sidebar)
-    └── Thumbnail grid with captions
+```typescript
+check_type: 'section' | 'element';
+// Section check: Simple, one section
+// Element check: Multiple sections, reusable template
 ```
 
-## Environments
+**Analysis Results**:
 
-### Production Environment
-
-- **Branch**: `main`
-- **Deployment**: Vercel production deployment
-- **Database**: Production Supabase instance (`grosxzvvmhakkxybeuwu.supabase.co`)
-- **S3**: Production bucket (`set4-data`)
-- **URL**: Production domain
-
-### Development/Staging Environment
-
-- **Branch**: `dev`
-- **Deployment**: Vercel preview deployment
-- **Database**: Development Supabase instance (`prafecmdqiwgnsumlmqn.supabase.co`)
-- **S3**: Same bucket (shared with prod - `set4-data`)
-- **URL**: Staging domain
-
-**Important**:
-
-- Production and development use **separate databases**
-- Both environments share the **same S3 bucket**
-- Database changes must be applied to both environments separately
-
-## Environment Variables Required
-
-See `.envrc` for required environment variables including:
-
-- **Supabase**: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
-- **AWS S3**: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`
-- **AI Services**: `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`
-- **Next.js**: `NEXT_PUBLIC_*` for client-side variables
-
-## Development Patterns
-
-## Git Commands
-
-**IMPORTANT**: NEVER use the following git commands:
-
-- `git add -A` - Always add specific files instead
-- `git add *` - Always add specific files instead
-
-When staging files for commit, always use explicit file paths (e.g., `git add path/to/file.ts`).
-
-## Database Schema
-
-### Core Tables
-
-**Projects & Customers**
-
-- `customers` - Customer organizations
-- `projects` - Individual building projects
-- `assessments` - Compliance assessments for projects
-
-**Code Reference**
-
-- `codes` - Building code documents (e.g., CBC Chapter 11B)
-- `sections` - Hierarchical code sections with content
-- `element_groups` - Building elements (Doors, Ramps, etc.)
-- `element_section_mappings` - Maps elements to applicable sections
-
-**Compliance Checking**
-
-- `checks` - Individual compliance checks (section or element-based)
-  - Can be section-based (one check = one section)
-  - Or element-based (one check = multiple sections for an element)
-  - Supports parent-child relationships for instances
-- `analysis_runs` - AI analysis executions with results
-- `screenshot_check_assignments` - Many-to-many screenshots to checks
-
-**Media & Evidence**
-
-- `screenshots` - Captured plan screenshots with metadata
-- Links to S3 storage for actual image files
-
-**Supporting Tables**
-
-- `prompts` - Reusable prompt templates
-- `check_summary` - Materialized view for progress tracking
-
-### Key Relationships
-
+```typescript
+interface AIResponse {
+  compliance_status: 'compliant' | 'non-compliant' | 'unclear' | 'not-applicable';
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+  violations?: Array<{
+    severity: 'major' | 'minor';
+    description: string;
+    location?: string;
+    recommendation?: string;
+  }>;
+  section_results?: { [section_key: string]: SectionResult }; // For element checks
+}
 ```
-customers (1) ──> (many) projects
-projects (1) ──> (many) assessments
-assessments (1) ──> (many) checks
-checks (1) ──> (many) analysis_runs
-checks (many) <──> (many) screenshots (via screenshot_check_assignments)
-element_groups (1) ──> (many) element_section_mappings ──> (many) sections
+
+**Manual Override** (always takes precedence over AI):
+
+```typescript
+manual_override: 'compliant' | 'non-compliant' | 'not_applicable' | null;
+manual_override_note: string;
+manual_override_at: timestamp;
 ```
+
+### S3 Architecture
+
+**Why S3?**
+
+- Vercel has 4.5MB request limit (too small for images)
+- Client uploads directly using presigned URLs
+- No serverless function payload limits
+
+**Key Patterns**:
+
+```typescript
+// Generate presigned upload URL (60s expiry)
+POST /api/screenshots/presign
+→ Returns: { url, key }
+→ Client uploads directly to S3
+
+// Generate presigned view URL (1hr expiry)
+GET /api/screenshots/presign-view?key=...
+→ Returns: { url }
+→ Client loads image
+
+// S3 key structure
+screenshots: {projectId}/{assessmentId}/{checkId}/{screenshotId}.png
+thumbnails:  {projectId}/{assessmentId}/{checkId}/{screenshotId}_thumb.png
+pdfs:        drawings/{projectId}/{filename}.pdf
+```
+
+### AI Provider Integration
+
+Multi-provider support for redundancy, cost optimization, and comparative analysis:
+
+**Gemini 2.5 Pro** (default):
+
+- Best performance for compliance analysis
+- Converts images to base64 inline data
+- 60s rate limit retry with exponential backoff
+
+**OpenAI GPT-4o**:
+
+- Alternative provider
+- Uses image URLs (not base64)
+
+**Anthropic Claude Opus 4**:
+
+- Alternative provider
+- Good for complex reasoning
+
+All providers use the same prompt template system and return standardized `AIResponse` format.
+
+### Seeding Process (AI Filtering)
+
+When assessment is created, AI filters ~800 code sections to determine applicability:
+
+**Process**:
+
+1. Fetch all `drawing_assessable=true, never_relevant=false` sections
+2. Filter by selected code chapters (11A, 11B, or both)
+3. Exclude sections already mapped to elements (unless assessment-specific)
+4. Batch sections into groups of 50
+5. For each batch, send to Claude with project variables
+6. Claude evaluates each section for applicability (0-10 score)
+7. Create checks for sections with score ≥ 5
+8. Track progress: `seeding_status`, `sections_processed`, `sections_total`
+9. Status: 'pending' → 'in_progress' → 'completed' | 'failed'
+
+**Assessment-Specific Element Mappings**:
+
+- Assessments can have custom element-section mappings
+- Check `element_section_mappings.assessment_id` first
+- Fall back to global mappings (`assessment_id IS NULL`) if none exist
+- Custom mappings don't exclude sections from seeding (project-specific needs)
 
 ## Database Connection
 
-**Important**: Always use the **pooler** connection (IPv4 compatible), not the direct connection.
+**CRITICAL**: Always use the **pooler** connection (IPv4 compatible).
 
 ### Development Database
 
-Connection string for development queries:
-
 ```bash
-PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "YOUR_QUERY_HERE"
+PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "YOUR_QUERY"
 ```
 
-**Connection Details:**
+**Why pooler?**
 
-- **Project**: `prafecmdqiwgnsumlmqn.supabase.co`
-- **Host**: `aws-1-us-east-1.pooler.supabase.com` (IPv4 pooler)
-- **Port**: `5432` (pooler port)
-- **User**: `postgres.prafecmdqiwgnsumlmqn` (project-scoped username)
-- **Database**: `postgres`
-- **Password**: `utroligbra!!` (must be URL-encoded: `!` → `%21`)
-- **SSL**: Required (set `PGSSLMODE=require`)
+- Direct connection (`db.prafecmdqiwgnsumlmqn.supabase.co`) is IPv6-only
+- Pooler (`aws-1-us-east-1.pooler.supabase.com`) supports IPv4
+- Use port `5432` for pooler
+- Username: `postgres.prafecmdqiwgnsumlmqn` (project-scoped)
+- Password must be URL-encoded: `!` → `%21`
 
-### Important Notes
-
-- The direct connection (`db.prafecmdqiwgnsumlmqn.supabase.co`) is IPv6-only and times out on IPv4 networks
-- Always use the pooler connection for IPv4 compatibility
-- Special characters in passwords must be URL-encoded in connection strings (`!` → `%21`, `&` → `%26`)
-- Username for pooler connections must be project-scoped: `postgres.prafecmdqiwgnsumlmqn`
-- SSL mode is required (set `PGSSLMODE=require`)
-
-### Common Query Patterns
+### Common Queries
 
 ```bash
-# List all tables
-PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "\dt"
+# List tables
+PGSSLMODE=require psql "..." -c "\dt"
 
-# Describe table schema
-PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "\d table_name"
+# Describe schema
+PGSSLMODE=require psql "..." -c "\d table_name"
 
-# Run custom query
-PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "SELECT * FROM projects LIMIT 10"
+# Check assessment progress
+PGSSLMODE=require psql "..." -c "SELECT id, seeding_status, sections_processed, sections_total FROM assessments WHERE id = 'assessment-id'"
+
+# View element mappings
+PGSSLMODE=require psql "..." -c "SELECT eg.name, COUNT(*) FROM element_groups eg JOIN element_section_mappings esm ON eg.id = esm.element_group_id GROUP BY eg.id"
 ```
+
+## Database Schema (Key Concepts)
+
+### Core Tables
+
+**Hierarchy**:
+
+```
+customers (1) → (many) projects (1) → (many) assessments (1) → (many) checks
+```
+
+**Code Reference**:
+
+- `codes` - Building code documents (e.g., CBC Chapter 11A/11B)
+- `sections` - Hierarchical code sections with full text content
+  - `drawing_assessable` - Can be assessed from drawings
+  - `never_relevant` - Never applicable (excluded from seeding)
+  - `number` - Section number (e.g., "11B-404.2.6")
+  - `key` - Unique identifier
+- `element_groups` - Building elements (Doors, Ramps, etc.)
+- `element_section_mappings` - Maps elements to applicable sections
+  - `assessment_id` - NULL for global, or specific to assessment
+
+**Compliance Checking**:
+
+- `checks` - Individual compliance checks
+  - `check_type` - 'section' or 'element'
+  - `section_key` - For section checks
+  - `element_group_id` - For element checks
+  - `parent_check_id` - For cloned instances
+  - `instance_number`, `instance_label` - For organizing instances
+  - `manual_override` - Overrides AI judgment
+  - `not_applicable`, `excluded` - Exclusion flags
+- `analysis_runs` - AI analysis history
+  - `section_results` - For element checks (per-section results)
+  - `compliance_status`, `confidence`, `violations` - AI output
+- `section_overrides` - Per-section manual overrides (within element checks)
+- `screenshot_check_assignments` - Many-to-many: screenshots ↔ checks
+
+**Progress Tracking**:
+
+- `check_summary` - Materialized view for assessment progress
+  - Aggregates completion status across all checks
+  - Used by progress bars
+
+### Critical Relationships
+
+```
+# Element-based checking
+element_groups → element_section_mappings → sections
+checks (element_group_id) → element_groups
+
+# Screenshot sharing
+screenshots ← screenshot_check_assignments → checks
+(Many screenshots can be assigned to many checks)
+
+# Check instances
+checks (parent_check_id) → checks
+(Cloned checks reference parent template)
+```
+
+## API Architecture
+
+All API routes use Next.js App Router convention: `app/api/[resource]/route.ts`
+
+### Common Patterns
+
+**Standard CRUD**:
+
+```typescript
+// app/api/resource/route.ts
+export async function GET(request: NextRequest) {}
+export async function POST(request: NextRequest) {}
+
+// app/api/resource/[id]/route.ts
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params; // Next.js 15 async params
+  const supabase = supabaseAdmin();
+  // ...
+}
+```
+
+**Error Handling**:
+
+```typescript
+const { data, error } = await supabase.from('table').select('*');
+if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+return NextResponse.json({ data });
+```
+
+**Supabase Client**:
+
+```typescript
+import { supabaseAdmin } from '@/lib/supabase-server';
+const supabase = supabaseAdmin(); // Service role, no auth
+```
+
+## Component Architecture
+
+### Main Assessment Page
+
+```
+app/assessments/[id]/page.tsx (Server Component)
+└─ AssessmentClient.tsx (Client Component)
+   ├─ CheckList (left sidebar)
+   │  ├─ Search & filter
+   │  ├─ Mode toggle (Section/Element)
+   │  └─ Grouped check list
+   ├─ PDFViewer (center)
+   │  ├─ PDF.js canvas
+   │  └─ Screenshot tool
+   ├─ CodeDetailPanel (right panel)
+   │  ├─ Section content
+   │  ├─ AnalysisPanel
+   │  └─ PromptEditor
+   └─ ScreenshotGallery
+```
+
+**Key Pattern**: Server Component fetches initial data, passes to Client Component for interactivity.
+
+### Path Aliases
+
+Uses TypeScript path aliases: `@/` maps to root directory
+
+```typescript
+import { supabaseAdmin } from '@/lib/supabase-server';
+import { Button } from '@/components/ui/button';
+```
+
+## Testing Configuration
+
+**Unit Tests** (Vitest):
+
+- Config: `vitest.config.ts`
+- Environment: jsdom
+- Setup: `__tests__/setup.ts`
+- Coverage: v8 provider
+- Path alias: `@/` → root
+
+**E2E Tests** (Playwright):
+
+- Config: `playwright.config.ts`
+- Test dir: `./e2e`
+- Runs dev server automatically
+- Chromium only (can enable Firefox/Safari)
+- Captures screenshots/videos on failure
+
+## Important Files
+
+**Core Libraries**:
+
+- `lib/supabase-server.ts` - Database client (service role)
+- `lib/s3.ts` - S3 presigning utilities (`presignPut`, `presignGet`, `s3KeyFor*`)
+- `lib/ai/analysis.ts` - Multi-provider AI integration (`runAI`)
+- `lib/prompt.ts` - Prompt templating system
+
+**Key API Routes**:
+
+- `app/api/assessments/[id]/seed/route.ts` - AI filtering & check seeding
+- `app/api/checks/[id]/assess/route.ts` - Run AI analysis on check
+- `app/api/screenshots/presign/route.ts` - Generate S3 upload URL
+- `app/api/checks/[id]/clone/route.ts` - Clone element check for new instance
+
+**Python Scripts**:
+
+- `scripts/load_db/unified_code_upload_supabase.py` - Load building codes from JSON
+- `scripts/tag_element_sections.py` - Map sections to element groups
+- `scripts/schema.py` - Database schema definitions
+
+## Environment Variables
+
+Required in `.env.local` (see `.envrc` for reference):
+
+**Supabase**:
+
+- `NEXT_PUBLIC_SUPABASE_URL` - Project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Anon/public key
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role (server-side only)
+
+**AWS S3**:
+
+- `AWS_REGION` - e.g., us-east-1
+- `AWS_ACCESS_KEY_ID` - AWS credentials
+- `AWS_SECRET_ACCESS_KEY` - AWS credentials
+- `AWS_S3_BUCKET_NAME` - Bucket name (set4-data)
+- `NEXT_PUBLIC_S3_BUCKET_NAME` - For client-side S3 key generation
+
+**AI Providers**:
+
+- `GOOGLE_API_KEY` or `GEMINI_API_KEY` - Google Gemini
+- `OPENAI_API_KEY` - OpenAI
+- `ANTHROPIC_API_KEY` - Anthropic
+
+## Common Debugging Tasks
+
+**Check seeding status**:
+
+```bash
+PGSSLMODE=require psql "..." -c "SELECT seeding_status, sections_processed, sections_total FROM assessments WHERE id = 'assessment-id'"
+```
+
+**View element sections**:
+
+```bash
+PGSSLMODE=require psql "..." -c "
+SELECT eg.name, s.number, s.title
+FROM element_section_mappings esm
+JOIN element_groups eg ON esm.element_group_id = eg.id
+JOIN sections s ON esm.section_key = s.key
+WHERE eg.slug = 'doors'
+ORDER BY s.number"
+```
+
+**Find checks without screenshots**:
+
+```bash
+PGSSLMODE=require psql "..." -c "
+SELECT c.id, c.code_section_title, COUNT(sca.screenshot_id) as screenshot_count
+FROM checks c
+LEFT JOIN screenshot_check_assignments sca ON c.id = sca.check_id
+WHERE c.assessment_id = 'assessment-id'
+GROUP BY c.id
+HAVING COUNT(sca.screenshot_id) = 0"
+```
+
+**Check AI analysis results**:
+
+```bash
+PGSSLMODE=require psql "..." -c "
+SELECT compliance_status, confidence, reasoning
+FROM analysis_runs
+WHERE check_id = 'check-id'
+ORDER BY executed_at DESC
+LIMIT 1"
+```
+
+## Development Notes
+
+- Always add lots of logging (`console.log`) - this is an internal tool
+- Next.js 15 uses async `params` - always `await params` in route handlers
+- Supabase uses service role (no auth) via `supabaseAdmin()`
+- Screenshots uploaded client-side directly to S3 (presigned URLs)
+- AI analysis runs on serverless functions (watch timeout limits)
+- Assessment seeding runs in background (poll `/api/assessments/[id]/status`)
+- Manual overrides ALWAYS take precedence over AI judgments
+- Element checks assess multiple sections in single AI call
+- Both dev and prod share same S3 bucket (use consistent key structure)
