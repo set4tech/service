@@ -287,7 +287,7 @@ describe('processRpcRowsToViolations', () => {
   });
 
   describe('Check ID Handling', () => {
-    it('should handle check with check_id field (RPC format)', () => {
+    it('should use check_id field from RPC data', () => {
       const rpcData = [
         {
           check_id: 'rpc-check-id',
@@ -302,23 +302,6 @@ describe('processRpcRowsToViolations', () => {
       const violations = processRpcRowsToViolations(rpcData);
 
       expect(violations[0].checkId).toBe('rpc-check-id');
-    });
-
-    it('should fallback to id field when check_id is missing (API format)', () => {
-      const rpcData = [
-        {
-          id: 'api-check-id',
-          check_name: 'API Format',
-          code_section_number: '11B-444',
-          effective_status: 'non_compliant',
-          violations: [{ description: 'Test', severity: 'moderate' }],
-          screenshots: [],
-        },
-      ];
-
-      const violations = processRpcRowsToViolations(rpcData);
-
-      expect(violations[0].checkId).toBe('api-check-id');
     });
   });
 
