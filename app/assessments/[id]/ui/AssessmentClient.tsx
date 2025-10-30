@@ -183,20 +183,6 @@ export default function AssessmentClient({
   const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
   const [detailPanelWidth, setDetailPanelWidth] = useState(400);
 
-  // NEW: Streaming progress state
-  const [seedingProgress, setSeedingProgress] = useState<{
-    processed: number;
-    total: number;
-    included: number;
-  } | null>(null);
-
-  // Background seeding status
-  const [backgroundSeeding, setBackgroundSeeding] = useState<{
-    active: boolean;
-    processed: number;
-    total: number;
-  }>({ active: false, processed: 0, total: 0 });
-
   const checksSidebarRef = useRef<HTMLDivElement>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
   const checksResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
@@ -531,16 +517,14 @@ export default function AssessmentClient({
     });
 
     if (checks.length === 0 && !isSeeding && !hasSeedAttempted) {
-      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
       console.log('[AssessmentClient] Starting seed process for assessment:', assessment.id);
       setIsSeeding(true);
       setHasSeedAttempted(true);
       localStorage.setItem(`seed-attempted-${assessment.id}`, 'true');
 
-      // Fetch first batch immediately
+      // Call seed endpoint once
       fetch(`/api/assessments/${assessment.id}/seed`, { method: 'POST' })
         .then(async response => {
-          // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
           console.log('[AssessmentClient] Seed response received:', response.status, response.ok);
 
           if (!response.ok) {
@@ -550,23 +534,14 @@ export default function AssessmentClient({
           }
 
           const data = await response.json();
-          // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
           console.log('[AssessmentClient] Seed data:', data);
 
-          // Set initial progress
-          setSeedingProgress({
-            processed: data.processed,
-            total: data.total,
-            included: data.included,
-          });
-
-          // Only reload if we actually got some checks
-          if (data.included > 0) {
-            // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-            console.log('[AssessmentClient] Reloading to show first batch...');
+          // Reload to show the checks
+          if (data.checks_created > 0) {
+            console.log(`[AssessmentClient] Created ${data.checks_created} checks, reloading...`);
             setTimeout(() => window.location.reload(), 500);
           } else {
-            console.warn('[AssessmentClient] No checks included in first batch, not reloading');
+            console.warn('[AssessmentClient] No checks created, not reloading');
             setIsSeeding(false);
           }
         })
@@ -576,74 +551,6 @@ export default function AssessmentClient({
         });
     }
   }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
-
-  // Poll for batch seeding progress
-  useEffect(() => {
-    let pollInterval: NodeJS.Timeout;
-
-    const pollAndContinue = async () => {
-      try {
-        // Check current status
-        const statusRes = await fetch(`/api/assessments/${assessment.id}/status`);
-        if (!statusRes.ok) return;
-
-        const statusData = await statusRes.json();
-
-        // Update background seeding state
-        const isActive =
-          statusData.seeding_status === 'in_progress' && statusData.sections_total > 0;
-        setBackgroundSeeding({
-          active: isActive,
-          processed: statusData.sections_processed || 0,
-          total: statusData.sections_total || 0,
-        });
-
-        // If seeding is in progress, call seed API to process next batch
-        if (statusData.seeding_status === 'in_progress') {
-          const seedRes = await fetch(`/api/assessments/${assessment.id}/seed`, {
-            method: 'POST',
-          });
-
-          if (seedRes.ok) {
-            const seedData = await seedRes.json();
-            // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-            console.log('[AssessmentClient] Batch processed:', seedData);
-
-            // Refresh checks if we got new ones
-            const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
-            if (checksRes.ok) {
-              const updatedChecks = await checksRes.json();
-              if (updatedChecks.length > checks.length) {
-                setChecks(updatedChecks);
-              }
-            }
-
-            // If completed, stop polling
-            if (seedData.status === 'completed') {
-              clearInterval(pollInterval);
-              setBackgroundSeeding({ active: false, processed: 0, total: 0 });
-            }
-          }
-        } else if (statusData.seeding_status === 'completed') {
-          // Stop polling if already completed
-          clearInterval(pollInterval);
-          setBackgroundSeeding({ active: false, processed: 0, total: 0 });
-        }
-      } catch (error) {
-        console.error('[AssessmentClient] Polling error:', error);
-      }
-    };
-
-    // Start polling after initial seed attempt completes
-    if (hasSeedAttempted && !isSeeding) {
-      pollAndContinue(); // Start immediately
-      pollInterval = setInterval(pollAndContinue, 2000); // Poll every 2 seconds
-    }
-
-    return () => {
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, [assessment.id, checks.length, hasSeedAttempted, isSeeding]);
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
   const [screenshotsChanged, setScreenshotsChanged] = useState(0);
@@ -790,36 +697,7 @@ export default function AssessmentClient({
               <h3 className="text-lg font-semibold">Loading Code Sections</h3>
             </div>
 
-            {seedingProgress && (
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>
-                    Processed: {seedingProgress.processed} / {seedingProgress.total}
-                  </span>
-                  <span className="font-medium text-blue-600">
-                    Applicable: {seedingProgress.included}
-                  </span>
-                </div>
-
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div
-                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
-                    style={{
-                      width: `${Math.round((seedingProgress.processed / seedingProgress.total) * 100)}%`,
-                    }}
-                  />
-                </div>
-
-                <div className="text-xs text-gray-500 text-center">
-                  {Math.round((seedingProgress.processed / seedingProgress.total) * 100)}% complete
-                </div>
-              </div>
-            )}
-
-            <p className="text-sm text-gray-500 mt-4">
-              AI is analyzing code sections for applicability to your project. Generic sections and
-              irrelevant features are being filtered out.
-            </p>
+            <p className="text-sm text-gray-500 mt-4">Creating checks for selected chapters...</p>
           </div>
         </div>
       )}
@@ -926,21 +804,6 @@ export default function AssessmentClient({
               Gallery
             </button>
           </div>
-
-          {/* Background Seeding Banner */}
-          {backgroundSeeding.active && (
-            <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600" />
-                <span className="text-xs font-medium text-blue-900">
-                  Still retrieving code sections...
-                </span>
-              </div>
-              <div className="text-xs text-blue-700">
-                {backgroundSeeding.processed} / {backgroundSeeding.total} processed
-              </div>
-            </div>
-          )}
 
           {/* Progress Bar */}
           <div className="mb-3">

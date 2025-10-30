@@ -1,26 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   console.log('[Seed API] Starting seed for assessment:', id);
   const supabase = supabaseAdmin();
 
   try {
-    // Parse request body for chapter_ids
-    const body = await request.json();
-    const chapterIds: string[] = body.chapter_ids || [];
-
-    if (chapterIds.length === 0) {
-      return NextResponse.json(
-        { error: 'No chapter_ids provided. Please provide an array of chapter UUIDs.' },
-        { status: 400 }
-      );
-    }
-
-    console.log('[Seed API] Chapter IDs:', chapterIds);
-
-    // 1. Fetch assessment to check status
+    // 1. Fetch assessment with selected chapters
     const { data: assessment, error: assessmentError } = await supabase
       .from('assessments')
       .select(
@@ -28,6 +15,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         id,
         project_id,
         seeding_status,
+        selected_chapter_ids,
         projects (
           id,
           extracted_variables
@@ -41,6 +29,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       console.error('[Seed API] Assessment not found:', assessmentError);
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
+
+    // Check if assessment has selected chapters
+    const chapterIds = assessment.selected_chapter_ids || [];
+    if (chapterIds.length === 0) {
+      console.log('[Seed API] No chapters selected for assessment');
+      return NextResponse.json(
+        { error: 'No chapters selected for this assessment. Please select chapters first.' },
+        { status: 400 }
+      );
+    }
+
+    console.log('[Seed API] Selected chapter IDs:', chapterIds);
 
     // Check if already completed
     if (assessment.seeding_status === 'completed') {
@@ -92,37 +92,57 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     console.log(`[Seed API] Found ${sections.length} sections to seed`);
 
-    // 3. Create checks for all sections
-    const checkRows = sections.map(s => ({
-      assessment_id: id,
-      code_section_key: s.key,
-      code_section_number: s.number,
-      code_section_title: s.title,
-      check_name: `${s.number} - ${s.title}`,
-      status: 'pending',
-      instance_label: null, // Section checks have no instance label
-    }));
+    // 3. Check which sections already have checks
+    const { data: existingChecks } = await supabase
+      .from('checks')
+      .select('code_section_key')
+      .eq('assessment_id', id);
 
-    const { error: insertError } = await supabase.from('checks').insert(checkRows);
+    const existingKeys = new Set((existingChecks || []).map(c => c.code_section_key));
+    const sectionsToAdd = sections.filter(s => !existingKeys.has(s.key));
 
-    if (insertError) {
-      console.error('[Seed API] Error inserting checks:', insertError);
-      await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+    console.log(
+      `[Seed API] ${existingKeys.size} checks already exist, adding ${sectionsToAdd.length} new checks`
+    );
 
-      return NextResponse.json(
-        { error: 'Failed to create checks: ' + insertError.message },
-        { status: 500 }
-      );
+    let checksCreated = 0;
+
+    // Only insert if there are new sections to add
+    if (sectionsToAdd.length > 0) {
+      const checkRows = sectionsToAdd.map(s => ({
+        assessment_id: id,
+        code_section_key: s.key,
+        code_section_number: s.number,
+        code_section_title: s.title,
+        check_name: `${s.number} - ${s.title}`,
+        status: 'pending',
+        instance_label: null, // Section checks have no instance label
+      }));
+
+      const { error: insertError } = await supabase.from('checks').insert(checkRows);
+
+      if (insertError) {
+        console.error('[Seed API] Error inserting checks:', insertError);
+        await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+
+        return NextResponse.json(
+          { error: 'Failed to create checks: ' + insertError.message },
+          { status: 500 }
+        );
+      }
+
+      checksCreated = checkRows.length;
+      console.log(`[Seed API] Successfully created ${checksCreated} checks`);
     }
 
     // 4. Mark seeding as completed
     await supabase.from('assessments').update({ seeding_status: 'completed' }).eq('id', id);
 
-    console.log(`[Seed API] Successfully created ${checkRows.length} checks`);
+    console.log(`[Seed API] Seeding completed. Created ${checksCreated} new checks`);
 
     return NextResponse.json({
       status: 'completed',
-      checks_created: checkRows.length,
+      checks_created: checksCreated,
       message: 'Assessment seeded successfully',
     });
   } catch (error) {
