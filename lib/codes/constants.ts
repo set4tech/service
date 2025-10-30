@@ -60,12 +60,6 @@ export const EXCLUDED_SECTION_IDS = {
  */
 export const ALL_EXCLUDED_SECTIONS = Object.values(EXCLUDED_SECTION_IDS).flat();
 
-/**
- * Code IDs that are currently supported and should be exposed via the API
- */
-export const SUPPORTED_CODE_IDS = [CODE_IDS.CBC_11A, CODE_IDS.CBC_11B, CODE_IDS.NYCBC_11B] as const;
-
 // Type exports for better type safety
 export type CodeId = (typeof CODE_IDS)[keyof typeof CODE_IDS];
-export type SupportedCodeId = (typeof SUPPORTED_CODE_IDS)[number];
 export type ChapterName = keyof typeof CHAPTER_FILTERS;

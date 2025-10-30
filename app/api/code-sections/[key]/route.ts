@@ -8,20 +8,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   console.log('[GET /api/code-sections/[key]] Requested key:', key);
   console.log('[GET /api/code-sections/[key]] Key length:', key.length);
   console.log('[GET /api/code-sections/[key]] Key ends with:', key.slice(-10));
+  /*
+  This route fetches code sectoins by key
+  */
 
   try {
-    // Fetch section from Supabase
-    const { data: section, error: sectionError } = await supabase
-      .from('sections')
-      .select('*')
-      .eq('key', key)
-      .eq('never_relevant', false)
-      .single();
+    // Fetch section with references using single RPC call
+    const { data, error } = await supabase.rpc('get_section_with_references', {
+      section_key: key,
+    });
 
-    if (sectionError || !section) {
+    if (error || !data) {
       console.error('[GET /api/code-sections/[key]] Section not found:', {
         requestedKey: key,
-        error: sectionError,
+        error,
       });
       return NextResponse.json(
         {
@@ -32,41 +32,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    // Fetch references
-    const { data: references } = await supabase
-      .from('section_references')
-      .select('target_section_key, citation_text, explicit')
-      .eq('source_section_key', key);
-
-    // Fetch referenced section details
-    const referencedSections = [];
-    if (references && references.length > 0) {
-      const refKeys = references.map(r => r.target_section_key);
-      const { data: refSections } = await supabase
-        .from('sections')
-        .select('key, number, title, text, paragraphs')
-        .in('key', refKeys);
-
-      if (refSections) {
-        for (const refSection of refSections) {
-          referencedSections.push({
-            key: refSection.key,
-            number: refSection.number,
-            title: refSection.title,
-            text: refSection.text,
-            requirements: refSection.paragraphs,
-          });
-        }
-      }
-    }
-
+    const section = data.section;
     const paragraphs = section.paragraphs || [];
     const fullText = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
 
     return NextResponse.json({
       ...section,
       fullText,
-      references: referencedSections,
+      references: data.references,
     });
   } catch (error) {
     console.error('Failed to fetch code section:', error);
