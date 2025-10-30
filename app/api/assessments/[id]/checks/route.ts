@@ -262,6 +262,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Fetch screenshots for all checks via junction table
     const checkIds = filteredChecks.map((c: any) => c.id);
     console.log('[CHECKS API] Fetching screenshots for', checkIds.length, 'checks');
+    console.log(
+      '[CHECKS API] Check 1006.3.4 in filtered list:',
+      filteredChecks.some((c: any) => c.code_section_number === '1006.3.4')
+    );
 
     const { data: allScreenshots, error: screenshotsError } = await supabase
       .from('screenshot_check_assignments')
@@ -304,13 +308,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
 
     // Fetch latest analysis runs for all checks (reusing checkIds from above)
-    const { data: allAnalysisRuns } = await supabase
+    const { data: allAnalysisRuns, error: analysisError } = await supabase
       .from('analysis_runs')
       .select(
         'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
       )
       .in('check_id', checkIds)
       .order('run_number', { ascending: false });
+
+    if (analysisError) {
+      console.error('[CHECKS API] ❌ Error fetching analysis runs:', analysisError);
+    }
+
+    console.log('[CHECKS API] Fetched analysis runs:', {
+      totalRuns: allAnalysisRuns?.length || 0,
+      uniqueChecks: new Set(allAnalysisRuns?.map((r: any) => r.check_id)).size,
+      has1006Check: allAnalysisRuns?.some(
+        (r: any) => r.check_id === 'ef9710ef-66bc-4926-8e88-177cb2deab75'
+      ),
+    });
 
     // Create analysis map - get latest run per check (highest run_number)
     const analysisMap = new Map();
@@ -319,6 +335,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         analysisMap.set(run.check_id, run);
       }
     });
+
+    console.log('[CHECKS API] Analysis map size:', analysisMap.size);
 
     // Create screenshots map
     const screenshotsMap = new Map<string, any[]>();
