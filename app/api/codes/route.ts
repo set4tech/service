@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { SUPPORTED_CODE_IDS } from '@/lib/codes';
+
+interface Chapter {
+  id: string;
+  name: string;
+  number: string;
+}
 
 interface CodeNode {
   id: string;
@@ -8,28 +13,31 @@ interface CodeNode {
   publisher?: string;
   jurisdiction?: string;
   year?: string;
+  chapters: Chapter[];
 }
 
 export async function GET(_request: NextRequest) {
   try {
     const supabase = supabaseAdmin();
 
-    // Fetch only the supported codes (11A and 11B virtual codes)
     const { data, error } = await supabase
       .from('codes')
-      .select('id, title, provider, version, jurisdiction')
-      .in('id', SUPPORTED_CODE_IDS)
+      .select('id, year, jurisdiction, title, chapters(id, name, number)')
       .order('title', { ascending: true });
 
     if (error) throw error;
 
     // Map Supabase fields to expected format
-    const codes: CodeNode[] = (data || []).map(code => ({
+    const codes: CodeNode[] = (data || []).map((code: any) => ({
       id: code.id,
       name: code.title,
-      publisher: code.provider,
       jurisdiction: code.jurisdiction,
-      year: code.version,
+      year: code.year,
+      chapters: (code.chapters || []).map((ch: any) => ({
+        id: ch.id,
+        name: ch.name,
+        number: ch.number,
+      })),
     }));
 
     return NextResponse.json(codes);

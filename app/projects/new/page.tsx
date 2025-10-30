@@ -10,12 +10,19 @@ interface Customer {
   contact_email: string;
 }
 
+interface Chapter {
+  id: string;
+  name: string;
+  number: string;
+}
+
 interface CodeBook {
   id: string;
   name: string;
   publisher?: string;
   jurisdiction?: string;
   year?: string;
+  chapters: Chapter[];
 }
 
 export default function NewProjectPage() {
@@ -24,7 +31,7 @@ export default function NewProjectPage() {
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [codeBooks, setCodeBooks] = useState<CodeBook[]>([]);
-  const [selectedCodeIds, setSelectedCodeIds] = useState<string[]>([]);
+  const [selectedChapterIds, setSelectedChapterIds] = useState<string[]>([]);
   const [variableChecklist, setVariableChecklist] = useState<any>(null);
   const [projectVariables, setProjectVariables] = useState<Record<string, Record<string, any>>>({});
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -123,9 +130,9 @@ export default function NewProjectPage() {
     }
   };
 
-  const toggleCodeSelection = (codeId: string) => {
-    setSelectedCodeIds(prev =>
-      prev.includes(codeId) ? prev.filter(id => id !== codeId) : [...prev, codeId]
+  const toggleChapterSelection = (chapterId: string) => {
+    setSelectedChapterIds(prev =>
+      prev.includes(chapterId) ? prev.filter(id => id !== chapterId) : [...prev, chapterId]
     );
   };
 
@@ -322,7 +329,6 @@ export default function NewProjectPage() {
           customer_id: customerId,
           pdf_url: pdfUrl,
           status: 'in_progress',
-          selected_code_ids: selectedCodeIds,
           extracted_variables: finalVariables,
           extraction_status: finalVariables ? 'completed' : null,
           extraction_completed_at: finalVariables ? new Date().toISOString() : null,
@@ -414,8 +420,8 @@ export default function NewProjectPage() {
                       placeholder="Leave blank for no password protection"
                     />
                     <p className="mt-1 text-sm text-gray-500">
-                      Set a password for customer access to the project report. This password will be
-                      publicly shared with your customers.
+                      Set a password for customer access to the project report. This password will
+                      be publicly shared with your customers.
                     </p>
                   </div>
                 </div>
@@ -483,27 +489,35 @@ export default function NewProjectPage() {
                   Choose which building codes are relevant for this project. Sections displayed in
                   the assessment will be descendants of the selected codes.
                 </p>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                <div className="space-y-4 max-h-96 overflow-y-auto">
                   {codeBooks.map(code => (
-                    <label
-                      key={code.id}
-                      className="flex items-start p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedCodeIds.includes(code.id)}
-                        onChange={() => toggleCodeSelection(code.id)}
-                        className="mt-1 mr-3"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium">{code.name}</div>
-                        <div className="text-sm text-gray-500">
-                          {[code.publisher, code.jurisdiction, code.year]
-                            .filter(Boolean)
-                            .join(' • ')}
-                        </div>
+                    <div key={code.id} className="border rounded-lg p-3">
+                      <div className="font-medium text-gray-900 mb-2">{code.name}</div>
+                      <div className="text-sm text-gray-500 mb-3">
+                        {[code.publisher, code.jurisdiction, code.year].filter(Boolean).join(' • ')}
                       </div>
-                    </label>
+                      {code.chapters && code.chapters.length > 0 && (
+                        <div className="space-y-2 pl-2">
+                          {code.chapters.map(chapter => (
+                            <label
+                              key={chapter.id}
+                              className="flex items-center p-2 rounded hover:bg-gray-50 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedChapterIds.includes(chapter.id)}
+                                onChange={() => toggleChapterSelection(chapter.id)}
+                                className="mr-3"
+                              />
+                              <div className="flex-1">
+                                <span className="text-sm font-medium">{chapter.number}</span>
+                                <span className="text-sm text-gray-600 ml-2">{chapter.name}</span>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
                 <div className="mt-6 flex justify-between">
@@ -515,7 +529,7 @@ export default function NewProjectPage() {
                   </button>
                   <button
                     onClick={() => setStep(4)}
-                    disabled={selectedCodeIds.length === 0}
+                    disabled={selectedChapterIds.length === 0}
                     className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                   >
                     Next →
@@ -804,13 +818,18 @@ export default function NewProjectPage() {
                   </div>
 
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-sm text-gray-700 mb-2">
-                      Selected Code Books
-                    </h3>
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">Selected Chapters</h3>
                     <div className="text-sm space-y-1">
-                      {selectedCodeIds.map(id => {
-                        const code = codeBooks.find(c => c.id === id);
-                        return <div key={id}>• {code?.name}</div>;
+                      {selectedChapterIds.map(chapterId => {
+                        const code = codeBooks.find(c =>
+                          c.chapters.some(ch => ch.id === chapterId)
+                        );
+                        const chapter = code?.chapters.find(ch => ch.id === chapterId);
+                        return (
+                          <div key={chapterId}>
+                            • {code?.name} - {chapter?.number} {chapter?.name}
+                          </div>
+                        );
                       })}
                     </div>
                   </div>
