@@ -277,6 +277,44 @@ scripts/
 - **PDF**: PDF.js for rendering and annotation
 - **Testing**: Vitest
 
+### API Optimizations
+
+#### Efficient Check Loading: `/api/checks/[id]/full`
+
+When loading check details, a single endpoint provides all necessary data in 2-3 parallel database queries:
+
+**Endpoint**: `GET /api/checks/[id]/full`
+
+**Returns**:
+
+```json
+{
+  "check": { /* complete check record */ },
+  "analysisRuns": [ /* array of analysis runs */ ],
+  "progress": {
+    "inProgress": boolean,
+    "completed": number,
+    "total": number,
+    "batchGroupId": string | null
+  }
+}
+```
+
+**Optimization details**:
+
+- Executes check and analysis_runs queries in parallel using `Promise.all()`
+- For element-grouped checks, includes all sibling check runs
+- Calculates progress in TypeScript (simple, testable)
+- Replaces 3 separate API calls with 1
+- Reduces database queries from 5+ to 2-3
+
+**Usage in components**:
+
+```typescript
+const response = await fetch(`/api/checks/${checkId}/full`);
+const { check, analysisRuns, progress } = await response.json();
+```
+
 ### Data Flow
 
 ```

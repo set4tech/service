@@ -35,8 +35,6 @@ interface CodeDetailPanelProps {
 
 // Simple in-memory cache for API responses
 const sectionCache = new Map<string, CodeSection>();
-const analysisRunsCache = new Map<string, { runs: AnalysisRun[]; timestamp: number }>();
-const CACHE_TTL = 30000; // 30 seconds
 
 async function fetchSection(key: string): Promise<CodeSection> {
   if (sectionCache.has(key)) {
@@ -50,22 +48,6 @@ async function fetchSection(key: string): Promise<CodeSection> {
 
   sectionCache.set(key, data);
   return data;
-}
-
-async function fetchAnalysisRuns(checkId: string, bypassCache = false): Promise<AnalysisRun[]> {
-  if (!bypassCache) {
-    const cached = analysisRunsCache.get(checkId);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return cached.runs;
-    }
-  }
-
-  const response = await fetch(`/api/checks/${checkId}/analysis-runs`);
-  const data = await response.json();
-  const runs = data.runs || [];
-
-  analysisRunsCache.set(checkId, { runs, timestamp: Date.now() });
-  return runs;
 }
 
 interface CheckDataResult {
@@ -125,17 +107,19 @@ function useCheckData(
       setError(null);
 
       try {
-        // STEP 1: Load the main check
-        const checkResponse = await fetch(`/api/checks/${checkId}`);
-        const checkData = await checkResponse.json();
+        // Load check with analysis runs and progress in a single query
+        const fullResponse = await fetch(`/api/checks/${checkId}/full`);
+        const fullData = await fullResponse.json();
 
         if (isCancelled) return;
 
-        if (!checkData.check) {
+        if (!fullData.check) {
           throw new Error('Check not found');
         }
 
-        const check = checkData.check;
+        const check = fullData.check;
+        const analysisRuns = fullData.analysisRuns || [];
+        const progress = fullData.progress;
 
         // Check if this is part of an element instance (has element_group_id + instance_label)
         if (check.element_group_id && check.instance_label) {
@@ -165,14 +149,11 @@ function useCheckData(
           const activeChildId = checkId;
           const activeChild = sorted.find(c => c.id === activeChildId);
 
-          // Load data for active child in parallel
-          const [section, runs, progress] = await Promise.all([
+          // Load code section if needed
+          const section =
             activeChildId && activeChild?.code_section_key
-              ? fetchSection(activeChild.code_section_key)
-              : Promise.resolve(null),
-            fetchAnalysisRuns(checkId!),
-            fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
-          ]);
+              ? await fetchSection(activeChild.code_section_key)
+              : null;
 
           if (isCancelled) return;
 
@@ -181,7 +162,7 @@ function useCheckData(
             childChecks: sorted,
             activeChildCheckId: activeChildId,
             sections: section ? [section] : [],
-            analysisRuns: runs,
+            analysisRuns,
             assessing: progress.inProgress || false,
             // Load the active child's override, not the first check's override
             manualOverride: activeChild?.manual_status || null,
@@ -193,11 +174,7 @@ function useCheckData(
         }
 
         // Standalone section check - load single section
-        const [progress, runs, section] = await Promise.all([
-          fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
-          fetchAnalysisRuns(checkId!),
-          check.code_section_key ? fetchSection(check.code_section_key) : Promise.resolve(null),
-        ]);
+        const section = check.code_section_key ? await fetchSection(check.code_section_key) : null;
 
         if (isCancelled) return;
 
@@ -207,7 +184,7 @@ function useCheckData(
           childChecks: [],
           activeChildCheckId: null,
           sections: section ? [section] : [],
-          analysisRuns: runs,
+          analysisRuns,
           assessing: progress.inProgress || false,
           manualOverride: check.manual_status || null,
           manualOverrideNote: check.manual_status_note || '',
@@ -360,12 +337,18 @@ export function CodeDetailPanel({
   // Polling hook
   const handleAssessmentComplete = useCallback(() => {
     if (checkId) {
-      fetchAnalysisRuns(checkId, true).then(runs => {
-        setAnalysisRuns(runs);
-        if (runs.length > 0) {
-          setExpandedRuns(new Set([runs[0].id]));
-        }
-      });
+      // Refresh analysis runs after assessment completes
+      fetch(`/api/checks/${checkId}/full`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.analysisRuns) {
+            setAnalysisRuns(data.analysisRuns);
+            if (data.analysisRuns.length > 0) {
+              setExpandedRuns(new Set([data.analysisRuns[0].id]));
+            }
+          }
+        })
+        .catch(err => console.error('Failed to refresh analysis runs:', err));
     }
     if (onCheckUpdate) onCheckUpdate();
   }, [checkId, onCheckUpdate]);

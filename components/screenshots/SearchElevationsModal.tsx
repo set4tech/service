@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Modal from '@/components/ui/Modal';
-import type { Screenshot, ElementGroup } from '@/types/database';
+import type { Screenshot } from '@/types/database';
 
 interface SearchElevationsModalProps {
   open: boolean;
@@ -35,26 +35,12 @@ export function SearchElevationsModal({
 }: SearchElevationsModalProps) {
   const [elevations, setElevations] = useState<Screenshot[]>([]);
   const [filteredElevations, setFilteredElevations] = useState<Screenshot[]>([]);
-  const [elementGroups, setElementGroups] = useState<ElementGroup[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [elementFilter, setElementFilter] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
-
-  // Fetch element groups
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/element-groups');
-        const data = await res.json();
-        setElementGroups(data.element_groups || []);
-      } catch (error) {
-        console.error('Failed to fetch element groups:', error);
-      }
-    })();
-  }, []);
 
   // Fetch all elevations for this assessment
   useEffect(() => {
@@ -102,10 +88,10 @@ export function SearchElevationsModal({
   useEffect(() => {
     let filtered = elevations;
 
-    // Filter by element group
+    // Filter by element group (now loaded with screenshot)
     if (elementFilter !== 'all') {
       filtered = filtered.filter(e => {
-        const elementGroup = elementGroups.find(g => g.id === e.element_group_id);
+        const elementGroup = (e as any).element_groups;
         return elementGroup?.slug === elementFilter;
       });
     }
@@ -121,7 +107,7 @@ export function SearchElevationsModal({
     }
 
     setFilteredElevations(filtered);
-  }, [elevations, elementFilter, searchQuery, elementGroups]);
+  }, [elevations, elementFilter, searchQuery]);
 
   const handleAssign = async () => {
     if (selectedIds.size === 0) return;
@@ -150,6 +136,16 @@ export function SearchElevationsModal({
     });
   };
 
+  // Extract unique element groups from elevations (now loaded with screenshots)
+  const uniqueElementGroups = Array.from(
+    new Map(
+      elevations
+        .map(e => (e as any).element_groups)
+        .filter(Boolean)
+        .map(g => [g.id, g])
+    ).values()
+  );
+
   return (
     <Modal open={open} onClose={onClose} title="Search Elevations">
       <div className="flex flex-col gap-4 h-[600px]">
@@ -168,7 +164,7 @@ export function SearchElevationsModal({
             onChange={e => setElementFilter(e.target.value)}
           >
             <option value="all">All Elements</option>
-            {elementGroups.map(group => (
+            {uniqueElementGroups.map(group => (
               <option key={group.id} value={group.slug}>
                 {group.name}
               </option>
@@ -189,7 +185,7 @@ export function SearchElevationsModal({
           ) : (
             <div className="grid grid-cols-3 gap-4">
               {filteredElevations.map(elevation => {
-                const elementGroup = elementGroups.find(g => g.id === elevation.element_group_id);
+                const elementGroup = (elevation as any).element_groups;
                 return (
                   <div
                     key={elevation.id}
