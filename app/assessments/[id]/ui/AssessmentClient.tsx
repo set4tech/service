@@ -911,29 +911,15 @@ export default function AssessmentClient({
                 onCheckUpdate={async () => {
                   if (activeCheck?.id) {
                     try {
-                      // Fetch check data
                       const res = await fetch(`/api/checks/${activeCheck.id}`);
                       if (res.ok) {
                         const { check: updatedCheck } = await res.json();
                         setChecks(prev =>
-                          prev.map(c => {
-                            // Update top-level check if it matches
-                            if (c.id === updatedCheck.id) {
-                              return { ...c, ...updatedCheck, instances: c.instances };
-                            }
-                            // Update instance within check if it matches
-                            if (c.instances?.length && c.instances.length > 0) {
-                              const updatedInstances = c.instances.map(instance =>
-                                instance.id === updatedCheck.id
-                                  ? { ...instance, ...updatedCheck }
-                                  : instance
-                              );
-                              if (updatedInstances !== c.instances) {
-                                return { ...c, instances: updatedInstances };
-                              }
-                            }
-                            return c;
-                          })
+                          prev.map(c =>
+                            c.id === updatedCheck.id
+                              ? { ...c, ...updatedCheck } // ← Just update if ID matches
+                              : c
+                          )
                         );
                       }
                     } catch (error) {
