@@ -35,6 +35,8 @@ interface CodeDetailPanelProps {
 
 // Simple in-memory cache for API responses
 const sectionCache = new Map<string, CodeSection>();
+const checkCache = new Map<string, any>(); // Cache check metadata
+const childChecksCache = new Map<string, any[]>(); // Cache child checks by parent key
 
 async function fetchSection(key: string): Promise<CodeSection> {
   if (sectionCache.has(key)) {
@@ -103,39 +105,67 @@ function useCheckData(
     let isCancelled = false;
 
     async function loadAllData() {
-      setLoading(true);
+      // Only show loading if we don't have cached data
+      const hasCachedCheck = checkCache.has(checkId!);
+      if (!hasCachedCheck) {
+        setLoading(true);
+      }
       setError(null);
 
       try {
-        // Load check with analysis runs and progress in a single query
-        const fullResponse = await fetch(`/api/checks/${checkId}/full`);
-        const fullData = await fullResponse.json();
+        // Check cache first for faster loads
+        let check, analysisRuns, progress;
 
-        if (isCancelled) return;
-
-        if (!fullData.check) {
-          throw new Error('Check not found');
-        }
-
-        const check = fullData.check;
-        const analysisRuns = fullData.analysisRuns || [];
-        const progress = fullData.progress;
-
-        // Check if this is part of an element instance (has element_group_id + instance_label)
-        if (check.element_group_id && check.instance_label) {
-          // Load all sections for this element instance
-          const siblingsResponse = await fetch(
-            `/api/checks?assessment_id=${check.assessment_id}&element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(check.instance_label)}`
-          );
-          const siblings = await siblingsResponse.json();
+        if (hasCachedCheck) {
+          const cached = checkCache.get(checkId!);
+          check = cached.check;
+          analysisRuns = cached.analysisRuns || [];
+          progress = cached.progress;
+        } else {
+          // Load check with analysis runs and progress in a single query
+          const fullResponse = await fetch(`/api/checks/${checkId}/full`);
+          const fullData = await fullResponse.json();
 
           if (isCancelled) return;
 
-          let sorted = Array.isArray(siblings)
-            ? siblings.sort((a, b) =>
-                (a.code_section_number || '').localeCompare(b.code_section_number || '')
-              )
-            : [];
+          if (!fullData.check) {
+            throw new Error('Check not found');
+          }
+
+          check = fullData.check;
+          analysisRuns = fullData.analysisRuns || [];
+          progress = fullData.progress;
+
+          // Cache the result
+          checkCache.set(checkId!, { check, analysisRuns, progress });
+        }
+
+        // Check if this is part of an element instance (has element_group_id + instance_label)
+        if (check.element_group_id && check.instance_label) {
+          // Create cache key for child checks
+          const childChecksCacheKey = `${check.assessment_id}:${check.element_group_id}:${check.instance_label}`;
+
+          let sorted;
+          if (childChecksCache.has(childChecksCacheKey)) {
+            sorted = childChecksCache.get(childChecksCacheKey)!;
+          } else {
+            // Load all sections for this element instance
+            const siblingsResponse = await fetch(
+              `/api/checks?assessment_id=${check.assessment_id}&element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(check.instance_label)}`
+            );
+            const siblings = await siblingsResponse.json();
+
+            if (isCancelled) return;
+
+            sorted = Array.isArray(siblings)
+              ? siblings.sort((a, b) =>
+                  (a.code_section_number || '').localeCompare(b.code_section_number || '')
+                )
+              : [];
+
+            // Cache the child checks
+            childChecksCache.set(childChecksCacheKey, sorted);
+          }
 
           // Filter to requested section if specified
           if (filterToSectionKey) {
@@ -309,7 +339,6 @@ export function CodeDetailPanel({
 
       // Check cache synchronously to avoid loading flicker
       if (sectionCache.has(sectionKey)) {
-        console.log('✅ Cache HIT for', sectionKey);
         const cached = sectionCache.get(sectionKey)!;
         // Update all states together
         setActiveChildCheckId(childCheckId);
@@ -317,7 +346,6 @@ export function CodeDetailPanel({
         setManualOverride(activeChild.manual_status || null);
         setManualOverrideNote(activeChild.manual_status_note || '');
       } else {
-        console.log('❌ Cache MISS for', sectionKey);
         // Update activeChildCheckId first
         setActiveChildCheckId(childCheckId);
         // Not cached - fetch it asynchronously
@@ -708,33 +736,13 @@ export function CodeDetailPanel({
     setTriageSections([]);
   };
 
-  // Loading skeleton
+  // Simple loading indicator instead of full skeleton
   if (panelLoading) {
     return (
-      <div className="h-full flex flex-col bg-white border-r border-gray-200">
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <div className="h-6 bg-gray-200 rounded w-1/2 animate-pulse" />
-        </div>
-        <div className="border-b bg-gray-50 p-4">
-          <div className="h-8 bg-gray-200 rounded animate-pulse" />
-        </div>
-        <div className="border-b p-4 space-y-3">
-          <div className="h-4 bg-gray-200 rounded w-1/3 animate-pulse" />
-          <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-10 bg-gray-200 rounded flex-1 animate-pulse" />
-            ))}
-          </div>
-        </div>
-        <div className="flex-1 p-4 space-y-4">
-          <div className="h-6 bg-gray-200 rounded w-3/4 animate-pulse" />
-          <div className="h-4 bg-gray-200 rounded animate-pulse" />
-          <div className="h-4 bg-gray-200 rounded animate-pulse" />
-          <div className="h-4 bg-gray-200 rounded w-5/6 animate-pulse" />
-        </div>
-        <div className="border-t p-4 space-y-2">
-          <div className="h-4 bg-gray-200 rounded w-1/4 animate-pulse" />
-          <div className="h-20 bg-gray-200 rounded animate-pulse" />
+      <div className="h-full flex items-center justify-center bg-white border-r border-gray-200">
+        <div className="text-center">
+          <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <div className="text-sm text-gray-500">Loading check...</div>
         </div>
       </div>
     );
