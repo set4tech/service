@@ -45,22 +45,6 @@ export function useAssessmentPolling(
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
 
-  // Sync initialAssessing to state when it changes
-  useEffect(() => {
-    console.log(
-      '[useAssessmentPolling] Syncing initialAssessing:',
-      initialAssessing,
-      '→ current:',
-      assessing
-    );
-    if (initialAssessing !== assessing) {
-      console.log('[useAssessmentPolling] ✓ Updating assessing state to:', initialAssessing);
-      setAssessing(initialAssessing);
-    }
-  }, [initialAssessing]);
-
-  console.log('[useAssessmentPolling] Current state:', { assessing, progress, message });
-
   useEffect(() => {
     console.log('[useAssessmentPolling] Effect running with:', { assessing, checkId });
 
