@@ -74,15 +74,16 @@ export function useAssessmentPolling(
     const interval = setInterval(async () => {
       try {
         console.log('[useAssessmentPolling] Fetching progress...');
-        const res = await fetch(`/api/checks/${checkId}/assessment-progress`);
-        const data = await res.json();
+        const res = await fetch(`/api/checks/${checkId}/full`);
+        const fullData = await res.json();
+        const data = fullData.progress;
 
         console.log('[useAssessmentPolling] Progress data:', {
           inProgress: data.inProgress,
           completed: data.completed,
           total: data.total,
           batchGroupId: data.batchGroupId,
-          runsCount: data.runs?.length,
+          runsCount: fullData.analysisRuns?.length,
         });
 
         if (data.inProgress) {

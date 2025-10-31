@@ -62,9 +62,12 @@ describe('useAssessmentPolling', () => {
     it('should poll when assessing is true', async () => {
       (global.fetch as any).mockResolvedValue({
         json: async () => ({
-          inProgress: true,
-          completed: 5,
-          total: 10,
+          progress: {
+            inProgress: true,
+            completed: 5,
+            total: 10,
+          },
+          analysisRuns: [],
         }),
       });
 
@@ -83,7 +86,7 @@ describe('useAssessmentPolling', () => {
         { timeout: 200 }
       );
 
-      expect(global.fetch).toHaveBeenCalledWith('/api/checks/check-1/assessment-progress');
+      expect(global.fetch).toHaveBeenCalledWith('/api/checks/check-1/full');
     });
   });
 
@@ -91,9 +94,12 @@ describe('useAssessmentPolling', () => {
     it('should update progress and message during assessment', async () => {
       (global.fetch as any).mockResolvedValue({
         json: async () => ({
-          inProgress: true,
-          completed: 3,
-          total: 10,
+          progress: {
+            inProgress: true,
+            completed: 3,
+            total: 10,
+          },
+          analysisRuns: [],
         }),
       });
 
@@ -120,7 +126,10 @@ describe('useAssessmentPolling', () => {
     it('should stop assessing when complete', async () => {
       (global.fetch as any).mockResolvedValue({
         json: async () => ({
-          inProgress: false,
+          progress: {
+            inProgress: false,
+          },
+          analysisRuns: [],
         }),
       });
 
@@ -147,7 +156,10 @@ describe('useAssessmentPolling', () => {
 
       (global.fetch as any).mockResolvedValue({
         json: async () => ({
-          inProgress: false,
+          progress: {
+            inProgress: false,
+          },
+          analysisRuns: [],
         }),
       });
 
@@ -194,9 +206,12 @@ describe('useAssessmentPolling', () => {
     it('should stop polling on unmount', async () => {
       (global.fetch as any).mockResolvedValue({
         json: async () => ({
-          inProgress: true,
-          completed: 1,
-          total: 5,
+          progress: {
+            inProgress: true,
+            completed: 1,
+            total: 5,
+          },
+          analysisRuns: [],
         }),
       });
 
@@ -229,9 +244,12 @@ describe('useAssessmentPolling', () => {
     it('should stop polling when assessing becomes false', async () => {
       (global.fetch as any).mockResolvedValue({
         json: async () => ({
-          inProgress: true,
-          completed: 1,
-          total: 5,
+          progress: {
+            inProgress: true,
+            completed: 1,
+            total: 5,
+          },
+          analysisRuns: [],
         }),
       });
 
