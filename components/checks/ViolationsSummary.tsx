@@ -92,8 +92,7 @@ export function ViolationsSummary({
         c.latest_status ||
         (c.manual_status &&
           c.manual_status !== 'not_applicable' &&
-          c.manual_status !== 'insufficient_information') ||
-        c.has_section_overrides
+          c.manual_status !== 'insufficient_information')
     ).length;
 
     // Count currently analyzing (only if updated recently - within 5 minutes)

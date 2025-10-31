@@ -623,42 +623,6 @@ Stores screenshots for the compliance viewer workflow, supporting multiple insta
 
 ---
 
-### `section_overrides`
-
-Per-section compliance overrides within element checks.
-
-**Schema:**
-
-| Column            | Type                | Description                                         |
-| ----------------- | ------------------- | --------------------------------------------------- |
-| `id`              | UUID PK             | Primary key                                         |
-| `check_id`        | UUID FK → checks.id | Check reference (CASCADE delete)                    |
-| `section_key`     | TEXT NOT NULL       | Section being overridden                            |
-| `section_number`  | TEXT NOT NULL       | Section number                                      |
-| `override_status` | TEXT NOT NULL       | Status: compliant, non_compliant, or not_applicable |
-| `note`            | TEXT                | Explanation for override                            |
-| `created_at`      | TIMESTAMPTZ         | Creation timestamp                                  |
-| `updated_at`      | TIMESTAMPTZ         | Last update timestamp (auto-updated by trigger)     |
-
-**Indexes:**
-
-- `idx_section_overrides_check_id` on `check_id`
-- `idx_section_overrides_section_key` on `section_key`
-- `section_overrides_check_id_section_key_key` UNIQUE on `(check_id, section_key)`
-
-**Constraints:**
-
-- `section_overrides_override_status_check`: override_status must be 'compliant', 'non_compliant', or 'not_applicable'
-
-**Trigger:**
-
-- `section_overrides_updated_at`: Auto-updates `updated_at` on modification
-
-**Purpose:**
-Allows fine-grained overrides of individual sections within element-based checks (where one check covers multiple code sections).
-
----
-
 ## Entity Relationship Diagram
 
 ```
@@ -703,12 +667,6 @@ Allows fine-grained overrides of individual sections within element-based checks
        │                                  ┌──────────┐
        │                                  │ sections │
        │                                  └──────────┘
-       │ 1:N
-       ├─────────┐
-       │         ▼
-       │    ┌───────────────────┐
-       │    │ section_overrides │
-       │    └───────────────────┘
        │ 1:N
        ▼
 ┌──────────────┐

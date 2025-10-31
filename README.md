@@ -328,7 +328,6 @@ See `DATABASE_SCHEMA.md` for complete schema documentation.
 - `analysis_runs` - AI assessment history
 - `screenshots`, `screenshot_check_assignments` - Evidence images (many-to-many with checks)
 - `element_groups`, `element_section_mappings` - Element-based checking with global/assessment-specific mappings
-- `section_overrides` - Per-section overrides within element checks (deprecated in favor of check-level status)
 - `compliance_sessions`, `section_checks`, `section_screenshots` - Alternative compliance workflow (client viewer)
 
 **Connection:**

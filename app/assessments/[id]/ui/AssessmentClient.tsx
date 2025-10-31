@@ -62,7 +62,6 @@ interface CheckData {
   latest_status?: string | null;
   status?: string;
   manual_status?: string | null;
-  has_section_overrides?: boolean;
   screenshots?: ScreenshotData[];
   instances?: CheckInstance[];
   instance_count?: number;
@@ -164,13 +163,12 @@ export default function AssessmentClient({
     // Exclude checks marked as not_applicable from total count
     const applicableChecks = checks.filter(c => c.manual_status !== 'not_applicable');
     const totalChecks = applicableChecks.length;
-    // Count checks with AI assessment OR manual override OR section overrides (but not not_applicable)
+    // Count checks with AI assessment OR manual override
     const completed = applicableChecks.filter(
       c =>
         c.latest_status ||
         c.status === 'completed' ||
-        (c.manual_status && c.manual_status !== 'not_applicable') ||
-        c.has_section_overrides
+        (c.manual_status && c.manual_status !== 'not_applicable')
     ).length;
     const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
     return { totalChecks, completed, pct };
@@ -490,14 +488,6 @@ export default function AssessmentClient({
     // First try to find the check directly
     const directMatch = checks.find(c => c.id === activeCheckId);
     if (directMatch) return directMatch;
-
-    // If not found, search within instances
-    for (const check of checks) {
-      if (check.instances?.length && check.instances.length > 0) {
-        const instance = check.instances.find(i => i.id === activeCheckId);
-        if (instance) return instance as CheckData;
-      }
-    }
 
     return null;
   }, [checks, activeCheckId]);
@@ -921,33 +911,21 @@ export default function AssessmentClient({
                 onCheckUpdate={async () => {
                   if (activeCheck?.id) {
                     try {
-                      // Fetch section overrides for this check
-                      const overridesRes = await fetch(
-                        `/api/checks/${activeCheck.id}/section-overrides`
-                      );
-                      const sectionOverrides = overridesRes.ok ? await overridesRes.json() : [];
-
                       // Fetch check data
                       const res = await fetch(`/api/checks/${activeCheck.id}`);
                       if (res.ok) {
                         const { check: updatedCheck } = await res.json();
-                        const checkWithOverrides = {
-                          ...updatedCheck,
-                          section_overrides: sectionOverrides,
-                          has_section_overrides: sectionOverrides.length > 0,
-                        };
-
                         setChecks(prev =>
                           prev.map(c => {
                             // Update top-level check if it matches
-                            if (c.id === checkWithOverrides.id) {
-                              return { ...c, ...checkWithOverrides, instances: c.instances };
+                            if (c.id === updatedCheck.id) {
+                              return { ...c, ...updatedCheck, instances: c.instances };
                             }
                             // Update instance within check if it matches
                             if (c.instances?.length && c.instances.length > 0) {
                               const updatedInstances = c.instances.map(instance =>
-                                instance.id === checkWithOverrides.id
-                                  ? { ...instance, ...checkWithOverrides }
+                                instance.id === updatedCheck.id
+                                  ? { ...instance, ...updatedCheck }
                                   : instance
                               );
                               if (updatedInstances !== c.instances) {

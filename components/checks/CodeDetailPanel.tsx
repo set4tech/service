@@ -1534,29 +1534,18 @@ export function CodeDetailPanel({
         <TriageModal
           sections={triageSections}
           onClose={handleTriageComplete}
-          onSave={async overrides => {
+          onSave={async () => {
             if (!checkId) return;
 
             try {
-              const res = await fetch(`/api/checks/${checkId}/section-overrides`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ overrides }),
-              });
-
-              if (!res.ok) {
-                const error = await res.json();
-                throw new Error(error.error || 'Failed to save overrides');
-              }
-
               const runsRes = await fetch(`/api/checks/${checkId}/analysis-runs`);
               const runsData = await runsRes.json();
               setAnalysisRuns(runsData.runs || []);
 
               if (onCheckUpdate) onCheckUpdate();
             } catch (error: any) {
-              console.error('Failed to save section overrides:', error);
-              alert('Failed to save overrides: ' + error.message);
+              console.error('Failed to save analysis runs:', error);
+              alert('Failed to save analysis runs: ' + error.message);
             }
           }}
         />
