@@ -42,6 +42,16 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
 
     console.log('[Seed API] Selected chapter IDs:', chapterIds);
 
+    // Check total sections before filtering
+    const { count: totalSections } = await supabase
+      .from('sections')
+      .select('*', { count: 'exact', head: true })
+      .in('chapter_id', chapterIds)
+      .eq('drawing_assessable', true)
+      .eq('never_relevant', false);
+
+    console.log(`[Seed API] Total sections (before text filter): ${totalSections}`);
+
     // Check if already completed
     if (assessment.seeding_status === 'completed') {
       console.log('[Seed API] Assessment already seeded, returning early');
@@ -61,12 +71,15 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     await supabase.from('assessments').update({ seeding_status: 'in_progress' }).eq('id', id);
 
     // 2. Fetch all sections for the selected chapters
+    // Exclude sections without body text (header-only sections like "1001")
     const { data: sections, error: sectionsError } = await supabase
       .from('sections')
       .select('*')
       .in('chapter_id', chapterIds)
       .eq('drawing_assessable', true)
       .eq('never_relevant', false)
+      .not('text', 'is', null)
+      .neq('text', '')
       .order('number');
 
     if (sectionsError) {
@@ -90,7 +103,9 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       });
     }
 
-    console.log(`[Seed API] Found ${sections.length} sections to seed`);
+    console.log(
+      `[Seed API] Found ${sections.length} sections with body text to seed (excluded ${(totalSections || 0) - sections.length} header-only sections)`
+    );
 
     // 3. Check which sections already have checks
     const { data: existingChecks } = await supabase
