@@ -81,14 +81,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       // Fetch latest analysis runs and screenshots for all checks
-      const checkIds = filteredChecksData.map((c: any) => c.id);
+      // Use JOIN filter on assessment_id instead of passing check IDs (avoids URL length limits)
       const [{ data: allAnalysisRuns }, { data: allScreenshots }] = await Promise.all([
         supabase
           .from('analysis_runs')
           .select(
-            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, checks!inner(assessment_id)'
           )
-          .in('check_id', checkIds)
+          .eq('checks.assessment_id', id)
           .order('run_number', { ascending: false }),
         supabase
           .from('screenshot_check_assignments')
@@ -96,10 +96,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             `
             check_id,
             is_original,
-            screenshots (*)
+            screenshots (*),
+            checks!inner(assessment_id)
           `
           )
-          .in('check_id', checkIds)
+          .eq('checks.assessment_id', id)
           .order('screenshots(created_at)', { ascending: true }),
       ]);
 
@@ -246,26 +247,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       `[CHECKS API] Fetched ${allChecks.length} checks in ${Math.ceil(allChecks.length / batchSize)} batches`
     );
 
-    // Filter out checks for sections marked as never_relevant
-    const filteredChecks = (allChecks || []).filter((check: any) => {
-      return check.sections?.never_relevant !== true;
-    });
-
-    if (filteredChecks.length < (allChecks?.length || 0)) {
-      console.log(
-        '[CHECKS API] Filtered out',
-        (allChecks?.length || 0) - filteredChecks.length,
-        'never_relevant checks'
-      );
-    }
-
     // Fetch screenshots for all checks via junction table
-    const checkIds = filteredChecks.map((c: any) => c.id);
-    console.log('[CHECKS API] Fetching screenshots for', checkIds.length, 'checks');
-    console.log(
-      '[CHECKS API] Check 1006.3.4 in filtered list:',
-      filteredChecks.some((c: any) => c.code_section_number === '1006.3.4')
-    );
+    // Use JOIN filter on assessment_id instead of passing 256+ check IDs (avoids URL length limits)
 
     const { data: allScreenshots, error: screenshotsError } = await supabase
       .from('screenshot_check_assignments')
@@ -273,10 +256,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         `
         check_id,
         is_original,
-        screenshots (*)
+        screenshots (*),
+        checks!inner(assessment_id)
       `
       )
-      .in('check_id', checkIds)
+      .eq('checks.assessment_id', id)
       .order('screenshots(created_at)', { ascending: true });
 
     if (screenshotsError) {
@@ -286,15 +270,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         totalAssignments: allScreenshots?.length || 0,
         uniqueChecks: new Set(allScreenshots?.map((a: any) => a.check_id)).size,
       });
-
-      // Log a sample of assignments
-      if (allScreenshots && allScreenshots.length > 0) {
-        console.log('[CHECKS API] Sample assignments:', allScreenshots.slice(0, 3));
-      }
     }
 
     // Sort by floorplan_relevant first (true comes first), then by code_section_number
-    const sortedChecks = filteredChecks.sort((a: any, b: any) => {
+    const sortedChecks = allChecks.sort((a: any, b: any) => {
       const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
       const bFloorplanRelevant = b.sections?.floorplan_relevant ?? false;
 
@@ -307,51 +286,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return (a.code_section_number || '').localeCompare(b.code_section_number || '');
     });
 
-    // Fetch latest analysis runs for all checks (reusing checkIds from above)
-    console.log('[CHECKS API] About to fetch analysis runs for', checkIds.length, 'check IDs');
-    console.log('[CHECKS API] First 5 check IDs:', checkIds.slice(0, 5));
-    console.log('[CHECKS API] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-
     let allAnalysisRuns = null;
-    let analysisError = null;
 
-    // Only fetch if we have check IDs
-    if (checkIds.length > 0) {
+    // Fetch analysis runs using JOIN filter on assessment_id (avoids URL length limits)
+    if (sortedChecks.length > 0) {
       try {
         const result = await supabase
           .from('analysis_runs')
           .select(
-            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, checks!inner(assessment_id)'
           )
-          .in('check_id', checkIds)
+          .eq('checks.assessment_id', id)
           .order('run_number', { ascending: false });
 
         allAnalysisRuns = result.data;
-        analysisError = result.error;
       } catch (error) {
         console.error('[CHECKS API] ❌ Exception fetching analysis runs:', error);
-        analysisError = { message: error instanceof Error ? error.message : String(error) };
       }
     } else {
       console.log('[CHECKS API] No check IDs to fetch analysis runs for');
     }
-
-    if (analysisError) {
-      console.error('[CHECKS API] ❌ Error fetching analysis runs:', {
-        message: analysisError.message,
-        details: analysisError.details,
-        hint: analysisError.hint,
-        code: analysisError.code,
-      });
-    }
-
-    console.log('[CHECKS API] Fetched analysis runs:', {
-      totalRuns: allAnalysisRuns?.length || 0,
-      uniqueChecks: new Set(allAnalysisRuns?.map((r: any) => r.check_id)).size,
-      has1006Check: allAnalysisRuns?.some(
-        (r: any) => r.check_id === 'ef9710ef-66bc-4926-8e88-177cb2deab75'
-      ),
-    });
 
     // Create analysis map - get latest run per check (highest run_number)
     const analysisMap = new Map();
