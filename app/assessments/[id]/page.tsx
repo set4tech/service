@@ -61,31 +61,9 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const checks = checksResponse.ok ? await checksResponse.json() : [];
 
   // Get violations using RPC (already filtered - for ViolationsSummary component)
-  const { data: rpcViolations, error: rpcError } = await supabase.rpc('get_assessment_report', {
+  const { data: rpcViolations } = await supabase.rpc('get_assessment_report', {
     assessment_uuid: id,
   });
-
-  // Debug logging
-  console.log('[AssessmentPage] RPC Violations count:', rpcViolations?.length || 0);
-  console.log('[AssessmentPage] RPC Error:', rpcError);
-
-  // Filter to needs_more_info
-  const needsMoreInfo =
-    rpcViolations?.filter(
-      (v: any) =>
-        v.effective_status === 'needs_more_info' || v.compliance_status === 'needs_more_info'
-    ) || [];
-  console.log('[AssessmentPage] needs_more_info violations:', needsMoreInfo.length);
-  if (needsMoreInfo.length > 0) {
-    console.log('[AssessmentPage] Sample needs_more_info:', {
-      check_id: needsMoreInfo[0].check_id,
-      check_name: needsMoreInfo[0].check_name,
-      effective_status: needsMoreInfo[0].effective_status,
-      compliance_status: needsMoreInfo[0].compliance_status,
-      manual_status: needsMoreInfo[0].manual_status,
-      element_group_name: needsMoreInfo[0].element_group_name,
-    });
-  }
 
   // Get progress stats
   const { data: progress } = await supabase.rpc('get_assessment_progress', {
