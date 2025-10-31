@@ -21,11 +21,11 @@ from schema import Code, Section, Subsection, TableBlock
 
 
 # California patterns
-# section number is like 11B-229 or 1102A
-# Uses negative lookahead (?!\.\d) to prevent matching subsections like 11B-228.3
-CA_SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)(?!\.\d)"
-# subsection number is like 11B-101.1 or 1102A.3
-CA_SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A)(?:\.\d+)+"
+# section number is like 11B-229, 1102A, or 1001 (Chapter 10)
+# Uses negative lookahead (?!\.\d) to prevent matching subsections like 11B-228.3 or 1001.1
+CA_SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2})(?!\.\d)"
+# subsection number is like 11B-101.1, 1102A.3, or 1001.1 (Chapter 10)
+CA_SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2})(?:\.\d+)+"
 
 # NYC patterns
 # section number is like 1101, 1104 (4 digits without dots)
@@ -260,6 +260,11 @@ def generate_california_url(section_number: str) -> str:
 
     section_clean = section_number.replace("Section ", "").strip()
 
+    # Handle Chapter 10 sections (e.g., 1001, 1002)
+    if re.match(r'10\d{2}', section_clean):
+        anchor = f"CABC2025P1_Ch10_Sec{section_clean}"
+        return f"{base_url}/chapter-10-means-of-egress#{anchor}"
+
     # Handle 11A sections with XXXXXA format (e.g., 1102A)
     if re.match(r'\d{4}A', section_clean):
         # Chapter 11A uses format like 1102A, 1103A
@@ -329,10 +334,11 @@ def main(args):
     # State-specific chapter configuration
     if args.state == "CA":
         chapter_to_key = {
+            "10": "CHAPTER 10 MEANS OF EGRESS - 2025 CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
             "11a": "CHAPTER 11A HOUSING ACCESSIBILITY - 2025 CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
             "11b": "Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - California Building Code Volumes 1 and 2, Title 24, Part 2.html",
         }
-        chapters = ["11a", "11b"]
+        chapters = ["10", "11a", "11b"]
     elif args.state == "NY":
         chapter_to_key = {
             "11": "CHAPTER 11 ACCESSIBILITY - 2022 NEW YORK CITY BUILDING CODE.html",
@@ -607,8 +613,8 @@ def main(args):
 
     # Create Code object with all sections
     if args.state == "CA":
-        source_id = "CBC_Chapter11A_11B"
-        title = "California Building Code - Chapters 11A & 11B Accessibility"
+        source_id = "CBC_Chapter10_11A_11B"
+        title = "California Building Code - Chapters 10 (Means of Egress), 11A & 11B (Accessibility)"
         source_url = "https://codes.iccsafe.org/content/CABC2025P1"
     elif args.state == "NY":
         source_id = "NYCBC_Chapter11"
