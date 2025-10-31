@@ -2,7 +2,12 @@ import { useState } from 'react';
 
 interface Check {
   id: string;
-  check_type?: string;
+  element_group_id?: string | null;
+}
+
+// Helper to determine if check is element-grouped
+function isElementCheck(check: Check | null): boolean {
+  return !!check?.element_group_id;
 }
 
 export function useSectionActions(
@@ -55,7 +60,7 @@ export function useSectionActions(
       setShowNeverRelevantDialog(false);
 
       // For element checks, refresh the child checks to remove the marked section
-      if (check?.check_type === 'element' && onRefreshChildChecks) {
+      if (isElementCheck(check) && onRefreshChildChecks) {
         console.log('Refreshing child checks after marking section never relevant');
         onRefreshChildChecks();
       } else {
@@ -141,7 +146,7 @@ export function useSectionActions(
       setExcludeReason('');
 
       // For element checks, refresh the child checks to remove the excluded section
-      if (check?.check_type === 'element' && onRefreshChildChecks) {
+      if (isElementCheck(check) && onRefreshChildChecks) {
         console.log('Refreshing child checks after excluding section');
         onRefreshChildChecks();
       } else {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 import { SearchElevationsModal } from '@/components/screenshots/SearchElevationsModal';
 import { TableRenderer } from '@/components/ui/TableRenderer';
@@ -12,7 +12,7 @@ import type { SectionResult, AnalysisRun, CodeSection } from '@/types/analysis';
 
 interface Check {
   id: string;
-  check_type?: string;
+  element_group_id?: string | null;
   code_section_key?: string;
   manual_status?: string | null;
   manual_status_note?: string;
@@ -295,44 +295,46 @@ export function CodeDetailPanel({
     setManualOverrideNote,
   ]);
 
-  // Handle tab switching (when user clicks section tabs within an element)
-  const prevActiveChildRef = useRef<string | null>(null);
-  useEffect(() => {
-    // Only load section if user manually switched tabs (not initial load)
-    if (panelLoading || !activeChildCheckId || activeChildCheckId === initialActiveChildId) {
-      prevActiveChildRef.current = activeChildCheckId;
-      return;
-    }
+  // Handle tab switching - update section data immediately if cached
+  const handleTabSwitch = useCallback(
+    (childCheckId: string) => {
+      const activeChild = childChecks.find(c => c.id === childCheckId);
+      if (!activeChild?.code_section_key) {
+        setActiveChildCheckId(childCheckId);
+        setTabSections([]);
+        return;
+      }
 
-    if (activeChildCheckId === prevActiveChildRef.current) {
-      return;
-    }
+      const sectionKey = activeChild.code_section_key;
 
-    prevActiveChildRef.current = activeChildCheckId;
-
-    const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    if (!activeChild?.code_section_key) return;
-
-    const sectionKey = activeChild.code_section_key;
-
-    fetchSection(sectionKey)
-      .then(section => {
-        setTabSections([section]);
+      // Check cache synchronously to avoid loading flicker
+      if (sectionCache.has(sectionKey)) {
+        console.log('✅ Cache HIT for', sectionKey);
+        const cached = sectionCache.get(sectionKey)!;
+        // Update all states together
+        setActiveChildCheckId(childCheckId);
+        setTabSections([cached]);
         setManualOverride(activeChild.manual_status || null);
         setManualOverrideNote(activeChild.manual_status_note || '');
-      })
-      .catch(err => {
-        console.error('Failed to load section:', err);
-        setTabSections([]);
-      });
-  }, [
-    activeChildCheckId,
-    childChecks,
-    panelLoading,
-    initialActiveChildId,
-    setManualOverride,
-    setManualOverrideNote,
-  ]);
+      } else {
+        console.log('❌ Cache MISS for', sectionKey);
+        // Update activeChildCheckId first
+        setActiveChildCheckId(childCheckId);
+        // Not cached - fetch it asynchronously
+        fetchSection(sectionKey)
+          .then(section => {
+            setTabSections([section]);
+            setManualOverride(activeChild.manual_status || null);
+            setManualOverrideNote(activeChild.manual_status_note || '');
+          })
+          .catch(err => {
+            console.error('Failed to load section:', err);
+            setTabSections([]);
+          });
+      }
+    },
+    [childChecks, setManualOverride, setManualOverrideNote]
+  );
 
   // Polling hook
   const handleAssessmentComplete = useCallback(() => {
@@ -466,7 +468,7 @@ export function CodeDetailPanel({
       checkId,
       elementGroupId: activeCheck?.element_group_id,
       instanceLabel: activeCheck?.instance_label,
-      checkType: activeCheck?.check_type,
+      isElementCheck: !!activeCheck?.element_group_id,
       childChecksCount: childChecks.length,
     });
 
@@ -828,7 +830,7 @@ export function CodeDetailPanel({
                 {childChecks.map(childCheck => (
                   <button
                     key={childCheck.id}
-                    onClick={() => setActiveChildCheckId(childCheck.id)}
+                    onClick={() => handleTabSwitch(childCheck.id)}
                     className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors text-left ${
                       childCheck.id === activeChildCheckId
                         ? 'bg-blue-600 text-white'
@@ -1153,7 +1155,7 @@ export function CodeDetailPanel({
 
                 {showScreenshots && (
                   <div className="pb-4 space-y-2">
-                    {activeCheck?.check_type === 'element' && (
+                    {activeCheck?.element_group_id && (
                       <button
                         className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                         onClick={() => setShowElevationSearch(true)}

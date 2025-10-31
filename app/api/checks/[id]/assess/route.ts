@@ -80,7 +80,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     console.log(`[Assess] Check loaded:`, {
       checkId,
-      checkType: check.check_type,
       elementGroupId: check.element_group_id,
       instanceLabel: check.instance_label,
       instanceNumber: check.instance_number,

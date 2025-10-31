@@ -271,7 +271,7 @@ export async function GET() {
         // Check if manual override exists - if so, skip this job
         const { data: checkData } = await supabase
           .from('checks')
-          .select('manual_status, status, check_type')
+          .select('manual_status, status')
           .eq('id', checkId)
           .single();
 

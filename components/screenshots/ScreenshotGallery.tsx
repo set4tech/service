@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { Check, Screenshot } from '@/types/database';
 import Modal from '@/components/ui/Modal';
 import { AssignScreenshotModal } from './AssignScreenshotModal';
@@ -35,18 +35,30 @@ export function ScreenshotGallery({
     Record<string, { screenshot: string; thumbnail: string }>
   >({});
 
-  // Initialize from check.screenshots if available
-  useEffect(() => {
-    if ((check as any).screenshots) {
-      console.log(
-        '[ScreenshotGallery] 📦 Using screenshots from check prop:',
-        (check as any).screenshots.length
-      );
-      setShots((check as any).screenshots);
-    }
-  }, [check.id]);
+  // Track screenshots from check prop - use screenshot IDs for reliable change detection
+  // This avoids issues with array reference equality while being more efficient than deep comparison
+  const checkScreenshots = (check as any).screenshots;
+  const screenshotIds = useMemo(
+    () => (checkScreenshots ? checkScreenshots.map((s: Screenshot) => s.id).join(',') : ''),
+    [checkScreenshots]
+  );
 
-  // Only refetch when refreshKey changes (i.e., when a screenshot is modified)
+  // Update gallery whenever check screenshots change (e.g., when a new screenshot is added via 'c' key)
+  // We use screenshotIds to detect changes reliably without deep comparison
+  useEffect(() => {
+    if (checkScreenshots) {
+      console.log(
+        '[ScreenshotGallery] 📦 Updating from check prop:',
+        checkScreenshots.length,
+        'screenshots'
+      );
+      setShots(checkScreenshots);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [check.id, screenshotIds]);
+
+  // Refetch when refreshKey changes (e.g., when a screenshot is assigned/unassigned to this check)
+  // Note: New screenshots trigger via check.screenshots prop updates (above effect)
   useEffect(() => {
     if (refreshKey === 0) return; // Skip initial render
 

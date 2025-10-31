@@ -28,12 +28,20 @@ export interface Check {
   updated_at?: string;
 
   // Element grouping field
-  check_type?: 'section' | 'element';
+  // Note: check_type was removed from DB schema. Use element_group_id to determine type:
+  // - If element_group_id is NOT NULL, it's an element-grouped check
+  // - If element_group_id is NULL, it's a standalone section check
+  check_type?: 'section' | 'element'; // Deprecated: computed from element_group_id
   element_group_id?: string | null;
 
   // Virtual fields (populated by queries, not in DB)
   element_group_slug?: string;
   section_results?: SectionResult[]; // For element checks: per-section breakdown
+}
+
+// Helper function to compute check type from element_group_id
+export function getCheckType(check: Check | null | undefined): 'section' | 'element' {
+  return check?.element_group_id ? 'element' : 'section';
 }
 
 export interface PromptTemplate {

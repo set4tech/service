@@ -123,7 +123,6 @@ export async function POST(req: NextRequest) {
   while (!createdChecks) {
     const sectionChecks = sections.map(section => ({
       assessment_id: assessmentId,
-      check_type: 'section',
       check_name: `${currentLabel} - ${section.title}`,
       code_section_key: section.key,
       code_section_number: section.number,

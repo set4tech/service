@@ -119,24 +119,31 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         instance_label: null, // Section checks have no instance label
       }));
 
-      // Use upsert with ignoreDuplicates to handle race conditions when multiple seed requests arrive simultaneously
+      // Insert checks - duplicates are prevented by unique constraint
+      // If duplicates exist (from race conditions), we'll catch the error and continue
       const { data: insertedData, error: insertError } = await supabase
         .from('checks')
-        .upsert(checkRows, { onConflict: 'assessment_id,code_section_key', ignoreDuplicates: true })
+        .insert(checkRows)
         .select('id');
 
       if (insertError) {
-        console.error('[Seed API] Error inserting checks:', insertError);
-        await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+        // Code 23505 is duplicate key violation - this is OK in race conditions
+        if (insertError.code === '23505') {
+          console.log('[Seed API] Some checks already exist (race condition), continuing...');
+          checksCreated = 0; // These checks already existed
+        } else {
+          console.error('[Seed API] Error inserting checks:', insertError);
+          await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
 
-        return NextResponse.json(
-          { error: 'Failed to create checks: ' + insertError.message },
-          { status: 500 }
-        );
+          return NextResponse.json(
+            { error: 'Failed to create checks: ' + insertError.message },
+            { status: 500 }
+          );
+        }
+      } else {
+        checksCreated = insertedData?.length || 0;
+        console.log(`[Seed API] Successfully created ${checksCreated} checks`);
       }
-
-      checksCreated = insertedData?.length || 0;
-      console.log(`[Seed API] Successfully created ${checksCreated} checks`);
     }
 
     // 4. Mark seeding as completed

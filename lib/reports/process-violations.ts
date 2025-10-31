@@ -8,7 +8,7 @@ export interface CheckWithAnalysis {
   code_section_title?: string;
   manual_status?: string | null;
   is_excluded?: boolean;
-  check_type?: string;
+  check_type?: string; // Deprecated: computed from element_group_id
   element_group_id?: string;
   instance_label?: string;
   human_readable_title?: string;
@@ -152,7 +152,10 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
           recommendations,
           confidence: check.confidence?.toString() || '',
           humanReadableTitle: check.human_readable_title,
-          checkType: check.check_type as 'section' | 'element' | undefined,
+          checkType: (check.element_group_id ? 'element' : 'section') as
+            | 'section'
+            | 'element'
+            | undefined,
           elementGroupName: check.element_group_name,
           instanceLabel: check.instance_label,
           sourceUrl: check.source_url || check.parent_source_url || '',
@@ -178,7 +181,10 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
           recommendations,
           confidence: check.confidence?.toString() || '',
           humanReadableTitle: check.human_readable_title,
-          checkType: check.check_type as 'section' | 'element' | undefined,
+          checkType: (check.element_group_id ? 'element' : 'section') as
+            | 'section'
+            | 'element'
+            | undefined,
           elementGroupName: check.element_group_name,
           instanceLabel: check.instance_label,
           sourceUrl: check.source_url || check.parent_source_url || '',

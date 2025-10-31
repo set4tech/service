@@ -150,7 +150,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       if (!isElementMapped) {
         await supabase.from('checks').insert({
           assessment_id: assessmentId,
-          check_type: 'section',
           code_section_key: section.key,
           code_section_number: section.number,
           code_section_title: section.title,

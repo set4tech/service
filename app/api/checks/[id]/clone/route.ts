@@ -53,7 +53,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       instance_label: newLabel,
       prompt_template_id: section.prompt_template_id,
       status: 'pending',
-      check_type: 'section',
       element_group_id: section.element_group_id,
     }));
 
@@ -111,7 +110,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     instance_label: instanceLabel || null,
     prompt_template_id: original.prompt_template_id,
     status: 'pending',
-    check_type: 'section',
     element_group_id: null,
   };
 
