@@ -119,7 +119,11 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         instance_label: null, // Section checks have no instance label
       }));
 
-      const { error: insertError } = await supabase.from('checks').insert(checkRows);
+      // Use upsert with ignoreDuplicates to handle race conditions when multiple seed requests arrive simultaneously
+      const { data: insertedData, error: insertError } = await supabase
+        .from('checks')
+        .upsert(checkRows, { onConflict: 'assessment_id,code_section_key', ignoreDuplicates: true })
+        .select('id');
 
       if (insertError) {
         console.error('[Seed API] Error inserting checks:', insertError);
@@ -131,7 +135,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         );
       }
 
-      checksCreated = checkRows.length;
+      checksCreated = insertedData?.length || 0;
       console.log(`[Seed API] Successfully created ${checksCreated} checks`);
     }
 
