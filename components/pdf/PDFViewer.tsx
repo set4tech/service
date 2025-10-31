@@ -119,7 +119,7 @@ export function PDFViewer({
   pdfUrl: string;
   assessmentId?: string;
   activeCheck?: any;
-  onScreenshotSaved?: () => void;
+  onScreenshotSaved?: (checkId: string) => void;
   onCheckAdded?: (check: any) => void;
   onCheckSelect?: (checkId: string) => void;
   readOnly?: boolean;
@@ -1137,7 +1137,7 @@ export function PDFViewer({
           }),
         });
 
-        onScreenshotSaved?.();
+        onScreenshotSaved?.(targetCheckId);
       } catch (err) {
         alert('Failed to save screenshot.');
         console.error('[PDFViewer] capture failed:', err);

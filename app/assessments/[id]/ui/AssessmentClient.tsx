@@ -543,7 +543,36 @@ export default function AssessmentClient({
   }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
-  const [screenshotsChanged, setScreenshotsChanged] = useState(0);
+
+  // Refetch screenshots for a specific check
+  const refetchCheckScreenshots = async (checkId: string) => {
+    try {
+      const res = await fetch(`/api/checks/${checkId}/screenshots`);
+      if (res.ok) {
+        const screenshots = await res.json();
+        setChecks(prev =>
+          prev.map(check => {
+            // Update top-level check if it matches
+            if (check.id === checkId) {
+              return { ...check, screenshots };
+            }
+            // Update instance within check if it matches
+            if (check.instances?.length && check.instances.length > 0) {
+              const updatedInstances = check.instances.map(instance =>
+                instance.id === checkId ? { ...instance, screenshots } : instance
+              );
+              if (updatedInstances !== check.instances) {
+                return { ...check, instances: updatedInstances };
+              }
+            }
+            return check;
+          })
+        );
+      }
+    } catch (error) {
+      console.error('Failed to refetch screenshots:', error);
+    }
+  };
 
   // Resize handlers for checks sidebar
   const handleChecksResizeStart = (e: React.MouseEvent) => {
@@ -594,42 +623,6 @@ export default function AssessmentClient({
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
-
-  // Refetch active check's screenshots when a new one is saved
-  useEffect(() => {
-    if (screenshotsChanged === 0 || !activeCheckId) return;
-
-    const refetchScreenshots = async () => {
-      try {
-        const res = await fetch(`/api/checks/${activeCheckId}/screenshots`);
-        if (res.ok) {
-          const screenshots = await res.json();
-          setChecks(prev =>
-            prev.map(check => {
-              // Update top-level check if it matches
-              if (check.id === activeCheckId) {
-                return { ...check, screenshots };
-              }
-              // Update instance within check if it matches
-              if (check.instances?.length && check.instances.length > 0) {
-                const updatedInstances = check.instances.map(instance =>
-                  instance.id === activeCheckId ? { ...instance, screenshots } : instance
-                );
-                if (updatedInstances !== check.instances) {
-                  return { ...check, instances: updatedInstances };
-                }
-              }
-              return check;
-            })
-          );
-        }
-      } catch (error) {
-        console.error('Failed to refetch screenshots:', error);
-      }
-    };
-
-    refetchScreenshots();
-  }, [screenshotsChanged, activeCheckId]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -895,7 +888,6 @@ export default function AssessmentClient({
                 sectionKey={activeCheck?.code_section_key || null}
                 filterToSectionKey={filterToSectionKey}
                 activeCheck={activeCheck}
-                screenshotsRefreshKey={screenshotsChanged}
                 onClose={() => {
                   setShowDetailPanel(false);
                   // Clear URL hash when panel is closed
@@ -945,8 +937,10 @@ export default function AssessmentClient({
                   }
                 }}
                 onScreenshotAssigned={() => {
-                  // Increment refresh key to trigger ScreenshotGallery re-fetch
-                  setScreenshotsChanged(prev => prev + 1);
+                  // Refetch screenshots for the active check
+                  if (activeCheck?.id) {
+                    refetchCheckScreenshots(activeCheck.id);
+                  }
                 }}
               />
             )}
@@ -970,7 +964,7 @@ export default function AssessmentClient({
             pdfUrl={pdfUrl}
             assessmentId={assessment.id}
             activeCheck={activeCheck || undefined}
-            onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
+            onScreenshotSaved={refetchCheckScreenshots}
             onCheckAdded={handleCheckAdded}
             onCheckSelect={handleCheckSelect}
           />

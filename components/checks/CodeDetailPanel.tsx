@@ -30,7 +30,6 @@ interface CodeDetailPanelProps {
   onCheckUpdate?: () => void;
   onChecksRefresh?: () => void;
   activeCheck?: any;
-  screenshotsRefreshKey?: number;
   onScreenshotAssigned?: () => void;
 }
 
@@ -243,9 +242,11 @@ export function CodeDetailPanel({
   onCheckUpdate,
   onChecksRefresh,
   activeCheck,
-  screenshotsRefreshKey,
   onScreenshotAssigned,
 }: CodeDetailPanelProps) {
+  // Local state to track screenshot changes for ScreenshotGallery
+  const [screenshotsRefreshKey, setScreenshotsRefreshKey] = useState(0);
+
   // Coordinated data loading
   const {
     loading: panelLoading,
@@ -1179,8 +1180,11 @@ export function CodeDetailPanel({
                     )}
                     <ScreenshotGallery
                       check={activeCheck}
-                      refreshKey={screenshotsRefreshKey || 0}
-                      onScreenshotAssigned={onScreenshotAssigned}
+                      refreshKey={screenshotsRefreshKey}
+                      onScreenshotAssigned={() => {
+                        setScreenshotsRefreshKey(prev => prev + 1);
+                        onScreenshotAssigned?.();
+                      }}
                     />
                   </div>
                 )}
@@ -1566,6 +1570,7 @@ export function CodeDetailPanel({
               });
             }
 
+            setScreenshotsRefreshKey(prev => prev + 1);
             if (onScreenshotAssigned) onScreenshotAssigned();
           }}
         />
