@@ -13,6 +13,8 @@ import logging
 import json
 import requests
 from urllib.parse import urljoin
+from deepdiff import DeepDiff
+from pathlib import Path
 
 from s3 import RawICCS3, BUCKET_NAME
 from schema import Code, Section, Subsection, TableBlock
@@ -240,11 +242,23 @@ def extract_sections(soup: BeautifulSoup, test_mode: bool) -> dict[str, Section]
         
         section_number = section_numbers[0].strip()
         
-        # Extract title
-        title_elem = level_section.find("span", class_=re.compile(r"level\d_title"))
-        if title_elem:
-            section_title = title_elem.get_text().strip()
-        else:
+        # Extract title - try multiple sources in order of reliability
+        section_title = None
+        
+        # 1. Try data-section-title attribute
+        if header_elem.get("data-section-title"):
+            section_title_raw = header_elem.get("data-section-title")
+            # Extract title after the section number and separator
+            section_title = extract_title(section_title_raw, section_number)
+        
+        # 2. Try span with level class
+        if not section_title:
+            title_elem = level_section.find("span", class_=re.compile(r"level\d_title"))
+            if title_elem:
+                section_title = title_elem.get_text().strip()
+        
+        # 3. Fallback to parsing header text
+        if not section_title:
             section_title = extract_title(header_text, section_number)
         
         logger.info(f"Section: {section_number} - {section_title}")
@@ -293,10 +307,18 @@ def extract_subsections(soup: BeautifulSoup, test_mode: bool) -> dict[str, Subse
         else:
             subsection_title = extract_title(header_text, subsection_number)
         
-        # Extract paragraphs and links
+        # Extract paragraphs and links (exclude paragraphs from nested subsections)
         paragraphs = []
         links = []
+        
+        # Find all nested section elements
+        nested_sections = subsection_elem.find_all("section", class_=pattern)
+        
         for para in subsection_elem.find_all("p"):
+            # Skip if paragraph is inside a nested section
+            if any(nested_section in para.parents for nested_section in nested_sections):
+                continue
+            
             para_text = para.get_text()
             paragraphs.append(para_text)
             links.extend(find_subsection_numbers(para_text))
@@ -403,6 +425,98 @@ def attach_figures(figures: list[dict], sections: dict[str, Section]):
             logger.warning(f"Could not attach {fig_type} {fig_number}")
 
 
+def sort_code_data(code: Code) -> Code:
+    """Sort all data structures in the Code object for deterministic output."""
+    # Sort sections by number
+    code.sections.sort(key=lambda s: s.number)
+    
+    for section in code.sections:
+        # Sort subsections by number
+        section.subsections.sort(key=lambda ss: ss.number)
+        
+        # Sort section-level lists
+        section.figures.sort()
+        
+        for subsection in section.subsections:
+            # Sort subsection-level lists
+            subsection.refers_to.sort()
+            subsection.figures.sort()
+            # Sort tables by number
+            subsection.tables.sort(key=lambda t: t.number)
+    
+    return code
+
+
+def compare_json_files(file1: str, file2: str) -> dict:
+    """Compare two JSON files and return differences."""
+    with open(file1, "r") as f1, open(file2, "r") as f2:
+        data1 = json.load(f1)
+        data2 = json.load(f2)
+    
+    diff = DeepDiff(data1, data2, ignore_order=False, verbose_level=2)
+    return diff
+
+
+def print_comparison_summary(diff: dict, baseline_file: str, new_file: str):
+    """Print a human-readable summary of JSON differences."""
+    if not diff:
+        logger.info("✅ No differences found! Output matches baseline.")
+        return
+    
+    logger.warning(f"⚠️  Differences detected between {baseline_file} and {new_file}")
+    
+    # Count changes
+    counts = {
+        "values_changed": 0,
+        "dictionary_item_added": 0,
+        "dictionary_item_removed": 0,
+        "iterable_item_added": 0,
+        "iterable_item_removed": 0,
+    }
+    
+    for key in counts.keys():
+        if key in diff:
+            counts[key] = len(diff[key])
+    
+    # Print summary
+    logger.info("\n" + "="*80)
+    logger.info("COMPARISON SUMMARY")
+    logger.info("="*80)
+    
+    if counts["values_changed"] > 0:
+        logger.info(f"\n📝 Values Changed: {counts['values_changed']}")
+        for path, change in list(diff.get("values_changed", {}).items())[:10]:
+            logger.info(f"  {path}")
+            logger.info(f"    OLD: {str(change['old_value'])[:100]}")
+            logger.info(f"    NEW: {str(change['new_value'])[:100]}")
+        if counts["values_changed"] > 10:
+            logger.info(f"  ... and {counts['values_changed'] - 10} more")
+    
+    if counts["dictionary_item_added"] > 0:
+        logger.info(f"\n➕ Items Added: {counts['dictionary_item_added']}")
+        for path, value in list(diff.get("dictionary_item_added", {}).items())[:5]:
+            logger.info(f"  {path}: {str(value)[:100]}")
+        if counts["dictionary_item_added"] > 5:
+            logger.info(f"  ... and {counts['dictionary_item_added'] - 5} more")
+    
+    if counts["dictionary_item_removed"] > 0:
+        logger.info(f"\n➖ Items Removed: {counts['dictionary_item_removed']}")
+        for path in list(diff.get("dictionary_item_removed", {}).keys())[:5]:
+            logger.info(f"  {path}")
+        if counts["dictionary_item_removed"] > 5:
+            logger.info(f"  ... and {counts['dictionary_item_removed'] - 5} more")
+    
+    if counts["iterable_item_added"] > 0:
+        logger.info(f"\n➕ Array Items Added: {counts['iterable_item_added']}")
+    
+    if counts["iterable_item_removed"] > 0:
+        logger.info(f"\n➖ Array Items Removed: {counts['iterable_item_removed']}")
+    
+    logger.info("\n" + "="*80)
+    logger.info("💡 Full diff saved to: diff_report.json")
+    logger.info("="*80 + "\n")
+
+
 def main(args):
     logger.info(f"Starting CBC scraper for version {args.version}")
     if args.test:
@@ -456,19 +570,58 @@ def main(args):
         sections=list(all_sections.values()),
     )
     
-    # Save to JSON
-    output_filename = f"cbc_{args.version}.json"
-    with open(output_filename, "w") as f:
-        json.dump(code.model_dump(), f, indent=2)
+    # Sort data for deterministic output
+    logger.info("Sorting data structures for deterministic output...")
+    code = sort_code_data(code)
     
-    # Upload to S3
-    if not args.dry_run:
+    # Save to JSON with sorted keys
+    output_filename = f"cbc_{args.version}.json"
+    new_output_filename = f"cbc_{args.version}_new.json" if args.compare else output_filename
+    
+    with open(new_output_filename, "w") as f:
+        json.dump(code.model_dump(), f, indent=2, sort_keys=True)
+    
+    logger.info(f"Output saved to {new_output_filename}")
+    
+    # Compare with baseline if requested
+    if args.compare:
+        baseline_file = args.compare if isinstance(args.compare, str) else output_filename
+        
+        if not Path(baseline_file).exists():
+            logger.error(f"Baseline file not found: {baseline_file}")
+            logger.info(f"New output saved to {new_output_filename}")
+            return
+        
+        logger.info(f"\nComparing with baseline: {baseline_file}")
+        diff = compare_json_files(baseline_file, new_output_filename)
+        
+        # Save detailed diff report
+        if diff:
+            with open("diff_report.json", "w") as f:
+                json.dump(json.loads(diff.to_json()), f, indent=2)
+        
+        # Print human-readable summary
+        print_comparison_summary(diff, baseline_file, new_output_filename)
+        
+        if not diff:
+            # If no differences, remove the temp file and keep the baseline
+            Path(new_output_filename).unlink()
+            logger.info(f"✨ No changes detected, keeping baseline: {baseline_file}")
+        else:
+            logger.info(f"\n📋 Review the changes in: {new_output_filename}")
+            logger.info(f"   If changes are correct, run: mv {new_output_filename} {baseline_file}")
+    
+    # Upload to S3 (only if not in comparison mode or dry run)
+    if not args.dry_run and not args.compare:
         s3 = boto3.resource("s3")
         s3_key = f"cleaned/CA/{args.version}/{output_filename}"
         s3.Bucket(BUCKET_NAME).upload_file(output_filename, s3_key)
         logger.info(f"Uploaded to S3: {s3_key}")
     
     # Log statistics
+    logger.info(f"\n{'='*80}")
+    logger.info("EXTRACTION STATISTICS")
+    logger.info(f"{'='*80}")
     logger.info(f"Extracted {len(all_sections)} sections")
     logger.info(f"Extracted {len(all_tables)} tables and {len(all_figures)} figures")
     
@@ -487,7 +640,7 @@ def main(args):
         f"Attached figures: {total_section_figures} to sections, "
         f"{total_subsection_figures} to subsections"
     )
-    logger.info(f"Output saved to {output_filename}")
+    logger.info(f"{'='*80}\n")
 
 
 if __name__ == "__main__":
@@ -510,6 +663,14 @@ if __name__ == "__main__":
         "--dry-run",
         action="store_true",
         help="Process and save JSON locally but don't upload to S3",
+    )
+    parser.add_argument(
+        "--compare",
+        nargs="?",
+        const=True,
+        metavar="BASELINE_FILE",
+        help="Compare output with baseline file (defaults to cbc_VERSION.json if no file specified). "
+             "Generates cbc_VERSION_new.json and shows differences. Prevents S3 upload.",
     )
     args = parser.parse_args()
     main(args)
