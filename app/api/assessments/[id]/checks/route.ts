@@ -308,16 +308,41 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
 
     // Fetch latest analysis runs for all checks (reusing checkIds from above)
-    const { data: allAnalysisRuns, error: analysisError } = await supabase
-      .from('analysis_runs')
-      .select(
-        'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
-      )
-      .in('check_id', checkIds)
-      .order('run_number', { ascending: false });
+    console.log('[CHECKS API] About to fetch analysis runs for', checkIds.length, 'check IDs');
+    console.log('[CHECKS API] First 5 check IDs:', checkIds.slice(0, 5));
+    console.log('[CHECKS API] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+
+    let allAnalysisRuns = null;
+    let analysisError = null;
+
+    // Only fetch if we have check IDs
+    if (checkIds.length > 0) {
+      try {
+        const result = await supabase
+          .from('analysis_runs')
+          .select(
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
+          )
+          .in('check_id', checkIds)
+          .order('run_number', { ascending: false });
+
+        allAnalysisRuns = result.data;
+        analysisError = result.error;
+      } catch (error) {
+        console.error('[CHECKS API] ❌ Exception fetching analysis runs:', error);
+        analysisError = { message: error instanceof Error ? error.message : String(error) };
+      }
+    } else {
+      console.log('[CHECKS API] No check IDs to fetch analysis runs for');
+    }
 
     if (analysisError) {
-      console.error('[CHECKS API] ❌ Error fetching analysis runs:', analysisError);
+      console.error('[CHECKS API] ❌ Error fetching analysis runs:', {
+        message: analysisError.message,
+        details: analysisError.details,
+        hint: analysisError.hint,
+        code: analysisError.code,
+      });
     }
 
     console.log('[CHECKS API] Fetched analysis runs:', {
