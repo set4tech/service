@@ -12,9 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Join with element_groups to get element_group_name and sections to get floorplan_relevant and never_relevant
     let query = supabase
       .from('checks')
-      .select(
-        '*, element_groups(name), sections!code_section_key(floorplan_relevant, never_relevant)'
-      )
+      .select('*, element_groups(name), sections!section_id(floorplan_relevant, never_relevant)')
       .eq('assessment_id', id)
       .limit(20000); // Override Supabase default 1000 row limit
 
@@ -40,9 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Build base query for checks with element_groups and sections joins
       let checksQuery = supabase
         .from('checks')
-        .select(
-          '*, element_groups(name), sections!code_section_key(floorplan_relevant, never_relevant)'
-        )
+        .select('*, element_groups(name), sections!section_id(floorplan_relevant, never_relevant)')
         .eq('assessment_id', id)
         .limit(20000); // Override Supabase default 1000 row limit
 
@@ -177,7 +173,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Get sections that match the search pattern (search in text field only, paragraphs is JSONB)
       const { data: matchingSections, error: sectionsError } = await supabase
         .from('sections')
-        .select('key')
+        .select('id')
         .eq('never_relevant', false)
         .ilike('text', `%${searchPattern}%`);
 
@@ -188,12 +184,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log('[SEARCH] Sections matching content:', matchingSections?.length);
 
-      // Create a set of matching section keys
-      const matchingSectionKeys = new Set(matchingSections?.map((s: any) => s.key) || []);
+      // Create a set of matching section IDs
+      const matchingSectionIds = new Set(matchingSections?.map((s: any) => s.id) || []);
 
       // Get checks that reference matching sections
       const checksMatchingSectionContent =
-        mappedChecks.filter((check: any) => matchingSectionKeys.has(check.code_section_key)) || [];
+        mappedChecks.filter((check: any) => matchingSectionIds.has(check.section_id)) || [];
 
       console.log('[SEARCH] Checks matching section content:', checksMatchingSectionContent.length);
 

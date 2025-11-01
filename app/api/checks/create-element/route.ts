@@ -57,9 +57,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const sectionKeys = (sectionKeysData || []).map((sk: any) => sk.section_key);
+  const sectionIds = (sectionKeysData || []).map((sk: any) => sk.section_id);
 
-  if (sectionKeys.length === 0) {
+  if (sectionIds.length === 0) {
     console.log('[create-element] ❌ No section mappings found for:', elementGroupSlug);
     return NextResponse.json(
       { error: `No section mappings found for element group "${elementGroupSlug}"` },
@@ -96,14 +96,14 @@ export async function POST(req: NextRequest) {
     assessment_id: assessmentId,
     element_group_id: elementGroup.id,
     instance_label: label,
-    section_count: sectionKeys.length,
+    section_count: sectionIds.length,
   });
 
   // 4. Fetch section details
   const { data: sections, error: sectionsError } = await supabase
     .from('sections')
-    .select('key, number, title')
-    .in('key', sectionKeys);
+    .select('id, number, title')
+    .in('id', sectionIds);
 
   if (sectionsError || !sections || sections.length === 0) {
     return NextResponse.json(
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
     const sectionChecks = sections.map(section => ({
       assessment_id: assessmentId,
       check_name: `${currentLabel} - ${section.title}`,
-      code_section_key: section.key,
+      section_id: section.id,
       code_section_number: section.number,
       code_section_title: section.title,
       element_group_id: elementGroup.id,

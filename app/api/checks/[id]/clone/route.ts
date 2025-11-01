@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Clone all section checks for this element instance
     const clonedSections = allSections.map(section => ({
       assessment_id: section.assessment_id,
-      code_section_key: section.code_section_key,
+      section_id: section.section_id,
       code_section_number: section.code_section_number,
       code_section_title: section.code_section_title,
       check_name: section.check_name?.replace(original.instance_label, newLabel),
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Standalone section check - clone just this one
   const clone = {
     assessment_id: original.assessment_id,
-    code_section_key: original.code_section_key,
+    section_id: original.section_id,
     code_section_number: original.code_section_number,
     code_section_title: original.code_section_title,
     check_name: original.check_name,

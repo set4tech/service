@@ -10,7 +10,8 @@ export type ComplianceOverrideStatus =
 export interface Check {
   id: string;
   assessment_id: string;
-  code_section_key: string;
+  section_id: string; // UUID reference to sections.id
+  code_section_key?: string; // Deprecated: kept for backwards compatibility
   code_section_number: string;
   code_section_title: string;
   check_name: string;
@@ -128,12 +129,14 @@ export interface ElementGroup {
 export interface ElementSectionMapping {
   id: string;
   element_group_id: string;
-  section_key: string;
+  section_id: string; // UUID reference to sections.id
+  section_key?: string; // Deprecated: kept for backwards compatibility
   created_at?: string;
 }
 
 export interface SectionResult {
-  section_key: string;
+  section_id?: string; // UUID reference to sections.id (preferred)
+  section_key?: string; // Deprecated: kept for backwards compatibility
   section_number?: string;
   section_title?: string;
   status: 'compliant' | 'non_compliant' | 'not_applicable';

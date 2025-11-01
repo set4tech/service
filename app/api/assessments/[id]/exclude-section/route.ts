@@ -13,10 +13,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const supabase = supabaseAdmin();
 
-    // Check if section exists
+    // Check if section exists and get its ID
     const { data: section, error: sectionError } = await supabase
       .from('sections')
-      .select('key, number, title')
+      .select('id, key, number, title')
       .eq('key', sectionKey)
       .single();
 
@@ -54,12 +54,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // 1. First delete child checks (where parent_check_id references a check we're about to delete)
     // 2. Then delete parent checks
 
-    // Find all checks that will be deleted (those with code_section_key = sectionKey)
+    // Find all checks that will be deleted (those with section_id matching the section)
     const { data: checksToDelete } = await supabase
       .from('checks')
       .select('id')
       .eq('assessment_id', assessmentId)
-      .eq('code_section_key', sectionKey);
+      .eq('section_id', section.id);
 
     if (checksToDelete && checksToDelete.length > 0) {
       const checkIdsToDelete = checksToDelete.map(c => c.id);
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .from('checks')
         .delete()
         .eq('assessment_id', assessmentId)
-        .eq('code_section_key', sectionKey);
+        .eq('section_id', section.id);
 
       if (deleteError) {
         console.error('Error deleting checks for excluded section:', deleteError);
@@ -117,6 +117,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const supabase = supabaseAdmin();
 
+    // Get section ID from key
+    const { data: sectionData } = await supabase
+      .from('sections')
+      .select('id')
+      .eq('key', sectionKey)
+      .single();
+
+    if (!sectionData) {
+      return NextResponse.json({ error: 'Section not found' }, { status: 404 });
+    }
+
     // Remove manual exclusion from section_applicability_log
     const { error: deleteError } = await supabase
       .from('section_applicability_log')
@@ -130,37 +141,39 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: deleteError.message }, { status: 500 });
     }
 
-    // Re-create section check for this section
-    const { data: section } = await supabase
-      .from('sections')
-      .select('key, number, title')
-      .eq('key', sectionKey)
-      .single();
+    // Re-create section check for this section (reuse sectionData from earlier)
+    if (sectionData) {
+      const { data: section } = await supabase
+        .from('sections')
+        .select('key, number, title')
+        .eq('id', sectionData.id)
+        .single();
 
-    if (section) {
-      // Check if this section is mapped to any element groups
-      const { data: elementMappings } = await supabase
-        .from('element_section_mappings')
-        .select('element_group_id')
-        .eq('section_key', sectionKey);
+      if (section) {
+        // Check if this section is mapped to any element groups
+        const { data: elementMappings } = await supabase
+          .from('element_section_mappings')
+          .select('element_group_id')
+          .eq('section_id', sectionData.id);
 
-      const isElementMapped = elementMappings && elementMappings.length > 0;
+        const isElementMapped = elementMappings && elementMappings.length > 0;
 
-      // Only create section-by-section check if not element-mapped
-      if (!isElementMapped) {
-        await supabase.from('checks').insert({
-          assessment_id: assessmentId,
-          code_section_key: section.key,
-          code_section_number: section.number,
-          code_section_title: section.title,
-          check_name: `${section.number} - ${section.title}`,
-          status: 'pending',
-          instance_number: 1,
-        });
+        // Only create section-by-section check if not element-mapped
+        if (!isElementMapped) {
+          await supabase.from('checks').insert({
+            assessment_id: assessmentId,
+            section_id: sectionData.id,
+            code_section_number: section.number,
+            code_section_title: section.title,
+            check_name: `${section.number} - ${section.title}`,
+            status: 'pending',
+            instance_number: 1,
+          });
+        }
+
+        // Note: In flat section model, section checks are created individually
+        // No need to update element_sections arrays (deprecated in new model)
       }
-
-      // Note: In flat section model, section checks are created individually
-      // No need to update element_sections arrays (deprecated in new model)
     }
 
     return NextResponse.json({ success: true });

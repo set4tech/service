@@ -110,14 +110,14 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     // 3. Check which sections already have checks
     const { data: existingChecks } = await supabase
       .from('checks')
-      .select('code_section_key')
+      .select('section_id')
       .eq('assessment_id', id);
 
-    const existingKeys = new Set((existingChecks || []).map(c => c.code_section_key));
-    const sectionsToAdd = sections.filter(s => !existingKeys.has(s.key));
+    const existingIds = new Set((existingChecks || []).map(c => c.section_id));
+    const sectionsToAdd = sections.filter(s => !existingIds.has(s.id));
 
     console.log(
-      `[Seed API] ${existingKeys.size} checks already exist, adding ${sectionsToAdd.length} new checks`
+      `[Seed API] ${existingIds.size} checks already exist, adding ${sectionsToAdd.length} new checks`
     );
 
     let checksCreated = 0;
@@ -126,7 +126,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     if (sectionsToAdd.length > 0) {
       const checkRows = sectionsToAdd.map(s => ({
         assessment_id: id,
-        code_section_key: s.key,
+        section_id: s.id,
         code_section_number: s.number,
         code_section_title: s.title,
         check_name: `${s.number} - ${s.title}`,
