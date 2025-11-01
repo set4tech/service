@@ -80,12 +80,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     console.log(`[Assess] Check loaded:`, {
       checkId,
-      checkType: check.check_type,
       elementGroupId: check.element_group_id,
       instanceLabel: check.instance_label,
       instanceNumber: check.instance_number,
       parentCheckId: check.parent_check_id,
-      sectionKey: check.code_section_key,
+      sectionId: check.section_id,
     });
 
     // 2. Get project variables
@@ -105,7 +104,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Find all section checks that belong to this element instance
       const { data: siblings, error: siblingsError } = await supabase
         .from('checks')
-        .select('id, code_section_key, code_section_number, code_section_title, assessment_id')
+        .select('id, section_id, code_section_number, code_section_title, assessment_id')
         .eq('assessment_id', check.assessment_id)
         .eq('element_group_id', check.element_group_id)
         .eq('instance_label', check.instance_label)

@@ -411,7 +411,10 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
             </div>
             <div className="space-y-3">
               {violation.allScreenshots.map((screenshot, idx) => (
-                <div key={screenshot.id} className="border rounded-lg overflow-hidden bg-gray-50">
+                <div
+                  key={`${screenshot.id}-${idx}`}
+                  className="border rounded-lg overflow-hidden bg-gray-50"
+                >
                   {presignedUrls.thumbnails[idx] ? (
                     <button
                       onClick={() => setPreviewScreenshot(presignedUrls.screenshots[idx])}

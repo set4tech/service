@@ -8,7 +8,7 @@ export interface CheckWithAnalysis {
   code_section_title?: string;
   manual_status?: string | null;
   is_excluded?: boolean;
-  check_type?: string;
+  check_type?: string; // Deprecated: computed from element_group_id
   element_group_id?: string;
   instance_label?: string;
   human_readable_title?: string;
@@ -101,13 +101,15 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
       );
     }
 
+    // Calculate description once (used in both branches)
+    const description =
+      violationDetail?.description ||
+      (severity === 'needs_more_info'
+        ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
+        : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
+
     if (sortedScreenshots.length > 0) {
       const screenshot = sortedScreenshots[0];
-      const description =
-        violationDetail?.description ||
-        (severity === 'needs_more_info'
-          ? `Additional information needed for ${check.code_section_number || check.code_section_key}`
-          : `Non-compliant with ${check.code_section_number || check.code_section_key}`);
 
       const allScreenshots: ViolationScreenshot[] = sortedScreenshots
         .filter((s: any) => s.crop_coordinates && s.page_number)
@@ -150,7 +152,39 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
           recommendations,
           confidence: check.confidence?.toString() || '',
           humanReadableTitle: check.human_readable_title,
-          checkType: check.check_type as 'section' | 'element' | undefined,
+          checkType: (check.element_group_id ? 'element' : 'section') as
+            | 'section'
+            | 'element'
+            | undefined,
+          elementGroupName: check.element_group_name,
+          instanceLabel: check.instance_label,
+          sourceUrl: check.source_url || check.parent_source_url || '',
+          sourceLabel: check.section_number ? `CBC ${check.section_number}` : '',
+        });
+      } else {
+        // Screenshots exist but don't have valid crop_coordinates - treat as no-screenshot
+        violations.push({
+          checkId: check.check_id,
+          checkName: check.check_name || check.code_section_title || '',
+          codeSectionKey: check.code_section_key || '',
+          codeSectionNumber: check.code_section_number || check.code_section_key || '',
+          pageNumber: 1,
+          bounds: { x: 0, y: 0, width: 0, height: 0, zoom_level: 1 },
+          severity,
+          description,
+          screenshotUrl: '',
+          thumbnailUrl: '',
+          screenshotId: 'no-screenshot',
+          allScreenshots: [],
+          reasoning: check.ai_reasoning || '',
+          manualReasoning: check.manual_status_note || undefined,
+          recommendations,
+          confidence: check.confidence?.toString() || '',
+          humanReadableTitle: check.human_readable_title,
+          checkType: (check.element_group_id ? 'element' : 'section') as
+            | 'section'
+            | 'element'
+            | undefined,
           elementGroupName: check.element_group_name,
           instanceLabel: check.instance_label,
           sourceUrl: check.source_url || check.parent_source_url || '',
@@ -168,7 +202,7 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
         pageNumber: 1,
         bounds: { x: 0, y: 0, width: 0, height: 0, zoom_level: 1 },
         severity,
-        description: `Non-compliant with ${check.code_section_number || check.code_section_key}`,
+        description,
         screenshotUrl: '',
         thumbnailUrl: '',
         screenshotId: 'no-screenshot',
@@ -181,6 +215,8 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
         checkType: check.check_type as 'section' | 'element' | undefined,
         elementGroupName: check.element_group_name,
         instanceLabel: check.instance_label,
+        sourceUrl: check.source_url || check.parent_source_url || '',
+        sourceLabel: check.section_number ? `CBC ${check.section_number}` : '',
       });
     }
   }

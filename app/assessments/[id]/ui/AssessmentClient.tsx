@@ -62,7 +62,6 @@ interface CheckData {
   latest_status?: string | null;
   status?: string;
   manual_status?: string | null;
-  has_section_overrides?: boolean;
   screenshots?: ScreenshotData[];
   instances?: CheckInstance[];
   instance_count?: number;
@@ -164,13 +163,12 @@ export default function AssessmentClient({
     // Exclude checks marked as not_applicable from total count
     const applicableChecks = checks.filter(c => c.manual_status !== 'not_applicable');
     const totalChecks = applicableChecks.length;
-    // Count checks with AI assessment OR manual override OR section overrides (but not not_applicable)
+    // Count checks with AI assessment OR manual override
     const completed = applicableChecks.filter(
       c =>
         c.latest_status ||
         c.status === 'completed' ||
-        (c.manual_status && c.manual_status !== 'not_applicable') ||
-        c.has_section_overrides
+        (c.manual_status && c.manual_status !== 'not_applicable')
     ).length;
     const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
     return { totalChecks, completed, pct };
@@ -182,20 +180,6 @@ export default function AssessmentClient({
   const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
   const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
   const [detailPanelWidth, setDetailPanelWidth] = useState(400);
-
-  // NEW: Streaming progress state
-  const [seedingProgress, setSeedingProgress] = useState<{
-    processed: number;
-    total: number;
-    included: number;
-  } | null>(null);
-
-  // Background seeding status
-  const [backgroundSeeding, setBackgroundSeeding] = useState<{
-    active: boolean;
-    processed: number;
-    total: number;
-  }>({ active: false, processed: 0, total: 0 });
 
   const checksSidebarRef = useRef<HTMLDivElement>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
@@ -505,14 +489,6 @@ export default function AssessmentClient({
     const directMatch = checks.find(c => c.id === activeCheckId);
     if (directMatch) return directMatch;
 
-    // If not found, search within instances
-    for (const check of checks) {
-      if (check.instances?.length && check.instances.length > 0) {
-        const instance = check.instances.find(i => i.id === activeCheckId);
-        if (instance) return instance as CheckData;
-      }
-    }
-
     return null;
   }, [checks, activeCheckId]);
 
@@ -531,16 +507,14 @@ export default function AssessmentClient({
     });
 
     if (checks.length === 0 && !isSeeding && !hasSeedAttempted) {
-      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
       console.log('[AssessmentClient] Starting seed process for assessment:', assessment.id);
       setIsSeeding(true);
       setHasSeedAttempted(true);
       localStorage.setItem(`seed-attempted-${assessment.id}`, 'true');
 
-      // Fetch first batch immediately
+      // Call seed endpoint once
       fetch(`/api/assessments/${assessment.id}/seed`, { method: 'POST' })
         .then(async response => {
-          // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
           console.log('[AssessmentClient] Seed response received:', response.status, response.ok);
 
           if (!response.ok) {
@@ -550,23 +524,14 @@ export default function AssessmentClient({
           }
 
           const data = await response.json();
-          // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
           console.log('[AssessmentClient] Seed data:', data);
 
-          // Set initial progress
-          setSeedingProgress({
-            processed: data.processed,
-            total: data.total,
-            included: data.included,
-          });
-
-          // Only reload if we actually got some checks
-          if (data.included > 0) {
-            // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-            console.log('[AssessmentClient] Reloading to show first batch...');
+          // Reload to show the checks
+          if (data.checks_created > 0) {
+            console.log(`[AssessmentClient] Created ${data.checks_created} checks, reloading...`);
             setTimeout(() => window.location.reload(), 500);
           } else {
-            console.warn('[AssessmentClient] No checks included in first batch, not reloading');
+            console.warn('[AssessmentClient] No checks created, not reloading');
             setIsSeeding(false);
           }
         })
@@ -577,76 +542,37 @@ export default function AssessmentClient({
     }
   }, [assessment.id, checks.length, isSeeding, hasSeedAttempted]);
 
-  // Poll for batch seeding progress
-  useEffect(() => {
-    let pollInterval: NodeJS.Timeout;
+  const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
 
-    const pollAndContinue = async () => {
-      try {
-        // Check current status
-        const statusRes = await fetch(`/api/assessments/${assessment.id}/status`);
-        if (!statusRes.ok) return;
-
-        const statusData = await statusRes.json();
-
-        // Update background seeding state
-        const isActive =
-          statusData.seeding_status === 'in_progress' && statusData.sections_total > 0;
-        setBackgroundSeeding({
-          active: isActive,
-          processed: statusData.sections_processed || 0,
-          total: statusData.sections_total || 0,
-        });
-
-        // If seeding is in progress, call seed API to process next batch
-        if (statusData.seeding_status === 'in_progress') {
-          const seedRes = await fetch(`/api/assessments/${assessment.id}/seed`, {
-            method: 'POST',
-          });
-
-          if (seedRes.ok) {
-            const seedData = await seedRes.json();
-            // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-            console.log('[AssessmentClient] Batch processed:', seedData);
-
-            // Refresh checks if we got new ones
-            const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
-            if (checksRes.ok) {
-              const updatedChecks = await checksRes.json();
-              if (updatedChecks.length > checks.length) {
-                setChecks(updatedChecks);
+  // Refetch screenshots for a specific check
+  const refetchCheckScreenshots = async (checkId: string) => {
+    try {
+      const res = await fetch(`/api/checks/${checkId}/screenshots`);
+      if (res.ok) {
+        const screenshots = await res.json();
+        setChecks(prev =>
+          prev.map(check => {
+            // Update top-level check if it matches
+            if (check.id === checkId) {
+              return { ...check, screenshots };
+            }
+            // Update instance within check if it matches
+            if (check.instances?.length && check.instances.length > 0) {
+              const updatedInstances = check.instances.map(instance =>
+                instance.id === checkId ? { ...instance, screenshots } : instance
+              );
+              if (updatedInstances !== check.instances) {
+                return { ...check, instances: updatedInstances };
               }
             }
-
-            // If completed, stop polling
-            if (seedData.status === 'completed') {
-              clearInterval(pollInterval);
-              setBackgroundSeeding({ active: false, processed: 0, total: 0 });
-            }
-          }
-        } else if (statusData.seeding_status === 'completed') {
-          // Stop polling if already completed
-          clearInterval(pollInterval);
-          setBackgroundSeeding({ active: false, processed: 0, total: 0 });
-        }
-      } catch (error) {
-        console.error('[AssessmentClient] Polling error:', error);
+            return check;
+          })
+        );
       }
-    };
-
-    // Start polling after initial seed attempt completes
-    if (hasSeedAttempted && !isSeeding) {
-      pollAndContinue(); // Start immediately
-      pollInterval = setInterval(pollAndContinue, 2000); // Poll every 2 seconds
+    } catch (error) {
+      console.error('Failed to refetch screenshots:', error);
     }
-
-    return () => {
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, [assessment.id, checks.length, hasSeedAttempted, isSeeding]);
-
-  const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
-  const [screenshotsChanged, setScreenshotsChanged] = useState(0);
+  };
 
   // Resize handlers for checks sidebar
   const handleChecksResizeStart = (e: React.MouseEvent) => {
@@ -697,42 +623,6 @@ export default function AssessmentClient({
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
-
-  // Refetch active check's screenshots when a new one is saved
-  useEffect(() => {
-    if (screenshotsChanged === 0 || !activeCheckId) return;
-
-    const refetchScreenshots = async () => {
-      try {
-        const res = await fetch(`/api/checks/${activeCheckId}/screenshots`);
-        if (res.ok) {
-          const screenshots = await res.json();
-          setChecks(prev =>
-            prev.map(check => {
-              // Update top-level check if it matches
-              if (check.id === activeCheckId) {
-                return { ...check, screenshots };
-              }
-              // Update instance within check if it matches
-              if (check.instances?.length && check.instances.length > 0) {
-                const updatedInstances = check.instances.map(instance =>
-                  instance.id === activeCheckId ? { ...instance, screenshots } : instance
-                );
-                if (updatedInstances !== check.instances) {
-                  return { ...check, instances: updatedInstances };
-                }
-              }
-              return check;
-            })
-          );
-        }
-      } catch (error) {
-        console.error('Failed to refetch screenshots:', error);
-      }
-    };
-
-    refetchScreenshots();
-  }, [screenshotsChanged, activeCheckId]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -790,36 +680,7 @@ export default function AssessmentClient({
               <h3 className="text-lg font-semibold">Loading Code Sections</h3>
             </div>
 
-            {seedingProgress && (
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>
-                    Processed: {seedingProgress.processed} / {seedingProgress.total}
-                  </span>
-                  <span className="font-medium text-blue-600">
-                    Applicable: {seedingProgress.included}
-                  </span>
-                </div>
-
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div
-                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
-                    style={{
-                      width: `${Math.round((seedingProgress.processed / seedingProgress.total) * 100)}%`,
-                    }}
-                  />
-                </div>
-
-                <div className="text-xs text-gray-500 text-center">
-                  {Math.round((seedingProgress.processed / seedingProgress.total) * 100)}% complete
-                </div>
-              </div>
-            )}
-
-            <p className="text-sm text-gray-500 mt-4">
-              AI is analyzing code sections for applicability to your project. Generic sections and
-              irrelevant features are being filtered out.
-            </p>
+            <p className="text-sm text-gray-500 mt-4">Creating checks for selected chapters...</p>
           </div>
         </div>
       )}
@@ -927,21 +788,6 @@ export default function AssessmentClient({
             </button>
           </div>
 
-          {/* Background Seeding Banner */}
-          {backgroundSeeding.active && (
-            <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600" />
-                <span className="text-xs font-medium text-blue-900">
-                  Still retrieving code sections...
-                </span>
-              </div>
-              <div className="text-xs text-blue-700">
-                {backgroundSeeding.processed} / {backgroundSeeding.total} processed
-              </div>
-            </div>
-          )}
-
           {/* Progress Bar */}
           <div className="mb-3">
             <div className="flex justify-between text-sm text-gray-600 mb-1">
@@ -1042,7 +888,6 @@ export default function AssessmentClient({
                 sectionKey={activeCheck?.code_section_key || null}
                 filterToSectionKey={filterToSectionKey}
                 activeCheck={activeCheck}
-                screenshotsRefreshKey={screenshotsChanged}
                 onClose={() => {
                   setShowDetailPanel(false);
                   // Clear URL hash when panel is closed
@@ -1058,41 +903,15 @@ export default function AssessmentClient({
                 onCheckUpdate={async () => {
                   if (activeCheck?.id) {
                     try {
-                      // Fetch section overrides for this check
-                      const overridesRes = await fetch(
-                        `/api/checks/${activeCheck.id}/section-overrides`
-                      );
-                      const sectionOverrides = overridesRes.ok ? await overridesRes.json() : [];
-
-                      // Fetch check data
                       const res = await fetch(`/api/checks/${activeCheck.id}`);
                       if (res.ok) {
                         const { check: updatedCheck } = await res.json();
-                        const checkWithOverrides = {
-                          ...updatedCheck,
-                          section_overrides: sectionOverrides,
-                          has_section_overrides: sectionOverrides.length > 0,
-                        };
-
                         setChecks(prev =>
-                          prev.map(c => {
-                            // Update top-level check if it matches
-                            if (c.id === checkWithOverrides.id) {
-                              return { ...c, ...checkWithOverrides, instances: c.instances };
-                            }
-                            // Update instance within check if it matches
-                            if (c.instances?.length && c.instances.length > 0) {
-                              const updatedInstances = c.instances.map(instance =>
-                                instance.id === checkWithOverrides.id
-                                  ? { ...instance, ...checkWithOverrides }
-                                  : instance
-                              );
-                              if (updatedInstances !== c.instances) {
-                                return { ...c, instances: updatedInstances };
-                              }
-                            }
-                            return c;
-                          })
+                          prev.map(c =>
+                            c.id === updatedCheck.id
+                              ? { ...c, ...updatedCheck } // ← Just update if ID matches
+                              : c
+                          )
                         );
                       }
                     } catch (error) {
@@ -1118,8 +937,10 @@ export default function AssessmentClient({
                   }
                 }}
                 onScreenshotAssigned={() => {
-                  // Increment refresh key to trigger ScreenshotGallery re-fetch
-                  setScreenshotsChanged(prev => prev + 1);
+                  // Refetch screenshots for the active check
+                  if (activeCheck?.id) {
+                    refetchCheckScreenshots(activeCheck.id);
+                  }
                 }}
               />
             )}
@@ -1143,7 +964,7 @@ export default function AssessmentClient({
             pdfUrl={pdfUrl}
             assessmentId={assessment.id}
             activeCheck={activeCheck || undefined}
-            onScreenshotSaved={() => setScreenshotsChanged(x => x + 1)}
+            onScreenshotSaved={refetchCheckScreenshots}
             onCheckAdded={handleCheckAdded}
             onCheckSelect={handleCheckSelect}
           />

@@ -21,7 +21,7 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
       .select(
         `
         id,
-        code_section_key,
+        section_id,
         code_section_number,
         code_section_title,
         check_name,
@@ -59,11 +59,11 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
 
     // Get section text for additional context
     let sectionText: string | undefined;
-    if (check.code_section_key) {
+    if (check.section_id) {
       const { data: section } = await supabase
         .from('sections')
         .select('text')
-        .eq('key', check.code_section_key)
+        .eq('id', check.section_id)
         .single();
 
       sectionText = section?.text;
@@ -73,7 +73,7 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
 
     // Generate the title
     const title = await generateViolationTitle({
-      codeSectionNumber: check.code_section_number || check.code_section_key,
+      codeSectionNumber: check.code_section_number,
       codeSectionText: sectionText,
       aiReasoning,
       elementType,

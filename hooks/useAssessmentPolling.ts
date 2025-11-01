@@ -45,22 +45,6 @@ export function useAssessmentPolling(
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
 
-  // Sync initialAssessing to state when it changes
-  useEffect(() => {
-    console.log(
-      '[useAssessmentPolling] Syncing initialAssessing:',
-      initialAssessing,
-      '→ current:',
-      assessing
-    );
-    if (initialAssessing !== assessing) {
-      console.log('[useAssessmentPolling] ✓ Updating assessing state to:', initialAssessing);
-      setAssessing(initialAssessing);
-    }
-  }, [initialAssessing]);
-
-  console.log('[useAssessmentPolling] Current state:', { assessing, progress, message });
-
   useEffect(() => {
     console.log('[useAssessmentPolling] Effect running with:', { assessing, checkId });
 
@@ -74,15 +58,16 @@ export function useAssessmentPolling(
     const interval = setInterval(async () => {
       try {
         console.log('[useAssessmentPolling] Fetching progress...');
-        const res = await fetch(`/api/checks/${checkId}/assessment-progress`);
-        const data = await res.json();
+        const res = await fetch(`/api/checks/${checkId}/full`);
+        const fullData = await res.json();
+        const data = fullData.progress;
 
         console.log('[useAssessmentPolling] Progress data:', {
           inProgress: data.inProgress,
           completed: data.completed,
           total: data.total,
           batchGroupId: data.batchGroupId,
-          runsCount: data.runs?.length,
+          runsCount: fullData.analysisRuns?.length,
         });
 
         if (data.inProgress) {

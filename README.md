@@ -277,6 +277,44 @@ scripts/
 - **PDF**: PDF.js for rendering and annotation
 - **Testing**: Vitest
 
+### API Optimizations
+
+#### Efficient Check Loading: `/api/checks/[id]/full`
+
+When loading check details, a single endpoint provides all necessary data in 2-3 parallel database queries:
+
+**Endpoint**: `GET /api/checks/[id]/full`
+
+**Returns**:
+
+```json
+{
+  "check": { /* complete check record */ },
+  "analysisRuns": [ /* array of analysis runs */ ],
+  "progress": {
+    "inProgress": boolean,
+    "completed": number,
+    "total": number,
+    "batchGroupId": string | null
+  }
+}
+```
+
+**Optimization details**:
+
+- Executes check and analysis_runs queries in parallel using `Promise.all()`
+- For element-grouped checks, includes all sibling check runs
+- Calculates progress in TypeScript (simple, testable)
+- Replaces 3 separate API calls with 1
+- Reduces database queries from 5+ to 2-3
+
+**Usage in components**:
+
+```typescript
+const response = await fetch(`/api/checks/${checkId}/full`);
+const { check, analysisRuns, progress } = await response.json();
+```
+
 ### Data Flow
 
 ```
@@ -324,12 +362,11 @@ See `DATABASE_SCHEMA.md` for complete schema documentation.
 
 - `customers`, `projects`, `assessments` - Project hierarchy
 - `codes`, `sections` - Building code content
-- `checks` - Compliance checks
+- `checks` - Compliance checks (both section-based and element-based)
 - `analysis_runs` - AI assessment history
-- `screenshots` - Evidence images
-- `element_groups`, `element_group_section_mappings` - Element-based checking
-- `section_overrides` - Per-section overrides within element checks
-- `compliance_sessions`, `section_checks` - Alternative compliance workflow (client viewer)
+- `screenshots`, `screenshot_check_assignments` - Evidence images (many-to-many with checks)
+- `element_groups`, `element_section_mappings` - Element-based checking with global/assessment-specific mappings
+- `compliance_sessions`, `section_checks`, `section_screenshots` - Alternative compliance workflow (client viewer)
 
 **Connection:**
 Always use the Supabase pooler connection (see CLAUDE.md for details).
@@ -354,9 +391,15 @@ Always use the Supabase pooler connection (see CLAUDE.md for details).
 
 Supports both:
 
-1. **Section-based**: 1 check per code section (traditional)
-2. **Element-based**: Multiple sections per element (e.g., all door requirements)
-3. **Instances**: Clone checks for multiple occurrences (Door 1, Door 2, etc.)
+1. **Section-based checks**: 1 check per code section (traditional)
+   - `check_type='section'`, single section per check
+   - Used for standalone code sections not part of element groups
+2. **Element-based checks**: Multiple sections per element (e.g., all door requirements)
+   - `check_type='element'`, multiple sections assessed together
+   - Uses `element_section_mappings` for global or assessment-specific section lists
+3. **Instance labeling**: Both check types support multiple instances via `instance_label`
+   - Example: "Door 1", "Door 2", etc. for the same element type
+4. **Exclusion system**: Use `is_excluded=true` to remove checks without deletion
 
 ## Troubleshooting
 

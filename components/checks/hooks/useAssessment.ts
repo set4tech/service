@@ -40,9 +40,10 @@ export function useAssessment(
   useEffect(() => {
     if (!checkId) return;
 
-    fetch(`/api/checks/${checkId}/assessment-progress`)
+    fetch(`/api/checks/${checkId}/full`)
       .then(res => res.json())
-      .then(data => {
+      .then(fullData => {
+        const data = fullData.progress;
         if (data.inProgress) {
           setAssessing(true);
           setAssessmentProgress(Math.round((data.completed / data.total) * 100));
@@ -61,8 +62,9 @@ export function useAssessment(
     console.log('[Poll] Starting polling for checkId:', checkId);
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/checks/${checkId}/assessment-progress`);
-        const data = await res.json();
+        const res = await fetch(`/api/checks/${checkId}/full`);
+        const fullData = await res.json();
+        const data = fullData.progress;
 
         if (data.inProgress) {
           setAssessmentProgress(Math.round((data.completed / data.total) * 100));
@@ -72,10 +74,10 @@ export function useAssessment(
           fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
 
           // Update runs (only add new ones)
-          if (data.runs && data.runs.length > 0) {
+          if (fullData.analysisRuns && fullData.analysisRuns.length > 0) {
             setAnalysisRuns(prev => {
               const existingIds = new Set(prev.map((r: any) => r.id));
-              const newRuns = data.runs.filter((r: any) => !existingIds.has(r.id));
+              const newRuns = fullData.analysisRuns.filter((r: any) => !existingIds.has(r.id));
               if (newRuns.length > 0) {
                 setExpandedRuns(prevExpanded => {
                   const updated = new Set(prevExpanded);

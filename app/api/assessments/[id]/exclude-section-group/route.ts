@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Get section details for selected sections
     const { data: selectedSections } = await supabase
       .from('sections')
-      .select('key, number, title')
+      .select('id, key, number, title')
       .in('key', sectionKeys);
 
     if (!selectedSections || selectedSections.length === 0) {
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .from('checks')
           .select('id')
           .eq('assessment_id', assessmentId)
-          .eq('code_section_key', section.key);
+          .eq('section_id', section.id);
 
         if (checksToDelete && checksToDelete.length > 0) {
           const checkIdsToDelete = checksToDelete.map(c => c.id);
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             .from('checks')
             .delete()
             .eq('assessment_id', assessmentId)
-            .eq('code_section_key', section.key);
+            .eq('section_id', section.id);
         }
 
         // Note: In flat section model, section checks are deleted above

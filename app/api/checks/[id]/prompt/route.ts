@@ -25,11 +25,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // 3. Fetch code section text from Supabase
     let codeSectionData: any = null;
 
-    if (check.code_section_key) {
+    if (check.section_id) {
       const { data: section } = await supabase
         .from('sections')
         .select('key, number, title, paragraphs')
-        .eq('key', check.code_section_key)
+        .eq('id', check.section_id)
         .single();
 
       if (section) {

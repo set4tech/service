@@ -113,7 +113,6 @@ Always use explicit file paths: `git add path/to/file.ts`
 - Can clone template to create new instances (`parent_check_id`)
 - Each element maps to 5-20 related code sections
 - Single AI analysis assesses ALL sections at once
-- Results stored per-section in `section_overrides` table
 
 ### Key Data Models
 
@@ -291,7 +290,6 @@ customers (1) → (many) projects (1) → (many) assessments (1) → (many) chec
 - `analysis_runs` - AI analysis history
   - `section_results` - For element checks (per-section results)
   - `compliance_status`, `confidence`, `violations` - AI output
-- `section_overrides` - Per-section manual overrides (within element checks)
 - `screenshot_check_assignments` - Many-to-many: screenshots ↔ checks
 
 **Progress Tracking**:

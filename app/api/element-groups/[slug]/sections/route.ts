@@ -40,8 +40,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       .from('sections')
       .select('*')
       .in(
-        'key',
-        sectionKeys.map((sk: any) => sk.section_key)
+        'id',
+        sectionKeys.map((sk: any) => sk.section_id)
       );
 
     if (sectionsError) {
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       .from('element_section_mappings')
       .select(
         `
-        section_key,
+        section_id,
         sections (*)
       `
       )

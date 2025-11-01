@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 import { SearchElevationsModal } from '@/components/screenshots/SearchElevationsModal';
 import { TableRenderer } from '@/components/ui/TableRenderer';
@@ -12,7 +12,7 @@ import type { SectionResult, AnalysisRun, CodeSection } from '@/types/analysis';
 
 interface Check {
   id: string;
-  check_type?: string;
+  element_group_id?: string | null;
   code_section_key?: string;
   manual_status?: string | null;
   manual_status_note?: string;
@@ -30,14 +30,13 @@ interface CodeDetailPanelProps {
   onCheckUpdate?: () => void;
   onChecksRefresh?: () => void;
   activeCheck?: any;
-  screenshotsRefreshKey?: number;
   onScreenshotAssigned?: () => void;
 }
 
 // Simple in-memory cache for API responses
 const sectionCache = new Map<string, CodeSection>();
-const analysisRunsCache = new Map<string, { runs: AnalysisRun[]; timestamp: number }>();
-const CACHE_TTL = 30000; // 30 seconds
+const checkCache = new Map<string, any>(); // Cache check metadata
+const childChecksCache = new Map<string, any[]>(); // Cache child checks by parent key
 
 async function fetchSection(key: string): Promise<CodeSection> {
   if (sectionCache.has(key)) {
@@ -51,22 +50,6 @@ async function fetchSection(key: string): Promise<CodeSection> {
 
   sectionCache.set(key, data);
   return data;
-}
-
-async function fetchAnalysisRuns(checkId: string, bypassCache = false): Promise<AnalysisRun[]> {
-  if (!bypassCache) {
-    const cached = analysisRunsCache.get(checkId);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return cached.runs;
-    }
-  }
-
-  const response = await fetch(`/api/checks/${checkId}/analysis-runs`);
-  const data = await response.json();
-  const runs = data.runs || [];
-
-  analysisRunsCache.set(checkId, { runs, timestamp: Date.now() });
-  return runs;
 }
 
 interface CheckDataResult {
@@ -122,37 +105,67 @@ function useCheckData(
     let isCancelled = false;
 
     async function loadAllData() {
-      setLoading(true);
+      // Only show loading if we don't have cached data
+      const hasCachedCheck = checkCache.has(checkId!);
+      if (!hasCachedCheck) {
+        setLoading(true);
+      }
       setError(null);
 
       try {
-        // STEP 1: Load the main check
-        const checkResponse = await fetch(`/api/checks/${checkId}`);
-        const checkData = await checkResponse.json();
+        // Check cache first for faster loads
+        let check, analysisRuns, progress;
 
-        if (isCancelled) return;
-
-        if (!checkData.check) {
-          throw new Error('Check not found');
-        }
-
-        const check = checkData.check;
-
-        // Check if this is part of an element instance (has element_group_id + instance_label)
-        if (check.element_group_id && check.instance_label) {
-          // Load all sections for this element instance
-          const siblingsResponse = await fetch(
-            `/api/checks?assessment_id=${check.assessment_id}&element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(check.instance_label)}`
-          );
-          const siblings = await siblingsResponse.json();
+        if (hasCachedCheck) {
+          const cached = checkCache.get(checkId!);
+          check = cached.check;
+          analysisRuns = cached.analysisRuns || [];
+          progress = cached.progress;
+        } else {
+          // Load check with analysis runs and progress in a single query
+          const fullResponse = await fetch(`/api/checks/${checkId}/full`);
+          const fullData = await fullResponse.json();
 
           if (isCancelled) return;
 
-          let sorted = Array.isArray(siblings)
-            ? siblings.sort((a, b) =>
-                (a.code_section_number || '').localeCompare(b.code_section_number || '')
-              )
-            : [];
+          if (!fullData.check) {
+            throw new Error('Check not found');
+          }
+
+          check = fullData.check;
+          analysisRuns = fullData.analysisRuns || [];
+          progress = fullData.progress;
+
+          // Cache the result
+          checkCache.set(checkId!, { check, analysisRuns, progress });
+        }
+
+        // Check if this is part of an element instance (has element_group_id + instance_label)
+        if (check.element_group_id && check.instance_label) {
+          // Create cache key for child checks
+          const childChecksCacheKey = `${check.assessment_id}:${check.element_group_id}:${check.instance_label}`;
+
+          let sorted;
+          if (childChecksCache.has(childChecksCacheKey)) {
+            sorted = childChecksCache.get(childChecksCacheKey)!;
+          } else {
+            // Load all sections for this element instance
+            const siblingsResponse = await fetch(
+              `/api/checks?assessment_id=${check.assessment_id}&element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(check.instance_label)}`
+            );
+            const siblings = await siblingsResponse.json();
+
+            if (isCancelled) return;
+
+            sorted = Array.isArray(siblings)
+              ? siblings.sort((a, b) =>
+                  (a.code_section_number || '').localeCompare(b.code_section_number || '')
+                )
+              : [];
+
+            // Cache the child checks
+            childChecksCache.set(childChecksCacheKey, sorted);
+          }
 
           // Filter to requested section if specified
           if (filterToSectionKey) {
@@ -166,14 +179,11 @@ function useCheckData(
           const activeChildId = checkId;
           const activeChild = sorted.find(c => c.id === activeChildId);
 
-          // Load data for active child in parallel
-          const [section, runs, progress] = await Promise.all([
+          // Load code section if needed
+          const section =
             activeChildId && activeChild?.code_section_key
-              ? fetchSection(activeChild.code_section_key)
-              : Promise.resolve(null),
-            fetchAnalysisRuns(checkId!),
-            fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
-          ]);
+              ? await fetchSection(activeChild.code_section_key)
+              : null;
 
           if (isCancelled) return;
 
@@ -182,7 +192,7 @@ function useCheckData(
             childChecks: sorted,
             activeChildCheckId: activeChildId,
             sections: section ? [section] : [],
-            analysisRuns: runs,
+            analysisRuns,
             assessing: progress.inProgress || false,
             // Load the active child's override, not the first check's override
             manualOverride: activeChild?.manual_status || null,
@@ -194,11 +204,7 @@ function useCheckData(
         }
 
         // Standalone section check - load single section
-        const [progress, runs, section] = await Promise.all([
-          fetch(`/api/checks/${checkId}/assessment-progress`).then(r => r.json()),
-          fetchAnalysisRuns(checkId!),
-          check.code_section_key ? fetchSection(check.code_section_key) : Promise.resolve(null),
-        ]);
+        const section = check.code_section_key ? await fetchSection(check.code_section_key) : null;
 
         if (isCancelled) return;
 
@@ -208,7 +214,7 @@ function useCheckData(
           childChecks: [],
           activeChildCheckId: null,
           sections: section ? [section] : [],
-          analysisRuns: runs,
+          analysisRuns,
           assessing: progress.inProgress || false,
           manualOverride: check.manual_status || null,
           manualOverrideNote: check.manual_status_note || '',
@@ -243,9 +249,11 @@ export function CodeDetailPanel({
   onCheckUpdate,
   onChecksRefresh,
   activeCheck,
-  screenshotsRefreshKey,
   onScreenshotAssigned,
 }: CodeDetailPanelProps) {
+  // Local state to track screenshot changes for ScreenshotGallery
+  const [screenshotsRefreshKey, setScreenshotsRefreshKey] = useState(0);
+
   // Coordinated data loading
   const {
     loading: panelLoading,
@@ -317,54 +325,60 @@ export function CodeDetailPanel({
     setManualOverrideNote,
   ]);
 
-  // Handle tab switching (when user clicks section tabs within an element)
-  const prevActiveChildRef = useRef<string | null>(null);
-  useEffect(() => {
-    // Only load section if user manually switched tabs (not initial load)
-    if (panelLoading || !activeChildCheckId || activeChildCheckId === initialActiveChildId) {
-      prevActiveChildRef.current = activeChildCheckId;
-      return;
-    }
+  // Handle tab switching - update section data immediately if cached
+  const handleTabSwitch = useCallback(
+    (childCheckId: string) => {
+      const activeChild = childChecks.find(c => c.id === childCheckId);
+      if (!activeChild?.code_section_key) {
+        setActiveChildCheckId(childCheckId);
+        setTabSections([]);
+        return;
+      }
 
-    if (activeChildCheckId === prevActiveChildRef.current) {
-      return;
-    }
+      const sectionKey = activeChild.code_section_key;
 
-    prevActiveChildRef.current = activeChildCheckId;
-
-    const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    if (!activeChild?.code_section_key) return;
-
-    const sectionKey = activeChild.code_section_key;
-
-    fetchSection(sectionKey)
-      .then(section => {
-        setTabSections([section]);
+      // Check cache synchronously to avoid loading flicker
+      if (sectionCache.has(sectionKey)) {
+        const cached = sectionCache.get(sectionKey)!;
+        // Update all states together
+        setActiveChildCheckId(childCheckId);
+        setTabSections([cached]);
         setManualOverride(activeChild.manual_status || null);
         setManualOverrideNote(activeChild.manual_status_note || '');
-      })
-      .catch(err => {
-        console.error('Failed to load section:', err);
-        setTabSections([]);
-      });
-  }, [
-    activeChildCheckId,
-    childChecks,
-    panelLoading,
-    initialActiveChildId,
-    setManualOverride,
-    setManualOverrideNote,
-  ]);
+      } else {
+        // Update activeChildCheckId first
+        setActiveChildCheckId(childCheckId);
+        // Not cached - fetch it asynchronously
+        fetchSection(sectionKey)
+          .then(section => {
+            setTabSections([section]);
+            setManualOverride(activeChild.manual_status || null);
+            setManualOverrideNote(activeChild.manual_status_note || '');
+          })
+          .catch(err => {
+            console.error('Failed to load section:', err);
+            setTabSections([]);
+          });
+      }
+    },
+    [childChecks, setManualOverride, setManualOverrideNote]
+  );
 
   // Polling hook
   const handleAssessmentComplete = useCallback(() => {
     if (checkId) {
-      fetchAnalysisRuns(checkId, true).then(runs => {
-        setAnalysisRuns(runs);
-        if (runs.length > 0) {
-          setExpandedRuns(new Set([runs[0].id]));
-        }
-      });
+      // Refresh analysis runs after assessment completes
+      fetch(`/api/checks/${checkId}/full`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.analysisRuns) {
+            setAnalysisRuns(data.analysisRuns);
+            if (data.analysisRuns.length > 0) {
+              setExpandedRuns(new Set([data.analysisRuns[0].id]));
+            }
+          }
+        })
+        .catch(err => console.error('Failed to refresh analysis runs:', err));
     }
     if (onCheckUpdate) onCheckUpdate();
   }, [checkId, onCheckUpdate]);
@@ -482,7 +496,7 @@ export function CodeDetailPanel({
       checkId,
       elementGroupId: activeCheck?.element_group_id,
       instanceLabel: activeCheck?.instance_label,
-      checkType: activeCheck?.check_type,
+      isElementCheck: !!activeCheck?.element_group_id,
       childChecksCount: childChecks.length,
     });
 
@@ -722,33 +736,13 @@ export function CodeDetailPanel({
     setTriageSections([]);
   };
 
-  // Loading skeleton
+  // Simple loading indicator instead of full skeleton
   if (panelLoading) {
     return (
-      <div className="h-full flex flex-col bg-white border-r border-gray-200">
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <div className="h-6 bg-gray-200 rounded w-1/2 animate-pulse" />
-        </div>
-        <div className="border-b bg-gray-50 p-4">
-          <div className="h-8 bg-gray-200 rounded animate-pulse" />
-        </div>
-        <div className="border-b p-4 space-y-3">
-          <div className="h-4 bg-gray-200 rounded w-1/3 animate-pulse" />
-          <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-10 bg-gray-200 rounded flex-1 animate-pulse" />
-            ))}
-          </div>
-        </div>
-        <div className="flex-1 p-4 space-y-4">
-          <div className="h-6 bg-gray-200 rounded w-3/4 animate-pulse" />
-          <div className="h-4 bg-gray-200 rounded animate-pulse" />
-          <div className="h-4 bg-gray-200 rounded animate-pulse" />
-          <div className="h-4 bg-gray-200 rounded w-5/6 animate-pulse" />
-        </div>
-        <div className="border-t p-4 space-y-2">
-          <div className="h-4 bg-gray-200 rounded w-1/4 animate-pulse" />
-          <div className="h-20 bg-gray-200 rounded animate-pulse" />
+      <div className="h-full flex items-center justify-center bg-white border-r border-gray-200">
+        <div className="text-center">
+          <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <div className="text-sm text-gray-500">Loading check...</div>
         </div>
       </div>
     );
@@ -844,7 +838,7 @@ export function CodeDetailPanel({
                 {childChecks.map(childCheck => (
                   <button
                     key={childCheck.id}
-                    onClick={() => setActiveChildCheckId(childCheck.id)}
+                    onClick={() => handleTabSwitch(childCheck.id)}
                     className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors text-left ${
                       childCheck.id === activeChildCheckId
                         ? 'bg-blue-600 text-white'
@@ -1169,7 +1163,7 @@ export function CodeDetailPanel({
 
                 {showScreenshots && (
                   <div className="pb-4 space-y-2">
-                    {activeCheck?.check_type === 'element' && (
+                    {activeCheck?.element_group_id && (
                       <button
                         className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                         onClick={() => setShowElevationSearch(true)}
@@ -1179,8 +1173,11 @@ export function CodeDetailPanel({
                     )}
                     <ScreenshotGallery
                       check={activeCheck}
-                      refreshKey={screenshotsRefreshKey || 0}
-                      onScreenshotAssigned={onScreenshotAssigned}
+                      refreshKey={screenshotsRefreshKey}
+                      onScreenshotAssigned={() => {
+                        setScreenshotsRefreshKey(prev => prev + 1);
+                        onScreenshotAssigned?.();
+                      }}
                     />
                   </div>
                 )}
@@ -1534,29 +1531,18 @@ export function CodeDetailPanel({
         <TriageModal
           sections={triageSections}
           onClose={handleTriageComplete}
-          onSave={async overrides => {
+          onSave={async () => {
             if (!checkId) return;
 
             try {
-              const res = await fetch(`/api/checks/${checkId}/section-overrides`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ overrides }),
-              });
-
-              if (!res.ok) {
-                const error = await res.json();
-                throw new Error(error.error || 'Failed to save overrides');
-              }
-
               const runsRes = await fetch(`/api/checks/${checkId}/analysis-runs`);
               const runsData = await runsRes.json();
               setAnalysisRuns(runsData.runs || []);
 
               if (onCheckUpdate) onCheckUpdate();
             } catch (error: any) {
-              console.error('Failed to save section overrides:', error);
-              alert('Failed to save overrides: ' + error.message);
+              console.error('Failed to save analysis runs:', error);
+              alert('Failed to save analysis runs: ' + error.message);
             }
           }}
         />
@@ -1577,6 +1563,7 @@ export function CodeDetailPanel({
               });
             }
 
+            setScreenshotsRefreshKey(prev => prev + 1);
             if (onScreenshotAssigned) onScreenshotAssigned();
           }}
         />

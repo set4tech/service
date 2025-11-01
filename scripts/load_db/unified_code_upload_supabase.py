@@ -17,16 +17,53 @@ The unified schema:
       "key": "401",
       "number": "401",
       "title": "...",
+      "text": "...",
+      "chapter": "11B" | "11A" | etc (optional),
+      "source_url": "...",
+      "source_page": 123 (optional),
+      "figures": [...] (optional),
+      "tables": [...] (optional),
+      "always_include": true/false (optional),
+      "applicable_occupancies": ["A", "B", ...] (optional),
+      "requires_parking": true/false (optional),
+      "requires_elevator": true/false (optional),
+      "min_building_size": 5000 (optional),
+      "max_building_size": 50000 (optional),
+      "applicable_work_types": ["new", "alteration", ...] (optional),
+      "applicable_facility_categories": ["commercial", ...] (optional),
+      "applicability_notes": "..." (optional),
+      "drawing_assessable": true/false (optional, default: true),
+      "assessability_tags": ["doors", "ramps", ...] (optional),
+      "never_relevant": true/false (optional, default: false),
+      "floorplan_relevant": true/false (optional, default: false),
       "subsections": [
         {
           "key": "401.1",
           "number": "401.1",
           "title": "...",
+          "text": "...",
           "paragraphs": [...],
-          "refers_to": [...]
+          "refers_to": [...],
+          "tables": [...] (optional),
+          "figures": [...] (optional),
+          "source_url": "..." (optional),
+          "source_page": 123 (optional),
+          "chapter": "..." (optional),
+          "always_include": true/false (optional),
+          "applicable_occupancies": [...] (optional),
+          "requires_parking": true/false (optional),
+          "requires_elevator": true/false (optional),
+          "min_building_size": 5000 (optional),
+          "max_building_size": 50000 (optional),
+          "applicable_work_types": [...] (optional),
+          "applicable_facility_categories": [...] (optional),
+          "applicability_notes": "..." (optional),
+          "drawing_assessable": true/false (optional, default: true),
+          "assessability_tags": [...] (optional),
+          "never_relevant": true/false (optional, default: false),
+          "floorplan_relevant": true/false (optional, default: false)
         }
-      ],
-      "source_url": "..."
+      ]
     }
   ]
 }
@@ -170,32 +207,54 @@ def upload_items_to_supabase(
         # Prepare batch data for insert
         batch_data = []
         for item in batch:
-            batch_data.append(
-                {
-                    "key": item["key"],
-                    "code_id": code_id,
-                    "parent_key": item.get("parent_key"),
-                    "number": item["number"],
-                    "title": item["title"],
-                    "text": item["text"],
-                    "item_type": item["item_type"],
-                    "code_type": code_type,
-                    "paragraphs": item.get("paragraphs", []),
-                    "tables": item.get("tables", []),
-                    "figures": item.get("figures", []),
-                    "source_url": item.get("source_url", ""),
-                    "source_page": item.get("source_page"),
-                    "hash": sha256_of(
-                        item["provider"],
-                        str(item["version"]),
-                        item["jurisdiction"] or "",
-                        item["source_id"],
-                        item["number"],
-                        item["title"],
-                        item["text"] or "",
-                    ),
-                }
-            )
+            record = {
+                "key": item["key"],
+                "code_id": code_id,
+                "parent_key": item.get("parent_key"),
+                "number": item["number"],
+                "title": item["title"],
+                "text": item["text"],
+                "item_type": item["item_type"],
+                "code_type": code_type,
+                "paragraphs": item.get("paragraphs", []),
+                "tables": item.get("tables", []),
+                "figures": item.get("figures", []),
+                "source_url": item.get("source_url", ""),
+                "source_page": item.get("source_page"),
+                "hash": sha256_of(
+                    item["provider"],
+                    str(item["version"]),
+                    item["jurisdiction"] or "",
+                    item["source_id"],
+                    item["number"],
+                    item["title"],
+                    item["text"] or "",
+                ),
+            }
+
+            # Add optional fields only if they exist in the item
+            optional_fields = [
+                "chapter",
+                "always_include",
+                "applicable_occupancies",
+                "requires_parking",
+                "requires_elevator",
+                "min_building_size",
+                "max_building_size",
+                "applicable_work_types",
+                "applicable_facility_categories",
+                "applicability_notes",
+                "drawing_assessable",
+                "assessability_tags",
+                "never_relevant",
+                "floorplan_relevant",
+            ]
+
+            for field in optional_fields:
+                if field in item and item[field] is not None:
+                    record[field] = item[field]
+
+            batch_data.append(record)
 
         # Insert batch
         try:
@@ -321,25 +380,39 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
             provider, version, jurisdiction, source_id, section_number
         )
 
-        all_items.append(
-            {
-                "key": section_key,
-                "provider": provider,
-                "version": version,
-                "jurisdiction": jurisdiction,
-                "source_id": source_id,
-                "number": section_number,
-                "title": section_title,
-                "text": clean_text(section_text),
-                "item_type": "section",
-                "parent_key": None,
-                "paragraphs": [],
-                "refers_to": [],
-                "tables": [],
-                "figures": section.get("figures", []),
-                "source_url": section.get("source_url", ""),
-            }
-        )
+        section_item = {
+            "key": section_key,
+            "provider": provider,  # For key/hash generation only
+            "version": version,  # For key/hash generation only
+            "jurisdiction": jurisdiction,  # For key/hash generation only
+            "source_id": source_id,  # For key/hash generation only
+            "number": section_number,
+            "title": section_title,
+            "text": clean_text(section_text),
+            "item_type": "section",
+            "parent_key": None,
+            "paragraphs": [],
+            "refers_to": [],  # For cross-references only
+            "tables": section.get("tables", []),
+            "figures": section.get("figures", []),
+            "source_url": section.get("source_url", ""),
+            "source_page": section.get("source_page"),
+            "chapter": section.get("chapter"),
+            "always_include": section.get("always_include"),
+            "applicable_occupancies": section.get("applicable_occupancies"),
+            "requires_parking": section.get("requires_parking"),
+            "requires_elevator": section.get("requires_elevator"),
+            "min_building_size": section.get("min_building_size"),
+            "max_building_size": section.get("max_building_size"),
+            "applicable_work_types": section.get("applicable_work_types"),
+            "applicable_facility_categories": section.get("applicable_facility_categories"),
+            "applicability_notes": section.get("applicability_notes"),
+            "drawing_assessable": section.get("drawing_assessable"),
+            "assessability_tags": section.get("assessability_tags"),
+            "never_relevant": section.get("never_relevant"),
+            "floorplan_relevant": section.get("floorplan_relevant"),
+        }
+        all_items.append(section_item)
 
         # Process subsections
         for subsection in section.get("subsections", []):
@@ -373,25 +446,39 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
                 # Parent is the section
                 parent_key = section_key
 
-            all_items.append(
-                {
-                    "key": subsection_key,
-                    "provider": provider,
-                    "version": version,
-                    "jurisdiction": jurisdiction,
-                    "source_id": source_id,
-                    "number": subsection_number,
-                    "title": subsection_title,
-                    "text": subsection_text,
-                    "item_type": "subsection",
-                    "parent_key": parent_key,
-                    "paragraphs": paragraphs,
-                    "refers_to": refers_to,
-                    "tables": subsection.get("tables", []),
-                    "figures": subsection.get("figures", []),
-                    "source_url": subsection.get("source_url", ""),
-                }
-            )
+            subsection_item = {
+                "key": subsection_key,
+                "provider": provider,  # For key/hash generation only
+                "version": version,  # For key/hash generation only
+                "jurisdiction": jurisdiction,  # For key/hash generation only
+                "source_id": source_id,  # For key/hash generation only
+                "number": subsection_number,
+                "title": subsection_title,
+                "text": subsection_text,
+                "item_type": "subsection",
+                "parent_key": parent_key,
+                "paragraphs": paragraphs,
+                "refers_to": refers_to,  # For cross-references only
+                "tables": subsection.get("tables", []),
+                "figures": subsection.get("figures", []),
+                "source_url": subsection.get("source_url", ""),
+                "source_page": subsection.get("source_page"),
+                "chapter": subsection.get("chapter"),
+                "always_include": subsection.get("always_include"),
+                "applicable_occupancies": subsection.get("applicable_occupancies"),
+                "requires_parking": subsection.get("requires_parking"),
+                "requires_elevator": subsection.get("requires_elevator"),
+                "min_building_size": subsection.get("min_building_size"),
+                "max_building_size": subsection.get("max_building_size"),
+                "applicable_work_types": subsection.get("applicable_work_types"),
+                "applicable_facility_categories": subsection.get("applicable_facility_categories"),
+                "applicability_notes": subsection.get("applicability_notes"),
+                "drawing_assessable": subsection.get("drawing_assessable"),
+                "assessability_tags": subsection.get("assessability_tags"),
+                "never_relevant": subsection.get("never_relevant"),
+                "floorplan_relevant": subsection.get("floorplan_relevant"),
+            }
+            all_items.append(subsection_item)
 
     upload_items_to_supabase(supabase, all_items, code_data, code_id)
 

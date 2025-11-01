@@ -25,12 +25,10 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = supabaseAdmin();
 
-  const startTime = Date.now();
-
   // Get assessment info
   const { data: assessment } = await supabase
     .from('assessments')
-    .select('*, projects(id, name, pdf_url, selected_code_ids, extracted_variables)')
+    .select('*, selected_chapter_ids, projects(id, name, pdf_url, extracted_variables)')
     .eq('id', id)
     .single();
 
@@ -57,8 +55,6 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const protocol = isLocal ? 'http' : 'https';
   const baseUrl = `${protocol}://${host}`;
 
-  console.log(`[DEBUG] Fetching checks from: ${baseUrl}/api/assessments/${id}/checks`);
-
   const checksResponse = await fetch(`${baseUrl}/api/assessments/${id}/checks`, {
     cache: 'no-store',
   });
@@ -75,12 +71,12 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   });
   const progressData = progress?.[0] || { total_checks: 0, completed_checks: 0, progress_pct: 0 };
 
-  // Get codebooks
-  const selectedCodeIds = typedAssessment.projects?.selected_code_ids || [];
-  const { data: codes } = await supabase
-    .from('codes')
-    .select('id, title')
-    .in('id', selectedCodeIds);
+  // Get codebooks from assessment-level chapter selection
+  const selectedChapterIds = (assessment.selected_chapter_ids as string[]) || [];
+  const { data: codes } =
+    selectedChapterIds.length > 0
+      ? await supabase.from('codes').select('id, title').in('id', selectedChapterIds)
+      : { data: null };
   const codebooks = codes?.map(c => ({ id: c.id, name: c.title })) || [];
 
   // Extract building info
@@ -99,9 +95,6 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     ...assessment,
     pdf_url: typedAssessment.projects?.pdf_url || null,
   };
-
-  // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-  console.log(`[Perf] TOTAL page load time: ${Date.now() - startTime}ms`);
 
   // Format progress data to match AssessmentClient's expected shape
   const formattedProgress = {

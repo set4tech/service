@@ -18,6 +18,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
+  // Get section ID from key
+  const { data: sectionData } = await supabase
+    .from('sections')
+    .select('id')
+    .eq('key', sectionKey)
+    .single();
+
+  if (!sectionData) {
+    return NextResponse.json({ error: 'Section not found' }, { status: 404 });
+  }
+
   // First, ensure this assessment has customized mappings (copy from global if not)
   const { data: existing } = await supabase
     .from('element_section_mappings')
@@ -39,7 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .from('element_section_mappings')
     .insert({
       element_group_id: elementGroupId,
-      section_key: sectionKey,
+      section_id: sectionData.id,
       assessment_id: assessmentId,
     })
     .select()
@@ -75,6 +86,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     );
   }
 
+  // Get section ID from key
+  const { data: sectionData } = await supabase
+    .from('sections')
+    .select('id')
+    .eq('key', sectionKey)
+    .single();
+
+  if (!sectionData) {
+    return NextResponse.json({ error: 'Section not found' }, { status: 404 });
+  }
+
   // First, ensure this assessment has customized mappings (copy from global if not)
   const { data: existing } = await supabase
     .from('element_section_mappings')
@@ -96,7 +118,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     .from('element_section_mappings')
     .delete()
     .eq('element_group_id', elementGroupId)
-    .eq('section_key', sectionKey)
+    .eq('section_id', sectionData.id)
     .eq('assessment_id', assessmentId);
 
   if (error) {

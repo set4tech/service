@@ -143,3 +143,8 @@ next-env.d.ts
 cbc_CA_2025.json
 
 backups/*
+
+# CBC scraper comparison files (temporary)
+cbc_*_new.json
+cbc_*_normalized.json
+diff_report.json

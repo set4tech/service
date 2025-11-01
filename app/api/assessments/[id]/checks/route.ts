@@ -12,9 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Join with element_groups to get element_group_name and sections to get floorplan_relevant and never_relevant
     let query = supabase
       .from('checks')
-      .select(
-        '*, element_groups(name), sections!code_section_key(floorplan_relevant, never_relevant)'
-      )
+      .select('*, element_groups(name), sections!section_id(floorplan_relevant, never_relevant)')
       .eq('assessment_id', id)
       .limit(20000); // Override Supabase default 1000 row limit
 
@@ -40,9 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Build base query for checks with element_groups and sections joins
       let checksQuery = supabase
         .from('checks')
-        .select(
-          '*, element_groups(name), sections!code_section_key(floorplan_relevant, never_relevant)'
-        )
+        .select('*, element_groups(name), sections!section_id(floorplan_relevant, never_relevant)')
         .eq('assessment_id', id)
         .limit(20000); // Override Supabase default 1000 row limit
 
@@ -81,14 +77,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       // Fetch latest analysis runs and screenshots for all checks
-      const checkIds = filteredChecksData.map((c: any) => c.id);
+      // Use JOIN filter on assessment_id instead of passing check IDs (avoids URL length limits)
       const [{ data: allAnalysisRuns }, { data: allScreenshots }] = await Promise.all([
         supabase
           .from('analysis_runs')
           .select(
-            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, checks!inner(assessment_id)'
           )
-          .in('check_id', checkIds)
+          .eq('checks.assessment_id', id)
           .order('run_number', { ascending: false }),
         supabase
           .from('screenshot_check_assignments')
@@ -96,10 +92,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             `
             check_id,
             is_original,
-            screenshots (*)
+            screenshots (*),
+            checks!inner(assessment_id)
           `
           )
-          .in('check_id', checkIds)
+          .eq('checks.assessment_id', id)
           .order('screenshots(created_at)', { ascending: true }),
       ]);
 
@@ -176,7 +173,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Get sections that match the search pattern (search in text field only, paragraphs is JSONB)
       const { data: matchingSections, error: sectionsError } = await supabase
         .from('sections')
-        .select('key')
+        .select('id')
         .eq('never_relevant', false)
         .ilike('text', `%${searchPattern}%`);
 
@@ -187,12 +184,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log('[SEARCH] Sections matching content:', matchingSections?.length);
 
-      // Create a set of matching section keys
-      const matchingSectionKeys = new Set(matchingSections?.map((s: any) => s.key) || []);
+      // Create a set of matching section IDs
+      const matchingSectionIds = new Set(matchingSections?.map((s: any) => s.id) || []);
 
       // Get checks that reference matching sections
       const checksMatchingSectionContent =
-        mappedChecks.filter((check: any) => matchingSectionKeys.has(check.code_section_key)) || [];
+        mappedChecks.filter((check: any) => matchingSectionIds.has(check.section_id)) || [];
 
       console.log('[SEARCH] Checks matching section content:', checksMatchingSectionContent.length);
 
@@ -246,22 +243,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       `[CHECKS API] Fetched ${allChecks.length} checks in ${Math.ceil(allChecks.length / batchSize)} batches`
     );
 
-    // Filter out checks for sections marked as never_relevant
-    const filteredChecks = (allChecks || []).filter((check: any) => {
-      return check.sections?.never_relevant !== true;
-    });
-
-    if (filteredChecks.length < (allChecks?.length || 0)) {
-      console.log(
-        '[CHECKS API] Filtered out',
-        (allChecks?.length || 0) - filteredChecks.length,
-        'never_relevant checks'
-      );
-    }
-
     // Fetch screenshots for all checks via junction table
-    const checkIds = filteredChecks.map((c: any) => c.id);
-    console.log('[CHECKS API] Fetching screenshots for', checkIds.length, 'checks');
+    // Use JOIN filter on assessment_id instead of passing 256+ check IDs (avoids URL length limits)
 
     const { data: allScreenshots, error: screenshotsError } = await supabase
       .from('screenshot_check_assignments')
@@ -269,10 +252,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         `
         check_id,
         is_original,
-        screenshots (*)
+        screenshots (*),
+        checks!inner(assessment_id)
       `
       )
-      .in('check_id', checkIds)
+      .eq('checks.assessment_id', id)
       .order('screenshots(created_at)', { ascending: true });
 
     if (screenshotsError) {
@@ -282,15 +266,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         totalAssignments: allScreenshots?.length || 0,
         uniqueChecks: new Set(allScreenshots?.map((a: any) => a.check_id)).size,
       });
-
-      // Log a sample of assignments
-      if (allScreenshots && allScreenshots.length > 0) {
-        console.log('[CHECKS API] Sample assignments:', allScreenshots.slice(0, 3));
-      }
     }
 
     // Sort by floorplan_relevant first (true comes first), then by code_section_number
-    const sortedChecks = filteredChecks.sort((a: any, b: any) => {
+    const sortedChecks = allChecks.sort((a: any, b: any) => {
       const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
       const bFloorplanRelevant = b.sections?.floorplan_relevant ?? false;
 
@@ -303,14 +282,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return (a.code_section_number || '').localeCompare(b.code_section_number || '');
     });
 
-    // Fetch latest analysis runs for all checks (reusing checkIds from above)
-    const { data: allAnalysisRuns } = await supabase
-      .from('analysis_runs')
-      .select(
-        'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations'
-      )
-      .in('check_id', checkIds)
-      .order('run_number', { ascending: false });
+    let allAnalysisRuns = null;
+
+    // Fetch analysis runs using JOIN filter on assessment_id (avoids URL length limits)
+    if (sortedChecks.length > 0) {
+      try {
+        const result = await supabase
+          .from('analysis_runs')
+          .select(
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, checks!inner(assessment_id)'
+          )
+          .eq('checks.assessment_id', id)
+          .order('run_number', { ascending: false });
+
+        allAnalysisRuns = result.data;
+      } catch (error) {
+        console.error('[CHECKS API] ❌ Exception fetching analysis runs:', error);
+      }
+    } else {
+      console.log('[CHECKS API] No check IDs to fetch analysis runs for');
+    }
 
     // Create analysis map - get latest run per check (highest run_number)
     const analysisMap = new Map();
@@ -319,6 +310,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         analysisMap.set(run.check_id, run);
       }
     });
+
+    console.log('[CHECKS API] Analysis map size:', analysisMap.size);
 
     // Create screenshots map
     const screenshotsMap = new Map<string, any[]>();

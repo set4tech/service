@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
           check_id,
           is_original,
           assigned_at
-        )
+        ),
+        element_groups(id, name, slug)
       `
       )
       .eq('screenshot_check_assignments.check_id', checkId);
@@ -56,7 +57,8 @@ export async function GET(req: NextRequest) {
             code_section_number,
             code_section_title
           )
-        )
+        ),
+        element_groups(id, name, slug)
       `
       )
       .eq('screenshot_check_assignments.checks.assessment_id', assessmentId);

@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export async function GET() {
   const supabase = supabaseAdmin();
 
-  // Get element groups with section counts
+  // Get element groups
   const { data: groups, error: groupsError } = await supabase
     .from('element_groups')
     .select('*')
@@ -14,20 +14,28 @@ export async function GET() {
     return NextResponse.json({ error: groupsError.message }, { status: 500 });
   }
 
-  // Get section counts for each group
-  const groupsWithCounts = await Promise.all(
-    (groups || []).map(async group => {
-      const { count } = await supabase
-        .from('element_section_mappings')
-        .select('*', { count: 'exact', head: true })
-        .eq('element_group_id', group.id);
+  // Get all section counts in a single query
+  const { data: mappings, error: mappingsError } = await supabase
+    .from('element_section_mappings')
+    .select('element_group_id');
 
-      return {
-        ...group,
-        section_count: count || 0,
-      };
-    })
+  if (mappingsError) {
+    return NextResponse.json({ error: mappingsError.message }, { status: 500 });
+  }
+
+  // Count sections per group in memory (much faster than N queries)
+  const countsByGroup = (mappings || []).reduce(
+    (acc, mapping) => {
+      acc[mapping.element_group_id] = (acc[mapping.element_group_id] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
   );
+
+  const groupsWithCounts = (groups || []).map(group => ({
+    ...group,
+    section_count: countsByGroup[group.id] || 0,
+  }));
 
   return NextResponse.json({ element_groups: groupsWithCounts });
 }

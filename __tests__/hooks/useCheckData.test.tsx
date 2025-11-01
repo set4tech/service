@@ -29,7 +29,11 @@ describe('useCheckData hook behavior', () => {
         '/api/checks?assessment_id': siblings,
         '/api/code-sections/': createMockCodeSection(), // Updated endpoint
         '/api/checks/check-1/analysis-runs': { runs: [] },
-        '/api/checks/check-1/assessment-progress': { inProgress: false },
+        '/api/checks/check-1/full': {
+          check: mainCheck,
+          analysisRuns: [],
+          progress: { inProgress: false, completed: 0, total: 0, batchGroupId: null },
+        },
       });
 
       // Integration test: verify the data loading logic works
@@ -70,7 +74,11 @@ describe('useCheckData hook behavior', () => {
         '/api/checks/test-check-id': { check: standaloneCheck },
         '/api/code-sections/': createMockCodeSection(), // Updated endpoint
         '/api/checks/test-check-id/analysis-runs': { runs: [] },
-        '/api/checks/test-check-id/assessment-progress': { inProgress: false },
+        '/api/checks/test-check-id/full': {
+          check: standaloneCheck,
+          analysisRuns: [],
+          progress: { inProgress: false, completed: 0, total: 0, batchGroupId: null },
+        },
       });
 
       expect(standaloneCheck.element_group_id).toBeNull();

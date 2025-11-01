@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
-import type { Check, Screenshot, ElementGroup } from '@/types/database';
+import { useEffect, useState, useMemo } from 'react';
+import type { Check, Screenshot } from '@/types/database';
 import Modal from '@/components/ui/Modal';
 import { AssignScreenshotModal } from './AssignScreenshotModal';
 
@@ -29,51 +29,50 @@ export function ScreenshotGallery({
 }) {
   const [shots, setShots] = useState<Screenshot[]>((check as any).screenshots || []);
   const [filter, setFilter] = useState<'all' | 'plan' | 'elevation'>('all');
-  const [elementGroups, setElementGroups] = useState<ElementGroup[]>([]);
   const [preview, setPreview] = useState<Screenshot | null>(null);
   const [assigningScreenshot, setAssigningScreenshot] = useState<Screenshot | null>(null);
   const [presignedUrls, setPresignedUrls] = useState<
     Record<string, { screenshot: string; thumbnail: string }>
   >({});
 
-  // Fetch element groups
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/element-groups');
-        const data = await res.json();
-        setElementGroups(data.element_groups || []);
-      } catch (error) {
-        console.error('Failed to fetch element groups:', error);
-      }
-    })();
-  }, []);
+  // Track screenshots from check prop - use screenshot IDs for reliable change detection
+  // This avoids issues with array reference equality while being more efficient than deep comparison
+  const checkScreenshots = (check as any).screenshots;
+  const screenshotIds = useMemo(
+    () => (checkScreenshots ? checkScreenshots.map((s: Screenshot) => s.id).join(',') : ''),
+    [checkScreenshots]
+  );
 
+  // Update gallery whenever check screenshots change (e.g., when a new screenshot is added via 'c' key)
+  // We use screenshotIds to detect changes reliably without deep comparison
   useEffect(() => {
-    console.log('[ScreenshotGallery] 🔍 Check object:', {
-      checkId: check.id,
-      instanceLabel: (check as any).instance_label || '(parent)',
-      parentCheckId: (check as any).parent_check_id || null,
-      hasScreenshots: !!(check as any).screenshots,
-      screenshotsCount: (check as any).screenshots?.length || 0,
-      refreshKey,
-    });
+    if (checkScreenshots) {
+      console.log(
+        '[ScreenshotGallery] 📦 Updating from check prop:',
+        checkScreenshots.length,
+        'screenshots'
+      );
+      setShots(checkScreenshots);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [check.id, screenshotIds]);
 
-    // Always fetch from API to get latest assignments
-    // (refreshKey changes when screenshots are assigned/modified)
-    console.log('[ScreenshotGallery] 📡 Fetching screenshots from API for check:', check.id);
+  // Refetch when refreshKey changes (e.g., when a screenshot is assigned/unassigned to this check)
+  // Note: New screenshots trigger via check.screenshots prop updates (above effect)
+  useEffect(() => {
+    if (refreshKey === 0) return; // Skip initial render
+
+    console.log(
+      '[ScreenshotGallery] 📡 Refetching screenshots due to refreshKey change:',
+      refreshKey
+    );
     (async () => {
       const res = await fetch(`/api/screenshots?check_id=${check.id}`);
       const { screenshots } = await res.json();
-      console.log(
-        '[ScreenshotGallery] ✅ Fetched screenshots from API:',
-        screenshots?.length,
-        'for check:',
-        check.id
-      );
+      console.log('[ScreenshotGallery] ✅ Fetched screenshots:', screenshots?.length);
       setShots(screenshots || []);
     })();
-  }, [check.id, refreshKey]);
+  }, [refreshKey, check.id]);
 
   // Fetch presigned URLs for screenshots
   useEffect(() => {
@@ -143,7 +142,7 @@ export function ScreenshotGallery({
         {filteredShots.map(s => {
           const urls = presignedUrls[s.id];
           const isOriginal = (s as any).is_original !== false; // Default to true if not set
-          const elementGroup = elementGroups.find(g => g.id === s.element_group_id);
+          const elementGroup = (s as any).element_groups; // Now loaded with screenshot
           return (
             <figure key={s.id} className="w-40">
               <button

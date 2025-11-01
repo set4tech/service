@@ -90,7 +90,7 @@ export async function GET() {
         // Fetch all checks with their section info
         const { data: checks } = await supabase
           .from('checks')
-          .select('id, code_section_key, code_section_number, code_section_title')
+          .select('id, section_id, code_section_number, code_section_title')
           .in('id', checkIds)
           .order('code_section_number', { ascending: true });
 
@@ -101,49 +101,47 @@ export async function GET() {
         console.log(`[Queue] Creating ${checks.length} batch jobs for element "${instanceLabel}"`);
 
         // Fetch all sections in parallel
-        const sectionKeys = checks.map(c => c.code_section_key);
+        const sectionIds = checks.map(c => c.section_id);
         const { data: sections } = await supabase
           .from('sections')
-          .select('key, number, title, text, paragraphs')
-          .in('key', sectionKeys)
+          .select('id, key, number, title, text, paragraphs')
+          .in('id', sectionIds)
           .eq('never_relevant', false);
 
-        const sectionMap = new Map(sections?.map(s => [s.key, s]) || []);
+        const sectionMap = new Map(sections?.map(s => [s.id, s]) || []);
 
         // Fetch all references for these sections
-        console.log(`[Queue] Fetching references for ${sectionKeys.length} sections`);
+        console.log(`[Queue] Fetching references for ${sectionIds.length} sections`);
         const { data: references } = await supabase
           .from('section_references')
-          .select('source_section_key, target_section_key')
-          .in('source_section_key', sectionKeys);
+          .select('source_section_id, target_section_id')
+          .in('source_section_id', sectionIds);
 
-        // Get all unique referenced section keys
-        const referencedKeys = Array.from(
-          new Set(references?.map(r => r.target_section_key) || [])
-        );
-        console.log(`[Queue] Found ${referencedKeys.length} unique referenced sections`);
+        // Get all unique referenced section IDs
+        const referencedIds = Array.from(new Set(references?.map(r => r.target_section_id) || []));
+        console.log(`[Queue] Found ${referencedIds.length} unique referenced sections`);
 
         // Fetch the actual referenced section content
         let referencedSections: any[] = [];
-        if (referencedKeys.length > 0) {
+        if (referencedIds.length > 0) {
           const { data: refSections } = await supabase
             .from('sections')
-            .select('key, number, title, text, paragraphs')
-            .in('key', referencedKeys)
+            .select('id, key, number, title, text, paragraphs')
+            .in('id', referencedIds)
             .eq('never_relevant', false);
           referencedSections = refSections || [];
         }
 
         // Build maps for easy lookup
-        const referencedSectionMap = new Map(referencedSections.map(s => [s.key, s]));
+        const referencedSectionMap = new Map(referencedSections.map(s => [s.id, s]));
         const referencesMap = new Map<string, string[]>();
 
         // Group references by source section
         references?.forEach(ref => {
-          if (!referencesMap.has(ref.source_section_key)) {
-            referencesMap.set(ref.source_section_key, []);
+          if (!referencesMap.has(ref.source_section_id)) {
+            referencesMap.set(ref.source_section_id, []);
           }
-          referencesMap.get(ref.source_section_key)!.push(ref.target_section_key);
+          referencesMap.get(ref.source_section_id)!.push(ref.target_section_id);
         });
 
         // Get run counts for all checks in parallel
@@ -161,7 +159,7 @@ export async function GET() {
         for (let i = 0; i < checks.length; i++) {
           const check = checks[i];
           const batchNum = i + 1;
-          const section = sectionMap.get(check.code_section_key);
+          const section = sectionMap.get(check.section_id);
 
           let codeSection: any;
           if (section) {
@@ -169,10 +167,10 @@ export async function GET() {
             const paragraphsText = Array.isArray(paragraphs) ? paragraphs.join('\n\n') : '';
 
             // Get referenced sections for this section
-            const refKeys = referencesMap.get(section.key) || [];
-            const references = refKeys
-              .map(refKey => {
-                const refSection = referencedSectionMap.get(refKey);
+            const refIds = referencesMap.get(section.id) || [];
+            const references = refIds
+              .map(refId => {
+                const refSection = referencedSectionMap.get(refId);
                 if (refSection) {
                   const refParagraphs = refSection.paragraphs || [];
                   const refParagraphsText = Array.isArray(refParagraphs)
@@ -200,7 +198,7 @@ export async function GET() {
             };
           } else {
             codeSection = {
-              key: check.code_section_key || 'unknown',
+              key: 'unknown',
               number: check.code_section_number || '',
               title: check.code_section_title || '',
               text: 'Section text not available',
@@ -271,7 +269,7 @@ export async function GET() {
         // Check if manual override exists - if so, skip this job
         const { data: checkData } = await supabase
           .from('checks')
-          .select('manual_status, status, check_type')
+          .select('manual_status, status')
           .eq('id', checkId)
           .single();
 

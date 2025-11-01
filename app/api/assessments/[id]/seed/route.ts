@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import Anthropic from '@anthropic-ai/sdk';
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   console.log('[Seed API] Starting seed for assessment:', id);
   const supabase = supabaseAdmin();
 
   try {
-    // 1. Fetch assessment + project + variables
+    // 1. Fetch assessment with selected chapters
     const { data: assessment, error: assessmentError } = await supabase
       .from('assessments')
       .select(
@@ -16,11 +15,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         id,
         project_id,
         seeding_status,
-        sections_total,
-        sections_processed,
+        selected_chapter_ids,
         projects (
           id,
-          selected_code_ids,
           extracted_variables
         )
       `
@@ -33,216 +30,157 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
 
-    const variables = (assessment.projects as any)?.extracted_variables ?? {};
-    const selectedCodes: string[] = (assessment.projects as any)?.selected_code_ids ?? [
-      'ICC+CBC_Chapter11A_11B+2025+CA',
-    ];
-
-    // Map virtual 11A/11B codes to the real combined code and track which chapters to include
-    const codeMapping: { [key: string]: string } = {
-      'ICC+CBC_Chapter11A+2025+CA': 'ICC+CBC_Chapter11A_11B+2025+CA',
-      'ICC+CBC_Chapter11B+2025+CA': 'ICC+CBC_Chapter11A_11B+2025+CA',
-    };
-
-    const realCodeIds = Array.from(new Set(selectedCodes.map(id => codeMapping[id] || id)));
-    const chapterFilters: Array<{ name: string; test: (num: string) => boolean }> = [];
-
-    // Determine which chapters to include based on selection
-    if (selectedCodes.includes('ICC+CBC_Chapter11A+2025+CA')) {
-      chapterFilters.push({
-        name: '11A',
-        test: num => /^11\d+A($|\.)/.test(num),
-      });
-    }
-    if (selectedCodes.includes('ICC+CBC_Chapter11B+2025+CA')) {
-      chapterFilters.push({
-        name: '11B',
-        test: num => num.startsWith('11B-'),
-      });
-    }
-    if (selectedCodes.includes('ICC+CBC_Chapter11A_11B+2025+CA')) {
-      chapterFilters.push(
-        {
-          name: '11A',
-          test: num => /^11\d+A($|\.)/.test(num),
-        },
-        {
-          name: '11B',
-          test: num => num.startsWith('11B-'),
-        }
+    // Check if assessment has selected chapters
+    const chapterIds = assessment.selected_chapter_ids || [];
+    if (chapterIds.length === 0) {
+      console.log('[Seed API] No chapters selected for assessment');
+      return NextResponse.json(
+        { error: 'No chapters selected for this assessment. Please select chapters first.' },
+        { status: 400 }
       );
     }
 
-    // 2. Fetch ALL sections for selected codes (filter by drawing_assessable and never_relevant)
-    const { data: allSections, error: sectionsError } = await supabase
+    console.log('[Seed API] Selected chapter IDs:', chapterIds);
+
+    // Check total sections before filtering
+    const { count: totalSections } = await supabase
       .from('sections')
-      .select('*')
-      .in('code_id', realCodeIds)
+      .select('*', { count: 'exact', head: true })
+      .in('chapter_id', chapterIds)
       .eq('drawing_assessable', true)
-      .eq('never_relevant', false)
-      .order('number');
+      .eq('never_relevant', false);
 
-    // Get element-mapped sections to exclude from section-by-section checks
-    // Check assessment-specific mappings first, then fall back to global
-    const { data: assessmentMappings } = await supabase
-      .from('element_section_mappings')
-      .select('section_key')
-      .eq('assessment_id', id);
+    console.log(`[Seed API] Total sections (before text filter): ${totalSections}`);
 
-    let elementSectionKeys: Set<string>;
+    // Check if already completed
+    if (assessment.seeding_status === 'completed') {
+      console.log('[Seed API] Assessment already seeded, returning early');
+      const { count } = await supabase
+        .from('checks')
+        .select('*', { count: 'exact', head: true })
+        .eq('assessment_id', id);
 
-    if (assessmentMappings && assessmentMappings.length > 0) {
-      // Use assessment-specific mappings
-      elementSectionKeys = new Set(assessmentMappings.map(m => m.section_key));
-    } else {
-      // Fall back to global mappings
-      const { data: globalMappings } = await supabase
-        .from('element_section_mappings')
-        .select('section_key')
-        .is('assessment_id', null);
-      elementSectionKeys = new Set(globalMappings?.map(m => m.section_key) || []);
+      return NextResponse.json({
+        status: 'completed',
+        checks_created: count || 0,
+        message: 'Assessment already seeded',
+      });
     }
 
-    if (sectionsError || !allSections) {
-      console.error('[Seed API] Database error:', sectionsError);
+    // Set status to in_progress
+    await supabase.from('assessments').update({ seeding_status: 'in_progress' }).eq('id', id);
+
+    // 2. Fetch all sections for the selected chapters
+    // Exclude sections without body text (header-only sections like "1001")
+    const { data: sections, error: sectionsError } = await supabase
+      .from('sections')
+      .select('*')
+      .in('chapter_id', chapterIds)
+      .eq('drawing_assessable', true)
+      .eq('never_relevant', false)
+      .not('text', 'is', null)
+      .neq('text', '')
+      .order('number');
+
+    if (sectionsError) {
+      console.error('[Seed API] Error fetching sections:', sectionsError);
+      await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+
       return NextResponse.json(
-        { error: 'Database error: ' + sectionsError?.message },
+        { error: 'Database error: ' + sectionsError.message },
         { status: 500 }
       );
     }
 
-    // Filter sections by chapter if needed, and exclude element-mapped sections and general/scope/definitions sections
-    const filteredSections =
-      chapterFilters.length > 0
-        ? allSections.filter(
-            s =>
-              chapterFilters.some(filter => filter.test(s.number)) &&
-              !elementSectionKeys.has(s.key) &&
-              !/(general|scope|definitions?|defined terms)/i.test(s.title)
-          )
-        : allSections.filter(
-            s =>
-              !elementSectionKeys.has(s.key) &&
-              !/(general|scope|definitions?|defined terms)/i.test(s.title)
-          );
-
-    if (filteredSections.length === 0) {
-      return NextResponse.json(
-        { error: 'No sections found', details: `Selected codes: ${selectedCodes.join(', ')}` },
-        { status: 404 }
-      );
-    }
-
-    // 3. Check if this is the first request (initialize) or a continuation
-    const isFirstRequest =
-      !assessment.seeding_status || assessment.seeding_status === 'not_started';
-    const BATCH_SIZE = 10;
-
-    if (isFirstRequest) {
-      // Initialize status and create element templates
-      await supabase
-        .from('assessments')
-        .update({
-          seeding_status: 'in_progress',
-          sections_total: filteredSections.length,
-          sections_processed: 0,
-        })
-        .eq('id', id);
-
-      // Element groups are available for user to create instances from
-      // No templates needed - user creates instances directly via the UI
-    }
-
-    // 4. Get current progress
-    const currentProcessed = assessment.sections_processed || 0;
-    const currentBatch = filteredSections.slice(currentProcessed, currentProcessed + BATCH_SIZE);
-
-    if (currentBatch.length === 0) {
-      // All done
+    if (!sections || sections.length === 0) {
+      console.log('[Seed API] No sections found for provided chapter IDs');
       await supabase.from('assessments').update({ seeding_status: 'completed' }).eq('id', id);
 
       return NextResponse.json({
         status: 'completed',
-        processed: currentProcessed,
-        total: filteredSections.length,
+        checks_created: 0,
+        message: 'No assessable sections found for selected chapters',
       });
     }
 
-    // 5. Process current batch
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      baseURL: 'https://anthropic.helicone.ai',
-      defaultHeaders: {
-        'Helicone-Auth': `Bearer ${process.env.HELICONE_API_KEY}`,
-        'Helicone-Property-Tag': 'section-applicability-filtering',
-      },
-    });
+    console.log(
+      `[Seed API] Found ${sections.length} sections with body text to seed (excluded ${(totalSections || 0) - sections.length} header-only sections)`
+    );
 
-    const prompt = buildBatchPrompt(currentBatch, variables);
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 2000,
-      temperature: 0.1,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    // 3. Check which sections already have checks
+    const { data: existingChecks } = await supabase
+      .from('checks')
+      .select('section_id')
+      .eq('assessment_id', id);
 
-    const decisionsText = response.content[0].type === 'text' ? response.content[0].text : '[]';
-    const decisions = JSON.parse(decisionsText);
+    const existingIds = new Set((existingChecks || []).map(c => c.section_id));
+    const sectionsToAdd = sections.filter(s => !existingIds.has(s.id));
 
-    // Filter applicable sections
-    const applicable = currentBatch.filter((section, idx) => decisions[idx]?.applies === true);
+    console.log(
+      `[Seed API] ${existingIds.size} checks already exist, adding ${sectionsToAdd.length} new checks`
+    );
 
-    // Insert checks for applicable sections
-    if (applicable.length > 0) {
-      const checkRows = applicable.map(s => ({
+    let checksCreated = 0;
+
+    // Only insert if there are new sections to add
+    if (sectionsToAdd.length > 0) {
+      const checkRows = sectionsToAdd.map(s => ({
         assessment_id: id,
-        code_section_key: s.key,
+        section_id: s.id,
         code_section_number: s.number,
         code_section_title: s.title,
         check_name: `${s.number} - ${s.title}`,
         status: 'pending',
-        check_type: 'section',
         instance_label: null, // Section checks have no instance label
       }));
 
-      // Use insert since we're seeding - duplicates shouldn't happen during initial seed
-      const { error: insertError } = await supabase.from('checks').insert(checkRows);
+      // Insert checks - duplicates are prevented by unique constraint
+      // If duplicates exist (from race conditions), we'll catch the error and continue
+      const { data: insertedData, error: insertError } = await supabase
+        .from('checks')
+        .insert(checkRows)
+        .select('id');
 
       if (insertError) {
-        console.error('[Seed API] Error inserting checks:', insertError);
-        // Log but continue - might be duplicate keys if user refreshed during seeding
+        // Code 23505 is duplicate key violation - this is OK in race conditions
+        if (insertError.code === '23505') {
+          console.log('[Seed API] Some checks already exist (race condition), continuing...');
+          checksCreated = 0; // These checks already existed
+        } else {
+          console.error('[Seed API] Error inserting checks:', insertError);
+          await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+
+          return NextResponse.json(
+            { error: 'Failed to create checks: ' + insertError.message },
+            { status: 500 }
+          );
+        }
+      } else {
+        checksCreated = insertedData?.length || 0;
+        console.log(`[Seed API] Successfully created ${checksCreated} checks`);
       }
     }
 
-    // Log decisions
-    const logRows = currentBatch.map((s, idx) => ({
-      assessment_id: id,
-      section_key: s.key,
-      decision: decisions[idx]?.applies || false,
-      decision_source: 'ai',
-      decision_confidence: decisions[idx]?.confidence || 'low',
-      reasons: [decisions[idx]?.reason || 'No reason provided'],
-      details: {},
-      building_params_hash: 'ai_hash',
-      variables_snapshot: variables,
-    }));
+    // 4. Mark seeding as completed
+    await supabase.from('assessments').update({ seeding_status: 'completed' }).eq('id', id);
 
-    await supabase.from('section_applicability_log').insert(logRows);
+    console.log(`[Seed API] Seeding completed. Created ${checksCreated} new checks`);
 
-    // Update progress
-    const newProcessed = currentProcessed + currentBatch.length;
-    await supabase.from('assessments').update({ sections_processed: newProcessed }).eq('id', id);
-
-    // Return status
     return NextResponse.json({
-      status: 'in_progress',
-      processed: newProcessed,
-      total: filteredSections.length,
-      included: applicable.length,
-      batch_size: currentBatch.length,
+      status: 'completed',
+      checks_created: checksCreated,
+      message: 'Assessment seeded successfully',
     });
   } catch (error) {
-    console.error('Error seeding assessment:', error);
+    console.error('[Seed API] Unexpected error:', error);
+
+    // Try to mark as failed
+    try {
+      await supabaseAdmin().from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+    } catch (updateError) {
+      console.error('[Seed API] Failed to update status to failed:', updateError);
+    }
+
     return NextResponse.json(
       {
         error: 'Failed to seed assessment',
@@ -251,49 +189,4 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 500 }
     );
   }
-}
-
-function buildBatchPrompt(sections: any[], variables: any): string {
-  // Extract building characteristics
-  const occ = variables?.building_characteristics?.occupancy_classification?.value || 'Unknown';
-  const size = variables?.building_characteristics?.building_size_sf?.value || 'Unknown';
-  const stories = variables?.building_characteristics?.number_of_stories?.value || 'Unknown';
-  const workType = variables?.project_scope?.work_type?.value || 'Unknown';
-  const hasParking = variables?.building_characteristics?.has_parking?.value;
-  const facilityCategory = variables?.facility_type?.category?.value || 'Unknown';
-
-  return `You are a building code compliance expert analyzing which code sections apply to this project.
-
-PROJECT DETAILS:
-- Occupancy: ${occ}
-- Building Size: ${size} sq ft, ${stories} stories
-- Work Type: ${workType}
-- Has Parking: ${hasParking ? 'Yes' : 'No'}
-- Facility Type: ${facilityCategory}
-
-ANALYZE THESE ${sections.length} SECTIONS:
-${sections
-  .map(
-    (s, i) => `
-${i + 1}. Section ${s.number}: ${s.title}
-   Text: ${(s.text || (s.paragraphs && Array.isArray(s.paragraphs) ? s.paragraphs.join(' ') : '') || 'N/A').slice(0, 500)}
-`
-  )
-  .join('\n')}
-
-For each section, determine if it applies to this building. Rules:
-- EXCLUDE if section is just a header (e.g., "GENERAL", "DEFINITIONS") with no substantive requirements
-- EXCLUDE if section is for a specific feature this building clearly doesn't have (e.g., "fishing pier" for an office building, "dispersion of railings on fishing platform")
-- INCLUDE if section contains requirements that could apply to this building type
-- Be conservative: when uncertain about applicability, INCLUDE it (prefer false positives over false negatives)
-
-Return ONLY a JSON array with ${sections.length} objects (one per section, in order):
-[
-  {
-    "section_number": "11B-xxx",
-    "applies": true,
-    "confidence": "high",
-    "reason": "Brief explanation in one sentence"
-  }
-]`;
 }

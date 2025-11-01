@@ -190,6 +190,7 @@ Individual building projects for customers.
 | `extraction_started_at`   | TIMESTAMPTZ            | When extraction started                                            |
 | `extraction_completed_at` | TIMESTAMPTZ            | When extraction completed                                          |
 | `extraction_error`        | TEXT                   | Error message if extraction failed                                 |
+| `report_password`         | TEXT                   | Password for accessing compliance reports (optional)               |
 | `created_at`              | TIMESTAMPTZ            | Creation timestamp                                                 |
 | `updated_at`              | TIMESTAMPTZ            | Last update timestamp                                              |
 
@@ -234,35 +235,40 @@ Individual compliance checks for code sections within an assessment. All checks 
 
 **Schema:**
 
-| Column                 | Type                           | Description                                                                    |
-| ---------------------- | ------------------------------ | ------------------------------------------------------------------------------ |
-| `id`                   | UUID PK                        | Primary key                                                                    |
-| `assessment_id`        | UUID FK → assessments.id       | Assessment reference (CASCADE delete)                                          |
-| `code_section_key`     | VARCHAR(255) FK → sections.key | Code section reference (RESTRICT delete)                                       |
-| `code_section_number`  | VARCHAR(100)                   | Section number (e.g., "11B-401.1")                                             |
-| `code_section_title`   | TEXT                           | Section title                                                                  |
-| `check_name`           | VARCHAR(255)                   | Custom check name                                                              |
-| `check_location`       | VARCHAR(255)                   | Location identifier                                                            |
-| `instance_label`       | TEXT                           | Groups element checks (e.g., "Door 1", "Door 2"); NULL for standalone sections |
-| `check_type`           | TEXT                           | Always 'section' (default 'section')                                           |
-| `element_group_id`     | UUID FK → element_groups.id    | Element group reference (SET NULL delete); NULL for standalone section checks  |
-| `human_readable_title` | TEXT                           | Optional human-readable title for the check                                    |
-| `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                                      |
-| `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                                   |
-| `status`               | VARCHAR(50)                    | Current status (default 'pending')                                             |
-| `requires_review`      | BOOLEAN                        | Requires human review (default FALSE)                                          |
-| `manual_override`      | TEXT                           | Manual judgment: compliant, non_compliant, not_applicable, or NULL             |
-| `manual_override_note` | TEXT                           | Explanation for manual override                                                |
-| `manual_override_at`   | TIMESTAMPTZ                    | When manual override was set                                                   |
-| `manual_override_by`   | TEXT                           | User who set the manual override                                               |
-| `created_at`           | TIMESTAMPTZ                    | Creation timestamp                                                             |
-| `updated_at`           | TIMESTAMPTZ                    | Last update timestamp (auto-updated by trigger)                                |
+| Column                 | Type                           | Description                                                                                  |
+| ---------------------- | ------------------------------ | -------------------------------------------------------------------------------------------- |
+| `id`                   | UUID PK                        | Primary key                                                                                  |
+| `assessment_id`        | UUID FK → assessments.id       | Assessment reference (CASCADE delete)                                                        |
+| `code_section_key`     | VARCHAR(255) FK → sections.key | Code section reference (RESTRICT delete)                                                     |
+| `code_section_number`  | VARCHAR(100)                   | Section number (e.g., "11B-401.1")                                                           |
+| `code_section_title`   | TEXT                           | Section title                                                                                |
+| `check_name`           | VARCHAR(255)                   | Custom check name                                                                            |
+| `check_location`       | VARCHAR(255)                   | Location identifier                                                                          |
+| `instance_label`       | TEXT                           | Groups element checks (e.g., "Door 1", "Door 2"); NULL for standalone sections               |
+| `check_type`           | TEXT                           | 'section' or 'element' (default 'section')                                                   |
+| `element_group_id`     | UUID FK → element_groups.id    | Element group reference (SET NULL delete); NULL for standalone section checks                |
+| `human_readable_title` | TEXT                           | Optional human-readable title for the check                                                  |
+| `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                                                    |
+| `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                                                 |
+| `status`               | VARCHAR(50)                    | Current status (default 'pending')                                                           |
+| `requires_review`      | BOOLEAN                        | Requires human review (default FALSE)                                                        |
+| `manual_status`        | TEXT                           | Manual judgment: compliant, non_compliant, not_applicable, insufficient_information, or NULL |
+| `manual_status_note`   | TEXT                           | Explanation for manual status                                                                |
+| `manual_status_at`     | TIMESTAMPTZ                    | When manual status was set                                                                   |
+| `manual_status_by`     | TEXT                           | User who set the manual status                                                               |
+| `is_excluded`          | BOOLEAN NOT NULL               | Whether check is excluded from assessment (default FALSE)                                    |
+| `excluded_reason`      | TEXT                           | Reason for exclusion                                                                         |
+| `created_at`           | TIMESTAMPTZ                    | Creation timestamp                                                                           |
+| `updated_at`           | TIMESTAMPTZ                    | Last update timestamp (auto-updated by trigger)                                              |
 
 **Architecture Notes:**
 
-- **Flat Structure**: All checks are section-level checks (no parent/child hierarchy)
-- **Element Grouping**: Multiple sections for the same element instance share `element_group_id` + `instance_label`
-- **Example**: "Door 1" has 10 section checks, all with `element_group_id='doors'` and `instance_label='Door 1'`
+- **Two Check Types**:
+  - `check_type='section'`: Traditional single-section checks
+  - `check_type='element'`: Element-based checks covering multiple sections
+- **Element Grouping**: Element checks use `element_group_id` + `instance_label` to group related sections
+- **Exclusion System**: `is_excluded` flag allows checks to be removed from assessment without deletion
+- **Example**: "Door 1" element check with `element_group_id='doors'` and `instance_label='Door 1'`
 
 **Indexes:**
 
@@ -270,14 +276,15 @@ Individual compliance checks for code sections within an assessment. All checks 
 - `idx_checks_code_section_key` on `code_section_key`
 - `idx_checks_type` on `check_type`
 - `idx_checks_element_group` on `element_group_id`
-- `idx_checks_element_sections` GIN on `element_sections`
-- `idx_checks_manual_override` on `manual_override` (partial WHERE NOT NULL)
+- `idx_checks_manual_status` on `manual_status` (partial WHERE NOT NULL)
 - `unique_check_per_section` UNIQUE on `(assessment_id, code_section_number, instance_label)` WHERE `check_type='section' AND instance_label IS NOT NULL`
+- `unique_element_check` UNIQUE on `(assessment_id, code_section_key, instance_label)` WHERE `instance_label IS NOT NULL`
+- `unique_section_check` UNIQUE on `(assessment_id, code_section_key)` WHERE `instance_label IS NULL`
 
 **Constraints:**
 
-- `checks_check_type_check`: check_type must be 'section' or 'element' (deprecated: all checks are 'section' now)
-- `checks_manual_override_check`: manual_override must be 'compliant', 'non_compliant', 'not_applicable', or 'insufficient_information'
+- `checks_check_type_check`: check_type must be 'section' or 'element'
+- `checks_manual_status_check`: manual_status must be 'compliant', 'non_compliant', 'not_applicable', or 'insufficient_information'
 
 **Trigger:**
 
@@ -303,24 +310,27 @@ Reusable groupings of related code sections by building element.
 
 ---
 
-### `element_group_section_mappings`
+### `element_section_mappings`
 
-Maps element groups to applicable code sections.
+Maps element groups to applicable code sections. Supports both global mappings and assessment-specific overrides.
 
 **Schema:**
 
-| Column             | Type                           | Description                              |
-| ------------------ | ------------------------------ | ---------------------------------------- |
-| `id`               | UUID PK                        | Primary key                              |
-| `element_group_id` | UUID FK → element_groups.id    | Element group reference (CASCADE delete) |
-| `section_key`      | VARCHAR(255) FK → sections.key | Section reference (CASCADE delete)       |
-| `created_at`       | TIMESTAMPTZ                    | Creation timestamp                       |
+| Column             | Type                           | Description                                                     |
+| ------------------ | ------------------------------ | --------------------------------------------------------------- |
+| `id`               | UUID PK                        | Primary key                                                     |
+| `element_group_id` | UUID FK → element_groups.id    | Element group reference (CASCADE delete)                        |
+| `section_key`      | VARCHAR(255) FK → sections.key | Section reference (CASCADE delete)                              |
+| `assessment_id`    | UUID FK → assessments.id       | Assessment reference (CASCADE delete); NULL for global mappings |
+| `created_at`       | TIMESTAMPTZ                    | Creation timestamp                                              |
 
 **Indexes:**
 
 - `idx_element_section_mappings_element` on `element_group_id`
 - `idx_element_section_mappings_section` on `section_key`
-- `element_group_section_mappings_element_group_id_section_key_key` UNIQUE on `(element_group_id, section_key)`
+- `idx_element_mappings_assessment` on `assessment_id`
+- `element_section_mappings_global_unique` UNIQUE on `(element_group_id, section_key)` WHERE `assessment_id IS NULL`
+- `element_section_mappings_assessment_unique` UNIQUE on `(element_group_id, section_key, assessment_id)` WHERE `assessment_id IS NOT NULL`
 
 **Available Element Groups:**
 
@@ -336,8 +346,14 @@ Maps element groups to applicable code sections.
 - Changes in Level (changes-in-level)
 - Turning Spaces (turning-spaces)
 
+**Mapping Strategy:**
+
+- **Global mappings** (`assessment_id IS NULL`): Default section mappings for each element group
+- **Assessment-specific mappings** (`assessment_id` set): Override or extend global mappings for specific assessments
+- Query order: Check assessment-specific first, fall back to global
+
 **Example:**
-Element "Doors" maps to sections like 11B-404.2.6, 11B-404.2.7, etc.
+Element "Doors" globally maps to sections like 11B-404.2.6, 11B-404.2.7, etc. Individual assessments can add or override these mappings.
 
 ---
 
@@ -367,8 +383,6 @@ Historical record of AI assessments for each check.
 | `batch_number`               | INTEGER             | Batch number (1-indexed)                                   |
 | `total_batches`              | INTEGER             | Total batches in group                                     |
 | `section_keys_in_batch`      | TEXT[]              | Section keys assessed in this batch                        |
-| `human_override`             | BOOLEAN             | Deprecated (use checks.manual_override) (default FALSE)    |
-| `human_notes`                | TEXT                | Deprecated                                                 |
 | `executed_at`                | TIMESTAMPTZ         | When analysis was run (default now())                      |
 | `execution_time_ms`          | INTEGER             | Analysis duration in milliseconds                          |
 
@@ -584,39 +598,28 @@ Simplified check structure for the compliance viewer workflow, separate from the
 
 ---
 
-### `section_overrides`
+### `section_screenshots`
 
-Per-section compliance overrides within element checks.
+Screenshots associated with section checks in the compliance viewer workflow.
 
 **Schema:**
 
-| Column            | Type                | Description                                         |
-| ----------------- | ------------------- | --------------------------------------------------- |
-| `id`              | UUID PK             | Primary key                                         |
-| `check_id`        | UUID FK → checks.id | Check reference (CASCADE delete)                    |
-| `section_key`     | TEXT NOT NULL       | Section being overridden                            |
-| `section_number`  | TEXT NOT NULL       | Section number                                      |
-| `override_status` | TEXT NOT NULL       | Status: compliant, non_compliant, or not_applicable |
-| `note`            | TEXT                | Explanation for override                            |
-| `created_at`      | TIMESTAMPTZ         | Creation timestamp                                  |
-| `updated_at`      | TIMESTAMPTZ         | Last update timestamp (auto-updated by trigger)     |
+| Column             | Type                        | Description                                  |
+| ------------------ | --------------------------- | -------------------------------------------- |
+| `id`               | UUID PK                     | Primary key                                  |
+| `section_check_id` | UUID FK → section_checks.id | Section check reference (CASCADE delete)     |
+| `url`              | TEXT NOT NULL               | S3 URL to screenshot                         |
+| `instance_id`      | UUID                        | Instance identifier (for cloneable sections) |
+| `instance_name`    | VARCHAR(255)                | Instance name (e.g., "Door 1")               |
+| `analysis_result`  | JSONB                       | AI analysis results for this screenshot      |
+| `created_at`       | TIMESTAMPTZ                 | Creation timestamp (default now())           |
 
 **Indexes:**
 
-- `idx_section_overrides_check_id` on `check_id`
-- `idx_section_overrides_section_key` on `section_key`
-- `section_overrides_check_id_section_key_key` UNIQUE on `(check_id, section_key)`
-
-**Constraints:**
-
-- `section_overrides_override_status_check`: override_status must be 'compliant', 'non_compliant', or 'not_applicable'
-
-**Trigger:**
-
-- `section_overrides_updated_at`: Auto-updates `updated_at` on modification
+- `idx_section_screenshots_check_id` on `section_check_id`
 
 **Purpose:**
-Allows fine-grained overrides of individual sections within element-based checks (where one check covers multiple code sections).
+Stores screenshots for the compliance viewer workflow, supporting multiple instances of the same section check (e.g., multiple doors).
 
 ---
 
@@ -665,12 +668,6 @@ Allows fine-grained overrides of individual sections within element-based checks
        │                                  │ sections │
        │                                  └──────────┘
        │ 1:N
-       ├─────────┐
-       │         ▼
-       │    ┌───────────────────┐
-       │    │ section_overrides │
-       │    └───────────────────┘
-       │ 1:N
        ▼
 ┌──────────────┐
 │analysis_runs │
@@ -707,27 +704,27 @@ Allows fine-grained overrides of individual sections within element-based checks
 └──────┬──────────────┘
        │ 1:N
        ▼
-┌──────────────────┐
-│ section_checks   │
-└──────────────────┘
+┌──────────────────┐       ┌──────────────────────┐
+│ section_checks   │──────▶│ section_screenshots  │
+└──────────────────┘  1:N  └──────────────────────┘
 ```
 
 ## Key Patterns
 
-### Check Cloning (Template & Instances)
+### Check Instance Pattern
 
-- **Template**: `parent_check_id = NULL`, `instance_number = 0`
-- **Instances**: `parent_check_id` set, `instance_number >= 1`
-- Instances inherit `element_sections` from parent
-- Used for multiple instances of same element (e.g., Door 1, Door 2)
+- **Section checks**: `check_type='section'`, single code section per check
+- **Element checks**: `check_type='element'`, multiple sections assessed together
+- **Instance labeling**: Use `instance_label` to group multiple instances (e.g., "Door 1", "Door 2")
+- **Exclusion**: Use `is_excluded=true` to remove checks from assessment without deletion
 
-### Manual Override System
+### Manual Status System
 
-The `checks.manual_override` field allows human reviewers to override AI:
+The `checks.manual_status` field allows human reviewers to override AI:
 
 - Takes precedence over any `analysis_runs` results
 - Values: 'compliant', 'non_compliant', 'not_applicable', 'insufficient_information', or NULL
-- Includes timestamp (`manual_override_at`) and user tracking
+- Includes timestamp (`manual_status_at`) and user tracking (`manual_status_by`)
 - Setting to NULL reverts to AI assessment
 
 ### Screenshot Assignment
@@ -746,10 +743,10 @@ Assessment progress = `assessed_sections / total_sections`
 
 A check is considered "assessed" if:
 
-- It has a `manual_override` value (excluding 'not_applicable'), OR
+- It has a `manual_status` value (excluding 'not_applicable'), OR
 - It has at least one `analysis_run` with a `compliance_status`
 
-Checks marked as `not_applicable` are excluded from the total count.
+Checks with `is_excluded=true` or marked as `not_applicable` are excluded from the total count.
 
 ## Common Queries
 
@@ -758,10 +755,10 @@ Checks marked as `not_applicable` are excluded from the total count.
 ```sql
 SELECT
   a.*,
-  COUNT(c.id) FILTER (WHERE c.manual_override != 'not_applicable' OR c.manual_override IS NULL) as total_checks,
+  COUNT(c.id) FILTER (WHERE c.is_excluded = false AND (c.manual_status != 'not_applicable' OR c.manual_status IS NULL)) as total_checks,
   COUNT(c.id) FILTER (
-    WHERE (ar.compliance_status IS NOT NULL OR
-           (c.manual_override IS NOT NULL AND c.manual_override != 'not_applicable'))
+    WHERE c.is_excluded = false AND (ar.compliance_status IS NOT NULL OR
+           (c.manual_status IS NOT NULL AND c.manual_status != 'not_applicable'))
   ) as completed_checks
 FROM assessments a
 LEFT JOIN checks c ON c.assessment_id = a.id
@@ -810,11 +807,10 @@ ORDER BY s.created_at;
 ```sql
 SELECT s.*
 FROM sections s
-WHERE s.key = ANY(
-  SELECT unnest(element_sections)
-  FROM checks
-  WHERE id = $1
-)
+JOIN element_section_mappings esm ON s.key = esm.section_key
+JOIN checks c ON c.element_group_id = esm.element_group_id
+WHERE c.id = $1
+  AND (esm.assessment_id = c.assessment_id OR esm.assessment_id IS NULL)
 ORDER BY s.number;
 ```
 
