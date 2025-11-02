@@ -35,14 +35,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       return NextResponse.json({ error: sectionKeysError.message }, { status: 500 });
     }
 
+    // Handle both old format (section_key) and new format (section_id)
+    let sectionIds: string[] = [];
+    if (sectionKeys && sectionKeys.length > 0) {
+      if (sectionKeys[0].section_id) {
+        // New format: RPC returns section_id (UUID)
+        sectionIds = sectionKeys.map((sk: any) => sk.section_id);
+      } else if (sectionKeys[0].section_key) {
+        // Old format: RPC returns section_key (string), need to convert to section_id
+        const keys = sectionKeys.map((sk: any) => sk.section_key);
+        const { data: sectionsFromKeys } = await supabase
+          .from('sections')
+          .select('id')
+          .in('key', keys);
+        sectionIds = (sectionsFromKeys || []).map((s: any) => s.id);
+      }
+    }
+
     // Fetch full section details
     const { data: sections, error: sectionsError } = await supabase
       .from('sections')
       .select('*')
-      .in(
-        'id',
-        sectionKeys.map((sk: any) => sk.section_id)
-      );
+      .in('id', sectionIds);
 
     if (sectionsError) {
       return NextResponse.json({ error: sectionsError.message }, { status: 500 });

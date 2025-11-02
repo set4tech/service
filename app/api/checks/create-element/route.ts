@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
   console.log('[create-element] Section mappings:', {
     count: sectionKeysData?.length,
     error: mappingsError?.message,
+    sample: sectionKeysData?.[0],
   });
 
   if (mappingsError) {
@@ -57,10 +58,53 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const sectionIds = (sectionKeysData || []).map((sk: any) => sk.section_id);
+  // Handle both old format (section_key) and new format (section_id)
+  let sectionKeys: string[] = [];
+  let sectionIds: string[] = [];
+
+  if (sectionKeysData && sectionKeysData.length > 0) {
+    if (sectionKeysData[0].section_id) {
+      // New format: RPC returns section_id (UUID)
+      sectionIds = sectionKeysData
+        .map((sk: any) => sk.section_id)
+        .filter((id: any) => id !== undefined && id !== null);
+    } else if (sectionKeysData[0].section_key) {
+      // Old format: RPC returns section_key (string), need to convert to section_id
+      sectionKeys = sectionKeysData
+        .map((sk: any) => sk.section_key)
+        .filter((key: any) => key !== undefined && key !== null);
+    }
+  }
+
+  console.log('[create-element] Extracted data:', {
+    sectionKeysCount: sectionKeys.length,
+    sectionIdsCount: sectionIds.length,
+    usingOldFormat: sectionKeys.length > 0,
+  });
+
+  // If we have section_keys, convert them to section_ids
+  if (sectionKeys.length > 0) {
+    const { data: sectionsFromKeys, error: lookupError } = await supabase
+      .from('sections')
+      .select('id, key')
+      .in('key', sectionKeys);
+
+    if (lookupError || !sectionsFromKeys) {
+      console.log('[create-element] ❌ Failed to lookup section IDs:', lookupError);
+      return NextResponse.json(
+        { error: `Failed to lookup section IDs: ${lookupError?.message}` },
+        { status: 500 }
+      );
+    }
+
+    sectionIds = sectionsFromKeys.map((s: any) => s.id);
+    console.log('[create-element] Converted section_keys to section_ids:', {
+      count: sectionIds.length,
+    });
+  }
 
   if (sectionIds.length === 0) {
-    console.log('[create-element] ❌ No section mappings found for:', elementGroupSlug);
+    console.log('[create-element] ❌ No valid section IDs found for:', elementGroupSlug);
     return NextResponse.json(
       { error: `No section mappings found for element group "${elementGroupSlug}"` },
       { status: 400 }
@@ -102,7 +146,7 @@ export async function POST(req: NextRequest) {
   // 4. Fetch section details
   const { data: sections, error: sectionsError } = await supabase
     .from('sections')
-    .select('id, number, title')
+    .select('id, key, number, title')
     .in('id', sectionIds);
 
   if (sectionsError || !sections || sections.length === 0) {
@@ -125,6 +169,7 @@ export async function POST(req: NextRequest) {
       assessment_id: assessmentId,
       check_name: `${currentLabel} - ${section.title}`,
       section_id: section.id,
+      code_section_key: section.key, // Required FK to sections.key
       code_section_number: section.number,
       code_section_title: section.title,
       element_group_id: elementGroup.id,

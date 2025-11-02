@@ -127,6 +127,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       const checkRows = sectionsToAdd.map(s => ({
         assessment_id: id,
         section_id: s.id,
+        code_section_key: s.key, // Required FK to sections.key
         code_section_number: s.number,
         code_section_title: s.title,
         check_name: `${s.number} - ${s.title}`,
