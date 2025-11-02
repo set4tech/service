@@ -2,6 +2,7 @@
 
 import { memo, useState } from 'react';
 import { ViolationMarker as ViolationMarkerType } from '@/lib/reports/get-violations';
+import { BoundingBox } from '@/components/pdf/BoundingBox';
 
 interface Props {
   violations: ViolationMarkerType[];
@@ -72,27 +73,28 @@ export const ViolationBoundingBox = memo(function ViolationBoundingBox({
   // Calculate offset for fanned out violations
   const offset = fanOutIndex * 3;
 
+  // Adjust bounds for fan-out offset
+  const adjustedBounds = {
+    x: bounds.x + offset,
+    y: bounds.y + offset,
+    width: bounds.width,
+    height: bounds.height,
+  };
+
   return (
-    <div
-      className="absolute pointer-events-auto"
-      style={{
-        left: `${bounds.x + offset}px`,
-        top: `${bounds.y + offset}px`,
-        width: `${bounds.width}px`,
-        height: `${bounds.height}px`,
-      }}
-      onPointerEnter={() => setHover(true)}
-      onPointerLeave={() => setHover(false)}
+    <BoundingBox
+      bounds={adjustedBounds}
+      borderColor={hover || isHighlighted ? colors.borderHover : colors.border}
+      backgroundColor={hover || isHighlighted ? colors.bg : 'transparent'}
+      borderStyle={isHighlighted ? 'solid' : 'dashed'}
       onClick={() => onClick(primaryViolation)}
-      role="button"
-      aria-label={`Violation group: ${violations.length} violation(s)`}
+      className="transition-all"
     >
-      {/* Bounding box border */}
       <div
-        className="absolute inset-0 rounded transition-all"
+        className="absolute inset-0"
+        onPointerEnter={() => setHover(true)}
+        onPointerLeave={() => setHover(false)}
         style={{
-          border: `2px ${isHighlighted ? 'solid' : 'dashed'} ${hover || isHighlighted ? colors.borderHover : colors.border}`,
-          backgroundColor: hover || isHighlighted ? colors.bg : 'transparent',
           transform: hover ? 'scale(1.02)' : 'scale(1)',
         }}
       />
@@ -164,6 +166,6 @@ export const ViolationBoundingBox = memo(function ViolationBoundingBox({
           </div>
         </div>
       )}
-    </div>
+    </BoundingBox>
   );
 });
