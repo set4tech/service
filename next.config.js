@@ -17,8 +17,9 @@ const nextConfig = {
       },
     ],
   },
+  // Externalize packages that have native dependencies or cause bundling issues
+  serverExternalPackages: ['pdf-parse'],
   webpack: config => {
-    // Exclude pdf-parse test directory from build
     config.externals = config.externals || [];
     config.externals.push({
       canvas: 'commonjs canvas',

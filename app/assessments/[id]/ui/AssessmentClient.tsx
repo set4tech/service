@@ -962,6 +962,7 @@ export default function AssessmentClient({
         {pdfUrl ? (
           <PDFViewer
             pdfUrl={pdfUrl}
+            projectId={assessment.project_id}
             assessmentId={assessment.id}
             activeCheck={activeCheck || undefined}
             onScreenshotSaved={refetchCheckScreenshots}
