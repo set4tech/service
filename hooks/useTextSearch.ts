@@ -95,15 +95,21 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
             maxY = Math.max(maxY, y + fontHeight * 0.4);
           }
 
+          // Constrain to viewport dimensions to prevent bbox exceeding page bounds
+          minX = Math.max(0, minX);
+          minY = Math.max(0, minY);
+          maxX = Math.min(viewport.width, maxX);
+          maxY = Math.min(viewport.height, maxY);
+
           // Add some padding
           const padding = 2;
           pageMatches.push({
             pageNumber: page.pageNumber,
             bounds: {
-              x: minX - padding,
-              y: minY - padding,
-              width: maxX - minX + padding * 2,
-              height: maxY - minY + padding * 2,
+              x: Math.max(0, minX - padding),
+              y: Math.max(0, minY - padding),
+              width: Math.min(viewport.width - (minX - padding), maxX - minX + padding * 2),
+              height: Math.min(viewport.height - (minY - padding), maxY - minY + padding * 2),
             },
             text: match[0],
           });
