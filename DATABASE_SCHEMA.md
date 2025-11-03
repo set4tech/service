@@ -190,6 +190,10 @@ Individual building projects for customers.
 | `extraction_started_at`   | TIMESTAMPTZ            | When extraction started                                            |
 | `extraction_completed_at` | TIMESTAMPTZ            | When extraction completed                                          |
 | `extraction_error`        | TEXT                   | Error message if extraction failed                                 |
+| `chunking_status`         | VARCHAR(50)            | PDF text chunking status (default 'pending')                       |
+| `chunking_started_at`     | TIMESTAMPTZ            | When PDF text extraction started                                   |
+| `chunking_completed_at`   | TIMESTAMPTZ            | When PDF text extraction completed                                 |
+| `chunking_error`          | TEXT                   | Error message if chunking failed                                   |
 | `report_password`         | TEXT                   | Password for accessing compliance reports (optional)               |
 | `created_at`              | TIMESTAMPTZ            | Creation timestamp                                                 |
 | `updated_at`              | TIMESTAMPTZ            | Last update timestamp                                              |
@@ -197,6 +201,7 @@ Individual building projects for customers.
 **Indexes:**
 
 - `idx_projects_extraction_status` on `extraction_status`
+- `idx_projects_chunking_status` on `chunking_status`
 
 ---
 
@@ -623,6 +628,61 @@ Stores screenshots for the compliance viewer workflow, supporting multiple insta
 
 ---
 
+### `pdf_chunks`
+
+Searchable text chunks extracted from PDF pages for full-text search.
+
+**Schema:**
+
+| Column         | Type                  | Description                                           |
+| -------------- | --------------------- | ----------------------------------------------------- |
+| `id`           | UUID PK               | Primary key                                           |
+| `project_id`   | UUID FK → projects.id | Project reference (CASCADE delete)                    |
+| `page_number`  | INTEGER NOT NULL      | PDF page number                                       |
+| `chunk_number` | INTEGER NOT NULL      | Chunk number within page (for large pages)            |
+| `content`      | TEXT NOT NULL         | Raw text content extracted from PDF                   |
+| `tsv`          | TSVECTOR              | Generated column for full-text search (auto-computed) |
+| `created_at`   | TIMESTAMPTZ           | Creation timestamp                                    |
+
+**Indexes:**
+
+- `pdf_chunks_tsv_gin` GIN on `tsv` (full-text search index)
+- `pdf_chunks_trgm_gin` GIN on `content gin_trgm_ops` (fuzzy search for OCR errors)
+- `pdf_chunks_project_id` on `project_id`
+- `unique_project_page_chunk` UNIQUE on `(project_id, page_number, chunk_number)`
+
+**Purpose:**
+
+Enables fast full-text search across PDF drawings using PostgreSQL's built-in search capabilities:
+
+- **Full-text search** (tsvector): Fast keyword matching with stemming and ranking
+- **Fuzzy search** (pg_trgm): Tolerant of OCR errors and typos using trigram similarity
+- **Apostrophe normalization**: Search functions normalize apostrophes so "womens" matches "women's"
+- **Page-level results**: Returns matching pages, then client-side code finds exact positions
+
+**Search Functions:**
+
+Two stored procedures provide search capabilities:
+
+1. **`search_pdf_fulltext(project_id, query, limit)`**: Fast exact word matching using tsvector
+   - Returns: `page_number`, `chunk_number`, `rank`
+   - Uses websearch syntax (supports "quoted phrases", -exclusions, OR)
+
+2. **`search_pdf_fuzzy(project_id, query, threshold, limit)`**: Fuzzy matching for OCR tolerance
+   - Returns: `page_number`, `chunk_number`, `similarity`
+   - Uses trigram similarity (threshold default 0.3)
+   - Falls back when full-text search returns no results
+
+**Workflow:**
+
+1. Upload PDF → Background job extracts text page-by-page
+2. Text chunked into `pdf_chunks` records with auto-generated `tsv`
+3. User searches → API tries full-text first, falls back to fuzzy
+4. API returns matching page numbers
+5. Client loads those pages and highlights exact text positions using PDF.js
+
+---
+
 ## Entity Relationship Diagram
 
 ```
@@ -639,19 +699,22 @@ Stores screenshots for the compliance viewer workflow, supporting multiple insta
        │  code_ids)   ┌──────────────────────┐
        │              │      sections        │
        │ 1:N          └──────┬───────────────┘
-       ▼                     │ (self-join parent-child)
-┌──────────────┐             │
-│ assessments  │             │ M:N (references)
-└──────┬───────┘             │      ▼
-       │ 1:N          ┌──────────────────────┐
-       ▼              │ section_references   │
-┌──────────────┐      └──────────────────────┘
+       ├──────▶              │ (self-join parent-child)
+       │                     │
+       │ 1:N                 │ M:N (references)
+       │                     │      ▼
+       │              ┌──────────────────────┐
+       │              │ section_references   │
+       │              └──────────────────────┘
+       ▼
+┌──────────────┐
+│ assessments  │
+└──────┬───────┘
+       │ 1:N
+       ▼
+┌──────────────┐
 │   checks     │◀──── references section via code_section_key
 └──────┬───────┘
-       │
-       ├─────────┐ Self-join (parent-child instances)
-       │         │
-       │         ▼
        │    ┌─────────────────┐
        │    │ checks (child)  │
        │    └─────────────────┘
@@ -697,6 +760,14 @@ Stores screenshots for the compliance viewer workflow, supporting multiple insta
 ┌─────────────┐
 │  projects   │
 └──────┬──────┘
+       │ 1:N (pdf_chunks)
+       ├──────────────────────────┐
+       │                          │
+       │ 1:N                      ▼
+       │                   ┌──────────────┐
+       │                   │  pdf_chunks  │ (searchable text)
+       │                   └──────────────┘
+       │
        │ 1:N
        ▼
 ┌─────────────────────┐
@@ -812,6 +883,42 @@ JOIN checks c ON c.element_group_id = esm.element_group_id
 WHERE c.id = $1
   AND (esm.assessment_id = c.assessment_id OR esm.assessment_id IS NULL)
 ORDER BY s.number;
+```
+
+### Search PDF text (full-text)
+
+```sql
+SELECT * FROM search_pdf_fulltext(
+  'project-uuid-here'::uuid,
+  'womens restroom',
+  50
+) ORDER BY rank DESC;
+```
+
+### Search PDF text (fuzzy, for OCR errors)
+
+```sql
+SELECT * FROM search_pdf_fuzzy(
+  'project-uuid-here'::uuid,
+  'restrrom',  -- typo/OCR error
+  0.3,
+  50
+) ORDER BY similarity DESC;
+```
+
+### Check PDF chunking status
+
+```sql
+SELECT
+  id,
+  name,
+  chunking_status,
+  chunking_started_at,
+  chunking_completed_at,
+  chunking_error,
+  (SELECT COUNT(*) FROM pdf_chunks WHERE project_id = projects.id) as chunk_count
+FROM projects
+WHERE id = $1;
 ```
 
 ## Data Loading

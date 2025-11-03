@@ -30,7 +30,6 @@ applicable_checks AS (
     SELECT id, manual_status
     FROM checks c
     WHERE c.assessment_id = assessment_uuid
-      AND c.manual_status IS NULL
       AND c.is_excluded IS FALSE
 ),
 checks_with_results AS (
