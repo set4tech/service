@@ -138,7 +138,7 @@ export function MeasurementOverlay({
                   id={markerIds.start}
                   markerWidth={arrowSize}
                   markerHeight={arrowSize}
-                  refX={arrowSize / 2}
+                  refX={0}
                   refY={arrowSize / 2}
                   orient="auto"
                   markerUnits="userSpaceOnUse"
@@ -155,7 +155,7 @@ export function MeasurementOverlay({
                   id={markerIds.end}
                   markerWidth={arrowSize}
                   markerHeight={arrowSize}
-                  refX={arrowSize / 2}
+                  refX={arrowSize}
                   refY={arrowSize / 2}
                   orient="auto"
                   markerUnits="userSpaceOnUse"
