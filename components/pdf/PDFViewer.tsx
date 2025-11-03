@@ -27,9 +27,6 @@ const MIN_SCALE = 0.1;
 const MAX_SCALE = 10;
 const TRANSFORM_SAVE_DEBOUNCE_MS = 500;
 
-// Stable empty function to avoid creating new functions on every render
-const NOOP = () => {};
-
 // In-memory cache for presigned URLs (valid for 50 minutes to be safe)
 const PRESIGN_CACHE = new Map<string, { url: string; expiresAt: number }>();
 const CACHE_DURATION_MS = 50 * 60 * 1000; // 50 minutes
@@ -44,7 +41,6 @@ interface ViewerState {
   isDragging: boolean;
   screenshotMode: boolean;
   measurementMode: boolean;
-  calibrationMode: boolean;
   isSelecting: boolean;
   selection: { startX: number; startY: number; endX: number; endY: number } | null;
 }
@@ -57,7 +53,6 @@ type ViewerAction =
   | { type: 'END_DRAG' }
   | { type: 'TOGGLE_SCREENSHOT_MODE' }
   | { type: 'TOGGLE_MEASUREMENT_MODE' }
-  | { type: 'TOGGLE_CALIBRATION_MODE' }
   | { type: 'START_SELECTION'; payload: { x: number; y: number } }
   | { type: 'UPDATE_SELECTION'; payload: { x: number; y: number } }
   | { type: 'END_SELECTION' }
@@ -75,7 +70,6 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
         selection: null,
         screenshotMode: false,
         measurementMode: false,
-        calibrationMode: false,
       };
     case 'SET_NUM_PAGES':
       return { ...state, numPages: action.payload };
@@ -88,7 +82,6 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
         ...state,
         screenshotMode: !state.screenshotMode,
         measurementMode: false,
-        calibrationMode: false,
         selection: null,
       };
     case 'TOGGLE_MEASUREMENT_MODE':
@@ -96,12 +89,8 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
         ...state,
         measurementMode: !state.measurementMode,
         screenshotMode: false,
-        calibrationMode: false,
         selection: null,
       };
-    case 'TOGGLE_CALIBRATION_MODE':
-      // Don't toggle calibration mode - it's handled by modal now
-      return state;
     case 'START_SELECTION':
       return {
         ...state,
@@ -115,21 +104,12 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
       };
     case 'UPDATE_SELECTION':
       return state.selection
-        ? {
-            ...state,
-            selection: { ...state.selection, endX: action.payload.x, endY: action.payload.y },
-          }
+        ? { ...state, selection: { ...state.selection, endX: action.payload.x, endY: action.payload.y } }
         : state;
     case 'END_SELECTION':
       return { ...state, isSelecting: false };
     case 'CLEAR_SELECTION':
-      return {
-        ...state,
-        selection: null,
-        screenshotMode: false,
-        measurementMode: false,
-        calibrationMode: false,
-      };
+      return { ...state, selection: null, screenshotMode: false, measurementMode: false };
     case 'RESET_ZOOM':
       return { ...state, transform: { tx: 0, ty: 0, scale: 1 } };
     default:
@@ -180,7 +160,6 @@ export function PDFViewer({
   const assessmentId = propAssessmentId || activeCheck?.assessment_id;
 
   const viewportRef = useRef<HTMLDivElement>(null);
-  const pageContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const transformSaveTimer = useRef<number | null>(null);
@@ -199,18 +178,9 @@ export function PDFViewer({
     [assessmentId]
   );
 
-  // Initial state from storage with validation
-  const savedTransform = getSaved(`pdf-transform-${assessmentId}`, { tx: 0, ty: 0, scale: 1 }, s =>
-    JSON.parse(s)
-  );
-
-  // Viewport is now always at 1x (renderScale only affects canvas quality)
-  // Old saved transforms from when viewport scaled to 6-10x are invalid
-  // Valid scale should be 0.5-2.0 for reasonable zoom levels
+  const savedTransform = getSaved(`pdf-transform-${assessmentId}`, { tx: 0, ty: 0, scale: 1 }, s => JSON.parse(s));
   const validatedTransform =
-    savedTransform.scale < 0.5 || savedTransform.scale > 2.0
-      ? { tx: 0, ty: 0, scale: 1 }
-      : savedTransform;
+    savedTransform.scale < 0.5 || savedTransform.scale > 2.0 ? { tx: 0, ty: 0, scale: 1 } : savedTransform;
 
   const [state, dispatch] = useReducer(viewerReducer, {
     transform: validatedTransform,
@@ -219,12 +189,10 @@ export function PDFViewer({
     isDragging: false,
     screenshotMode: false,
     measurementMode: false,
-    calibrationMode: false,
     isSelecting: false,
     selection: null,
   });
 
-  // Keep a ref to the current state to avoid stale closures in keyboard handler
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -246,30 +214,24 @@ export function PDFViewer({
   const [showScreenshotIndicators, setShowScreenshotIndicators] = useState(() => {
     if (typeof window === 'undefined' || !assessmentId || readOnly) return false;
     const saved = localStorage.getItem(`pdf-show-indicators-${assessmentId}`);
-    return saved === null ? true : saved === 'true'; // Default to true
+    return saved === null ? true : saved === 'true';
   });
 
-  // Fetch assessment screenshots for indicators
+  // Assessment screenshots
   const { screenshots: screenshotIndicators, refresh: refreshScreenshots } =
     useAssessmentScreenshots(readOnly ? undefined : assessmentId, state.pageNumber);
 
-  // Text search hook
+  // Text search
   const handleSearchPageChange = useCallback((page: number) => {
     dispatch({ type: 'SET_PAGE', payload: page });
   }, []);
-  const textSearch = useTextSearch({
-    projectId: projectId || '',
-    pdfDoc,
-    onPageChange: handleSearchPageChange,
-  });
+  const textSearch = useTextSearch({ projectId: projectId || '', pdfDoc, onPageChange: handleSearchPageChange });
 
-  // Memoize violation groups to avoid recalculating on every render
+  // Violation groups (report view)
   const violationGroups = useMemo(() => {
     if (!readOnly || violationMarkers.length === 0) return [];
 
-    // Expand violations to create separate markers for each screenshot
     const expandedMarkers: ViolationMarkerType[] = [];
-
     violationMarkers.forEach(violation => {
       if (violation.allScreenshots && violation.allScreenshots.length > 0) {
         violation.allScreenshots.forEach(screenshot => {
@@ -290,13 +252,12 @@ export function PDFViewer({
     return groupOverlappingViolations(expandedMarkers, state.pageNumber);
   }, [readOnly, violationMarkers, state.pageNumber]);
 
-  // Store latest onPageChange callback in a ref to avoid unnecessary re-renders
+  // onPageChange persistence
   const onPageChangeRef = useRef(onPageChange);
   useEffect(() => {
     onPageChangeRef.current = onPageChange;
   }, [onPageChange]);
 
-  // External page control → internal
   const prevExternalPageRef = useRef(externalCurrentPage);
   useEffect(() => {
     if (externalCurrentPage && externalCurrentPage !== prevExternalPageRef.current) {
@@ -307,7 +268,6 @@ export function PDFViewer({
     }
   }, [externalCurrentPage, state.pageNumber]);
 
-  // Notify parent + persist page number
   useEffect(() => {
     onPageChangeRef.current?.(state.pageNumber);
     if (assessmentId && typeof window !== 'undefined') {
@@ -318,9 +278,7 @@ export function PDFViewer({
   // Debounced transform persistence
   useEffect(() => {
     if (!assessmentId || typeof window === 'undefined') return;
-    if (transformSaveTimer.current) {
-      window.clearTimeout(transformSaveTimer.current);
-    }
+    if (transformSaveTimer.current) window.clearTimeout(transformSaveTimer.current);
     transformSaveTimer.current = window.setTimeout(() => {
       localStorage.setItem(`pdf-transform-${assessmentId}`, JSON.stringify(state.transform));
       transformSaveTimer.current = null;
@@ -339,7 +297,7 @@ export function PDFViewer({
     localStorage.setItem(`pdf-show-indicators-${assessmentId}`, String(showScreenshotIndicators));
   }, [showScreenshotIndicators, assessmentId, readOnly]);
 
-  // Fetch presigned URL and saved render scale
+  // Presign + renderScale fetch
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -363,15 +321,10 @@ export function PDFViewer({
             if (!presign.ok) throw new Error(`presign ${presign.status}`);
             const { url } = await presign.json();
 
-            PRESIGN_CACHE.set(pdfUrl, {
-              url,
-              expiresAt: Date.now() + CACHE_DURATION_MS,
-            });
-
+            PRESIGN_CACHE.set(pdfUrl, { url, expiresAt: Date.now() + CACHE_DURATION_MS });
             PRESIGN_INFLIGHT.delete(pdfUrl);
             return url;
           })();
-
           PRESIGN_INFLIGHT.set(pdfUrl, inflightPromise);
         }
 
@@ -403,7 +356,7 @@ export function PDFViewer({
     };
   }, [pdfUrl, assessmentId, readOnly]);
 
-  // Load PDF document via pdfjs directly
+  // Load current page
   useEffect(() => {
     if (!presignedUrl) return;
     let cancelled = false;
@@ -431,22 +384,14 @@ export function PDFViewer({
     };
   }, [presignedUrl]);
 
-  // Track current page number to avoid redundant loads
   const currentPageNumRef = useRef<number | null>(null);
-
-  // Reset page tracking when PDF document changes
   useEffect(() => {
     currentPageNumRef.current = null;
   }, [pdfDoc]);
 
-  // Load current page proxy
   useEffect(() => {
     if (!pdfDoc) return;
-
-    if (currentPageNumRef.current === state.pageNumber) {
-      return;
-    }
-
+    if (currentPageNumRef.current === state.pageNumber) return;
     let cancelled = false;
     (async () => {
       try {
@@ -463,11 +408,10 @@ export function PDFViewer({
     };
   }, [pdfDoc, state.pageNumber]);
 
-  // Center the page initially when it first loads
+  // Initial centering
   const pageCenteredRef = useRef<number | null>(null);
   useEffect(() => {
     if (!page || !viewportRef.current) return;
-
     if (pageCenteredRef.current === state.pageNumber) return;
 
     const viewport = page.getViewport({ scale: 1 });
@@ -486,10 +430,7 @@ export function PDFViewer({
       state.transform.tx === 0 && state.transform.ty === 0 && state.transform.scale === 1;
 
     if (isInitialLoad || isOffScreen) {
-      dispatch({
-        type: 'SET_TRANSFORM',
-        payload: { tx: centeredTx, ty: centeredTy, scale: 1 },
-      });
+      dispatch({ type: 'SET_TRANSFORM', payload: { tx: centeredTx, ty: centeredTy, scale: 1 } });
       pageCenteredRef.current = state.pageNumber;
     }
   }, [page, state.pageNumber]);
@@ -505,7 +446,6 @@ export function PDFViewer({
     renderScale
   );
 
-  // Kick renders when inputs change
   useEffect(() => {
     if (page) renderPage();
   }, [page, renderScale, layersVersion, renderPage]);
@@ -536,7 +476,7 @@ export function PDFViewer({
     refreshScreenshots,
   });
 
-  // Wheel zoom centred at pointer
+  // Wheel zoom
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -711,7 +651,6 @@ export function PDFViewer({
   }, [
     state.screenshotMode,
     state.measurementMode,
-    state.calibrationMode,
     state.numPages,
     state.pageNumber,
     readOnly,
@@ -904,7 +843,7 @@ export function PDFViewer({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <div className="flex flex-col items-center px-4 py-2 text-xs bg-white border-2 border-blue-500 rounded-lg shadow-lg">
+          <div className="flex flex-col items-center px-4 py-2 text-xs bg.white border-2 border-blue-500 rounded-lg shadow-lg">
             <div className="font-semibold text-blue-600 mb-0.5">
               <span className="text-blue-600">{screenshotNavigation.current}</span>
               <span className="text-gray-400 mx-1">/</span>
@@ -1049,7 +988,7 @@ export function PDFViewer({
             transition: smoothTransition ? 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none',
           }}
         >
-          <div ref={pageContainerRef} style={{ position: 'relative' }}>
+          <div style={{ position: 'relative' }}>
             <canvas ref={canvasRef} />
             {state.screenshotMode && state.selection && (
               <div
@@ -1120,7 +1059,7 @@ export function PDFViewer({
                   <ViolationBoundingBox
                     key={group.key}
                     violations={group.violations}
-                    onClick={onMarkerClick || NOOP}
+                    onClick={onMarkerClick || (() => {})}
                     isVisible={true}
                     isHighlighted={isHighlighted}
                     fanOutIndex={groupIdx}
@@ -1226,522 +1165,6 @@ export function PDFViewer({
             setShowCalibrationModal(false);
             setTimeout(() => viewportRef.current?.focus(), 0);
           }}
-          onCancel={() => setShowCalibrationModal(false)}
-        />
-      )}
-    </div>
-  );
-},
-    [
-      readOnly,
-      page,
-      activeCheck,
-      assessmentId,
-      renderScale,
-      dpr,
-      ocConfig,
-      getSafeRenderMultiplier,
-      onCheckAdded,
-      onCheckSelect,
-      onScreenshotSaved,
-    ]
-  );
-
-  // Stable callbacks for ElevationCapturePrompt to prevent infinite re-renders
-  const handleElevationSave = useCallback(
-    (elementGroupId: string, caption: string) => {
-      // IMPORTANT: Capture FIRST while selection still exists, THEN close modal
-      capture('current', 'elevation', elementGroupId, caption);
-      setShowElevationPrompt(false);
-      // Refocus viewport to restore keyboard handling
-      setTimeout(() => viewportRef.current?.focus(), 0);
-    },
-    [capture]
-  );
-
-  const handleElevationCancel = useCallback(() => {
-    setShowElevationPrompt(false);
-    // Refocus viewport to restore keyboard handling
-    setTimeout(() => viewportRef.current?.focus(), 0);
-  }, []);
-
-  if (loadingUrl) {
-    return <BlueprintLoader />;
-  }
-
-  if (!presignedUrl) {
-    return (
-      <div className="h-full w-full flex items-center justify-center bg-red-50">
-        <div className="p-6 text-center text-red-600 max-w-md">
-          <div className="text-lg font-medium mb-2">Failed to load PDF</div>
-          <div className="text-sm text-gray-600 mt-2 break-all">Original URL: {pdfUrl}</div>
-          <div className="text-xs text-gray-500 mt-2">Check browser console for more details</div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show loading animation while PDF document or first page is loading
-  if (!pdfDoc || !page) {
-    return <BlueprintLoader />;
-  }
-
-  const zoomPct = Math.round(state.transform.scale * 100);
-
-  return (
-    <div
-      ref={viewportRef}
-      tabIndex={0}
-      role="region"
-      aria-label="PDF viewer"
-      className="relative h-full w-full outline-none overscroll-contain"
-      style={{ touchAction: 'none' }}
-    >
-      {state.screenshotMode && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            📸 Screenshot Mode: Click and drag to select area
-          </div>
-        </div>
-      )}
-
-      {state.measurementMode && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-green-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            📏 Measurement Mode: Draw lines to measure
-            {calibration?.scale_notation ? (
-              <span className="ml-2 opacity-90 font-mono">({calibration.scale_notation})</span>
-            ) : (
-              <span className="ml-2 opacity-90">(No scale set - press L)</span>
-            )}
-            <span className="ml-3 opacity-90 text-xs">Click line to select • Delete to remove</span>
-          </div>
-        </div>
-      )}
-
-      {!state.measurementMode && selectedMeasurementId && measurements.length > 0 && !readOnly && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            Measurement selected • Press{' '}
-            <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">Delete</kbd>{' '}
-            to remove
-          </div>
-        </div>
-      )}
-
-      {state.screenshotMode && state.selection && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-blue-500 font-mono">
-            C - Save to Current (exits)
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-green-500 font-mono">
-            E - Save as Elevation (stays active)
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            B - Bathroom
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            D - Door
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            K - Kitchen
-          </kbd>
-        </div>
-      )}
-
-      {/* Screenshot navigation arrows (top-left) */}
-      {screenshotNavigation && (
-        <div className="absolute top-3 left-3 z-50 flex items-center gap-1.5 pointer-events-auto max-w-[500px]">
-          <button
-            onClick={screenshotNavigation.onPrev}
-            disabled={!screenshotNavigation.canGoPrev}
-            className="flex items-center justify-center p-1.5 text-gray-700 bg-white border-2 border-gray-300 rounded-md shadow-lg hover:bg-gray-50 hover:border-blue-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-300"
-            title="Show previous relevant area of drawing"
-          >
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
-          <div className="flex flex-col items-center px-4 py-2 text-xs bg-white border-2 border-blue-500 rounded-lg shadow-lg">
-            <div className="font-semibold text-blue-600 mb-0.5">
-              <span className="text-blue-600">{screenshotNavigation.current}</span>
-              <span className="text-gray-400 mx-1">/</span>
-              <span className="text-gray-600">{screenshotNavigation.total}</span>
-            </div>
-            <div className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">
-              Relevant Drawings
-            </div>
-          </div>
-          <button
-            onClick={screenshotNavigation.onNext}
-            disabled={!screenshotNavigation.canGoNext}
-            className="flex items-center justify-center p-1.5 text-gray-700 bg-white border-2 border-gray-300 rounded-md shadow-lg hover:bg-gray-50 hover:border-blue-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-300"
-            title="Show next relevant area of drawing"
-          >
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
-        </div>
-      )}
-
-      <div className="absolute top-3 right-3 z-50 flex items-center gap-2 pointer-events-auto">
-        <button
-          aria-label="Zoom out"
-          className="btn-icon bg-white shadow-md"
-          onClick={() => zoom('out')}
-        >
-          −
-        </button>
-        <div className="px-2 py-2 text-sm bg-white border rounded shadow-md">{zoomPct}%</div>
-        <button
-          aria-label="Zoom in"
-          className="btn-icon bg-white shadow-md"
-          onClick={() => zoom('in')}
-        >
-          +
-        </button>
-        <div className="flex items-center gap-1 bg-white border rounded shadow-md px-2 py-1">
-          <span className="text-xs text-gray-600 whitespace-nowrap">Detail:</span>
-          <button
-            aria-label="Decrease resolution"
-            className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.max(2, renderScale - 0.5))}
-            disabled={savingScale || renderScale <= 2}
-          >
-            −
-          </button>
-          <span className="text-xs font-medium w-8 text-center">{renderScale.toFixed(1)}x</span>
-          <button
-            aria-label="Increase resolution"
-            className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.min(8, renderScale + 0.5))}
-            disabled={savingScale || renderScale >= 8}
-          >
-            +
-          </button>
-        </div>
-        {layers.length > 0 && (
-          <button
-            aria-pressed={showLayerPanel}
-            aria-label="Toggle layers panel"
-            className={`btn-icon shadow-md ${showLayerPanel ? 'bg-blue-600 text-white' : 'bg-white'}`}
-            onClick={() => setShowLayerPanel(!showLayerPanel)}
-            title="Layers"
-          >
-            ☰
-          </button>
-        )}
-        {!readOnly && (
-          <>
-            <button
-              aria-pressed={showScreenshotIndicators}
-              aria-label="Toggle captured area indicators"
-              title="Show/hide previously captured areas"
-              className={`btn-icon shadow-md ${showScreenshotIndicators ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => setShowScreenshotIndicators(!showScreenshotIndicators)}
-            >
-              📦
-            </button>
-            <button
-              aria-pressed={state.screenshotMode}
-              aria-label="Toggle screenshot mode (S)"
-              title="Capture a portion of the plan"
-              className={`btn-icon shadow-md ${state.screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' })}
-            >
-              📸
-            </button>
-            {state.screenshotMode && state.selection && (
-              <button className="btn-secondary shadow-md" onClick={() => capture('current')}>
-                Save to Current
-              </button>
-            )}
-            <button
-              aria-pressed={state.measurementMode}
-              aria-label="Toggle measurement mode (M)"
-              title="Measure distances on the plan"
-              className={`btn-icon shadow-md ${state.measurementMode ? 'bg-green-600 text-white' : 'bg-white'}`}
-              onClick={() => dispatch({ type: 'TOGGLE_MEASUREMENT_MODE' })}
-            >
-              📏
-            </button>
-            <button
-              aria-label="Set drawing scale (L)"
-              title="Set drawing scale"
-              className="btn-icon shadow-md bg-white"
-              onClick={() => setShowCalibrationModal(true)}
-            >
-              🔧
-            </button>
-          </>
-        )}
-      </div>
-
-      {showLayerPanel && layers.length > 0 && (
-        <div className="absolute top-16 right-3 z-50 bg-white border rounded shadow-lg p-3 w-64 pointer-events-auto">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold">PDF Layers</h3>
-            <button
-              className="text-xs text-gray-500 hover:text-gray-700"
-              onClick={() => setShowLayerPanel(false)}
-            >
-              ✕
-            </button>
-          </div>
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {layers.map(layer => (
-              <label
-                key={layer.id}
-                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
-              >
-                <input
-                  type="checkbox"
-                  checked={layer.visible}
-                  onChange={() => toggleLayer(layer.id)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">{layer.name}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div
-        className={`absolute inset-0 overflow-hidden ${
-          state.screenshotMode || state.measurementMode
-            ? 'cursor-crosshair'
-            : state.isDragging
-              ? 'cursor-grabbing'
-              : 'cursor-grab'
-        }`}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={() => {
-          if (!state.screenshotMode && !state.measurementMode) dispatch({ type: 'END_DRAG' });
-        }}
-        style={{ clipPath: 'inset(0)' }}
-      >
-        <div
-          style={{
-            transform: `translate(${state.transform.tx}px, ${state.transform.ty}px) scale(${state.transform.scale})`,
-            transformOrigin: '0 0',
-            willChange: 'transform',
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            transition: smoothTransition
-              ? 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
-              : 'none',
-          }}
-        >
-          <div ref={pageContainerRef} style={{ position: 'relative' }}>
-            <canvas ref={canvasRef} />
-            {state.screenshotMode && state.selection && (
-              <div
-                className="pointer-events-none"
-                style={{
-                  position: 'absolute',
-                  left: Math.min(state.selection.startX, state.selection.endX),
-                  top: Math.min(state.selection.startY, state.selection.endY),
-                  width: Math.abs(state.selection.endX - state.selection.startX),
-                  height: Math.abs(state.selection.endY - state.selection.startY),
-                  border: '2px solid rgba(37, 99, 235, 0.8)',
-                  backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                  zIndex: 40,
-                }}
-              />
-            )}
-
-            {/* Measurement mode line preview */}
-            {state.measurementMode && state.selection && (
-              <svg
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  pointerEvents: 'none',
-                  zIndex: 40,
-                }}
-              >
-                {/* Define arrow markers for drawing line */}
-                <defs>
-                  <marker
-                    id="drawing-arrow-start"
-                    markerWidth="8"
-                    markerHeight="8"
-                    refX="4"
-                    refY="4"
-                    orient="auto"
-                    markerUnits="userSpaceOnUse"
-                  >
-                    <path d="M 0 4 L 8 0 L 8 8 Z" fill="#10B981" stroke="white" strokeWidth="0.5" />
-                  </marker>
-                  <marker
-                    id="drawing-arrow-end"
-                    markerWidth="8"
-                    markerHeight="8"
-                    refX="4"
-                    refY="4"
-                    orient="auto"
-                    markerUnits="userSpaceOnUse"
-                  >
-                    <path d="M 8 4 L 0 0 L 0 8 Z" fill="#10B981" stroke="white" strokeWidth="0.5" />
-                  </marker>
-                </defs>
-
-                <line
-                  x1={state.selection.startX}
-                  y1={state.selection.startY}
-                  x2={state.selection.endX}
-                  y2={state.selection.endY}
-                  stroke="#10B981"
-                  strokeWidth="3"
-                  markerStart="url(#drawing-arrow-start)"
-                  markerEnd="url(#drawing-arrow-end)"
-                />
-              </svg>
-            )}
-
-            {/* Screenshot area indicators (show previously captured areas) */}
-            {!readOnly &&
-              showScreenshotIndicators &&
-              screenshotIndicators.map(screenshot => (
-                <ScreenshotIndicatorOverlay
-                  key={screenshot.id}
-                  bounds={screenshot.crop_coordinates}
-                />
-              ))}
-
-            {/* Violation markers for report view */}
-            {readOnly &&
-              violationGroups.map((group, groupIdx) => {
-                // Check if any violation in this group is highlighted
-                // Use ::: as delimiter since both IDs are UUIDs that contain dashes
-                const isHighlighted = highlightedViolationId
-                  ? group.violations.some(v => {
-                      const highlightedId = `${v.checkId}:::${v.screenshotId}`;
-                      return highlightedId === highlightedViolationId;
-                    })
-                  : false;
-
-                return (
-                  <ViolationBoundingBox
-                    key={group.key}
-                    violations={group.violations}
-                    onClick={onMarkerClick || NOOP}
-                    isVisible={true}
-                    isHighlighted={isHighlighted}
-                    fanOutIndex={groupIdx}
-                    totalInGroup={group.violations.length}
-                  />
-                );
-              })}
-
-            {/* Text search highlights */}
-            {textSearch.isOpen &&
-              textSearch.matches
-                .filter(match => match.pageNumber === state.pageNumber)
-                .map((match, idx) => {
-                  // Find global index of this match
-                  const globalIdx = textSearch.matches.indexOf(match);
-                  const isCurrent = globalIdx === textSearch.currentIndex;
-
-                  return (
-                    <TextHighlight
-                      key={`search-${match.pageNumber}-${idx}`}
-                      bounds={match.bounds}
-                      isCurrent={isCurrent}
-                    />
-                  );
-                })}
-
-            {/* Measurement overlay */}
-            {!readOnly && (
-              <MeasurementOverlay
-                measurements={measurements}
-                selectedMeasurementId={selectedMeasurementId}
-                onMeasurementClick={setSelectedMeasurementId}
-                calibrationLine={
-                  calibration &&
-                  calibration.calibration_line_start &&
-                  calibration.calibration_line_end
-                    ? {
-                        start_point: calibration.calibration_line_start,
-                        end_point: calibration.calibration_line_end,
-                      }
-                    : null
-                }
-              />
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
-        <button
-          className="btn-icon bg-white"
-          onClick={() => dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) })}
-          aria-label="Previous page"
-        >
-          ◀
-        </button>
-        <div className="text-sm font-medium">
-          Page {state.pageNumber} / {state.numPages || '…'}
-        </div>
-        <button
-          className="btn-icon bg-white"
-          onClick={() =>
-            dispatch({
-              type: 'SET_PAGE',
-              payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
-            })
-          }
-          aria-label="Next page"
-        >
-          ▶
-        </button>
-        <span className="text-xs text-gray-600 ml-2 hidden sm:inline">
-          Shortcuts: ←/→, -/+, 0, S, M, L, Esc{projectId && ', F'}
-        </span>
-      </div>
-
-      {/* PDF text search overlay */}
-      <PDFSearchOverlay
-        isOpen={textSearch.isOpen}
-        query={textSearch.query}
-        onQueryChange={textSearch.setQuery}
-        currentIndex={textSearch.currentIndex}
-        totalMatches={textSearch.totalMatches}
-        isSearching={textSearch.isSearching}
-        searchMethod={textSearch.searchMethod}
-        onNext={textSearch.goToNext}
-        onPrev={textSearch.goToPrev}
-        onClose={textSearch.close}
-      />
-
-      {showElevationPrompt && (
-        <ElevationCapturePrompt onSave={handleElevationSave} onCancel={handleElevationCancel} />
-      )}
-
-      {showCalibrationModal && (
-        <CalibrationModal
-          currentScale={calibration?.scale_notation}
-          onSave={saveCalibration}
           onCancel={() => setShowCalibrationModal(false)}
         />
       )}
