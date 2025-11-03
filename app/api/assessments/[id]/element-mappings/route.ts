@@ -35,9 +35,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .eq('assessment_id', assessmentId)
         .limit(1);
 
+      // Handle both old format (section_key) and new format (section_id)
+      let keys: string[] = [];
+      if (sectionKeys && sectionKeys.length > 0) {
+        if (sectionKeys[0].section_key) {
+          keys = sectionKeys.map((sk: any) => sk.section_key);
+        } else if (sectionKeys[0].section_id) {
+          // Convert section_id to section_key by looking up
+          const { data: sections } = await supabase
+            .from('sections')
+            .select('key')
+            .in(
+              'id',
+              sectionKeys.map((sk: any) => sk.section_id)
+            );
+          keys = (sections || []).map((s: any) => s.key);
+        }
+      }
+
       return {
         element_group: group,
-        section_keys: sectionKeys?.map((sk: any) => sk.section_key) || [],
+        section_keys: keys,
         is_customized: (assessmentSpecific?.length || 0) > 0,
       };
     })

@@ -8,6 +8,11 @@ import { groupOverlappingViolations } from '@/lib/reports/group-violations';
 import { BlueprintLoader } from '../reports/BlueprintLoader';
 import { ElevationCapturePrompt } from './ElevationCapturePrompt';
 import { extractTextFromRegion } from '@/lib/pdf-text-extraction';
+import { ScreenshotIndicatorOverlay } from './ScreenshotIndicatorOverlay';
+import { useAssessmentScreenshots } from '@/hooks/useAssessmentScreenshots';
+import { useTextSearch } from '@/hooks/useTextSearch';
+import { PDFSearchOverlay } from './PDFSearchOverlay';
+import { TextHighlight } from './TextHighlight';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -102,6 +107,7 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
 
 export function PDFViewer({
   pdfUrl,
+  projectId,
   assessmentId: propAssessmentId,
   activeCheck,
   onScreenshotSaved,
@@ -117,6 +123,7 @@ export function PDFViewer({
   screenshotNavigation,
 }: {
   pdfUrl: string;
+  projectId?: string;
   assessmentId?: string;
   activeCheck?: any;
   onScreenshotSaved?: (checkId: string) => void;
@@ -206,10 +213,32 @@ export function PDFViewer({
   const [smoothTransition, setSmoothTransition] = useState(false);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
 
+  // Screenshot indicators state
+  const [showScreenshotIndicators, setShowScreenshotIndicators] = useState(() => {
+    if (typeof window === 'undefined' || !assessmentId || readOnly) return false;
+    const saved = localStorage.getItem(`pdf-show-indicators-${assessmentId}`);
+    return saved === null ? true : saved === 'true'; // Default to true
+  });
+
   // Use useState for dpr to ensure stability
   const [dpr] = useState(() =>
     typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1
   );
+
+  // Fetch assessment screenshots for indicators
+  const { screenshots: screenshotIndicators, refresh: refreshScreenshots } =
+    useAssessmentScreenshots(readOnly ? undefined : assessmentId, state.pageNumber);
+
+  // Text search hook
+  const handleSearchPageChange = useCallback((page: number) => {
+    dispatch({ type: 'SET_PAGE', payload: page });
+  }, []);
+
+  const textSearch = useTextSearch({
+    projectId: projectId || '',
+    pdfDoc,
+    onPageChange: handleSearchPageChange,
+  });
 
   // Memoize violation groups to avoid recalculating on every render
   const violationGroups = useMemo(() => {
@@ -318,6 +347,65 @@ export function PDFViewer({
     return () => clearTimeout(timeoutId);
   }, [highlightedViolationId, state.pageNumber, readOnly, violationMarkers]);
 
+  // Center on current search match when it changes
+  useEffect(() => {
+    if (
+      !textSearch.isOpen ||
+      textSearch.matches.length === 0 ||
+      !canvasRef.current ||
+      !viewportRef.current
+    ) {
+      return;
+    }
+
+    const currentMatch = textSearch.matches[textSearch.currentIndex];
+    if (!currentMatch) return;
+
+    // Check if we're on the right page
+    if (currentMatch.pageNumber !== state.pageNumber) return;
+
+    const bounds = currentMatch.bounds;
+    const hasValidBounds = bounds.width > 0 && bounds.height > 0;
+    if (!hasValidBounds) return;
+
+    // Small delay to ensure canvas is rendered
+    const timeoutId = setTimeout(() => {
+      if (!viewportRef.current) return;
+
+      // Calculate center of match bounds
+      const centerX = bounds.x + bounds.width / 2;
+      const centerY = bounds.y + bounds.height / 2;
+
+      // Get viewport dimensions
+      const viewportRect = viewportRef.current.getBoundingClientRect();
+      const viewportCenterX = viewportRect.width / 2;
+      const viewportCenterY = viewportRect.height / 2;
+
+      // Calculate transform to center the match (using current scale)
+      const currentScale = state.transform.scale;
+      const tx = viewportCenterX - centerX * currentScale;
+      const ty = viewportCenterY - centerY * currentScale;
+
+      // Enable smooth transition for centering
+      setSmoothTransition(true);
+
+      // Update transform to center the match
+      dispatch({
+        type: 'SET_TRANSFORM',
+        payload: { scale: currentScale, tx, ty },
+      });
+
+      // Disable smooth transition after animation completes
+      const transitionTimeout = setTimeout(() => {
+        setSmoothTransition(false);
+      }, 500);
+
+      return () => clearTimeout(transitionTimeout);
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [textSearch.isOpen, textSearch.matches, textSearch.currentIndex, state.pageNumber]);
+
   // External page control → internal
   // Track previous external page to only respond to actual changes
   const prevExternalPageRef = useRef(externalCurrentPage);
@@ -364,6 +452,12 @@ export function PDFViewer({
     for (const l of layers) map[l.id] = l.visible;
     localStorage.setItem(`pdf-layers-${assessmentId}`, JSON.stringify(map));
   }, [layers, assessmentId]);
+
+  // Persist screenshot indicators toggle
+  useEffect(() => {
+    if (!assessmentId || typeof window === 'undefined' || readOnly) return;
+    localStorage.setItem(`pdf-show-indicators-${assessmentId}`, String(showScreenshotIndicators));
+  }, [showScreenshotIndicators, assessmentId, readOnly]);
 
   // Fetch presigned URL and saved render scale
   useEffect(() => {
@@ -804,6 +898,16 @@ export function PDFViewer({
       // Otherwise typing in the caption field can trigger PDFViewer shortcuts (like 's' toggling screenshot mode)
       if (showElevationPrompt) return;
 
+      // Ignore keyboard events when search is open (except for keys handled by search overlay)
+      if (textSearch.isOpen) return;
+
+      // Open search with 'f' key (only if project ID is available)
+      if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.repeat && projectId) {
+        e.preventDefault();
+        textSearch.open();
+        return;
+      }
+
       // Handle screenshot mode shortcuts - check selection individually for each key
       // Skip if elevation prompt is open (let the modal handle keyboard input)
       if (currentState.screenshotMode && !e.repeat) {
@@ -860,7 +964,16 @@ export function PDFViewer({
     return () => {
       el.removeEventListener('keydown', onKey);
     };
-  }, [state.screenshotMode, state.numPages, state.pageNumber, readOnly, zoom, showElevationPrompt]);
+  }, [
+    state.screenshotMode,
+    state.numPages,
+    state.pageNumber,
+    readOnly,
+    zoom,
+    showElevationPrompt,
+    textSearch,
+    projectId,
+  ]);
 
   // Mouse handlers for pan / selection
   const screenToContent = useCallback(
@@ -1138,6 +1251,9 @@ export function PDFViewer({
         });
 
         onScreenshotSaved?.(targetCheckId);
+
+        // Refresh screenshot indicators immediately
+        refreshScreenshots();
       } catch (err) {
         alert('Failed to save screenshot.');
         console.error('[PDFViewer] capture failed:', err);
@@ -1334,6 +1450,15 @@ export function PDFViewer({
         {!readOnly && (
           <>
             <button
+              aria-pressed={showScreenshotIndicators}
+              aria-label="Toggle captured area indicators"
+              title="Show/hide previously captured areas"
+              className={`btn-icon shadow-md ${showScreenshotIndicators ? 'bg-blue-600 text-white' : 'bg-white'}`}
+              onClick={() => setShowScreenshotIndicators(!showScreenshotIndicators)}
+            >
+              📦
+            </button>
+            <button
               aria-pressed={state.screenshotMode}
               aria-label="Toggle screenshot mode (S)"
               title="Capture a portion of the plan"
@@ -1428,6 +1553,17 @@ export function PDFViewer({
               />
             )}
 
+            {/* Screenshot area indicators (show previously captured areas) */}
+            {!readOnly &&
+              showScreenshotIndicators &&
+              screenshotIndicators.map(screenshot => (
+                <ScreenshotIndicatorOverlay
+                  key={screenshot.id}
+                  bounds={screenshot.crop_coordinates}
+                />
+              ))}
+
+            {/* Violation markers for report view */}
             {readOnly &&
               violationGroups.map((group, groupIdx) => {
                 // Check if any violation in this group is highlighted
@@ -1451,6 +1587,24 @@ export function PDFViewer({
                   />
                 );
               })}
+
+            {/* Text search highlights */}
+            {textSearch.isOpen &&
+              textSearch.matches
+                .filter(match => match.pageNumber === state.pageNumber)
+                .map((match, idx) => {
+                  // Find global index of this match
+                  const globalIdx = textSearch.matches.indexOf(match);
+                  const isCurrent = globalIdx === textSearch.currentIndex;
+
+                  return (
+                    <TextHighlight
+                      key={`search-${match.pageNumber}-${idx}`}
+                      bounds={match.bounds}
+                      isCurrent={isCurrent}
+                    />
+                  );
+                })}
           </div>
         </div>
       </div>
@@ -1479,9 +1633,23 @@ export function PDFViewer({
           ▶
         </button>
         <span className="text-xs text-gray-600 ml-2 hidden sm:inline">
-          Shortcuts: ←/→, -/+, 0, S, Esc
+          Shortcuts: ←/→, -/+, 0, S, Esc{projectId && ', F'}
         </span>
       </div>
+
+      {/* PDF text search overlay */}
+      <PDFSearchOverlay
+        isOpen={textSearch.isOpen}
+        query={textSearch.query}
+        onQueryChange={textSearch.setQuery}
+        currentIndex={textSearch.currentIndex}
+        totalMatches={textSearch.totalMatches}
+        isSearching={textSearch.isSearching}
+        searchMethod={textSearch.searchMethod}
+        onNext={textSearch.goToNext}
+        onPrev={textSearch.goToPrev}
+        onClose={textSearch.close}
+      />
 
       {showElevationPrompt && (
         <ElevationCapturePrompt onSave={handleElevationSave} onCancel={handleElevationCancel} />

@@ -163,11 +163,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           await supabase.from('checks').insert({
             assessment_id: assessmentId,
             section_id: sectionData.id,
+            code_section_key: section.key, // Required FK to sections.key
             code_section_number: section.number,
             code_section_title: section.title,
             check_name: `${section.number} - ${section.title}`,
             status: 'pending',
-            instance_number: 1,
+            instance_label: null, // Section checks have no instance label
           });
         }
 
