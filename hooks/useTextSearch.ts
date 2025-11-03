@@ -79,18 +79,20 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
           let minY = Infinity;
           let maxX = -Infinity;
           let maxY = -Infinity;
-
           for (const { item } of relevantItems) {
             const transform = item.transform;
-            const x = transform[4];
-            const y = viewport.height - transform[5]; // Flip Y coordinate
-            const width = item.width || 0;
-            const height = item.height || transform[0] || 12; // Approximate height
+
+            // Let PDF.js do the transformation for us
+            const [x, y] = viewport.convertToViewportPoint(transform[4], transform[5]);
+
+            // Calculate dimensions using the vector magnitudes
+            const fontHeight = Math.sqrt(transform[2] ** 2 + transform[3] ** 2);
+            const textWidth = item.width;
 
             minX = Math.min(minX, x);
-            minY = Math.min(minY, y - height);
-            maxX = Math.max(maxX, x + width);
-            maxY = Math.max(maxY, y);
+            minY = Math.min(minY, y - fontHeight * 0.8);
+            maxX = Math.max(maxX, x + textWidth);
+            maxY = Math.max(maxY, y + fontHeight * 0.4);
           }
 
           // Add some padding
