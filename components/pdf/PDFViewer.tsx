@@ -977,10 +977,11 @@ export function PDFViewer({
     [state.transform]
   );
 
-  // Helper to calculate real distance from pixels using scale notation and PDF dimensions
+  // Helper to calculate real distance from pixels using scale notation and print size
   const calculateRealDistance = useCallback(
     (pixelsDistance: number): number | null => {
       if (!calibration?.scale_notation || !page) return null;
+      if (!calibration?.print_width_inches || !calibration?.print_height_inches) return null;
 
       try {
         // Parse scale notation to get ratio
@@ -1005,24 +1006,28 @@ export function PDFViewer({
         const realInches = realInchesStr ? parseFloat(realInchesStr) : 0;
         const realTotalInches = realFeet * 12 + realInches;
 
-        // Get PDF page dimensions at scale 1
+        // Get PDF page dimensions at scale 1 (in PDF points, where 72 points = 1 inch)
         const viewport = page.getViewport({ scale: 1 });
+        const pdfWidthInches = viewport.width / 72; // PDF spec: 72 points per inch
 
-        // Get canvas width in pixels (at our render scale)
+        // Calculate how many screen pixels correspond to 1 inch on the printed page
+        // We know the PDF's internal size and the user's intended print size
         const canvas = canvasRef.current;
         if (!canvas) return null;
 
-        // Canvas pixels per PDF point
-        const canvasWidth = canvas.width;
-        const pixelsPerPoint = canvasWidth / viewport.width;
+        // Pixels per PDF inch (screen pixels per inch in PDF coordinate space)
+        const pixelsPerPdfInch = canvas.width / pdfWidthInches;
 
-        // Pixels per paper inch
-        const pixelsPerPaperInch = pixelsPerPoint * 72;
+        // Scale factor from PDF to print (how much to scale up/down for print)
+        const printScaleFactor = calibration.print_width_inches / pdfWidthInches;
+
+        // Pixels per paper inch (screen pixels per inch on the printed page)
+        const pixelsPerPaperInch = pixelsPerPdfInch / printScaleFactor;
 
         // Convert pixel distance to paper inches
         const paperInchesDistance = pixelsDistance / pixelsPerPaperInch;
 
-        // Convert paper inches to real inches using scale
+        // Convert paper inches to real inches using architectural scale
         const scaleRatio = paperInches / realTotalInches; // paper inches per real inch
         const realInchesDistance = paperInchesDistance / scaleRatio;
 
@@ -1091,10 +1096,13 @@ export function PDFViewer({
   }, []);
 
   const saveCalibration = useCallback(
-    async (scaleNotation: string) => {
-      if (!projectId) return;
+    async (scaleNotation: string, printWidth: number, printHeight: number) => {
+      if (!projectId || !page) return;
 
       try {
+        // Get PDF dimensions in points for calculation
+        const viewport = page.getViewport({ scale: 1 });
+
         const res = await fetch('/api/measurements/calibrate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1102,6 +1110,10 @@ export function PDFViewer({
             project_id: projectId,
             page_number: state.pageNumber,
             scale_notation: scaleNotation,
+            print_width_inches: printWidth,
+            print_height_inches: printHeight,
+            pdf_width_points: viewport.width,
+            pdf_height_points: viewport.height,
           }),
         });
 
@@ -1124,7 +1136,7 @@ export function PDFViewer({
         alert('Failed to save calibration');
       }
     },
-    [projectId, state.pageNumber]
+    [projectId, state.pageNumber, page]
   );
 
   // Keyboard shortcuts
@@ -1866,58 +1878,6 @@ export function PDFViewer({
               />
             )}
 
-            {/* Measurement mode line preview */}
-            {state.measurementMode && state.selection && (
-              <svg
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  pointerEvents: 'none',
-                  zIndex: 40,
-                }}
-              >
-                {/* Define arrow markers for drawing line */}
-                <defs>
-                  <marker
-                    id="drawing-arrow-start"
-                    markerWidth="8"
-                    markerHeight="8"
-                    refX="0"
-                    refY="4"
-                    orient="auto"
-                    markerUnits="userSpaceOnUse"
-                  >
-                    <path d="M 0 4 L 8 0 L 8 8 Z" fill="#10B981" stroke="white" strokeWidth="0.5" />
-                  </marker>
-                  <marker
-                    id="drawing-arrow-end"
-                    markerWidth="8"
-                    markerHeight="8"
-                    refX="8"
-                    refY="4"
-                    orient="auto"
-                    markerUnits="userSpaceOnUse"
-                  >
-                    <path d="M 8 4 L 0 0 L 0 8 Z" fill="#10B981" stroke="white" strokeWidth="0.5" />
-                  </marker>
-                </defs>
-
-                <line
-                  x1={state.selection.startX}
-                  y1={state.selection.startY}
-                  x2={state.selection.endX}
-                  y2={state.selection.endY}
-                  stroke="#10B981"
-                  strokeWidth="3"
-                  markerStart="url(#drawing-arrow-start)"
-                  markerEnd="url(#drawing-arrow-end)"
-                />
-              </svg>
-            )}
-
             {/* Screenshot area indicators (show previously captured areas) */}
             {!readOnly &&
               showScreenshotIndicators &&
@@ -1970,28 +1930,101 @@ export function PDFViewer({
                     />
                   );
                 })}
-
-            {/* Measurement overlay */}
-            {!readOnly && (
-              <MeasurementOverlay
-                measurements={measurements}
-                selectedMeasurementId={selectedMeasurementId}
-                onMeasurementClick={setSelectedMeasurementId}
-                calibrationLine={
-                  calibration &&
-                  calibration.calibration_line_start &&
-                  calibration.calibration_line_end
-                    ? {
-                        start_point: calibration.calibration_line_start,
-                        end_point: calibration.calibration_line_end,
-                      }
-                    : null
-                }
-              />
-            )}
           </div>
         </div>
       </div>
+
+      {/* Measurement overlay - outside scaled container for crisp rendering */}
+      {!readOnly && (
+        <MeasurementOverlay
+          measurements={measurements}
+          selectedMeasurementId={selectedMeasurementId}
+          onMeasurementClick={setSelectedMeasurementId}
+          zoom={state.transform.scale}
+          translateX={state.transform.tx}
+          translateY={state.transform.ty}
+          calibrationLine={
+            calibration && calibration.calibration_line_start && calibration.calibration_line_end
+              ? {
+                  start_point: calibration.calibration_line_start,
+                  end_point: calibration.calibration_line_end,
+                }
+              : null
+          }
+        />
+      )}
+
+      {/* Measurement mode line preview - sibling to MeasurementOverlay */}
+      {state.measurementMode &&
+        state.selection &&
+        (() => {
+          // Convert PDF coords to screen coords
+          const toScreen = (pdfX: number, pdfY: number) => ({
+            x: pdfX * state.transform.scale + state.transform.tx,
+            y: pdfY * state.transform.scale + state.transform.ty,
+          });
+
+          const start = toScreen(state.selection.startX, state.selection.startY);
+          const end = toScreen(state.selection.endX, state.selection.endY);
+
+          // Calculate angle for arrow
+          const dx = end.x - start.x;
+          const dy = end.y - start.y;
+          const angle = Math.atan2(dy, dx);
+
+          // Fixed sizes (no scaling with zoom)
+          const arrowSize = 8;
+          const strokeWidth = 3;
+
+          // Arrow points
+          const arrowPoints = (x: number, y: number, reverse: boolean) => {
+            const dir = reverse ? -1 : 1;
+            return [
+              [x, y],
+              [
+                x - dir * arrowSize * Math.cos(angle - Math.PI / 6),
+                y - dir * arrowSize * Math.sin(angle - Math.PI / 6),
+              ],
+              [
+                x - dir * arrowSize * Math.cos(angle + Math.PI / 6),
+                y - dir * arrowSize * Math.sin(angle + Math.PI / 6),
+              ],
+            ]
+              .map(([px, py]) => `${px},${py}`)
+              .join(' ');
+          };
+
+          return (
+            <svg
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: 40,
+              }}
+            >
+              <line
+                x1={start.x}
+                y1={start.y}
+                x2={end.x}
+                y2={end.y}
+                stroke="#10B981"
+                strokeWidth={strokeWidth}
+                opacity={0.8}
+                strokeLinecap="round"
+              />
+
+              <polygon points={arrowPoints(start.x, start.y, true)} fill="#10B981" opacity={0.8} />
+
+              <polygon points={arrowPoints(end.x, end.y, false)} fill="#10B981" opacity={0.8} />
+
+              <circle cx={start.x} cy={start.y} r={strokeWidth} fill="#10B981" opacity={0.8} />
+              <circle cx={end.x} cy={end.y} r={strokeWidth} fill="#10B981" opacity={0.8} />
+            </svg>
+          );
+        })()}
 
       <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
         <button
@@ -2039,9 +2072,25 @@ export function PDFViewer({
         <ElevationCapturePrompt onSave={handleElevationSave} onCancel={handleElevationCancel} />
       )}
 
-      {showCalibrationModal && (
+      {showCalibrationModal && page && (
         <CalibrationModal
           currentScale={calibration?.scale_notation}
+          currentPrintSize={
+            calibration?.print_width_inches && calibration?.print_height_inches
+              ? {
+                  width: calibration.print_width_inches,
+                  height: calibration.print_height_inches,
+                }
+              : undefined
+          }
+          pdfDimensions={
+            page
+              ? {
+                  width: page.getViewport({ scale: 1 }).width,
+                  height: page.getViewport({ scale: 1 }).height,
+                }
+              : undefined
+          }
           onSave={saveCalibration}
           onCancel={() => setShowCalibrationModal(false)}
         />

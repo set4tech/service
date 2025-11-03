@@ -19,6 +19,9 @@ interface MeasurementOverlayProps {
   measurements: Measurement[];
   selectedMeasurementId: string | null;
   onMeasurementClick?: (measurementId: string) => void;
+  zoom: number;
+  translateX: number;
+  translateY: number;
   calibrationLine?: {
     start_point: { x: number; y: number };
     end_point: { x: number; y: number };
@@ -29,8 +32,18 @@ export function MeasurementOverlay({
   measurements,
   selectedMeasurementId,
   onMeasurementClick,
+  zoom,
+  translateX,
+  translateY,
   calibrationLine,
 }: MeasurementOverlayProps) {
+  // Convert PDF coordinates to screen coordinates
+  // Note: PDF coordinates are already in the rotated space (handled by PDF.js)
+  const toScreen = (pdfX: number, pdfY: number) => ({
+    x: pdfX * zoom + translateX,
+    y: pdfY * zoom + translateY,
+  });
+
   const formatDistance = (measurement: Measurement): string => {
     if (
       measurement.real_distance_inches !== null &&
@@ -64,67 +77,87 @@ export function MeasurementOverlay({
   };
 
   return (
-    <>
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+      }}
+    >
       {/* Calibration line (shown in gold/yellow) */}
-      {calibrationLine && (
-        <svg
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            pointerEvents: 'none',
-            zIndex: 35,
-          }}
-        >
-          <line
-            x1={calibrationLine.start_point.x}
-            y1={calibrationLine.start_point.y}
-            x2={calibrationLine.end_point.x}
-            y2={calibrationLine.end_point.y}
-            stroke="#F59E0B"
-            strokeWidth="1"
-            strokeDasharray="8,4"
-          />
-          {/* Start point circle */}
-          <circle
-            cx={calibrationLine.start_point.x}
-            cy={calibrationLine.start_point.y}
-            r="5"
-            fill="#F59E0B"
-            stroke="white"
-            strokeWidth="1"
-          />
-          {/* End point circle */}
-          <circle
-            cx={calibrationLine.end_point.x}
-            cy={calibrationLine.end_point.y}
-            r="5"
-            fill="#F59E0B"
-            stroke="white"
-            strokeWidth="1"
-          />
-        </svg>
-      )}
+      {calibrationLine &&
+        (() => {
+          const start = toScreen(calibrationLine.start_point.x, calibrationLine.start_point.y);
+          const end = toScreen(calibrationLine.end_point.x, calibrationLine.end_point.y);
+
+          return (
+            <svg
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: 35,
+              }}
+            >
+              <line
+                x1={start.x}
+                y1={start.y}
+                x2={end.x}
+                y2={end.y}
+                stroke="#F59E0B"
+                strokeWidth="3"
+                strokeDasharray="8,4"
+                opacity={1}
+              />
+              {/* Start point circle */}
+              <circle
+                cx={start.x}
+                cy={start.y}
+                r="6"
+                fill="#F59E0B"
+                stroke="white"
+                strokeWidth="2"
+                opacity={1}
+              />
+              {/* End point circle */}
+              <circle
+                cx={end.x}
+                cy={end.y}
+                r="6"
+                fill="#F59E0B"
+                stroke="white"
+                strokeWidth="2"
+                opacity={1}
+              />
+            </svg>
+          );
+        })()}
 
       {/* Measurements */}
       {measurements.map(measurement => {
         const isSelected = measurement.id === selectedMeasurementId;
         const color = measurement.color || '#3B82F6';
-        const midX = (measurement.start_point.x + measurement.end_point.x) / 2;
-        const midY = (measurement.start_point.y + measurement.end_point.y) / 2;
+
+        // Convert coordinates
+        const start = toScreen(measurement.start_point.x, measurement.start_point.y);
+        const end = toScreen(measurement.end_point.x, measurement.end_point.y);
+        const midX = (start.x + end.x) / 2;
+        const midY = (start.y + end.y) / 2;
+
         const markerIds = getMarkerIds(measurement.id, color, isSelected);
-        const arrowSize = isSelected ? 8 : 6;
-        const strokeWidth = isSelected ? 2.5 : 1.5;
+
+        // Fixed sizes (no scaling needed) - made more visible
+        const arrowSize = isSelected ? 10 : 8;
+        const strokeWidth = isSelected ? 4 : 3;
 
         return (
           <React.Fragment key={measurement.id}>
             <svg
               style={{
                 position: 'absolute',
-                top: 0,
-                left: 0,
+                inset: 0,
                 width: '100%',
                 height: '100%',
                 pointerEvents: 'none',
@@ -171,16 +204,17 @@ export function MeasurementOverlay({
 
               {/* Measurement line with arrow markers */}
               <line
-                x1={measurement.start_point.x}
-                y1={measurement.start_point.y}
-                x2={measurement.end_point.x}
-                y2={measurement.end_point.y}
+                x1={start.x}
+                y1={start.y}
+                x2={end.x}
+                y2={end.y}
                 stroke={color}
                 strokeWidth={strokeWidth}
-                opacity={isSelected ? 1 : 0.8}
+                opacity={1}
                 markerStart={`url(#${markerIds.start})`}
                 markerEnd={`url(#${markerIds.end})`}
                 className="transition-all"
+                strokeLinecap="round"
               />
             </svg>
 
@@ -198,7 +232,7 @@ export function MeasurementOverlay({
               }}
               className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap shadow-md transition-all ${
                 isSelected
-                  ? 'bg-blue-600 text-white border-2 border-blue-700 scale-110'
+                  ? 'bg-blue-600 text-white border-2 border-blue-700'
                   : 'bg-white text-gray-900 border border-gray-300 hover:border-blue-400 hover:shadow-lg'
               }`}
             >
@@ -215,6 +249,6 @@ export function MeasurementOverlay({
           </React.Fragment>
         );
       })}
-    </>
+    </div>
   );
 }
