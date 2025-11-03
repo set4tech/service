@@ -256,6 +256,11 @@ export function PDFViewer({
   const [calibration, setCalibration] = useState<any | null>(null);
   const [selectedMeasurementId, setSelectedMeasurementId] = useState<string | null>(null);
   const [showCalibrationModal, setShowCalibrationModal] = useState(false);
+  const [calibrationLine, setCalibrationLine] = useState<{
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+  } | null>(null);
+  const [isDrawingCalibrationLine, setIsDrawingCalibrationLine] = useState(false);
 
   // Screenshot indicators state
   const [showScreenshotIndicators, setShowScreenshotIndicators] = useState(() => {
@@ -977,13 +982,39 @@ export function PDFViewer({
     [state.transform]
   );
 
-  // Helper to calculate real distance from pixels using scale notation and print size
+  // Helper to calculate real distance from pixels using calibration
+  // Supports two methods:
+  // 1. Page Size Method: scale notation + print size
+  // 2. Known Length Method: calibration line + known distance
   const calculateRealDistance = useCallback(
     (pixelsDistance: number): number | null => {
-      if (!calibration?.scale_notation || !page) return null;
-      if (!calibration?.print_width_inches || !calibration?.print_height_inches) return null;
+      if (!calibration) return null;
 
       try {
+        // Method 1: Known Length Method (simpler, more direct)
+        if (
+          calibration.calibration_line_start &&
+          calibration.calibration_line_end &&
+          calibration.known_distance_inches
+        ) {
+          // Calculate the calibration line length in pixels
+          const dx = calibration.calibration_line_end.x - calibration.calibration_line_start.x;
+          const dy = calibration.calibration_line_end.y - calibration.calibration_line_start.y;
+          const calibrationLineLengthPixels = Math.sqrt(dx * dx + dy * dy);
+
+          if (calibrationLineLengthPixels === 0) return null;
+
+          // pixels_per_inch = calibration line pixels / known distance inches
+          const pixelsPerInch = calibrationLineLengthPixels / calibration.known_distance_inches;
+
+          // Convert measurement pixels to real inches
+          return pixelsDistance / pixelsPerInch;
+        }
+
+        // Method 2: Page Size Method (requires page, scale notation, and print size)
+        if (!calibration.scale_notation || !page) return null;
+        if (!calibration.print_width_inches || !calibration.print_height_inches) return null;
+
         // Parse scale notation to get ratio
         const match = calibration.scale_notation.match(
           /^(\d+(?:\/\d+)?)"?\s*=\s*(\d+)'(?:-(\d+)"?)?$/
@@ -1109,6 +1140,7 @@ export function PDFViewer({
           body: JSON.stringify({
             project_id: projectId,
             page_number: state.pageNumber,
+            method: 'page-size',
             scale_notation: scaleNotation,
             print_width_inches: printWidth,
             print_height_inches: printHeight,
@@ -1122,6 +1154,7 @@ export function PDFViewer({
         const data = await res.json();
         setCalibration(data.calibration);
         setShowCalibrationModal(false);
+        setCalibrationLine(null);
 
         // Reload measurements to get updated real distances
         const measurementsRes = await fetch(
@@ -1138,6 +1171,58 @@ export function PDFViewer({
     },
     [projectId, state.pageNumber, page]
   );
+
+  const saveCalibrationKnownLength = useCallback(
+    async (
+      lineStart: { x: number; y: number },
+      lineEnd: { x: number; y: number },
+      knownDistanceInches: number
+    ) => {
+      if (!projectId) return;
+
+      try {
+        const res = await fetch('/api/measurements/calibrate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_id: projectId,
+            page_number: state.pageNumber,
+            method: 'known-length',
+            calibration_line_start: lineStart,
+            calibration_line_end: lineEnd,
+            known_distance_inches: knownDistanceInches,
+          }),
+        });
+
+        if (!res.ok) throw new Error('Failed to save calibration');
+
+        const data = await res.json();
+        setCalibration(data.calibration);
+        setShowCalibrationModal(false);
+        setCalibrationLine(null);
+        setIsDrawingCalibrationLine(false);
+
+        // Reload measurements to get updated real distances
+        const measurementsRes = await fetch(
+          `/api/measurements?projectId=${projectId}&pageNumber=${state.pageNumber}`
+        );
+        if (measurementsRes.ok) {
+          const measurementsData = await measurementsRes.json();
+          setMeasurements(measurementsData.measurements || []);
+        }
+      } catch (error) {
+        console.error('[PDFViewer] Error saving calibration:', error);
+        alert('Failed to save calibration');
+      }
+    },
+    [projectId, state.pageNumber]
+  );
+
+  const handleRequestLineDraw = useCallback(() => {
+    setIsDrawingCalibrationLine(true);
+    setCalibrationLine(null);
+    setShowCalibrationModal(false);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1231,6 +1316,11 @@ export function PDFViewer({
       if (!readOnly && e.key === 'Escape') {
         if (currentState.screenshotMode) dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
         if (currentState.measurementMode) dispatch({ type: 'TOGGLE_MEASUREMENT_MODE' });
+        if (isDrawingCalibrationLine) {
+          setIsDrawingCalibrationLine(false);
+          setCalibrationLine(null);
+          dispatch({ type: 'CLEAR_SELECTION' });
+        }
       }
     };
     el.addEventListener('keydown', onKey);
@@ -1250,6 +1340,7 @@ export function PDFViewer({
     textSearch,
     projectId,
     selectedMeasurementId,
+    isDrawingCalibrationLine,
     deleteMeasurement,
   ]);
 
@@ -1266,7 +1357,7 @@ export function PDFViewer({
   );
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if ((state.screenshotMode || state.measurementMode) && !readOnly) {
+    if ((state.screenshotMode || state.measurementMode || isDrawingCalibrationLine) && !readOnly) {
       e.preventDefault();
       e.stopPropagation();
       const { x, y } = screenToContent(e.clientX, e.clientY);
@@ -1284,7 +1375,7 @@ export function PDFViewer({
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    if (state.screenshotMode || state.measurementMode) {
+    if (state.screenshotMode || state.measurementMode || isDrawingCalibrationLine) {
       if (state.isSelecting && state.selection) {
         e.preventDefault();
         e.stopPropagation();
@@ -1309,6 +1400,15 @@ export function PDFViewer({
       dispatch({ type: 'END_SELECTION' });
       // Auto-save measurement when line is complete
       saveMeasurement(state.selection);
+    } else if (isDrawingCalibrationLine && state.selection) {
+      dispatch({ type: 'END_SELECTION' });
+      // Save calibration line and show modal
+      setCalibrationLine({
+        start: { x: state.selection.startX, y: state.selection.startY },
+        end: { x: state.selection.endX, y: state.selection.endY },
+      });
+      setIsDrawingCalibrationLine(false);
+      setShowCalibrationModal(true);
     }
     dispatch({ type: 'END_DRAG' });
   };
@@ -1632,6 +1732,15 @@ export function PDFViewer({
         </div>
       )}
 
+      {isDrawingCalibrationLine && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="bg-purple-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
+            📐 Calibration Mode: Draw a line along a known distance
+            <span className="ml-3 opacity-90 text-xs">Press Esc to cancel</span>
+          </div>
+        </div>
+      )}
+
       {!state.measurementMode && selectedMeasurementId && measurements.length > 0 && !readOnly && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
@@ -1833,7 +1942,7 @@ export function PDFViewer({
 
       <div
         className={`absolute inset-0 overflow-hidden ${
-          state.screenshotMode || state.measurementMode
+          state.screenshotMode || state.measurementMode || isDrawingCalibrationLine
             ? 'cursor-crosshair'
             : state.isDragging
               ? 'cursor-grabbing'
@@ -1843,7 +1952,8 @@ export function PDFViewer({
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={() => {
-          if (!state.screenshotMode && !state.measurementMode) dispatch({ type: 'END_DRAG' });
+          if (!state.screenshotMode && !state.measurementMode && !isDrawingCalibrationLine)
+            dispatch({ type: 'END_DRAG' });
         }}
         style={{ clipPath: 'inset(0)' }}
       >
@@ -1955,7 +2065,7 @@ export function PDFViewer({
       )}
 
       {/* Measurement mode line preview - sibling to MeasurementOverlay */}
-      {state.measurementMode &&
+      {(state.measurementMode || isDrawingCalibrationLine) &&
         state.selection &&
         (() => {
           // Convert PDF coords to screen coords
@@ -2010,18 +2120,38 @@ export function PDFViewer({
                 y1={start.y}
                 x2={end.x}
                 y2={end.y}
-                stroke="#10B981"
+                stroke={isDrawingCalibrationLine ? '#9333EA' : '#10B981'}
                 strokeWidth={strokeWidth}
                 opacity={0.8}
                 strokeLinecap="round"
               />
 
-              <polygon points={arrowPoints(start.x, start.y, true)} fill="#10B981" opacity={0.8} />
+              <polygon
+                points={arrowPoints(start.x, start.y, true)}
+                fill={isDrawingCalibrationLine ? '#9333EA' : '#10B981'}
+                opacity={0.8}
+              />
 
-              <polygon points={arrowPoints(end.x, end.y, false)} fill="#10B981" opacity={0.8} />
+              <polygon
+                points={arrowPoints(end.x, end.y, false)}
+                fill={isDrawingCalibrationLine ? '#9333EA' : '#10B981'}
+                opacity={0.8}
+              />
 
-              <circle cx={start.x} cy={start.y} r={strokeWidth} fill="#10B981" opacity={0.8} />
-              <circle cx={end.x} cy={end.y} r={strokeWidth} fill="#10B981" opacity={0.8} />
+              <circle
+                cx={start.x}
+                cy={start.y}
+                r={strokeWidth}
+                fill={isDrawingCalibrationLine ? '#9333EA' : '#10B981'}
+                opacity={0.8}
+              />
+              <circle
+                cx={end.x}
+                cy={end.y}
+                r={strokeWidth}
+                fill={isDrawingCalibrationLine ? '#9333EA' : '#10B981'}
+                opacity={0.8}
+              />
             </svg>
           );
         })()}
@@ -2092,7 +2222,14 @@ export function PDFViewer({
               : undefined
           }
           onSave={saveCalibration}
-          onCancel={() => setShowCalibrationModal(false)}
+          onSaveKnownLength={saveCalibrationKnownLength}
+          onCancel={() => {
+            setShowCalibrationModal(false);
+            setCalibrationLine(null);
+            setIsDrawingCalibrationLine(false);
+          }}
+          onRequestLineDraw={handleRequestLineDraw}
+          calibrationLine={calibrationLine}
         />
       )}
     </div>
