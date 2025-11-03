@@ -17,6 +17,12 @@ interface UseTextSearchOptions {
   onPageChange?: (page: number) => void;
 }
 
+function normalizeQueryString(query: string): string {
+  //helper function to remove apostrophes commas and full stops from
+  //the query string
+  return query.replace(/['",.]/g, '');
+}
+
 export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearchOptions) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -35,15 +41,17 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
     async (page: any, searchQuery: string): Promise<TextMatch[]> => {
       try {
         const textContent = await page.getTextContent();
+        const normalizedQuery = normalizeQueryString(searchQuery);
         const viewport = page.getViewport({ scale: 1 });
         const pageMatches: TextMatch[] = [];
 
         // Create a case-insensitive regex for the query
         // Escape special regex characters except spaces
-        const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedQuery = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const searchRegex = new RegExp(escapedQuery, 'gi');
 
         // Build full text from items to find matches
+        // Normalize text content to match query normalization
         let fullText = '';
         const itemPositions: Array<{ start: number; end: number; item: any }> = [];
 
@@ -51,7 +59,8 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
           if (!('str' in item) || !('transform' in item)) continue;
 
           const startPos = fullText.length;
-          fullText += item.str + ' ';
+          const normalizedStr = normalizeQueryString(item.str);
+          fullText += normalizedStr + ' ';
           const endPos = fullText.length;
 
           itemPositions.push({
@@ -129,7 +138,8 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
    */
   const performSearch = useCallback(
     async (searchQuery: string) => {
-      if (!searchQuery.trim() || !pdfDoc) {
+      const normalizedQuery = normalizeQueryString(searchQuery);
+      if (!normalizedQuery.trim() || !pdfDoc) {
         setMatches([]);
         setCurrentIndex(0);
         setSearchMethod(null);
@@ -142,19 +152,11 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
       try {
         // Call backend API to get matching pages
         const response = await fetch(
-          `/api/projects/${projectId}/search?q=${encodeURIComponent(searchQuery)}&limit=50`
+          `/api/projects/${projectId}/search?q=${encodeURIComponent(normalizedQuery)}&limit=50`
         );
 
         // Check if this search is still current
         if (searchId !== searchIdRef.current) {
-          return;
-        }
-
-        if (!response.ok) {
-          console.error('[useTextSearch] Search API error:', response.statusText);
-          setMatches([]);
-          setCurrentIndex(0);
-          setSearchMethod(null);
           return;
         }
 
@@ -183,7 +185,7 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
 
           try {
             const page = await pdfDoc.getPage(result.page_number);
-            const pageMatches = await findMatchesOnPage(page, searchQuery);
+            const pageMatches = await findMatchesOnPage(page, normalizedQuery);
             allMatches.push(...pageMatches);
           } catch (error) {
             console.error(`[useTextSearch] Error loading page ${result.page_number}:`, error);
@@ -221,7 +223,8 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
 
   // Debounced search effect
   useEffect(() => {
-    if (!isOpen || !query.trim()) {
+    const normalizedQuery = normalizeQueryString(query);
+    if (!isOpen || !normalizedQuery.trim()) {
       return;
     }
 
