@@ -13,6 +13,8 @@ import { useAssessmentScreenshots } from '@/hooks/useAssessmentScreenshots';
 import { useTextSearch } from '@/hooks/useTextSearch';
 import { PDFSearchOverlay } from './PDFSearchOverlay';
 import { TextHighlight } from './TextHighlight';
+import { MeasurementOverlay, Measurement } from './MeasurementOverlay';
+import { CalibrationModal } from './CalibrationModal';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -39,6 +41,8 @@ interface ViewerState {
   numPages: number;
   isDragging: boolean;
   screenshotMode: boolean;
+  measurementMode: boolean;
+  calibrationMode: boolean;
   isSelecting: boolean;
   selection: { startX: number; startY: number; endX: number; endY: number } | null;
 }
@@ -56,6 +60,8 @@ type ViewerAction =
   | { type: 'START_DRAG' }
   | { type: 'END_DRAG' }
   | { type: 'TOGGLE_SCREENSHOT_MODE' }
+  | { type: 'TOGGLE_MEASUREMENT_MODE' }
+  | { type: 'TOGGLE_CALIBRATION_MODE' }
   | { type: 'START_SELECTION'; payload: { x: number; y: number } }
   | { type: 'UPDATE_SELECTION'; payload: { x: number; y: number } }
   | { type: 'END_SELECTION' }
@@ -67,7 +73,14 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
     case 'SET_TRANSFORM':
       return { ...state, transform: action.payload };
     case 'SET_PAGE':
-      return { ...state, pageNumber: action.payload, selection: null, screenshotMode: false };
+      return {
+        ...state,
+        pageNumber: action.payload,
+        selection: null,
+        screenshotMode: false,
+        measurementMode: false,
+        calibrationMode: false,
+      };
     case 'SET_NUM_PAGES':
       return { ...state, numPages: action.payload };
     case 'START_DRAG':
@@ -75,7 +88,24 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
     case 'END_DRAG':
       return { ...state, isDragging: false };
     case 'TOGGLE_SCREENSHOT_MODE':
-      return { ...state, screenshotMode: !state.screenshotMode, selection: null };
+      return {
+        ...state,
+        screenshotMode: !state.screenshotMode,
+        measurementMode: false,
+        calibrationMode: false,
+        selection: null,
+      };
+    case 'TOGGLE_MEASUREMENT_MODE':
+      return {
+        ...state,
+        measurementMode: !state.measurementMode,
+        screenshotMode: false,
+        calibrationMode: false,
+        selection: null,
+      };
+    case 'TOGGLE_CALIBRATION_MODE':
+      // Don't toggle calibration mode - it's handled by modal now
+      return state;
     case 'START_SELECTION':
       return {
         ...state,
@@ -97,7 +127,13 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
     case 'END_SELECTION':
       return { ...state, isSelecting: false };
     case 'CLEAR_SELECTION':
-      return { ...state, selection: null, screenshotMode: false };
+      return {
+        ...state,
+        selection: null,
+        screenshotMode: false,
+        measurementMode: false,
+        calibrationMode: false,
+      };
     case 'RESET_ZOOM':
       return { ...state, transform: { tx: 0, ty: 0, scale: 1 } };
     default:
@@ -188,6 +224,8 @@ export function PDFViewer({
     numPages: 0,
     isDragging: false,
     screenshotMode: false,
+    measurementMode: false,
+    calibrationMode: false,
     isSelecting: false,
     selection: null,
   });
@@ -212,6 +250,12 @@ export function PDFViewer({
   const [savingScale, setSavingScale] = useState(false);
   const [smoothTransition, setSmoothTransition] = useState(false);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
+
+  // Measurement state
+  const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [calibration, setCalibration] = useState<any | null>(null);
+  const [selectedMeasurementId, setSelectedMeasurementId] = useState<string | null>(null);
+  const [showCalibrationModal, setShowCalibrationModal] = useState(false);
 
   // Screenshot indicators state
   const [showScreenshotIndicators, setShowScreenshotIndicators] = useState(() => {
@@ -594,6 +638,54 @@ export function PDFViewer({
     };
   }, [pdfDoc, state.pageNumber]);
 
+  // Load measurements for current page
+  useEffect(() => {
+    if (!projectId || readOnly) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/measurements?projectId=${projectId}&pageNumber=${state.pageNumber}`
+        );
+        if (!res.ok) throw new Error('Failed to fetch measurements');
+        const data = await res.json();
+        if (!cancelled) setMeasurements(data.measurements || []);
+      } catch (error) {
+        console.error('[PDFViewer] Error loading measurements:', error);
+        if (!cancelled) setMeasurements([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, state.pageNumber, readOnly]);
+
+  // Load calibration for current page
+  useEffect(() => {
+    if (!projectId || readOnly) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/measurements/calibrate?projectId=${projectId}&pageNumber=${state.pageNumber}`
+        );
+        if (!res.ok) throw new Error('Failed to fetch calibration');
+        const data = await res.json();
+        if (!cancelled) setCalibration(data.calibration || null);
+      } catch (error) {
+        console.error('[PDFViewer] Error loading calibration:', error);
+        if (!cancelled) setCalibration(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, state.pageNumber, readOnly]);
+
   // Center the page initially when it first loads
   // Track whether we've already centered this page to avoid re-centering on zoom
   const pageCenteredRef = useRef<number | null>(null);
@@ -885,6 +977,156 @@ export function PDFViewer({
     [state.transform]
   );
 
+  // Helper to calculate real distance from pixels using scale notation and PDF dimensions
+  const calculateRealDistance = useCallback(
+    (pixelsDistance: number): number | null => {
+      if (!calibration?.scale_notation || !page) return null;
+
+      try {
+        // Parse scale notation to get ratio
+        const match = calibration.scale_notation.match(
+          /^(\d+(?:\/\d+)?)"?\s*=\s*(\d+)'(?:-(\d+)"?)?$/
+        );
+        if (!match) return null;
+
+        const [, paperInchStr, realFeetStr, realInchesStr] = match;
+
+        // Parse paper inches (could be fraction)
+        let paperInches: number;
+        if (paperInchStr.includes('/')) {
+          const [num, denom] = paperInchStr.split('/').map(Number);
+          paperInches = num / denom;
+        } else {
+          paperInches = parseFloat(paperInchStr);
+        }
+
+        // Parse real world measurement
+        const realFeet = parseFloat(realFeetStr);
+        const realInches = realInchesStr ? parseFloat(realInchesStr) : 0;
+        const realTotalInches = realFeet * 12 + realInches;
+
+        // Get PDF page dimensions at scale 1
+        const viewport = page.getViewport({ scale: 1 });
+
+        // Get canvas width in pixels (at our render scale)
+        const canvas = canvasRef.current;
+        if (!canvas) return null;
+
+        // Canvas pixels per PDF point
+        const canvasWidth = canvas.width;
+        const pixelsPerPoint = canvasWidth / viewport.width;
+
+        // Pixels per paper inch
+        const pixelsPerPaperInch = pixelsPerPoint * 72;
+
+        // Convert pixel distance to paper inches
+        const paperInchesDistance = pixelsDistance / pixelsPerPaperInch;
+
+        // Convert paper inches to real inches using scale
+        const scaleRatio = paperInches / realTotalInches; // paper inches per real inch
+        const realInchesDistance = paperInchesDistance / scaleRatio;
+
+        return realInchesDistance;
+      } catch (error) {
+        console.error('[PDFViewer] Error calculating real distance:', error);
+        return null;
+      }
+    },
+    [calibration, page]
+  );
+
+  // Measurement handlers
+  const saveMeasurement = useCallback(
+    async (selection: any) => {
+      if (!projectId || !selection) return;
+
+      const dx = selection.endX - selection.startX;
+      const dy = selection.endY - selection.startY;
+      const pixelsDistance = Math.sqrt(dx * dx + dy * dy);
+
+      // Calculate real distance using scale notation and PDF dimensions
+      const realDistanceInches = calculateRealDistance(pixelsDistance);
+
+      try {
+        const res = await fetch('/api/measurements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_id: projectId,
+            page_number: state.pageNumber,
+            start_point: { x: selection.startX, y: selection.startY },
+            end_point: { x: selection.endX, y: selection.endY },
+            pixels_distance: pixelsDistance,
+            real_distance_inches: realDistanceInches,
+          }),
+        });
+
+        if (!res.ok) throw new Error('Failed to save measurement');
+
+        const data = await res.json();
+        setMeasurements(prev => [...prev, data.measurement]);
+        dispatch({ type: 'CLEAR_SELECTION' });
+      } catch (error) {
+        console.error('[PDFViewer] Error saving measurement:', error);
+        alert('Failed to save measurement');
+      }
+    },
+    [projectId, state.pageNumber, calculateRealDistance]
+  );
+
+  const deleteMeasurement = useCallback(async (measurementId: string) => {
+    try {
+      const res = await fetch(`/api/measurements?id=${measurementId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) throw new Error('Failed to delete measurement');
+
+      setMeasurements(prev => prev.filter(m => m.id !== measurementId));
+      setSelectedMeasurementId(null);
+    } catch (error) {
+      console.error('[PDFViewer] Error deleting measurement:', error);
+      alert('Failed to delete measurement');
+    }
+  }, []);
+
+  const saveCalibration = useCallback(
+    async (scaleNotation: string) => {
+      if (!projectId) return;
+
+      try {
+        const res = await fetch('/api/measurements/calibrate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_id: projectId,
+            page_number: state.pageNumber,
+            scale_notation: scaleNotation,
+          }),
+        });
+
+        if (!res.ok) throw new Error('Failed to save calibration');
+
+        const data = await res.json();
+        setCalibration(data.calibration);
+        setShowCalibrationModal(false);
+
+        // Reload measurements to get updated real distances
+        const measurementsRes = await fetch(
+          `/api/measurements?projectId=${projectId}&pageNumber=${state.pageNumber}`
+        );
+        if (measurementsRes.ok) {
+          const measurementsData = await measurementsRes.json();
+          setMeasurements(measurementsData.measurements || []);
+        }
+      } catch (error) {
+        console.error('[PDFViewer] Error saving calibration:', error);
+        alert('Failed to save calibration');
+      }
+    },
+    [projectId, state.pageNumber]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const el = viewportRef.current;
@@ -901,10 +1143,20 @@ export function PDFViewer({
       // Ignore keyboard events when search is open (except for keys handled by search overlay)
       if (textSearch.isOpen) return;
 
+      // Ignore keyboard events when calibration modal is open
+      if (showCalibrationModal) return;
+
       // Open search with 'f' key (only if project ID is available)
       if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.repeat && projectId) {
         e.preventDefault();
         textSearch.open();
+        return;
+      }
+
+      // Delete selected measurement with Delete key
+      if (e.key === 'Delete' && selectedMeasurementId && !e.repeat) {
+        e.preventDefault();
+        deleteMeasurement(selectedMeasurementId);
         return;
       }
 
@@ -956,9 +1208,18 @@ export function PDFViewer({
       if (e.key === '-' || e.key === '_') zoom('out');
       if (e.key === '=' || e.key === '+') zoom('in');
       if (e.key === '0') dispatch({ type: 'RESET_ZOOM' });
-      if (!readOnly && e.key.toLowerCase() === 's') dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
-      if (!readOnly && e.key === 'Escape' && currentState.screenshotMode)
+      if (!readOnly && e.key.toLowerCase() === 's' && !e.repeat)
         dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
+      if (!readOnly && e.key.toLowerCase() === 'm' && !e.repeat)
+        dispatch({ type: 'TOGGLE_MEASUREMENT_MODE' });
+      if (!readOnly && e.key.toLowerCase() === 'l' && !e.repeat) {
+        e.preventDefault();
+        setShowCalibrationModal(true);
+      }
+      if (!readOnly && e.key === 'Escape') {
+        if (currentState.screenshotMode) dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
+        if (currentState.measurementMode) dispatch({ type: 'TOGGLE_MEASUREMENT_MODE' });
+      }
     };
     el.addEventListener('keydown', onKey);
     return () => {
@@ -966,13 +1227,18 @@ export function PDFViewer({
     };
   }, [
     state.screenshotMode,
+    state.measurementMode,
+    state.calibrationMode,
     state.numPages,
     state.pageNumber,
     readOnly,
     zoom,
     showElevationPrompt,
+    showCalibrationModal,
     textSearch,
     projectId,
+    selectedMeasurementId,
+    deleteMeasurement,
   ]);
 
   // Mouse handlers for pan / selection
@@ -988,7 +1254,7 @@ export function PDFViewer({
   );
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if (state.screenshotMode && !readOnly) {
+    if ((state.screenshotMode || state.measurementMode) && !readOnly) {
       e.preventDefault();
       e.stopPropagation();
       const { x, y } = screenToContent(e.clientX, e.clientY);
@@ -1006,7 +1272,7 @@ export function PDFViewer({
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    if (state.screenshotMode) {
+    if (state.screenshotMode || state.measurementMode) {
       if (state.isSelecting && state.selection) {
         e.preventDefault();
         e.stopPropagation();
@@ -1025,7 +1291,13 @@ export function PDFViewer({
   };
 
   const onMouseUp = () => {
-    if (state.screenshotMode && state.selection) dispatch({ type: 'END_SELECTION' });
+    if (state.screenshotMode && state.selection) {
+      dispatch({ type: 'END_SELECTION' });
+    } else if (state.measurementMode && state.selection) {
+      dispatch({ type: 'END_SELECTION' });
+      // Auto-save measurement when line is complete
+      saveMeasurement(state.selection);
+    }
     dispatch({ type: 'END_DRAG' });
   };
 
@@ -1334,6 +1606,30 @@ export function PDFViewer({
         </div>
       )}
 
+      {state.measurementMode && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="bg-green-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
+            📏 Measurement Mode: Draw lines to measure
+            {calibration?.scale_notation ? (
+              <span className="ml-2 opacity-90 font-mono">({calibration.scale_notation})</span>
+            ) : (
+              <span className="ml-2 opacity-90">(No scale set - press L)</span>
+            )}
+            <span className="ml-3 opacity-90 text-xs">Click line to select • Delete to remove</span>
+          </div>
+        </div>
+      )}
+
+      {!state.measurementMode && selectedMeasurementId && measurements.length > 0 && !readOnly && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
+            Measurement selected • Press{' '}
+            <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">Delete</kbd>{' '}
+            to remove
+          </div>
+        </div>
+      )}
+
       {state.screenshotMode && state.selection && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
           <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-blue-500 font-mono">
@@ -1472,6 +1768,23 @@ export function PDFViewer({
                 Save to Current
               </button>
             )}
+            <button
+              aria-pressed={state.measurementMode}
+              aria-label="Toggle measurement mode (M)"
+              title="Measure distances on the plan"
+              className={`btn-icon shadow-md ${state.measurementMode ? 'bg-green-600 text-white' : 'bg-white'}`}
+              onClick={() => dispatch({ type: 'TOGGLE_MEASUREMENT_MODE' })}
+            >
+              📏
+            </button>
+            <button
+              aria-label="Set drawing scale (L)"
+              title="Set drawing scale"
+              className="btn-icon shadow-md bg-white"
+              onClick={() => setShowCalibrationModal(true)}
+            >
+              🔧
+            </button>
           </>
         )}
       </div>
@@ -1508,7 +1821,7 @@ export function PDFViewer({
 
       <div
         className={`absolute inset-0 overflow-hidden ${
-          state.screenshotMode
+          state.screenshotMode || state.measurementMode
             ? 'cursor-crosshair'
             : state.isDragging
               ? 'cursor-grabbing'
@@ -1518,7 +1831,7 @@ export function PDFViewer({
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={() => {
-          if (!state.screenshotMode) dispatch({ type: 'END_DRAG' });
+          if (!state.screenshotMode && !state.measurementMode) dispatch({ type: 'END_DRAG' });
         }}
         style={{ clipPath: 'inset(0)' }}
       >
@@ -1551,6 +1864,58 @@ export function PDFViewer({
                   zIndex: 40,
                 }}
               />
+            )}
+
+            {/* Measurement mode line preview */}
+            {state.measurementMode && state.selection && (
+              <svg
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none',
+                  zIndex: 40,
+                }}
+              >
+                {/* Define arrow markers for drawing line */}
+                <defs>
+                  <marker
+                    id="drawing-arrow-start"
+                    markerWidth="8"
+                    markerHeight="8"
+                    refX="4"
+                    refY="4"
+                    orient="auto"
+                    markerUnits="userSpaceOnUse"
+                  >
+                    <path d="M 0 4 L 8 0 L 8 8 Z" fill="#10B981" stroke="white" strokeWidth="0.5" />
+                  </marker>
+                  <marker
+                    id="drawing-arrow-end"
+                    markerWidth="8"
+                    markerHeight="8"
+                    refX="4"
+                    refY="4"
+                    orient="auto"
+                    markerUnits="userSpaceOnUse"
+                  >
+                    <path d="M 8 4 L 0 0 L 0 8 Z" fill="#10B981" stroke="white" strokeWidth="0.5" />
+                  </marker>
+                </defs>
+
+                <line
+                  x1={state.selection.startX}
+                  y1={state.selection.startY}
+                  x2={state.selection.endX}
+                  y2={state.selection.endY}
+                  stroke="#10B981"
+                  strokeWidth="3"
+                  markerStart="url(#drawing-arrow-start)"
+                  markerEnd="url(#drawing-arrow-end)"
+                />
+              </svg>
             )}
 
             {/* Screenshot area indicators (show previously captured areas) */}
@@ -1605,6 +1970,25 @@ export function PDFViewer({
                     />
                   );
                 })}
+
+            {/* Measurement overlay */}
+            {!readOnly && (
+              <MeasurementOverlay
+                measurements={measurements}
+                selectedMeasurementId={selectedMeasurementId}
+                onMeasurementClick={setSelectedMeasurementId}
+                calibrationLine={
+                  calibration &&
+                  calibration.calibration_line_start &&
+                  calibration.calibration_line_end
+                    ? {
+                        start_point: calibration.calibration_line_start,
+                        end_point: calibration.calibration_line_end,
+                      }
+                    : null
+                }
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1633,7 +2017,7 @@ export function PDFViewer({
           ▶
         </button>
         <span className="text-xs text-gray-600 ml-2 hidden sm:inline">
-          Shortcuts: ←/→, -/+, 0, S, Esc{projectId && ', F'}
+          Shortcuts: ←/→, -/+, 0, S, M, L, Esc{projectId && ', F'}
         </span>
       </div>
 
@@ -1653,6 +2037,14 @@ export function PDFViewer({
 
       {showElevationPrompt && (
         <ElevationCapturePrompt onSave={handleElevationSave} onCancel={handleElevationCancel} />
+      )}
+
+      {showCalibrationModal && (
+        <CalibrationModal
+          currentScale={calibration?.scale_notation}
+          onSave={saveCalibration}
+          onCancel={() => setShowCalibrationModal(false)}
+        />
       )}
     </div>
   );
