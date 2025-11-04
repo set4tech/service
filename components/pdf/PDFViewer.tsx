@@ -636,21 +636,29 @@ export function PDFViewer({
 
   // Mouse handlers for pan / selection
   const onMouseDown = (e: React.MouseEvent) => {
+    // Special modes: only left-click for selection, no panning allowed
     if ((state.mode.type !== 'idle' || isDrawingCalibrationLine) && !readOnly) {
-      e.preventDefault();
-      e.stopPropagation();
-      const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-      dispatch({ type: 'START_SELECTION', payload: { x, y } });
+      if (e.button === 0) { // Left-click only
+        e.preventDefault();
+        e.stopPropagation();
+        const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
+        dispatch({ type: 'START_SELECTION', payload: { x, y } });
+      }
       return;
     }
-    if (e.button !== 0) return;
-    dispatch({ type: 'START_DRAG' });
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      tx: transform.tx,
-      ty: transform.ty,
-    };
+    
+    // Normal mode: middle-click (1) or right-click (2) for panning
+    if (e.button === 1 || e.button === 2) {
+      e.preventDefault();
+      dispatch({ type: 'START_DRAG' });
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        tx: transform.tx,
+        ty: transform.ty,
+      };
+    }
+    // Left-click (button 0) does nothing in normal mode - reserved for selection tool
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
@@ -1038,9 +1046,7 @@ export function PDFViewer({
         className={`absolute inset-0 overflow-hidden ${
           state.mode.type !== 'idle' || isDrawingCalibrationLine
             ? 'cursor-crosshair'
-            : state.isDragging
-              ? 'cursor-grabbing'
-              : 'cursor-grab'
+            : 'cursor-default'
         }`}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
@@ -1049,6 +1055,7 @@ export function PDFViewer({
           if (state.mode.type === 'idle' && !isDrawingCalibrationLine)
             dispatch({ type: 'END_DRAG' });
         }}
+        onContextMenu={(e) => e.preventDefault()}
         style={{ clipPath: 'inset(0)' }}
       >
         <div
