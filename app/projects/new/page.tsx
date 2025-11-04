@@ -261,7 +261,7 @@ export default function NewProjectPage() {
         const project = await projectResponse.json();
 
         // Trigger PDF chunking in background (fire-and-forget)
-        fetch(`/api/projects/${project.id}/chunk`, { method: 'POST' }).catch(err => {
+        fetch(`/api/pdf/${project.id}/chunk`, { method: 'POST' }).catch(err => {
           console.error('[Project Creation] PDF chunking failed:', err);
           // Don't block project creation on chunking failure
         });
