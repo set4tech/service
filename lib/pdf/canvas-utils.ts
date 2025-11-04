@@ -33,20 +33,21 @@ export function getSafeRenderMultiplier(
  * @param page - PDF.js page object
  * @param canvas - Target canvas element
  * @param options - Rendering options
- * @returns Viewport information
+ * @returns Viewport information and render task for cancellation
  */
-export async function renderPdfPage(
+export function renderPdfPage(
   page: any,
   canvas: HTMLCanvasElement,
   options: {
     scaleMultiplier: number;
     optionalContentConfig?: any;
   }
-): Promise<{
+): {
+  task: any;
   baseViewport: any;
   viewport: any;
   multiplier: number;
-}> {
+} {
   const { scaleMultiplier, optionalContentConfig } = options;
 
   // Get base viewport
@@ -89,9 +90,10 @@ export async function renderPdfPage(
     renderParams.optionalContentConfigPromise = Promise.resolve(optionalContentConfig);
   }
 
-  await page.render(renderParams).promise;
+  // Return task immediately so caller can cancel if needed
+  const task = page.render(renderParams);
 
-  return { baseViewport, viewport, multiplier: safeMultiplier };
+  return { task, baseViewport, viewport, multiplier: safeMultiplier };
 }
 
 /**

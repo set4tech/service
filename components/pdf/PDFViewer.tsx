@@ -445,14 +445,23 @@ export function PDFViewer({
     }
 
     try {
-      await renderPdfPage(page, c, {
+      const result = renderPdfPage(page, c, {
         scaleMultiplier: renderScale,
         optionalContentConfig: ocConfig && !disableLayers ? ocConfig : undefined,
       });
+      
+      // Store task so we can cancel next time
+      renderTaskRef.current = result.task;
+      
+      // Now await the render
+      await result.task.promise;
     } catch (err: any) {
       if (err?.name !== 'RenderingCancelledException') {
         console.error('[PDFViewer] Render error:', err);
       }
+    } finally {
+      // Clear ref after completion
+      renderTaskRef.current = null;
     }
   }, [page, renderScale, ocConfig, disableLayers]);
 
