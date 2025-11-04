@@ -8,6 +8,8 @@ interface CalibrationModalProps {
   currentScale?: string;
   currentPrintSize?: { width: number; height: number };
   pdfDimensions?: { width: number; height: number }; // in PDF points
+  storedPdfDimensions?: { widthInches: number; heightInches: number } | null; // Stored dimensions from database
+  projectId?: string; // For on-demand dimension detection
   onSave: (scaleNotation: string, printWidth: number, printHeight: number) => void;
   onSaveKnownLength: (
     lineStart: { x: number; y: number },
@@ -23,6 +25,8 @@ export function CalibrationModal({
   currentScale,
   currentPrintSize,
   pdfDimensions,
+  storedPdfDimensions,
+  projectId,
   onSave,
   onSaveKnownLength,
   onCancel,
@@ -36,6 +40,11 @@ export function CalibrationModal({
   );
   const [knownDistance, setKnownDistance] = useState<string>('');
   const [knownDistanceUnit, setKnownDistanceUnit] = useState<'feet' | 'inches'>('feet');
+  const [detectingDimensions, setDetectingDimensions] = useState(false);
+  const [detectedDimensions, setDetectedDimensions] = useState<{
+    widthInches: number;
+    heightInches: number;
+  } | null>(storedPdfDimensions || null);
 
   // Calculate PDF size in inches for reference (72 PDF points = 1 inch)
   const pdfInches = pdfDimensions
@@ -141,6 +150,30 @@ export function CalibrationModal({
       handleSave();
     } else if (e.key === 'Escape') {
       onCancel();
+    }
+  };
+
+  const handleDetectDimensions = async () => {
+    if (!projectId || detectingDimensions) return;
+
+    setDetectingDimensions(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/dimensions`);
+      if (!response.ok) throw new Error('Failed to detect dimensions');
+
+      const data = await response.json();
+      if (data.dimensions) {
+        setDetectedDimensions(data.dimensions);
+        // Auto-fill the print size
+        const width = Math.round(data.dimensions.widthInches);
+        const height = Math.round(data.dimensions.heightInches);
+        setPrintSize(`${width}x${height}`);
+      }
+    } catch (error) {
+      console.error('Error detecting dimensions:', error);
+      alert('Failed to detect PDF dimensions. Please enter manually.');
+    } finally {
+      setDetectingDimensions(false);
     }
   };
 
@@ -305,6 +338,33 @@ export function CalibrationModal({
                 placeholder="24x36"
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
               />
+              {projectId && (
+                <button
+                  type="button"
+                  onClick={
+                    detectedDimensions
+                      ? () => {
+                          const width = Math.round(detectedDimensions.widthInches);
+                          const height = Math.round(detectedDimensions.heightInches);
+                          setPrintSize(`${width}x${height}`);
+                        }
+                      : handleDetectDimensions
+                  }
+                  disabled={detectingDimensions}
+                  className="mt-2 w-full px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {detectingDimensions ? (
+                    <>🔍 Detecting PDF size...</>
+                  ) : detectedDimensions ? (
+                    <>
+                      📄 Use detected PDF size ({Math.round(detectedDimensions.widthInches)}×
+                      {Math.round(detectedDimensions.heightInches)}″)
+                    </>
+                  ) : (
+                    <>🔍 Detect PDF Size</>
+                  )}
+                </button>
+              )}
               <div className="text-xs text-gray-500 mt-2 space-y-1">
                 <div className="font-medium">Common sheet sizes:</div>
                 <div className="flex flex-wrap gap-1">

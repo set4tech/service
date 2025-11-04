@@ -2221,6 +2221,7 @@ export function PDFViewer({
                 }
               : undefined
           }
+          projectId={projectId}
           onSave={saveCalibration}
           onSaveKnownLength={saveCalibrationKnownLength}
           onCancel={() => {

@@ -1,5 +1,5 @@
 import pdf from 'pdf-parse';
-
+import { PDFDocument, PDFDict, PDFName, PDFArray, PDFNumber } from 'pdf-lib';
 export interface PageContent {
   page: number;
   text: string;
@@ -104,4 +104,56 @@ export async function downloadPdfFromUrl(url: string): Promise<Buffer> {
 
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
+}
+
+const MM_PER_POINT = 25.4 / 72;
+const IN_PER_POINT = 1 / 72;
+
+function num(obj: PDFNumber): number | undefined {
+  return obj?.asNumber();
+}
+export async function getPdfPageSizesWithPdfLib(pdfBytes: Uint8Array) {
+  const doc = await PDFDocument.load(pdfBytes, { updateMetadata: false });
+  const pages: Array<{
+    pageIndex: number;
+    widthPoints: number; // includes /UserUnit
+    heightPoints: number; // includes /UserUnit
+    widthMm: number;
+    heightMm: number;
+    widthIn: number;
+    heightIn: number;
+  }> = [];
+
+  for (let i = 0; i < doc.getPageCount(); i++) {
+    const page = doc.getPage(i);
+    const node = (page as any).node as PDFDict;
+
+    const userUnit = (node.get(PDFName.of('UserUnit')) as PDFNumber | undefined)?.asNumber() ?? 1;
+
+    // Prefer CropBox if present, else MediaBox
+    const crop = node.get(PDFName.of('CropBox')) as PDFArray | undefined;
+    const media = node.get(PDFName.of('MediaBox')) as PDFArray | undefined;
+    const box = crop ?? media;
+    if (!box || box.size() < 4) throw new Error(`Page ${i + 1}: missing page box`);
+
+    const x0 = num(box.get(0) as PDFNumber);
+    const y0 = num(box.get(1) as PDFNumber);
+    const x1 = num(box.get(2) as PDFNumber);
+    const y1 = num(box.get(3) as PDFNumber);
+
+    // Width/height in default user space units; multiply by /UserUnit to get physical points
+    const widthPointsRaw = Math.abs((x1 ?? 0) - (x0 ?? 0));
+    const heightPointsRaw = Math.abs((y1 ?? 0) - (y0 ?? 0));
+
+    const widthPoints = widthPointsRaw * userUnit;
+    const heightPoints = heightPointsRaw * userUnit;
+
+    const widthMm = widthPoints * MM_PER_POINT;
+    const heightMm = heightPoints * MM_PER_POINT;
+    const widthIn = widthPoints * IN_PER_POINT;
+    const heightIn = heightPoints * IN_PER_POINT;
+
+    pages.push({ pageIndex: i, widthPoints, heightPoints, widthMm, heightMm, widthIn, heightIn });
+  }
+  return pages;
 }
