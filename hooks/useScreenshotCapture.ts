@@ -38,7 +38,7 @@ interface ScreenshotCaptureParams {
 
 /**
  * Hook for capturing screenshots from PDF canvas.
- * 
+ *
  * Orchestrates the full screenshot workflow:
  * 1. Create element instance (if needed)
  * 2. Render high-res region from PDF
@@ -46,7 +46,7 @@ interface ScreenshotCaptureParams {
  * 4. Save metadata to database
  * 5. Extract text (for elevations)
  * 6. Trigger refresh
- * 
+ *
  * @example
  * ```typescript
  * const { capture, capturing } = useScreenshotCapture({
@@ -59,7 +59,7 @@ interface ScreenshotCaptureParams {
  *   onScreenshotSaved: (id) => console.log('Saved:', id),
  *   refreshScreenshots
  * });
- * 
+ *
  * // Capture selection to current check
  * await capture({
  *   target: 'current',
@@ -143,7 +143,7 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
         );
 
         // Step 5: Extract text for elevations (if needed)
-        let extractedText = '';
+        const extractedText = '';
         if (type === 'elevation' && page) {
           // Text extraction would be done here if available
           // For now, we'll leave it empty

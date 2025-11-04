@@ -2,10 +2,10 @@ import type { Calibration } from '@/hooks/useCalibration';
 
 /**
  * Calculate real-world distance from pixel distance using page-size calibration.
- * 
+ *
  * This method uses architectural scale notation (e.g., "1/4" = 1'-0") combined
  * with the known print dimensions of the PDF.
- * 
+ *
  * @param pixelsDistance - Distance in CSS pixels
  * @param calibration - Calibration data with scale_notation and print dimensions
  * @param cssWidth - CSS width of the canvas (for pixel-to-print-inch conversion)
@@ -23,9 +23,7 @@ export function calculateRealDistancePageSize(
 ): number | null {
   try {
     // Parse scale notation (e.g., "1/4" = 1'-0")
-    const match = calibration.scale_notation.match(
-      /^(\d+(?:\/\d+)?)"?\s*=\s*(\d+)'(?:-(\d+)"?)?$/
-    );
+    const match = calibration.scale_notation.match(/^(\d+(?:\/\d+)?)"?\s*=\s*(\d+)'(?:-(\d+)"?)?$/);
     if (!match) return null;
 
     const [, paperInchStr, realFeetStr, realInchesStr] = match;
@@ -64,10 +62,10 @@ export function calculateRealDistancePageSize(
 
 /**
  * Calculate real-world distance from pixel distance using known-length calibration.
- * 
+ *
  * This method uses a user-drawn line with a known real-world distance.
  * More intuitive than page-size method, works even if scale notation is unclear.
- * 
+ *
  * @param pixelsDistance - Distance in CSS pixels to convert
  * @param calibration - Calibration data with line endpoints and known distance
  * @returns Distance in inches, or null if calculation fails
@@ -104,7 +102,7 @@ export function calculateRealDistanceKnownLength(
 
 /**
  * Calculate real-world distance using appropriate method based on calibration type.
- * 
+ *
  * @param pixelsDistance - Distance in CSS pixels
  * @param calibration - Calibration data (can be null)
  * @param cssWidth - CSS width of canvas (only needed for page-size method)
@@ -155,13 +153,13 @@ export function calculateRealDistance(
 
 /**
  * Parse architectural scale notation into its components.
- * 
+ *
  * Supports formats like:
  * - "1/4" = 1'-0"
  * - "1/8" = 1'-0"
  * - "1" = 10'-0"
  * - "3/4" = 1'-6"
- * 
+ *
  * @param notation - Scale notation string
  * @returns Parsed components or null if invalid
  */
@@ -193,7 +191,7 @@ export function parseScaleNotation(notation: string): {
 
 /**
  * Format distance in inches to a human-readable string.
- * 
+ *
  * @param inches - Distance in inches
  * @param precision - Number of decimal places (default: 2)
  * @returns Formatted string like "5' 6.25"" or "14.5""
@@ -205,6 +203,6 @@ export function formatDistance(inches: number, precision: number = 2): string {
   if (feet > 0) {
     return `${feet}' ${remainingInches.toFixed(precision)}"`;
   }
-  
+
   return `${inches.toFixed(precision)}"`;
 }

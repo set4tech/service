@@ -12,16 +12,12 @@ interface MouseHandlers {
 
 /**
  * Hook for managing PDF viewer mouse interactions.
- * 
+ *
  * Handles:
  * - Pan (drag in idle mode)
  * - Selection (drag in screenshot/measure/calibrate modes)
  */
-export function usePdfMouseHandlers(
-  mode: ViewerMode,
-  readOnly: boolean,
-  handlers: MouseHandlers
-) {
+export function usePdfMouseHandlers(mode: ViewerMode, readOnly: boolean, handlers: MouseHandlers) {
   const dragStartRef = useRef({ x: 0, y: 0 });
 
   const onMouseDown = useCallback(
@@ -65,7 +61,7 @@ export function usePdfMouseHandlers(
     if (mode.type !== 'idle' && mode.selection) {
       handlers.onEndSelection();
     }
-    
+
     // End drag
     handlers.onEndDrag();
   }, [mode, handlers]);
@@ -84,4 +80,3 @@ export function usePdfMouseHandlers(
     onMouseLeave,
   };
 }
-

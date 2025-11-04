@@ -38,17 +38,17 @@ interface MeasurementsActions {
 
 /**
  * Hook for managing measurements on PDF pages.
- * 
+ *
  * Features:
  * - Load measurements for a specific project/page
  * - Create new measurements
  * - Delete measurements
  * - Track selected measurement
- * 
+ *
  * @example
  * ```typescript
  * const measurements = useMeasurements(projectId, pageNumber);
- * 
+ *
  * // Save a measurement
  * await measurements.actions.save({
  *   project_id: projectId,
@@ -58,10 +58,10 @@ interface MeasurementsActions {
  *   pixels_distance: 223.6,
  *   real_distance_inches: 10.5
  * });
- * 
+ *
  * // Select a measurement
  * measurements.actions.select(measurementId);
- * 
+ *
  * // Delete selected
  * if (measurements.state.selectedId) {
  *   await measurements.actions.remove(measurements.state.selectedId);
@@ -80,36 +80,42 @@ export function useMeasurements(
 
   const measurements = data?.measurements ?? [];
 
-  const save = useCallback(async (measurement: NewMeasurement): Promise<Measurement> => {
-    const response = await fetch('/api/measurements', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(measurement),
-    });
+  const save = useCallback(
+    async (measurement: NewMeasurement): Promise<Measurement> => {
+      const response = await fetch('/api/measurements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(measurement),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to save measurement');
-    }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save measurement');
+      }
 
-    const { measurement: saved } = await response.json();
-    await refetch();
-    return saved;
-  }, [refetch]);
+      const { measurement: saved } = await response.json();
+      await refetch();
+      return saved;
+    },
+    [refetch]
+  );
 
-  const remove = useCallback(async (id: string) => {
-    const response = await fetch(`/api/measurements?id=${id}`, {
-      method: 'DELETE',
-    });
+  const remove = useCallback(
+    async (id: string) => {
+      const response = await fetch(`/api/measurements?id=${id}`, {
+        method: 'DELETE',
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to delete measurement');
-    }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete measurement');
+      }
 
-    setSelectedId(null);
-    await refetch();
-  }, [refetch]);
+      setSelectedId(null);
+      await refetch();
+    },
+    [refetch]
+  );
 
   return {
     state: {
@@ -126,5 +132,3 @@ export function useMeasurements(
     },
   };
 }
-
-

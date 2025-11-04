@@ -45,3 +45,4 @@ COMMENT ON TABLE pdf_measurements IS 'Manual distance measurements drawn on floo
 COMMENT ON COLUMN pdf_scale_calibrations.pixels_per_inch IS 'Number of PDF pixels per real-world inch (calculated from calibration line)';
 COMMENT ON COLUMN pdf_measurements.real_distance_inches IS 'Calculated distance in inches using page calibration (NULL if page not calibrated)';
 
+

@@ -71,7 +71,7 @@ export function useAssessmentPolling(
 
         // Trigger queue processing
         fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
-        
+
         return false; // Keep polling
       }
 
@@ -88,17 +88,17 @@ export function useAssessmentPolling(
 
       setMessage('Assessment complete!');
       console.log('[useAssessmentPolling] Stopped assessing');
-      
+
       return true; // Stop polling
     },
     {
       enabled: assessing && !!checkId,
       interval: pollInterval,
       onComplete: () => setAssessing(false),
-      onError: (error) => {
+      onError: error => {
         console.error('[useAssessmentPolling] Poll error:', error);
         setAssessing(false);
-      }
+      },
     }
   );
 

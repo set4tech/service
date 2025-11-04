@@ -30,3 +30,4 @@ export function StepIndicator({ currentStep, totalSteps, className = '' }: StepI
     </div>
   );
 }
+

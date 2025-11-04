@@ -12,20 +12,20 @@ const CACHE_DURATION_MS = 50 * 60 * 1000; // 50 minutes
 
 /**
  * Hook for fetching and caching presigned URLs for S3 objects.
- * 
+ *
  * Features:
  * - In-memory cache with expiration
  * - Request deduplication (multiple components requesting same URL)
  * - Automatic refresh before expiration
- * 
+ *
  * @example
  * ```typescript
  * const { url, loading, error } = usePresignedUrl('s3://bucket/file.pdf');
- * 
+ *
  * if (loading) return <Spinner />;
  * if (error) return <Error />;
  * if (!url) return null;
- * 
+ *
  * return <PDFViewer pdfUrl={url} />;
  * ```
  */
@@ -64,7 +64,7 @@ export function usePresignedUrl(originalUrl: string | null): {
 
         // Check if request is already in-flight
         let inflightPromise = INFLIGHT.get(originalUrl);
-        
+
         if (!inflightPromise) {
           // Start new request
           inflightPromise = (async () => {
@@ -79,7 +79,7 @@ export function usePresignedUrl(originalUrl: string | null): {
             }
 
             const data = await response.json();
-            
+
             // Cache the result
             CACHE.set(originalUrl, {
               url: data.url,
@@ -97,7 +97,7 @@ export function usePresignedUrl(originalUrl: string | null): {
 
         // Wait for promise (whether new or existing)
         const presignedUrl = await inflightPromise;
-        
+
         if (!cancelled) {
           setUrl(presignedUrl);
           setLoading(false);

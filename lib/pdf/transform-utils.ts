@@ -17,7 +17,7 @@ export function clampScale(scale: number, min: number = 0.1, max: number = 10): 
 
 /**
  * Calculate transform to zoom at a specific pivot point.
- * 
+ *
  * @param currentTransform - Current transform state
  * @param pivotScreen - Pivot point in screen coordinates (relative to container)
  * @param newScale - Target scale
@@ -44,7 +44,7 @@ export function zoomAtPoint(
 
 /**
  * Calculate transform to center specific bounds in container.
- * 
+ *
  * @param containerSize - Container dimensions
  * @param bounds - Content bounds to center
  * @param currentScale - Current scale (preserved)
@@ -70,7 +70,7 @@ export function centerBounds(
 
 /**
  * Calculate transform to fit content in container.
- * 
+ *
  * @param containerSize - Container dimensions
  * @param contentSize - Content dimensions
  * @param padding - Optional padding in pixels

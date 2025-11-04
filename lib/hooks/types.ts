@@ -55,5 +55,3 @@ export interface SelectionState<T = string> {
   selectedId: T | null;
   select: (id: T | null) => void;
 }
-
-

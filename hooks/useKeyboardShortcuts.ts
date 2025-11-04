@@ -13,7 +13,7 @@ interface ShortcutHandlers {
   onOpenSearch?: () => void;
   onExit: () => void;
   onDeleteMeasurement?: () => void;
-  
+
   // Screenshot mode shortcuts
   onCaptureCurrent?: () => void;
   onCaptureElevation?: () => void;
@@ -31,7 +31,7 @@ interface ShortcutOptions {
 
 /**
  * Hook for managing PDF viewer keyboard shortcuts.
- * 
+ *
  * Supports:
  * - Navigation: Arrow keys
  * - Zoom: -/+/0
@@ -160,4 +160,3 @@ export function useKeyboardShortcuts(
     return () => el.removeEventListener('keydown', onKeyDown);
   }, [containerRef, options, handlers]);
 }
-

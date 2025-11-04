@@ -104,6 +104,8 @@ export async function POST(request: NextRequest) {
       scale_notation: string | null;
       print_width_inches: number | null;
       print_height_inches: number | null;
+      pdf_width_points: number | null;
+      pdf_height_points: number | null;
       calibration_line_start: { x: number; y: number } | null;
       calibration_line_end: { x: number; y: number } | null;
       known_distance_inches: number | null;
@@ -156,6 +158,8 @@ export async function POST(request: NextRequest) {
         scale_notation,
         print_width_inches: printWidth,
         print_height_inches: printHeight,
+        pdf_width_points: parseFloat(pdf_width_points),
+        pdf_height_points: parseFloat(pdf_height_points),
         pixels_per_inch: pixelsPerInch,
         calibration_line_start: null,
         calibration_line_end: null,
@@ -207,6 +211,8 @@ export async function POST(request: NextRequest) {
         scale_notation: null,
         print_width_inches: null,
         print_height_inches: null,
+        pdf_width_points: null,
+        pdf_height_points: null,
         pixels_per_inch: pixelsPerInch,
         calibration_line_start,
         calibration_line_end,

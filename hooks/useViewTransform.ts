@@ -13,13 +13,13 @@ interface ViewTransformActions {
 
 /**
  * Hook for managing view transform (pan/zoom) on a PDF canvas.
- * 
+ *
  * Features:
  * - Zoom in/out with optional pivot point
  * - Wheel-based zoom centered at cursor
  * - Reset zoom
  * - Center view on specific bounds
- * 
+ *
  * @example
  * ```typescript
  * const transform = useViewTransform(
@@ -27,13 +27,13 @@ interface ViewTransformActions {
  *   persistence.state.transform,
  *   persistence.actions.setTransform
  * );
- * 
+ *
  * // Zoom centered at viewport center
  * transform.zoom('in');
- * 
+ *
  * // Center on violation bounds
  * transform.centerOn({ x: 100, y: 200, width: 50, height: 50 });
- * 
+ *
  * // Attach wheel zoom listener
  * useEffect(() => transform.attachWheelZoom(), []);
  * ```
@@ -152,7 +152,7 @@ export function useViewTransform(
 
 /**
  * Convert screen coordinates to content coordinates.
- * 
+ *
  * @param transform - Current view transform
  * @param containerEl - Container element for coordinate calculation
  * @param clientX - Mouse/touch X coordinate

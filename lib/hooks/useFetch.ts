@@ -21,7 +21,7 @@ export interface UseFetchReturn<T> {
 
 /**
  * Generic fetch hook for making API requests with loading and error states.
- * 
+ *
  * Features:
  * - Automatic loading and error state management
  * - Request cancellation on unmount or new request
@@ -29,29 +29,29 @@ export interface UseFetchReturn<T> {
  * - Success/error callbacks
  * - Manual refetch capability
  * - Conditional fetching with enabled flag
- * 
+ *
  * @example
  * ```typescript
  * // Basic GET request
  * const { data, loading, error } = useFetch<User[]>('/api/users');
- * 
+ *
  * // POST with body
  * const { data, loading, refetch } = useFetch('/api/users', {
  *   method: 'POST',
  *   body: { name: 'John' },
  *   onSuccess: (user) => console.log('Created:', user)
  * });
- * 
+ *
  * // Conditional fetch
  * const { data } = useFetch(userId ? `/api/users/${userId}` : null);
- * 
+ *
  * // With retry
- * const { data } = useFetch('/api/data', { 
- *   retry: 3, 
- *   retryDelay: 1000 
+ * const { data } = useFetch('/api/data', {
+ *   retry: 3,
+ *   retryDelay: 1000
  * });
  * ```
- * 
+ *
  * @template T - The expected response data type
  * @param url - The URL to fetch from (null to skip)
  * @param options - Fetch configuration options
@@ -64,7 +64,7 @@ export function useFetch<T = any>(
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const retriesRef = useRef(0);
 
@@ -97,9 +97,10 @@ export function useFetch<T = any>(
         : await response.text();
 
       if (!response.ok) {
-        const errorMessage = typeof responseData === 'object' && responseData?.error
-          ? responseData.error
-          : `HTTP ${response.status}: ${response.statusText}`;
+        const errorMessage =
+          typeof responseData === 'object' && responseData?.error
+            ? responseData.error
+            : `HTTP ${response.status}: ${response.statusText}`;
         throw new Error(errorMessage);
       }
 
@@ -111,7 +112,7 @@ export function useFetch<T = any>(
       if (err.name === 'AbortError') return;
 
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      
+
       // Retry logic
       if (options?.retry && retriesRef.current < options.retry) {
         retriesRef.current++;
@@ -148,5 +149,3 @@ export function useFetch<T = any>(
 
   return { data, loading, error, refetch: execute, reset };
 }
-
-

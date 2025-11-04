@@ -8,3 +8,4 @@ ADD COLUMN IF NOT EXISTS print_height_inches NUMERIC(10, 2);
 COMMENT ON COLUMN pdf_scale_calibrations.print_width_inches IS 'Intended print width in inches (e.g., 24 for 24x36 sheet)';
 COMMENT ON COLUMN pdf_scale_calibrations.print_height_inches IS 'Intended print height in inches (e.g., 36 for 24x36 sheet)';
 
+

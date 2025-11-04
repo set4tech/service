@@ -1,6 +1,6 @@
 /**
  * Upload screenshot and thumbnail to S3.
- * 
+ *
  * @param fullImage - Full-size screenshot blob
  * @param thumbnail - Thumbnail blob
  * @param projectId - Project ID

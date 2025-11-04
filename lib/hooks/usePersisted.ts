@@ -6,18 +6,18 @@ export interface UsePersistedOptions<T> {
    * Useful for migration or validation logic.
    */
   validate?: (value: T) => T;
-  
+
   /**
    * Debounce delay in milliseconds before persisting to localStorage.
    * Default: 0 (immediate)
    */
   debounce?: number;
-  
+
   /**
    * Serialize function (default: JSON.stringify)
    */
   serialize?: (value: T) => string;
-  
+
   /**
    * Deserialize function (default: JSON.parse)
    */
@@ -26,19 +26,19 @@ export interface UsePersistedOptions<T> {
 
 /**
  * Hook that persists state to localStorage with automatic sync.
- * 
+ *
  * Features:
  * - SSR-safe (checks for window)
  * - Debounced writes to reduce localStorage thrashing
  * - Optional validation/transformation of loaded values
  * - Type-safe with generics
  * - Automatic cleanup
- * 
+ *
  * @example
  * ```typescript
  * // Simple usage
  * const [count, setCount] = usePersisted('my-count', 0);
- * 
+ *
  * // With validation (e.g., version migration)
  * const [settings, setSettings] = usePersisted('settings', defaultSettings, {
  *   validate: (loaded) => {
@@ -49,7 +49,7 @@ export interface UsePersistedOptions<T> {
  *   },
  *   debounce: 500
  * });
- * 
+ *
  * // Transform validation
  * const [scale, setScale] = usePersisted('zoom', 1, {
  *   validate: (s) => s < 0.5 || s > 2 ? 1 : s
@@ -73,7 +73,7 @@ export function usePersisted<T>(
 
       const deserialize = options?.deserialize || JSON.parse;
       const parsed = deserialize(saved) as T;
-      
+
       return options?.validate ? options.validate(parsed) : parsed;
     } catch (error) {
       console.warn(`Failed to load persisted value for key "${key}":`, error);
@@ -86,9 +86,8 @@ export function usePersisted<T>(
   // Wrapper that handles functional updates
   const setValue = useCallback((newValue: T | ((prev: T) => T)) => {
     setValueInternal(prev => {
-      const resolved = typeof newValue === 'function' 
-        ? (newValue as (prev: T) => T)(prev)
-        : newValue;
+      const resolved =
+        typeof newValue === 'function' ? (newValue as (prev: T) => T)(prev) : newValue;
       return resolved;
     });
   }, []);
@@ -122,5 +121,3 @@ export function usePersisted<T>(
 
   return [value, setValue];
 }
-
-

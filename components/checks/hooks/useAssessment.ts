@@ -10,10 +10,7 @@ export function useAssessment(
   onCheckUpdate?: () => void
 ) {
   // Assessment state - use persisted for model selection
-  const [selectedModel, setSelectedModel] = usePersisted(
-    'lastSelectedAIModel',
-    'gemini-2.5-pro'
-  );
+  const [selectedModel, setSelectedModel] = usePersisted('lastSelectedAIModel', 'gemini-2.5-pro');
   const [extraContext, setExtraContext] = useState('');
   const [showExtraContext, setShowExtraContext] = useState(false);
   const [assessing, setAssessing] = useState(false);
@@ -85,7 +82,7 @@ export function useAssessment(
             return prev;
           });
         }
-        
+
         return false; // Keep polling
       }
 
@@ -100,7 +97,7 @@ export function useAssessment(
         console.log('[Poll] Fetching updated analysis runs for check:', checkId);
         const runsRes = await fetch(`/api/checks/${checkId}/analysis-runs`);
         const runsData = await runsRes.json();
-        
+
         if (runsData.runs) {
           console.log('[Poll] Setting analysis runs, count:', runsData.runs.length);
           setAnalysisRuns(runsData.runs);
@@ -111,17 +108,17 @@ export function useAssessment(
       }
 
       if (onCheckUpdate) onCheckUpdate();
-      
+
       return true; // Stop polling
     },
     {
       enabled: assessing && !!checkId,
       interval: 2000,
       onComplete: () => setAssessing(false),
-      onError: (err) => {
+      onError: err => {
         console.error('Poll error:', err);
         setAssessing(false);
-      }
+      },
     }
   );
 
@@ -129,13 +126,13 @@ export function useAssessment(
   const { data: _runsData, loading: loadingRuns } = useFetch<{ runs: AnalysisRun[] }>(
     effectiveCheckId ? `/api/checks/${effectiveCheckId}/analysis-runs` : null,
     {
-      onSuccess: (data) => {
+      onSuccess: data => {
         console.log('[InitialLoad] Received data:', data);
         if (data.runs) {
           console.log('[InitialLoad] Setting analysis runs, count:', data.runs.length);
           setAnalysisRuns(data.runs);
         }
-      }
+      },
     }
   );
 

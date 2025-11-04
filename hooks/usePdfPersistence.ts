@@ -33,29 +33,27 @@ function validateTransform(t: Transform): Transform {
 
 /**
  * Hook that consolidates all PDF viewer persistence.
- * 
+ *
  * Persists:
  * - Current page number
  * - View transform (pan/zoom)
  * - Screenshot indicators visibility
- * 
+ *
  * All values are stored in localStorage with debouncing.
- * 
+ *
  * @example
  * ```typescript
  * const persistence = usePdfPersistence(assessmentId);
- * 
+ *
  * // Read state
  * const { page, transform, showIndicators } = persistence.state;
- * 
+ *
  * // Update state (automatically persisted)
  * persistence.actions.setPage(2);
  * persistence.actions.setTransform({ tx: 100, ty: 50, scale: 1.5 });
  * ```
  */
-export function usePdfPersistence(
-  assessmentId: string | undefined
-): {
+export function usePdfPersistence(assessmentId: string | undefined): {
   state: PdfPersistenceState;
   actions: PdfPersistenceActions;
 } {

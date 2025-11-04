@@ -135,7 +135,10 @@ export function PDFViewer({
     canGoPrev: boolean;
   };
 }) {
-  const assessmentId = propAssessmentId || activeCheck?.assessment_id;
+  const assessmentId = useMemo(
+    () => propAssessmentId || activeCheck?.assessment_id,
+    [propAssessmentId, activeCheck?.assessment_id]
+  );
 
   // ============================================================================
   // SECTION 1: REFS
@@ -147,6 +150,7 @@ export function PDFViewer({
   const dragStartRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const onPageChangeRef = useRef(onPageChange);
   onPageChangeRef.current = onPageChange;
+  const loadedScaleForRef = useRef<string | null>(null);
 
   // ============================================================================
   // SECTION 2: PERSISTENCE & STATE
@@ -365,7 +369,11 @@ export function PDFViewer({
 
   // Load saved render scale
   useEffect(() => {
-    if (!assessmentId || readOnly) return;
+    if (!assessmentId || readOnly || loadedScaleForRef.current === assessmentId) return;
+    
+    // Mark as loading immediately to prevent duplicate fetches
+    loadedScaleForRef.current = assessmentId;
+    
     let cancelled = false;
     (async () => {
       try {
@@ -479,8 +487,11 @@ export function PDFViewer({
       const dy = selection.endY - selection.startY;
       const pixelsDistance = Math.sqrt(dx * dx + dy * dy);
 
+      // Get canvas CSS width for page-size calibration method
+      const cssWidth = canvasRef.current?.offsetWidth;
+
       // Calculate real distance using scale notation and PDF dimensions
-      const realDistanceInches = calculateRealDistance(pixelsDistance);
+      const realDistanceInches = calculateRealDistance(pixelsDistance, cssWidth);
 
       try {
         await measurementsHook.actions.save({
@@ -651,7 +662,8 @@ export function PDFViewer({
 
   const onMouseUp = () => {
     if (state.mode.type === 'screenshot' && state.mode.selection) {
-      dispatch({ type: 'CLEAR_SELECTION' });
+      // Keep the selection visible so user can save it with button or keyboard shortcut
+      // Don't auto-clear like we do for measurements
     } else if (state.mode.type === 'measure' && state.mode.selection) {
       // Auto-save measurement when line is complete
       saveMeasurement(state.mode.selection);

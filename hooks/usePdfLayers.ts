@@ -21,23 +21,23 @@ interface LayersActions {
 
 /**
  * Hook for managing PDF optional content layers (OCG).
- * 
+ *
  * Features:
  * - Loads layers from PDF document
  * - Persists layer visibility to localStorage
  * - Provides toggle functionality
  * - Can disable layers entirely
- * 
+ *
  * @example
  * ```typescript
  * const layers = usePdfLayers(pdfDoc, assessmentId, false);
- * 
+ *
  * // Toggle a layer
  * layers.actions.toggleLayer('layer-id-1');
- * 
+ *
  * // Hide all layers
  * layers.actions.setAllVisible(false);
- * 
+ *
  * // Render with layer config
  * await page.render({
  *   canvasContext: ctx,
@@ -92,7 +92,7 @@ export function usePdfLayers(
         for (const id of order) {
           const group = cfg.getGroup?.(id);
           const layerId = String(id);
-          
+
           // Check if we have saved visibility for this layer
           const savedVisibility = persistedVisibility[layerId];
           const visible = savedVisibility !== undefined ? savedVisibility : cfg.isVisible?.(id);
@@ -133,13 +133,13 @@ export function usePdfLayers(
 
   const toggleLayer = useCallback(
     (layerId: string) => {
-      setLayers((current) => {
-        const updated = current.map((layer) =>
+      setLayers(current => {
+        const updated = current.map(layer =>
           layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
         );
 
         // Update OC config
-        const layer = updated.find((l) => l.id === layerId);
+        const layer = updated.find(l => l.id === layerId);
         if (layer && ocConfig) {
           try {
             ocConfig.setVisibility?.(layerId, layer.visible);
@@ -163,8 +163,8 @@ export function usePdfLayers(
 
   const setAllVisible = useCallback(
     (visible: boolean) => {
-      setLayers((current) => {
-        const updated = current.map((layer) => ({ ...layer, visible }));
+      setLayers(current => {
+        const updated = current.map(layer => ({ ...layer, visible }));
 
         // Update all layers in OC config
         if (ocConfig) {

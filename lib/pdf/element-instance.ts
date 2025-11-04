@@ -8,7 +8,7 @@ const ELEMENT_GROUP_SLUGS: Record<ElementType, string> = {
 
 /**
  * Create a new element instance check.
- * 
+ *
  * @param elementType - Type of element to create
  * @param assessmentId - Assessment ID to attach to
  * @returns Created check object or null if failed

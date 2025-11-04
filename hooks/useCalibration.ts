@@ -45,21 +45,24 @@ interface CalibrationComputed {
   /**
    * Calculate real-world distance from pixel distance using current calibration.
    * Returns null if no calibration is set.
+   * 
+   * @param pixelsDistance - Distance in pixels to convert
+   * @param cssWidth - CSS width of the canvas (required for page-size method)
    */
-  calculateRealDistance: (pixelsDistance: number) => number | null;
+  calculateRealDistance: (pixelsDistance: number, cssWidth?: number) => number | null;
 }
 
 /**
  * Hook for managing PDF page calibration.
- * 
+ *
  * Supports two calibration methods:
  * 1. Page Size Method: Uses architectural scale notation (e.g., "1/4" = 1'-0")
  * 2. Known Length Method: Uses a drawn line with known real-world distance
- * 
+ *
  * @example
  * ```typescript
  * const calibration = useCalibration(projectId, pageNumber);
- * 
+ *
  * // Method 1: Page size calibration
  * await calibration.actions.savePageSize(
  *   '1/4" = 1\'-0"',  // Scale notation
@@ -68,14 +71,14 @@ interface CalibrationComputed {
  *   792,              // PDF width in points
  *   612               // PDF height in points
  * );
- * 
+ *
  * // Method 2: Known length calibration
  * await calibration.actions.saveKnownLength(
  *   { x: 100, y: 200 },  // Line start
  *   { x: 500, y: 200 },  // Line end
  *   48                   // Known distance: 48 inches (4 feet)
  * );
- * 
+ *
  * // Calculate real distance
  * const pixels = 200;
  * const inches = calibration.computed.calculateRealDistance(pixels);
@@ -180,5 +183,3 @@ export function useCalibration(
     },
   };
 }
-
-

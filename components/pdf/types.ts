@@ -10,11 +10,11 @@ export interface Selection {
 
 /**
  * Discriminated union for viewer mode.
- * 
+ *
  * Using a discriminated union prevents impossible states like:
  * - Being in idle mode with an active selection
  * - Being in multiple modes at once
- * 
+ *
  * Each mode can have its own associated data.
  */
 export type ViewerMode =
@@ -26,15 +26,21 @@ export type ViewerMode =
 /**
  * Helper type guards for mode checking.
  */
-export function isScreenshotMode(mode: ViewerMode): mode is { type: 'screenshot'; selection: Selection | null } {
+export function isScreenshotMode(
+  mode: ViewerMode
+): mode is { type: 'screenshot'; selection: Selection | null } {
   return mode.type === 'screenshot';
 }
 
-export function isMeasureMode(mode: ViewerMode): mode is { type: 'measure'; selection: Selection | null } {
+export function isMeasureMode(
+  mode: ViewerMode
+): mode is { type: 'measure'; selection: Selection | null } {
   return mode.type === 'measure';
 }
 
-export function isCalibrateMode(mode: ViewerMode): mode is { type: 'calibrate'; selection: Selection | null } {
+export function isCalibrateMode(
+  mode: ViewerMode
+): mode is { type: 'calibrate'; selection: Selection | null } {
   return mode.type === 'calibrate';
 }
 
