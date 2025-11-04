@@ -3,11 +3,11 @@ const MAX_CANVAS_PIXELS = 268_000_000; // 16384^2
 
 /**
  * Calculate safe rendering multiplier that respects canvas limits.
- * 
+ *
  * Canvas has hard limits:
  * - Max side: 16384px
  * - Max pixels: 268 million (16384²)
- * 
+ *
  * @param baseWidth - Base viewport width
  * @param baseHeight - Base viewport height
  * @param desiredMultiplier - Desired scale multiplier
@@ -18,21 +18,18 @@ export function getSafeRenderMultiplier(
   baseHeight: number,
   desiredMultiplier: number
 ): number {
-  const maxBySide = Math.min(
-    MAX_CANVAS_SIDE / baseWidth,
-    MAX_CANVAS_SIDE / baseHeight
-  );
-  
+  const maxBySide = Math.min(MAX_CANVAS_SIDE / baseWidth, MAX_CANVAS_SIDE / baseHeight);
+
   const maxByPixels = Math.sqrt(MAX_CANVAS_PIXELS / (baseWidth * baseHeight));
-  
+
   const cap = Math.min(maxBySide, maxByPixels);
-  
+
   return Math.max(1, Math.min(desiredMultiplier, cap));
 }
 
 /**
  * Render PDF page to canvas with specified scale.
- * 
+ *
  * @param page - PDF.js page object
  * @param canvas - Target canvas element
  * @param options - Rendering options
@@ -99,7 +96,7 @@ export async function renderPdfPage(
 
 /**
  * Capture a region from a PDF page to blob.
- * 
+ *
  * @param page - PDF.js page object
  * @param sourceCanvas - Canvas with rendered page
  * @param region - Region to capture (in CSS pixels)
@@ -177,10 +174,10 @@ export async function captureCanvasRegion(
   thumbnail.getContext('2d')!.drawImage(output, 0, 0, thumbWidth, thumbHeight);
 
   // Convert to blobs
-  const [full, thumb] = await Promise.all([
-    new Promise<Blob>((resolve) => output.toBlob((b) => resolve(b!), 'image/png')),
-    new Promise<Blob>((resolve) => thumbnail.toBlob((b) => resolve(b!), 'image/png')),
+  const [full, thumbnailBlob] = await Promise.all([
+    new Promise<Blob>(resolve => output.toBlob(b => resolve(b!), 'image/png')),
+    new Promise<Blob>(resolve => thumbnail.toBlob(b => resolve(b!), 'image/png')),
   ]);
 
-  return { full, thumb };
+  return { full, thumbnail: thumbnailBlob };
 }

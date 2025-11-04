@@ -16,21 +16,21 @@ interface PdfDocumentActions {
 
 /**
  * Hook for loading and managing PDF.js document and page instances.
- * 
+ *
  * Features:
  * - Loads PDF document from presigned URL
  * - Loads specific page on demand
  * - Handles loading states and errors
  * - Automatic cleanup on unmount
- * 
+ *
  * @example
  * ```typescript
  * const pdf = usePdfDocument(presignedUrl, pageNumber);
- * 
+ *
  * if (pdf.state.loading) return <Spinner />;
  * if (pdf.state.error) return <Error message={pdf.state.error} />;
  * if (!pdf.state.page) return null;
- * 
+ *
  * // Render page
  * await page.render({ canvasContext: ctx, viewport });
  * ```
@@ -66,13 +66,13 @@ export function usePdfDocument(
     });
 
     loadingTask.promise
-      .then((document) => {
+      .then(document => {
         if (cancelled) return;
         setDoc(document);
         setNumPages(document.numPages);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch(err => {
         if (cancelled) return;
         console.error('[usePdfDocument] Failed to load PDF:', err);
         setError(err.message || 'Failed to load PDF');
@@ -84,7 +84,7 @@ export function usePdfDocument(
       cancelled = true;
       try {
         loadingTask.destroy();
-      } catch (_err) {
+      } catch {
         // Ignore cleanup errors
       }
     };

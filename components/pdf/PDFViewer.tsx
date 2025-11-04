@@ -198,7 +198,11 @@ export function PDFViewer({
   const measurementsHook = useMeasurements(readOnly ? undefined : projectId, state.pageNumber);
   const calibrationHook = useCalibration(readOnly ? undefined : projectId, state.pageNumber);
   const screenshotsHook = useAssessmentScreenshots(readOnly ? undefined : assessmentId, state.pageNumber);
-  const viewTransform = useViewTransform(viewportRef, transform, setTransform);
+  const viewTransform = useViewTransform(
+    viewportRef as React.RefObject<HTMLElement>,
+    transform,
+    setTransform
+  );
 
   const measurements = measurementsHook.state.measurements;
   const selectedMeasurementId = measurementsHook.state.selectedId;

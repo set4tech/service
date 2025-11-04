@@ -373,6 +373,74 @@ app/assessments/[id]/page.tsx (Server Component)
 
 **Key Pattern**: Server Component fetches initial data, passes to Client Component for interactivity.
 
+### Hook Architecture
+
+The PDF viewer has been refactored using a composable hook architecture for better maintainability, testability, and code reuse.
+
+#### Base Hooks (`lib/hooks/`)
+
+Generic, reusable hooks for common patterns:
+
+- **`useFetch<T>`** - Generic API data fetching with loading/error states and retries
+- **`usePersisted<T>`** - LocalStorage persistence with debouncing and validation
+- **`usePolling`** - Interval-based polling with automatic stop conditions
+
+#### PDF Domain Hooks (`hooks/`)
+
+PDF-specific hooks for the viewer:
+
+- **`usePresignedUrl`** - S3 presigned URL fetching with caching
+- **`usePdfDocument`** - PDF.js document and page loading
+- **`usePdfLayers`** - PDF optional content (layers) management
+- **`usePdfPersistence`** - Consolidated localStorage (page, transform, indicators)
+- **`useViewTransform`** - Pan/zoom transform with pivot-point zooming
+- **`useMeasurements`** - PDF measurement CRUD operations
+- **`useCalibration`** - Scale calibration (page-size & known-length methods)
+- **`useScreenshotCapture`** - Complete screenshot workflow orchestration
+- **`useKeyboardShortcuts`** - Centralized keyboard event handling
+- **`usePdfMouseHandlers`** - Mouse interaction handlers (pan/selection)
+
+#### Standard Hook Pattern
+
+All hooks follow the `HookReturn` pattern:
+
+```typescript
+const measurements = useMeasurements(projectId, pageNumber);
+
+// Access state
+const { measurements, loading, selectedId } = measurements.state;
+
+// Invoke actions
+await measurements.actions.save(data);
+await measurements.actions.update(id, updates);
+
+// Use computed values
+const realDist = calibration.computed.calculateRealDistance(pixelDist);
+```
+
+#### ViewerMode Discriminated Union
+
+Replaces boolean flags with type-safe state:
+
+```typescript
+type ViewerMode =
+  | { type: 'idle' }
+  | { type: 'screenshot'; selection: Selection | null }
+  | { type: 'measure'; selection: Selection | null }
+  | { type: 'calibrate'; selection: Selection | null };
+
+// Benefits: Impossible states are unrepresentable
+// Example: Can't have selection without being in a mode
+```
+
+**See** `docs/HOOK_ARCHITECTURE.md` for comprehensive documentation including:
+
+- Detailed hook APIs
+- Design patterns and best practices
+- Testing strategies
+- Performance considerations
+- Migration guides
+
 ### Path Aliases
 
 Uses TypeScript path aliases: `@/` maps to root directory

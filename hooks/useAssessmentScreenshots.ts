@@ -20,16 +20,6 @@ interface Screenshot {
   created_at: string;
 }
 
-interface AssessmentScreenshotsState {
-  screenshots: Screenshot[];
-  allScreenshots: Screenshot[];
-  loading: boolean;
-}
-
-interface AssessmentScreenshotsActions {
-  refresh: () => Promise<void>;
-}
-
 /**
  * Custom hook to fetch and manage screenshots for an assessment.
  * Returns screenshots filtered by the current page number.
