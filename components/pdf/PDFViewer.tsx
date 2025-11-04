@@ -728,9 +728,10 @@ export function PDFViewer({
           zoomLevel: transform.scale,
         });
         
-        // Clear selection after plan screenshot
+        // Clear selection and exit screenshot mode after plan screenshot
         if (screenshotType === 'plan') {
           dispatch({ type: 'CLEAR_SELECTION' });
+          dispatch({ type: 'SET_MODE', payload: 'idle' });
         }
       } catch (err) {
         console.error('[PDFViewer] capture failed:', err);
