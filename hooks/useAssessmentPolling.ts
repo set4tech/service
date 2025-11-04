@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { usePolling } from '@/lib/hooks/usePolling';
 
 export interface AssessmentPollingState {
   assessing: boolean;
@@ -45,68 +46,61 @@ export function useAssessmentPolling(
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    console.log('[useAssessmentPolling] Effect running with:', { assessing, checkId });
+  usePolling(
+    async () => {
+      if (!checkId) return true;
 
-    if (!assessing || !checkId) {
-      console.log('[useAssessmentPolling] Not polling:', { assessing, checkId });
-      return;
-    }
+      console.log('[useAssessmentPolling] Fetching progress...');
+      const res = await fetch(`/api/checks/${checkId}/full`);
+      const fullData = await res.json();
+      const data = fullData.progress;
 
-    console.log('[useAssessmentPolling] Starting polling for check:', checkId);
+      console.log('[useAssessmentPolling] Progress data:', {
+        inProgress: data.inProgress,
+        completed: data.completed,
+        total: data.total,
+        batchGroupId: data.batchGroupId,
+        runsCount: fullData.analysisRuns?.length,
+      });
 
-    const interval = setInterval(async () => {
-      try {
-        console.log('[useAssessmentPolling] Fetching progress...');
-        const res = await fetch(`/api/checks/${checkId}/full`);
-        const fullData = await res.json();
-        const data = fullData.progress;
+      if (data.inProgress) {
+        const percent = Math.round((data.completed / data.total) * 100);
+        setProgress(percent);
+        setMessage(`Analyzing... (${data.completed}/${data.total})`);
+        console.log('[useAssessmentPolling] Still in progress:', percent + '%');
 
-        console.log('[useAssessmentPolling] Progress data:', {
-          inProgress: data.inProgress,
-          completed: data.completed,
-          total: data.total,
-          batchGroupId: data.batchGroupId,
-          runsCount: fullData.analysisRuns?.length,
-        });
+        // Trigger queue processing
+        fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
+        
+        return false; // Keep polling
+      }
 
-        if (data.inProgress) {
-          const percent = Math.round((data.completed / data.total) * 100);
-          setProgress(percent);
-          setMessage(`Analyzing... (${data.completed}/${data.total})`);
-          console.log('[useAssessmentPolling] Still in progress:', percent + '%');
+      // Assessment complete
+      console.log('[useAssessmentPolling] Assessment complete, loading results...');
+      setProgress(100);
+      setMessage('Loading results...');
 
-          // Trigger queue processing
-          fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
-        } else {
-          console.log('[useAssessmentPolling] Assessment complete, loading results...');
-          // Assessment complete - show loading message while fetching results
-          setProgress(100);
-          setMessage('Loading results...');
+      if (onComplete) {
+        console.log('[useAssessmentPolling] Calling onComplete...');
+        await onComplete();
+        console.log('[useAssessmentPolling] onComplete finished');
+      }
 
-          // Call onComplete to fetch the results
-          if (onComplete) {
-            console.log('[useAssessmentPolling] Calling onComplete...');
-            await onComplete();
-            console.log('[useAssessmentPolling] onComplete finished');
-          }
-
-          // Only stop assessing after results are loaded
-          setAssessing(false);
-          setMessage('Assessment complete!');
-          console.log('[useAssessmentPolling] Stopped assessing');
-        }
-      } catch (err) {
-        console.error('[useAssessmentPolling] Poll error:', err);
+      setMessage('Assessment complete!');
+      console.log('[useAssessmentPolling] Stopped assessing');
+      
+      return true; // Stop polling
+    },
+    {
+      enabled: assessing && !!checkId,
+      interval: pollInterval,
+      onComplete: () => setAssessing(false),
+      onError: (error) => {
+        console.error('[useAssessmentPolling] Poll error:', error);
         setAssessing(false);
       }
-    }, pollInterval);
-
-    return () => {
-      console.log('[useAssessmentPolling] Cleaning up interval for check:', checkId);
-      clearInterval(interval);
-    };
-  }, [assessing, checkId, onComplete, pollInterval]);
+    }
+  );
 
   return { assessing, progress, message, setAssessing };
 }

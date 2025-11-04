@@ -7,79 +7,62 @@ import { ViolationBoundingBox } from '../reports/ViolationBoundingBox';
 import { groupOverlappingViolations } from '@/lib/reports/group-violations';
 import { BlueprintLoader } from '../reports/BlueprintLoader';
 import { ElevationCapturePrompt } from './ElevationCapturePrompt';
-import { extractTextFromRegion } from '@/lib/pdf-text-extraction';
 import { ScreenshotIndicatorOverlay } from './ScreenshotIndicatorOverlay';
 import { useAssessmentScreenshots } from '@/hooks/useAssessmentScreenshots';
 import { useTextSearch } from '@/hooks/useTextSearch';
 import { PDFSearchOverlay } from './PDFSearchOverlay';
 import { TextHighlight } from './TextHighlight';
-import { MeasurementOverlay, Measurement } from './MeasurementOverlay';
+import { MeasurementOverlay } from './MeasurementOverlay';
 import { CalibrationModal } from './CalibrationModal';
+import { 
+  ViewerMode, 
+  enterMode, 
+  exitMode, 
+  startSelection, 
+  updateSelection, 
+  clearSelection 
+} from './types';
+import { usePresignedUrl } from '@/hooks/usePresignedUrl';
+import { usePdfDocument } from '@/hooks/usePdfDocument';
+import { usePdfLayers } from '@/hooks/usePdfLayers';
+import { usePdfPersistence } from '@/hooks/usePdfPersistence';
+import { useViewTransform, screenToContent } from '@/hooks/useViewTransform';
+import { useMeasurements } from '@/hooks/useMeasurements';
+import { useCalibration } from '@/hooks/useCalibration';
+import { useScreenshotCapture } from '@/hooks/useScreenshotCapture';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { renderPdfPage } from '@/lib/pdf/canvas-utils';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-const MIN_SCALE = 0.1;
-const MAX_SCALE = 10;
-const MAX_CANVAS_SIDE = 16384; // Sweet spot: 5.4x multiplier without crashing
-const MAX_CANVAS_PIXELS = 268_000_000; // 16384^2
-const TRANSFORM_SAVE_DEBOUNCE_MS = 500;
-
 // Stable empty function to avoid creating new functions on every render
 const NOOP = () => {};
 
-// In-memory cache for presigned URLs (valid for 50 minutes to be safe)
-const PRESIGN_CACHE = new Map<string, { url: string; expiresAt: number }>();
-const CACHE_DURATION_MS = 50 * 60 * 1000; // 50 minutes
-
-// In-flight request deduplication
-const PRESIGN_INFLIGHT = new Map<string, Promise<string>>();
-
 interface ViewerState {
-  transform: { tx: number; ty: number; scale: number };
   pageNumber: number;
   numPages: number;
   isDragging: boolean;
-  screenshotMode: boolean;
-  measurementMode: boolean;
-  calibrationMode: boolean;
-  isSelecting: boolean;
-  selection: { startX: number; startY: number; endX: number; endY: number } | null;
-}
-
-interface PDFLayer {
-  id: string;
-  name: string;
-  visible: boolean;
+  mode: ViewerMode;
 }
 
 type ViewerAction =
-  | { type: 'SET_TRANSFORM'; payload: ViewerState['transform'] }
   | { type: 'SET_PAGE'; payload: number }
   | { type: 'SET_NUM_PAGES'; payload: number }
   | { type: 'START_DRAG' }
   | { type: 'END_DRAG' }
-  | { type: 'TOGGLE_SCREENSHOT_MODE' }
-  | { type: 'TOGGLE_MEASUREMENT_MODE' }
-  | { type: 'TOGGLE_CALIBRATION_MODE' }
+  | { type: 'SET_MODE'; payload: 'idle' | 'screenshot' | 'measure' | 'calibrate' }
   | { type: 'START_SELECTION'; payload: { x: number; y: number } }
   | { type: 'UPDATE_SELECTION'; payload: { x: number; y: number } }
-  | { type: 'END_SELECTION' }
-  | { type: 'CLEAR_SELECTION' }
-  | { type: 'RESET_ZOOM' };
+  | { type: 'CLEAR_SELECTION' };
 
 function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
   switch (action.type) {
-    case 'SET_TRANSFORM':
-      return { ...state, transform: action.payload };
     case 'SET_PAGE':
       return {
         ...state,
         pageNumber: action.payload,
-        selection: null,
-        screenshotMode: false,
-        measurementMode: false,
-        calibrationMode: false,
+        mode: exitMode(),
       };
     case 'SET_NUM_PAGES':
       return { ...state, numPages: action.payload };
@@ -87,55 +70,26 @@ function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
       return { ...state, isDragging: true };
     case 'END_DRAG':
       return { ...state, isDragging: false };
-    case 'TOGGLE_SCREENSHOT_MODE':
+    case 'SET_MODE':
       return {
         ...state,
-        screenshotMode: !state.screenshotMode,
-        measurementMode: false,
-        calibrationMode: false,
-        selection: null,
+        mode: action.payload === 'idle' ? exitMode() : enterMode(action.payload),
       };
-    case 'TOGGLE_MEASUREMENT_MODE':
-      return {
-        ...state,
-        measurementMode: !state.measurementMode,
-        screenshotMode: false,
-        calibrationMode: false,
-        selection: null,
-      };
-    case 'TOGGLE_CALIBRATION_MODE':
-      // Don't toggle calibration mode - it's handled by modal now
-      return state;
     case 'START_SELECTION':
       return {
         ...state,
-        isSelecting: true,
-        selection: {
-          startX: action.payload.x,
-          startY: action.payload.y,
-          endX: action.payload.x,
-          endY: action.payload.y,
-        },
+        mode: startSelection(state.mode, action.payload.x, action.payload.y),
       };
     case 'UPDATE_SELECTION':
-      return state.selection
-        ? {
-            ...state,
-            selection: { ...state.selection, endX: action.payload.x, endY: action.payload.y },
-          }
-        : state;
-    case 'END_SELECTION':
-      return { ...state, isSelecting: false };
+      return {
+        ...state,
+        mode: updateSelection(state.mode, action.payload.x, action.payload.y),
+      };
     case 'CLEAR_SELECTION':
       return {
         ...state,
-        selection: null,
-        screenshotMode: false,
-        measurementMode: false,
-        calibrationMode: false,
+        mode: clearSelection(state.mode),
       };
-    case 'RESET_ZOOM':
-      return { ...state, transform: { tx: 0, ty: 0, scale: 1 } };
     default:
       return state;
   }
@@ -183,100 +137,76 @@ export function PDFViewer({
 }) {
   const assessmentId = propAssessmentId || activeCheck?.assessment_id;
 
+  // ============================================================================
+  // SECTION 1: REFS
+  // ============================================================================
   const viewportRef = useRef<HTMLDivElement>(null);
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
-  const dragRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
-  const transformSaveTimer = useRef<number | null>(null);
-  const capturingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+  const onPageChangeRef = useRef(onPageChange);
+  onPageChangeRef.current = onPageChange;
 
-  const getSaved = useCallback(
-    <T,>(key: string, fallback: T, parser: (s: string) => T) => {
-      if (typeof window === 'undefined' || !assessmentId) return fallback;
-      const raw = localStorage.getItem(key);
-      if (!raw) return fallback;
-      try {
-        return parser(raw);
-      } catch {
-        return fallback;
-      }
-    },
-    [assessmentId]
-  );
-
-  // Initial state from storage with validation
-  const savedTransform = getSaved(`pdf-transform-${assessmentId}`, { tx: 0, ty: 0, scale: 1 }, s =>
-    JSON.parse(s)
-  );
-
-  // Viewport is now always at 1x (renderScale only affects canvas quality)
-  // Old saved transforms from when viewport scaled to 6-10x are invalid
-  // Valid scale should be 0.5-2.0 for reasonable zoom levels
-  const validatedTransform =
-    savedTransform.scale < 0.5 || savedTransform.scale > 2.0
-      ? { tx: 0, ty: 0, scale: 1 }
-      : savedTransform;
+  // ============================================================================
+  // SECTION 2: PERSISTENCE & STATE
+  // ============================================================================
+  const persistence = usePdfPersistence(assessmentId);
+  const transform = persistence.state.transform;
+  const setTransform = persistence.actions.setTransform;
+  const showScreenshotIndicators = persistence.state.showIndicators;
+  const setShowScreenshotIndicators = persistence.actions.setShowIndicators;
 
   const [state, dispatch] = useReducer(viewerReducer, {
-    transform: validatedTransform,
-    pageNumber: getSaved(`pdf-page-${assessmentId}`, 1, s => parseInt(s, 10) || 1),
+    pageNumber: persistence.state.page,
     numPages: 0,
     isDragging: false,
-    screenshotMode: false,
-    measurementMode: false,
-    calibrationMode: false,
-    isSelecting: false,
-    selection: null,
+    mode: { type: 'idle' },
   });
 
-  // Keep a ref to the current state to avoid stale closures in keyboard handler
+  // Keep a ref to the current state to avoid stale closures
   const stateRef = useRef(state);
-  // Update ref whenever state changes (must be done immediately, not in useEffect)
   stateRef.current = state;
 
-  // Core PDF state
-  const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
-  const [loadingUrl, setLoadingUrl] = useState(true);
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [page, setPage] = useState<any>(null);
-  const [ocConfig, setOcConfig] = useState<any>(null);
-
-  // UI state
-  const [layers, setLayers] = useState<PDFLayer[]>([]);
-  const [layersVersion, setLayersVersion] = useState(0); // Increment when layers change
-  const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [renderScale, setRenderScale] = useState(4); // Quality multiplier, NOT viewport scale (default 4x for better AI vision quality)
+  // ============================================================================
+  // SECTION 3: UI STATE
+  // ============================================================================
+  const [renderScale, setRenderScale] = useState(4);
   const [savingScale, setSavingScale] = useState(false);
   const [smoothTransition, setSmoothTransition] = useState(false);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
-
-  // Measurement state
-  const [measurements, setMeasurements] = useState<Measurement[]>([]);
-  const [calibration, setCalibration] = useState<any | null>(null);
-  const [selectedMeasurementId, setSelectedMeasurementId] = useState<string | null>(null);
   const [showCalibrationModal, setShowCalibrationModal] = useState(false);
   const [calibrationLine, setCalibrationLine] = useState<{
     start: { x: number; y: number };
     end: { x: number; y: number };
   } | null>(null);
   const [isDrawingCalibrationLine, setIsDrawingCalibrationLine] = useState(false);
+  const [showLayerPanel, setShowLayerPanel] = useState(false);
 
-  // Screenshot indicators state
-  const [showScreenshotIndicators, setShowScreenshotIndicators] = useState(() => {
-    if (typeof window === 'undefined' || !assessmentId || readOnly) return false;
-    const saved = localStorage.getItem(`pdf-show-indicators-${assessmentId}`);
-    return saved === null ? true : saved === 'true'; // Default to true
-  });
+  // ============================================================================
+  // SECTION 4: PDF DOCUMENT & LAYERS
+  // ============================================================================
+  const { url: presignedUrl, loading: loadingUrl } = usePresignedUrl(pdfUrl);
+  const pdf = usePdfDocument(presignedUrl, state.pageNumber);
+  const layers = usePdfLayers(pdf.state.doc, assessmentId, disableLayers);
+  const { doc: pdfDoc, page, numPages } = pdf.state;
+  const { ocConfig, layers: layerList } = layers.state;
 
-  // Use useState for dpr to ensure stability
-  const [dpr] = useState(() =>
-    typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1
-  );
+  // ============================================================================
+  // SECTION 5: FEATURE HOOKS
+  // ============================================================================
+  const measurementsHook = useMeasurements(readOnly ? undefined : projectId, state.pageNumber);
+  const calibrationHook = useCalibration(readOnly ? undefined : projectId, state.pageNumber);
+  const screenshotsHook = useAssessmentScreenshots(readOnly ? undefined : assessmentId, state.pageNumber);
+  const viewTransform = useViewTransform(viewportRef, transform, setTransform);
 
-  // Fetch assessment screenshots for indicators
-  const { screenshots: screenshotIndicators, refresh: refreshScreenshots } =
-    useAssessmentScreenshots(readOnly ? undefined : assessmentId, state.pageNumber);
+  const measurements = measurementsHook.state.measurements;
+  const selectedMeasurementId = measurementsHook.state.selectedId;
+  const setSelectedMeasurementId = measurementsHook.actions.select;
+  const calibration = calibrationHook.state.calibration;
+  const calculateRealDistance = calibrationHook.computed?.calculateRealDistance ?? (() => null);
+  const screenshotIndicators = screenshotsHook.state.screenshots;
+  const refreshScreenshots = screenshotsHook.actions.refresh;
 
   // Text search hook
   const handleSearchPageChange = useCallback((page: number) => {
@@ -289,15 +219,31 @@ export function PDFViewer({
     onPageChange: handleSearchPageChange,
   });
 
-  // Memoize violation groups to avoid recalculating on every render
+  // Screenshot capture hook
+  const screenshotCapture = useScreenshotCapture({
+    page,
+    canvas: canvasRef.current,
+    ocConfig,
+    renderScale,
+    assessmentId,
+    activeCheck,
+    onCheckAdded,
+    onCheckSelect,
+    onScreenshotSaved,
+    refreshScreenshots,
+  });
+
+  // ============================================================================
+  // SECTION 6: COMPUTED VALUES
+  // ============================================================================
+
+
+  // Memoize violation groups
   const violationGroups = useMemo(() => {
     if (!readOnly || violationMarkers.length === 0) return [];
 
-    // Expand violations to create separate markers for each screenshot
     const expandedMarkers: ViolationMarkerType[] = [];
-
     violationMarkers.forEach(violation => {
-      // Add marker for each screenshot in allScreenshots array
       if (violation.allScreenshots && violation.allScreenshots.length > 0) {
         violation.allScreenshots.forEach(screenshot => {
           expandedMarkers.push({
@@ -310,7 +256,6 @@ export function PDFViewer({
           });
         });
       } else {
-        // Fallback to original violation if no allScreenshots
         expandedMarkers.push(violation);
       }
     });
@@ -318,27 +263,38 @@ export function PDFViewer({
     return groupOverlappingViolations(expandedMarkers, state.pageNumber);
   }, [readOnly, violationMarkers, state.pageNumber]);
 
-  // Store latest onPageChange callback in a ref to avoid unnecessary re-renders
-  const onPageChangeRef = useRef(onPageChange);
+  // ============================================================================
+  // SECTION 7: SYNC EFFECTS
+  // ============================================================================
+  // Sync page with persistence
   useEffect(() => {
-    onPageChangeRef.current = onPageChange;
-  }, [onPageChange]);
+    if (state.pageNumber !== persistence.state.page) {
+      persistence.actions.setPage(state.pageNumber);
+    }
+  }, [state.pageNumber, persistence.state.page, persistence.actions]);
 
-  // Center on highlighted violation when it changes
+  // Notify parent of page changes
+  useEffect(() => {
+    onPageChangeRef.current?.(state.pageNumber);
+  }, [state.pageNumber]);
+
+  // Sync numPages
+  useEffect(() => {
+    if (numPages > 0 && numPages !== state.numPages) {
+      dispatch({ type: 'SET_NUM_PAGES', payload: numPages });
+    }
+  }, [numPages, state.numPages]);
+
+  // Center on highlighted violation
   useEffect(() => {
     if (!readOnly || !highlightedViolationId || !canvasRef.current || !viewportRef.current) {
       return;
     }
 
-    // Parse highlightedViolationId to extract checkId and screenshotId
-    // Use ::: as delimiter since both IDs are UUIDs that contain dashes
     const [checkId, screenshotId] = highlightedViolationId.split(':::');
-
-    // Find the violation marker by checkId
     const violation = violationMarkers.find(v => v.checkId === checkId);
     if (!violation) return;
 
-    // Find the specific screenshot in allScreenshots array
     const screenshot =
       violation.allScreenshots?.find(s => s.id === screenshotId) ||
       (violation.screenshotId === screenshotId
@@ -349,54 +305,22 @@ export function PDFViewer({
         : null);
 
     if (!screenshot) return;
-
-    // Check if we're on the right page
     if (screenshot.pageNumber !== state.pageNumber) return;
 
-    // Skip centering if violation has no valid bounds (e.g., no screenshot)
     const bounds = screenshot.bounds;
     const hasValidBounds = bounds.width > 0 && bounds.height > 0;
     if (!hasValidBounds) return;
 
-    // Small delay to ensure canvas is rendered
     const timeoutId = setTimeout(() => {
-      if (!viewportRef.current) return;
-
-      // Calculate center of violation bounds
-      const centerX = bounds.x + bounds.width / 2;
-      const centerY = bounds.y + bounds.height / 2;
-
-      // Get viewport dimensions
-      const viewportRect = viewportRef.current.getBoundingClientRect();
-      const viewportCenterX = viewportRect.width / 2;
-      const viewportCenterY = viewportRect.height / 2;
-
-      // Calculate transform to center the violation (using current scale)
-      const currentScale = state.transform.scale;
-      const tx = viewportCenterX - centerX * currentScale;
-      const ty = viewportCenterY - centerY * currentScale;
-
-      // Enable smooth transition for centering
       setSmoothTransition(true);
-
-      // Update transform to center the violation
-      dispatch({
-        type: 'SET_TRANSFORM',
-        payload: { scale: currentScale, tx, ty },
-      });
-
-      // Disable smooth transition after animation completes
-      const transitionTimeout = setTimeout(() => {
-        setSmoothTransition(false);
-      }, 500);
-
-      return () => clearTimeout(transitionTimeout);
+      viewTransform.centerOn(bounds);
+      setTimeout(() => setSmoothTransition(false), 500);
     }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [highlightedViolationId, state.pageNumber, readOnly, violationMarkers]);
+  }, [highlightedViolationId, state.pageNumber, readOnly, violationMarkers, viewTransform]);
 
-  // Center on current search match when it changes
+  // Center on current search match
   useEffect(() => {
     if (
       !textSearch.isOpen ||
@@ -409,57 +333,24 @@ export function PDFViewer({
 
     const currentMatch = textSearch.matches[textSearch.currentIndex];
     if (!currentMatch) return;
-
-    // Check if we're on the right page
     if (currentMatch.pageNumber !== state.pageNumber) return;
 
     const bounds = currentMatch.bounds;
     const hasValidBounds = bounds.width > 0 && bounds.height > 0;
     if (!hasValidBounds) return;
 
-    // Small delay to ensure canvas is rendered
     const timeoutId = setTimeout(() => {
-      if (!viewportRef.current) return;
-
-      // Calculate center of match bounds
-      const centerX = bounds.x + bounds.width / 2;
-      const centerY = bounds.y + bounds.height / 2;
-
-      // Get viewport dimensions
-      const viewportRect = viewportRef.current.getBoundingClientRect();
-      const viewportCenterX = viewportRect.width / 2;
-      const viewportCenterY = viewportRect.height / 2;
-
-      // Calculate transform to center the match (using current scale)
-      const currentScale = state.transform.scale;
-      const tx = viewportCenterX - centerX * currentScale;
-      const ty = viewportCenterY - centerY * currentScale;
-
-      // Enable smooth transition for centering
       setSmoothTransition(true);
-
-      // Update transform to center the match
-      dispatch({
-        type: 'SET_TRANSFORM',
-        payload: { scale: currentScale, tx, ty },
-      });
-
-      // Disable smooth transition after animation completes
-      const transitionTimeout = setTimeout(() => {
-        setSmoothTransition(false);
-      }, 500);
-
-      return () => clearTimeout(transitionTimeout);
+      viewTransform.centerOn(bounds);
+      setTimeout(() => setSmoothTransition(false), 500);
     }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [textSearch.isOpen, textSearch.matches, textSearch.currentIndex, state.pageNumber]);
+  }, [textSearch.isOpen, textSearch.matches, textSearch.currentIndex, state.pageNumber, viewTransform]);
 
-  // External page control → internal
-  // Track previous external page to only respond to actual changes
+  // External page control
   const prevExternalPageRef = useRef(externalCurrentPage);
   useEffect(() => {
-    // Only update if externalCurrentPage actually changed (not internal state change)
     if (externalCurrentPage && externalCurrentPage !== prevExternalPageRef.current) {
       prevExternalPageRef.current = externalCurrentPage;
       if (externalCurrentPage !== state.pageNumber) {
@@ -468,103 +359,15 @@ export function PDFViewer({
     }
   }, [externalCurrentPage, state.pageNumber]);
 
-  // Notify parent + persist page number
+  // Load saved render scale
   useEffect(() => {
-    onPageChangeRef.current?.(state.pageNumber);
-    if (assessmentId && typeof window !== 'undefined') {
-      localStorage.setItem(`pdf-page-${assessmentId}`, String(state.pageNumber));
-    }
-  }, [state.pageNumber, assessmentId]);
-
-  // Debounced transform persistence
-  useEffect(() => {
-    if (!assessmentId || typeof window === 'undefined') return;
-    if (transformSaveTimer.current) {
-      window.clearTimeout(transformSaveTimer.current);
-    }
-    transformSaveTimer.current = window.setTimeout(() => {
-      localStorage.setItem(`pdf-transform-${assessmentId}`, JSON.stringify(state.transform));
-      transformSaveTimer.current = null;
-    }, TRANSFORM_SAVE_DEBOUNCE_MS);
-    return () => {
-      if (transformSaveTimer.current) {
-        window.clearTimeout(transformSaveTimer.current);
-        transformSaveTimer.current = null;
-      }
-    };
-  }, [state.transform, assessmentId]);
-
-  // Persist layer visibility
-  useEffect(() => {
-    if (!assessmentId || typeof window === 'undefined' || layers.length === 0) return;
-    const map: Record<string, boolean> = {};
-    for (const l of layers) map[l.id] = l.visible;
-    localStorage.setItem(`pdf-layers-${assessmentId}`, JSON.stringify(map));
-  }, [layers, assessmentId]);
-
-  // Persist screenshot indicators toggle
-  useEffect(() => {
-    if (!assessmentId || typeof window === 'undefined' || readOnly) return;
-    localStorage.setItem(`pdf-show-indicators-${assessmentId}`, String(showScreenshotIndicators));
-  }, [showScreenshotIndicators, assessmentId, readOnly]);
-
-  // Fetch presigned URL and saved render scale
-  useEffect(() => {
+    if (!assessmentId || readOnly) return;
     let cancelled = false;
     (async () => {
-      setLoadingUrl(true);
-      try {
-        // Check cache first
-        const cached = PRESIGN_CACHE.get(pdfUrl);
-        if (cached && cached.expiresAt > Date.now()) {
-          if (!cancelled) setPresignedUrl(cached.url);
-          if (!cancelled) setLoadingUrl(false);
-          return;
-        }
-
-        // Check if request is already in-flight
-        let inflightPromise = PRESIGN_INFLIGHT.get(pdfUrl);
-        if (!inflightPromise) {
-          inflightPromise = (async () => {
-            const presign = await fetch('/api/pdf/presign', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pdfUrl }),
-            });
-            if (!presign.ok) throw new Error(`presign ${presign.status}`);
-            const { url } = await presign.json();
-
-            // Cache the result
-            PRESIGN_CACHE.set(pdfUrl, {
-              url,
-              expiresAt: Date.now() + CACHE_DURATION_MS,
-            });
-
-            // Clear in-flight marker
-            PRESIGN_INFLIGHT.delete(pdfUrl);
-
-            return url;
-          })();
-
-          PRESIGN_INFLIGHT.set(pdfUrl, inflightPromise);
-        }
-
-        const url = await inflightPromise;
-        if (!cancelled) setPresignedUrl(url);
-      } catch {
-        if (!cancelled) setPresignedUrl(null);
-        PRESIGN_INFLIGHT.delete(pdfUrl);
-      } finally {
-        if (!cancelled) setLoadingUrl(false);
-      }
-
-      if (!assessmentId || readOnly) return;
       try {
         const res = await fetch(`/api/assessments/${assessmentId}/pdf-scale`);
-        if (res.ok) {
+        if (res.ok && !cancelled) {
           const data = await res.json();
-          // Cap loaded scale to 2-8 range (renderScale is quality multiplier, not viewport scale)
-          // Default to 4x for better AI vision quality if previously set to 2x
           if (data?.pdf_scale) {
             const loadedScale = Math.min(8, Math.max(2, data.pdf_scale));
             setRenderScale(loadedScale < 3 ? 4 : loadedScale);
@@ -577,119 +380,7 @@ export function PDFViewer({
     return () => {
       cancelled = true;
     };
-  }, [pdfUrl, assessmentId, readOnly]);
-
-  // Load PDF document via pdfjs directly
-  useEffect(() => {
-    if (!presignedUrl) return;
-    let cancelled = false;
-    (async () => {
-      const loadingTask = pdfjs.getDocument({
-        url: presignedUrl,
-        // Enable streaming and range requests for large files
-        disableAutoFetch: false,
-        disableStream: false,
-        disableRange: false,
-      });
-
-      try {
-        const doc = await loadingTask.promise;
-        if (cancelled) return;
-        setPdfDoc(doc);
-        setPage(null);
-        setOcConfig(null);
-        setLayers([]);
-        dispatch({ type: 'SET_NUM_PAGES', payload: doc.numPages });
-      } catch (error) {
-        console.error('[PDFViewer] Failed to load PDF:', error);
-        if (!cancelled) setPdfDoc(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [presignedUrl]);
-
-  // Track current page number to avoid redundant loads
-  const currentPageNumRef = useRef<number | null>(null);
-
-  // Reset page tracking when PDF document changes
-  useEffect(() => {
-    currentPageNumRef.current = null;
-  }, [pdfDoc]);
-
-  // Load current page proxy
-  useEffect(() => {
-    if (!pdfDoc) return;
-
-    // Skip if we're already on this page
-    if (currentPageNumRef.current === state.pageNumber) {
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const p = await pdfDoc.getPage(state.pageNumber);
-        if (cancelled) return;
-        currentPageNumRef.current = state.pageNumber;
-        setPage(p);
-      } catch {
-        if (!cancelled) setPage(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [pdfDoc, state.pageNumber]);
-
-  // Load measurements for current page
-  useEffect(() => {
-    if (!projectId || readOnly) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/measurements?projectId=${projectId}&pageNumber=${state.pageNumber}`
-        );
-        if (!res.ok) throw new Error('Failed to fetch measurements');
-        const data = await res.json();
-        if (!cancelled) setMeasurements(data.measurements || []);
-      } catch (error) {
-        console.error('[PDFViewer] Error loading measurements:', error);
-        if (!cancelled) setMeasurements([]);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, state.pageNumber, readOnly]);
-
-  // Load calibration for current page
-  useEffect(() => {
-    if (!projectId || readOnly) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/measurements/calibrate?projectId=${projectId}&pageNumber=${state.pageNumber}`
-        );
-        if (!res.ok) throw new Error('Failed to fetch calibration');
-        const data = await res.json();
-        if (!cancelled) setCalibration(data.calibration || null);
-      } catch (error) {
-        console.error('[PDFViewer] Error loading calibration:', error);
-        if (!cancelled) setCalibration(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, state.pageNumber, readOnly]);
+  }, [assessmentId, readOnly]);
 
   // Center the page initially when it first loads
   // Track whether we've already centered this page to avoid re-centering on zoom
@@ -710,121 +401,26 @@ export function PDFViewer({
 
     // Check if current transform would put the page off-screen or is initial load
     const isOffScreen =
-      state.transform.tx < -viewport.width ||
-      state.transform.tx > container.clientWidth ||
-      state.transform.ty < -viewport.height ||
-      state.transform.ty > container.clientHeight;
+      transform.tx < -viewport.width ||
+      transform.tx > container.clientWidth ||
+      transform.ty < -viewport.height ||
+      transform.ty > container.clientHeight;
 
     const isInitialLoad =
-      state.transform.tx === 0 && state.transform.ty === 0 && state.transform.scale === 1;
+      transform.tx === 0 && transform.ty === 0 && transform.scale === 1;
 
     if (isInitialLoad || isOffScreen) {
-      dispatch({
-        type: 'SET_TRANSFORM',
-        payload: { tx: centeredTx, ty: centeredTy, scale: 1 },
-      });
+      setTransform({ tx: centeredTx, ty: centeredTy, scale: 1 });
       // Mark this page as centered
       pageCenteredRef.current = state.pageNumber;
     }
   }, [page, state.pageNumber]);
 
-  // Extract optional content config and layers, restore visibility before first paint
-  useEffect(() => {
-    if (!pdfDoc) return;
 
-    // Skip loading layers entirely if disabled
-    if (disableLayers) {
-      setOcConfig(null);
-      setLayers([]);
-      setLayersVersion(v => v + 1);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const cfg = await pdfDoc.getOptionalContentConfig();
-        if (cancelled) return;
-
-        // No OCGs: still render through our canvas path
-        if (!cfg) {
-          setOcConfig(null);
-          setLayers([]);
-          return;
-        }
-
-        // Build layer list
-        const order = cfg.getOrder?.() || [];
-        const initialLayers: PDFLayer[] = [];
-        for (const id of order) {
-          const group = cfg.getGroup?.(id);
-          initialLayers.push({
-            id: String(id),
-            name: group?.name || `Layer ${id}`,
-            visible: cfg.isVisible?.(id),
-          });
-        }
-
-        // Restore saved visibility (if any)
-        if (assessmentId && typeof window !== 'undefined') {
-          const raw = localStorage.getItem(`pdf-layers-${assessmentId}`);
-          if (raw) {
-            try {
-              const saved = JSON.parse(raw) as Record<string, boolean>;
-              for (const layer of initialLayers) {
-                if (Object.prototype.hasOwnProperty.call(saved, layer.id)) {
-                  layer.visible = !!saved[layer.id];
-                  try {
-                    cfg.setVisibility?.(layer.id, layer.visible);
-                  } catch {
-                    // ignore per-id errors
-                  }
-                }
-              }
-            } catch {
-              // ignore parse errors
-            }
-          }
-        }
-
-        setOcConfig(cfg);
-        setLayers(initialLayers);
-        setLayersVersion(v => v + 1);
-      } catch {
-        // No layers or error: fall back to default render via our canvas
-        setOcConfig(null);
-        setLayers([]);
-        setLayersVersion(v => v + 1);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [pdfDoc, assessmentId, disableLayers]);
-
-  // Calculate safe rendering multiplier that respects canvas limits
-  const getSafeRenderMultiplier = useCallback((baseViewport: any, desiredMultiplier: number) => {
-    const maxBySide = Math.min(
-      MAX_CANVAS_SIDE / baseViewport.width,
-      MAX_CANVAS_SIDE / baseViewport.height
-    );
-    const maxByPixels = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
-    const cap = Math.min(maxBySide, maxByPixels);
-    return Math.max(1, Math.min(desiredMultiplier, cap));
-  }, []);
-
-  // Core render function (single path)
+  // Core render function
   const renderPage = useCallback(async () => {
     const c = canvasRef.current;
-    if (!c || !page) {
-      return;
-    }
-
-    // Validate page object has required methods
-    if (typeof page.getViewport !== 'function' || typeof page.render !== 'function') {
-      console.error('[PDFViewer] Invalid page object');
-      return;
-    }
+    if (!c || !page) return;
 
     // Cancel any in-flight render
     if (renderTaskRef.current) {
@@ -836,231 +432,39 @@ export function PDFViewer({
       renderTaskRef.current = null;
     }
 
-    // Calculate safe multiplier for rendering quality
-    const baseViewport = page.getViewport({ scale: 1 });
-    if (!baseViewport) {
-      console.error('[PDFViewer] Failed to get base viewport from page');
-      return;
-    }
-
-    // renderScale IS the quality multiplier (don't multiply by DPR - that causes immediate capping)
-    const desiredMultiplier = renderScale;
-    const safeMultiplier = getSafeRenderMultiplier(baseViewport, desiredMultiplier);
-
-    // Create viewport at safe scale for PDF.js rendering
-    const viewport = page.getViewport({ scale: safeMultiplier });
-    if (!viewport) {
-      console.error('[PDFViewer] Failed to get viewport at scale', safeMultiplier);
-      return;
-    }
-
-    // CSS size at 1x (base PDF dimensions), canvas at safeMultiplier for quality
-    const widthCSS = Math.ceil(baseViewport.width);
-    const heightCSS = Math.ceil(baseViewport.height);
-    c.style.width = `${widthCSS}px`;
-    c.style.height = `${heightCSS}px`;
-    c.width = Math.ceil(viewport.width);
-    c.height = Math.ceil(viewport.height);
-
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
-
-    // White background to avoid transparency over gray app background
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, c.width, c.height);
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.restore();
-
-    // No transform needed - viewport scale already matches canvas
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-    // Ensure ocConfig reflects our current layer state
-    if (ocConfig && layers.length > 0) {
-      for (const layer of layers) {
-        try {
-          ocConfig.setVisibility?.(layer.id, layer.visible);
-        } catch (err) {
-          console.error('[PDFViewer] Error setting layer visibility:', err);
-        }
-      }
-    }
-
-    // Validate render parameters
-    if (!viewport || !viewport.width || !viewport.height) {
-      console.error('[PDFViewer] Invalid viewport');
-      return;
-    }
-
-    const renderParams = {
-      canvasContext: ctx,
-      viewport: viewport,
-      ...(ocConfig &&
-        !disableLayers && { optionalContentConfigPromise: Promise.resolve(ocConfig) }),
-    };
-
-    const task = page.render(renderParams);
-    renderTaskRef.current = task;
-
     try {
-      await task.promise;
+      await renderPdfPage(page, c, {
+        scaleMultiplier: renderScale,
+        optionalContentConfig: ocConfig && !disableLayers ? ocConfig : undefined,
+      });
     } catch (err: any) {
       if (err?.name !== 'RenderingCancelledException') {
-        // Only log unexpected errors
         console.error('[PDFViewer] Render error:', err);
       }
-    } finally {
-      if (renderTaskRef.current === task) renderTaskRef.current = null;
     }
-  }, [page, renderScale, ocConfig, layers, getSafeRenderMultiplier, disableLayers]);
+  }, [page, renderScale, ocConfig, disableLayers]);
 
   // Kick renders when inputs change
   // Note: renderPage is not in deps because it already depends on all these values
-  // Using layersVersion instead of layers array to avoid reference equality issues
   useEffect(() => {
     if (page) renderPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, renderScale, layersVersion]);
+  }, [page, renderScale, layerList]);
 
-  // Wheel zoom centred at pointer
+  // Attach wheel zoom handler
   useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (state.screenshotMode) return;
-      e.preventDefault();
-      const prev = state.transform;
-      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * (1 - e.deltaY * 0.003)));
+    if (!viewportRef.current) return;
+    return viewTransform.attachWheelZoom();
+  }, [viewTransform]);
 
-      const rect = el.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-
-      const cx = (sx - prev.tx) / prev.scale;
-      const cy = (sy - prev.ty) / prev.scale;
-
-      const tx = sx - cx * next;
-      const ty = sy - cy * next;
-      dispatch({ type: 'SET_TRANSFORM', payload: { tx, ty, scale: next } });
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-
-    const cancel = (ev: Event) => ev.preventDefault();
-    el.addEventListener('gesturestart', cancel as EventListener, { passive: false });
-    el.addEventListener('gesturechange', cancel as EventListener, { passive: false });
-    el.addEventListener('gestureend', cancel as EventListener, { passive: false });
-
-    return () => {
-      el.removeEventListener('wheel', onWheel as EventListener);
-      el.removeEventListener('gesturestart', cancel as EventListener);
-      el.removeEventListener('gesturechange', cancel as EventListener);
-      el.removeEventListener('gestureend', cancel as EventListener);
-    };
-  }, [state.screenshotMode, state.transform]);
-
-  // Toolbar zoom buttons
+  // Toolbar zoom (use viewTransform)
   const zoom = useCallback(
     (dir: 'in' | 'out') => {
-      const factor = dir === 'in' ? 1.2 : 1 / 1.2;
-      const prev = state.transform;
-      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
-      const el = viewportRef.current;
-      if (!el) {
-        dispatch({ type: 'SET_TRANSFORM', payload: { ...prev, scale: next } });
-        return;
-      }
-      const rect = el.getBoundingClientRect();
-      const sx = rect.width / 2;
-      const sy = rect.height / 2;
-      const cx = (sx - prev.tx) / prev.scale;
-      const cy = (sy - prev.ty) / prev.scale;
-      const tx = sx - cx * next;
-      const ty = sy - cy * next;
-      dispatch({ type: 'SET_TRANSFORM', payload: { tx, ty, scale: next } });
+      viewTransform.zoom(dir);
     },
-    [state.transform]
+    [viewTransform]
   );
 
-  // Helper to calculate real distance from pixels using calibration
-  // Supports two methods:
-  // 1. Page Size Method: scale notation + print size
-  // 2. Known Length Method: calibration line + known distance
-  const calculateRealDistance = useCallback(
-    (pixelsDistance: number): number | null => {
-      if (!calibration) return null;
-
-      try {
-        // Method 1: Known Length Method (simpler, more direct)
-        if (
-          calibration.calibration_line_start &&
-          calibration.calibration_line_end &&
-          calibration.known_distance_inches
-        ) {
-          // Calculate the calibration line length in pixels
-          const dx = calibration.calibration_line_end.x - calibration.calibration_line_start.x;
-          const dy = calibration.calibration_line_end.y - calibration.calibration_line_start.y;
-          const calibrationLineLengthPixels = Math.sqrt(dx * dx + dy * dy);
-
-          if (calibrationLineLengthPixels === 0) return null;
-
-          // pixels_per_inch = calibration line pixels / known distance inches
-          const pixelsPerInch = calibrationLineLengthPixels / calibration.known_distance_inches;
-
-          // Convert measurement pixels to real inches
-          return pixelsDistance / pixelsPerInch;
-        }
-
-        // Method 2: Page Size Method (requires scale notation and print size)
-        if (!calibration.scale_notation) return null;
-        if (!calibration.print_width_inches || !calibration.print_height_inches) return null;
-
-        // Parse scale notation to get ratio
-        const match = calibration.scale_notation.match(
-          /^(\d+(?:\/\d+)?)"?\s*=\s*(\d+)'(?:-(\d+)"?)?$/
-        );
-        if (!match) return null;
-
-        const [, paperInchStr, realFeetStr, realInchesStr] = match;
-
-        // Parse paper inches (could be fraction like 1/8)
-        let paperInches: number;
-        if (paperInchStr.includes('/')) {
-          const [num, denom] = paperInchStr.split('/').map(Number);
-          paperInches = num / denom;
-        } else {
-          paperInches = parseFloat(paperInchStr);
-        }
-
-        // Parse real world measurement
-        const realFeet = parseFloat(realFeetStr);
-        const realInches = realInchesStr ? parseFloat(realInchesStr) : 0;
-        const realTotalInches = realFeet * 12 + realInches;
-
-        // Get CSS pixel width (user interactions are in CSS pixels, not canvas backing store pixels)
-        const canvas = canvasRef.current;
-        if (!canvas) return null;
-        const cssWidth = parseFloat(canvas.style.width) || canvas.offsetWidth;
-
-        // Direct calculation: CSS pixels to print inches
-        // We know the canvas CSS width matches the print width we calibrated to
-        const pixelsPerPrintInch = cssWidth / calibration.print_width_inches;
-
-        // Convert pixel distance to paper inches
-        const paperInchesDistance = pixelsDistance / pixelsPerPrintInch;
-
-        // Convert paper inches to real inches using architectural scale
-        const scaleRatio = paperInches / realTotalInches; // paper inches per real inch
-        const realInchesDistance = paperInchesDistance / scaleRatio;
-
-        return realInchesDistance;
-      } catch (error) {
-        console.error('[PDFViewer] Error calculating real distance:', error);
-        return null;
-      }
-    },
-    [calibration]
-  );
 
   // Measurement handlers
   const saveMeasurement = useCallback(
@@ -1075,47 +479,32 @@ export function PDFViewer({
       const realDistanceInches = calculateRealDistance(pixelsDistance);
 
       try {
-        const res = await fetch('/api/measurements', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            project_id: projectId,
-            page_number: state.pageNumber,
-            start_point: { x: selection.startX, y: selection.startY },
-            end_point: { x: selection.endX, y: selection.endY },
-            pixels_distance: pixelsDistance,
-            real_distance_inches: realDistanceInches,
-          }),
+        await measurementsHook.actions.save({
+          project_id: projectId,
+          page_number: state.pageNumber,
+          start_point: { x: selection.startX, y: selection.startY },
+          end_point: { x: selection.endX, y: selection.endY },
+          pixels_distance: pixelsDistance,
+          real_distance_inches: realDistanceInches,
         });
-
-        if (!res.ok) throw new Error('Failed to save measurement');
-
-        const data = await res.json();
-        setMeasurements(prev => [...prev, data.measurement]);
         dispatch({ type: 'CLEAR_SELECTION' });
       } catch (error) {
         console.error('[PDFViewer] Error saving measurement:', error);
         alert('Failed to save measurement');
       }
     },
-    [projectId, state.pageNumber, calculateRealDistance]
+    [projectId, state.pageNumber, calculateRealDistance, measurementsHook.actions]
   );
 
   const deleteMeasurement = useCallback(async (measurementId: string) => {
     try {
-      const res = await fetch(`/api/measurements?id=${measurementId}`, {
-        method: 'DELETE',
-      });
-
-      if (!res.ok) throw new Error('Failed to delete measurement');
-
-      setMeasurements(prev => prev.filter(m => m.id !== measurementId));
+      await measurementsHook.actions.remove(measurementId);
       setSelectedMeasurementId(null);
     } catch (error) {
       console.error('[PDFViewer] Error deleting measurement:', error);
       alert('Failed to delete measurement');
     }
-  }, []);
+  }, [measurementsHook.actions, setSelectedMeasurementId]);
 
   const saveCalibration = useCallback(
     async (scaleNotation: string, printWidth: number, printHeight: number) => {
@@ -1125,42 +514,25 @@ export function PDFViewer({
         // Get PDF dimensions in points for calculation
         const viewport = page.getViewport({ scale: 1 });
 
-        const res = await fetch('/api/measurements/calibrate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            project_id: projectId,
-            page_number: state.pageNumber,
-            method: 'page-size',
-            scale_notation: scaleNotation,
-            print_width_inches: printWidth,
-            print_height_inches: printHeight,
-            pdf_width_points: viewport.width,
-            pdf_height_points: viewport.height,
-          }),
-        });
+        await calibrationHook.actions.savePageSize(
+          scaleNotation,
+          printWidth,
+          printHeight,
+          viewport.width,
+          viewport.height
+        );
 
-        if (!res.ok) throw new Error('Failed to save calibration');
-
-        const data = await res.json();
-        setCalibration(data.calibration);
         setShowCalibrationModal(false);
         setCalibrationLine(null);
 
-        // Reload measurements to get updated real distances
-        const measurementsRes = await fetch(
-          `/api/measurements?projectId=${projectId}&pageNumber=${state.pageNumber}`
-        );
-        if (measurementsRes.ok) {
-          const measurementsData = await measurementsRes.json();
-          setMeasurements(measurementsData.measurements || []);
-        }
+        // Refresh measurements to get updated real distances
+        await measurementsHook.actions.refresh();
       } catch (error) {
         console.error('[PDFViewer] Error saving calibration:', error);
         alert('Failed to save calibration');
       }
     },
-    [projectId, state.pageNumber, page]
+    [projectId, page, calibrationHook.actions, measurementsHook.actions]
   );
 
   const saveCalibrationKnownLength = useCallback(
@@ -1172,41 +544,20 @@ export function PDFViewer({
       if (!projectId) return;
 
       try {
-        const res = await fetch('/api/measurements/calibrate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            project_id: projectId,
-            page_number: state.pageNumber,
-            method: 'known-length',
-            calibration_line_start: lineStart,
-            calibration_line_end: lineEnd,
-            known_distance_inches: knownDistanceInches,
-          }),
-        });
+        await calibrationHook.actions.saveKnownLength(lineStart, lineEnd, knownDistanceInches);
 
-        if (!res.ok) throw new Error('Failed to save calibration');
-
-        const data = await res.json();
-        setCalibration(data.calibration);
         setShowCalibrationModal(false);
         setCalibrationLine(null);
         setIsDrawingCalibrationLine(false);
 
-        // Reload measurements to get updated real distances
-        const measurementsRes = await fetch(
-          `/api/measurements?projectId=${projectId}&pageNumber=${state.pageNumber}`
-        );
-        if (measurementsRes.ok) {
-          const measurementsData = await measurementsRes.json();
-          setMeasurements(measurementsData.measurements || []);
-        }
+        // Refresh measurements to get updated real distances
+        await measurementsHook.actions.refresh();
       } catch (error) {
         console.error('[PDFViewer] Error saving calibration:', error);
         alert('Failed to save calibration');
       }
     },
-    [projectId, state.pageNumber]
+    [projectId, calibrationHook.actions, measurementsHook.actions]
   );
 
   const handleRequestLineDraw = useCallback(() => {
@@ -1216,190 +567,100 @@ export function PDFViewer({
   }, []);
 
   // Keyboard shortcuts
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-
-    const onKey = (e: KeyboardEvent) => {
-      // Get fresh state from stateRef to avoid stale closure
-      const currentState = stateRef.current;
-
-      // IMPORTANT: Ignore ALL keyboard events when elevation prompt is open
-      // Otherwise typing in the caption field can trigger PDFViewer shortcuts (like 's' toggling screenshot mode)
-      if (showElevationPrompt) return;
-
-      // Ignore keyboard events when search is open (except for keys handled by search overlay)
-      if (textSearch.isOpen) return;
-
-      // Ignore keyboard events when calibration modal is open
-      if (showCalibrationModal) return;
-
-      // Open search with 'f' key (only if project ID is available)
-      if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.repeat && projectId) {
-        e.preventDefault();
-        textSearch.open();
-        return;
-      }
-
-      // Delete selected measurement with Delete key
-      if (e.key === 'Delete' && selectedMeasurementId && !e.repeat) {
-        e.preventDefault();
-        deleteMeasurement(selectedMeasurementId);
-        return;
-      }
-
-      // Handle screenshot mode shortcuts - check selection individually for each key
-      // Skip if elevation prompt is open (let the modal handle keyboard input)
-      if (currentState.screenshotMode && !e.repeat) {
-        const k = e.key.toLowerCase();
-
-        // These shortcuts require a selection
-        if (currentState.selection) {
-          if (k === 'c') {
-            e.preventDefault();
-            capture('current', 'plan');
-            return;
-          }
-          if (k === 'e') {
-            e.preventDefault();
-            setShowElevationPrompt(true);
-            return;
-          }
-          if (k === 'b') {
-            e.preventDefault();
-            capture('bathroom', 'plan');
-            return;
-          }
-          if (k === 'd') {
-            e.preventDefault();
-            capture('door', 'plan');
-            return;
-          }
-          if (k === 'k') {
-            e.preventDefault();
-            capture('kitchen', 'plan');
-            return;
-          }
-        }
-      }
-
-      if (e.key === 'ArrowLeft')
-        dispatch({ type: 'SET_PAGE', payload: Math.max(1, currentState.pageNumber - 1) });
-      if (e.key === 'ArrowRight')
-        dispatch({
-          type: 'SET_PAGE',
-          payload: Math.min(
-            currentState.numPages || currentState.pageNumber,
-            currentState.pageNumber + 1
-          ),
-        });
-      if (e.key === '-' || e.key === '_') zoom('out');
-      if (e.key === '=' || e.key === '+') zoom('in');
-      if (e.key === '0') dispatch({ type: 'RESET_ZOOM' });
-      if (!readOnly && e.key.toLowerCase() === 's' && !e.repeat)
-        dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
-      if (!readOnly && e.key.toLowerCase() === 'm' && !e.repeat)
-        dispatch({ type: 'TOGGLE_MEASUREMENT_MODE' });
-      if (!readOnly && e.key.toLowerCase() === 'l' && !e.repeat) {
-        e.preventDefault();
-        setShowCalibrationModal(true);
-      }
-      if (!readOnly && e.key === 'Escape') {
-        if (currentState.screenshotMode) dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' });
-        if (currentState.measurementMode) dispatch({ type: 'TOGGLE_MEASUREMENT_MODE' });
+  useKeyboardShortcuts(
+    viewportRef as React.RefObject<HTMLElement>,
+    {
+      mode: state.mode,
+      readOnly,
+      hasSelection: state.mode.type !== 'idle' && state.mode.selection !== null,
+      disabled: showElevationPrompt || showCalibrationModal || textSearch.isOpen,
+    },
+    {
+      onPrevPage: () => dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) }),
+      onNextPage: () => dispatch({ type: 'SET_PAGE', payload: Math.min(state.numPages, state.pageNumber + 1) }),
+      onZoomIn: () => viewTransform.zoom('in'),
+      onZoomOut: () => viewTransform.zoom('out'),
+      onResetZoom: () => viewTransform.reset(),
+      onToggleScreenshot: () => dispatch({
+        type: 'SET_MODE',
+        payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot',
+      }),
+      onToggleMeasure: () => dispatch({
+        type: 'SET_MODE',
+        payload: state.mode.type === 'measure' ? 'idle' : 'measure',
+      }),
+      onOpenCalibration: () => setShowCalibrationModal(true),
+      onOpenSearch: projectId ? textSearch.open : undefined,
+      onExit: () => {
         if (isDrawingCalibrationLine) {
           setIsDrawingCalibrationLine(false);
           setCalibrationLine(null);
-          dispatch({ type: 'CLEAR_SELECTION' });
         }
-      }
-    };
-    el.addEventListener('keydown', onKey);
-    return () => {
-      el.removeEventListener('keydown', onKey);
-    };
-  }, [
-    state.screenshotMode,
-    state.measurementMode,
-    state.calibrationMode,
-    state.numPages,
-    state.pageNumber,
-    readOnly,
-    zoom,
-    showElevationPrompt,
-    showCalibrationModal,
-    textSearch,
-    projectId,
-    selectedMeasurementId,
-    isDrawingCalibrationLine,
-    deleteMeasurement,
-  ]);
-
-  // Mouse handlers for pan / selection
-  const screenToContent = useCallback(
-    (clientX: number, clientY: number) => {
-      if (!viewportRef.current) return { x: 0, y: 0 };
-      const r = viewportRef.current.getBoundingClientRect();
-      const x = (clientX - r.left - state.transform.tx) / state.transform.scale;
-      const y = (clientY - r.top - state.transform.ty) / state.transform.scale;
-      return { x, y };
-    },
-    [state.transform]
+        dispatch({ type: 'SET_MODE', payload: 'idle' });
+        dispatch({ type: 'CLEAR_SELECTION' });
+      },
+      onDeleteMeasurement: selectedMeasurementId
+        ? () => deleteMeasurement(selectedMeasurementId)
+        : undefined,
+      onCaptureCurrent: () => capture('current', 'plan'),
+      onCaptureElevation: () => setShowElevationPrompt(true),
+      onCaptureBathroom: () => capture('bathroom', 'plan'),
+      onCaptureDoor: () => capture('door', 'plan'),
+      onCaptureKitchen: () => capture('kitchen', 'plan'),
+    }
   );
 
+  // Mouse handlers for pan / selection
   const onMouseDown = (e: React.MouseEvent) => {
-    if ((state.screenshotMode || state.measurementMode || isDrawingCalibrationLine) && !readOnly) {
+    if ((state.mode.type !== 'idle' || isDrawingCalibrationLine) && !readOnly) {
       e.preventDefault();
       e.stopPropagation();
-      const { x, y } = screenToContent(e.clientX, e.clientY);
+      const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
       dispatch({ type: 'START_SELECTION', payload: { x, y } });
       return;
     }
     if (e.button !== 0) return;
     dispatch({ type: 'START_DRAG' });
-    dragRef.current = {
+    dragStartRef.current = {
       x: e.clientX,
       y: e.clientY,
-      tx: state.transform.tx,
-      ty: state.transform.ty,
+      tx: transform.tx,
+      ty: transform.ty,
     };
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    if (state.screenshotMode || state.measurementMode || isDrawingCalibrationLine) {
-      if (state.isSelecting && state.selection) {
+    if (state.mode.type !== 'idle' || isDrawingCalibrationLine) {
+      if (state.mode.type !== 'idle' && state.mode.selection) {
         e.preventDefault();
         e.stopPropagation();
-        const { x, y } = screenToContent(e.clientX, e.clientY);
+        const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
         dispatch({ type: 'UPDATE_SELECTION', payload: { x, y } });
       }
       return;
     }
     if (!state.isDragging) return;
-    const dx = e.clientX - dragRef.current.x;
-    const dy = e.clientY - dragRef.current.y;
-    dispatch({
-      type: 'SET_TRANSFORM',
-      payload: { ...state.transform, tx: dragRef.current.tx + dx, ty: dragRef.current.ty + dy },
-    });
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    setTransform({ ...transform, tx: dragStartRef.current.tx + dx, ty: dragStartRef.current.ty + dy });
   };
 
   const onMouseUp = () => {
-    if (state.screenshotMode && state.selection) {
-      dispatch({ type: 'END_SELECTION' });
-    } else if (state.measurementMode && state.selection) {
-      dispatch({ type: 'END_SELECTION' });
+    if (state.mode.type === 'screenshot' && state.mode.selection) {
+      dispatch({ type: 'CLEAR_SELECTION' });
+    } else if (state.mode.type === 'measure' && state.mode.selection) {
       // Auto-save measurement when line is complete
-      saveMeasurement(state.selection);
-    } else if (isDrawingCalibrationLine && state.selection) {
-      dispatch({ type: 'END_SELECTION' });
+      saveMeasurement(state.mode.selection);
+      dispatch({ type: 'CLEAR_SELECTION' });
+    } else if (isDrawingCalibrationLine && state.mode.type !== 'idle' && state.mode.selection) {
       // Save calibration line and show modal
       setCalibrationLine({
-        start: { x: state.selection.startX, y: state.selection.startY },
-        end: { x: state.selection.endX, y: state.selection.endY },
+        start: { x: state.mode.selection.startX, y: state.mode.selection.startY },
+        end: { x: state.mode.selection.endX, y: state.mode.selection.endY },
       });
       setIsDrawingCalibrationLine(false);
       setShowCalibrationModal(true);
+      dispatch({ type: 'CLEAR_SELECTION' });
     }
     dispatch({ type: 'END_DRAG' });
   };
@@ -1428,43 +689,7 @@ export function PDFViewer({
     [assessmentId]
   );
 
-  const toggleLayer = useCallback(
-    async (layerId: string) => {
-      if (!page) return;
-      setLayers(prev => {
-        const next = prev.map(l => (l.id === layerId ? { ...l, visible: !l.visible } : l));
-        return next;
-      });
-      setLayersVersion(v => v + 1);
-      // renderPage will be called automatically by the useEffect when layersVersion changes
-    },
-    [page]
-  );
-
-  // Screenshot capture reusing DPR + ocConfig for fidelity
-  const createElementInstance = async (
-    elementSlug: 'bathroom' | 'door' | 'kitchen'
-  ): Promise<any | null> => {
-    const elementGroupSlugs: Record<string, string> = {
-      bathroom: 'bathrooms',
-      door: 'doors',
-      kitchen: 'kitchens',
-    };
-    const slug = elementGroupSlugs[elementSlug];
-    if (!slug || !assessmentId) return null;
-    try {
-      const res = await fetch(`/api/checks/create-element`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assessmentId, elementGroupSlug: slug }),
-      });
-      if (!res.ok) return null;
-      const { check } = await res.json();
-      return check;
-    } catch {
-      return null;
-    }
-  };
+  const toggleLayer = layers.actions.toggleLayer;
 
   const capture = useCallback(
     async (
@@ -1473,182 +698,30 @@ export function PDFViewer({
       elementGroupId?: string,
       caption?: string
     ) => {
+      const currentState = stateRef.current;
+      if (currentState.mode.type === 'idle' || !currentState.mode.selection) return;
+      
       try {
-        // Use stateRef for fresh state without causing dependency issues
-        const currentState = stateRef.current;
-        if (readOnly || !currentState.selection || !page) return;
-        if (capturingRef.current) return;
-        capturingRef.current = true;
-
-        const savedSelection = { ...currentState.selection };
-
-        // Only clear selection for plan screenshots (not elevations)
+        await screenshotCapture.capture({
+          target,
+          type: screenshotType,
+          selection: currentState.mode.selection,
+          elementGroupId,
+          caption,
+          pageNumber: currentState.pageNumber,
+          zoomLevel: transform.scale,
+        });
+        
+        // Clear selection after plan screenshot
         if (screenshotType === 'plan') {
           dispatch({ type: 'CLEAR_SELECTION' });
         }
-
-        let targetCheckId = activeCheck?.id;
-        if (target !== 'current') {
-          const newCheck = await createElementInstance(target);
-          if (!newCheck) {
-            alert(`Failed to create new ${target} instance.`);
-            return;
-          }
-          targetCheckId = newCheck.id;
-          onCheckAdded?.(newCheck);
-          onCheckSelect?.(newCheck.id);
-        }
-        if (!targetCheckId) {
-          alert('No check selected. Please select a check first.');
-          return;
-        }
-
-        const canvas = canvasRef.current!;
-        // cssToCanvas is the safeMultiplier (canvas backing store pixels per CSS pixel)
-        const baseViewportForCalc = page.getViewport({ scale: 1 });
-        const cssToCanvas = canvas.width / Math.ceil(baseViewportForCalc.width);
-        const sx = Math.min(savedSelection.startX, savedSelection.endX);
-        const sy = Math.min(savedSelection.startY, savedSelection.endY);
-        const sw = Math.abs(savedSelection.endX - savedSelection.startX);
-        const sh = Math.abs(savedSelection.endY - savedSelection.startY);
-
-        const canvasSx = Math.floor(sx * cssToCanvas);
-        const canvasSy = Math.floor(sy * cssToCanvas);
-        const canvasSw = Math.max(1, Math.ceil(sw * cssToCanvas));
-        const canvasSh = Math.max(1, Math.ceil(sh * cssToCanvas));
-
-        // High-res offscreen render with the same ocConfig and multiplier
-        const baseViewport = page.getViewport({ scale: 1 });
-        const desiredMultiplier = renderScale;
-        const safeMultiplier = getSafeRenderMultiplier(baseViewport, desiredMultiplier);
-        const viewport = page.getViewport({ scale: safeMultiplier });
-        const off = document.createElement('canvas');
-        off.width = Math.ceil(viewport.width);
-        off.height = Math.ceil(viewport.height);
-        const octx = off.getContext('2d')!;
-        octx.setTransform(1, 0, 0, 1, 0, 0);
-        octx.fillStyle = 'white';
-        octx.fillRect(0, 0, off.width, off.height);
-
-        const screenshotRenderParams = {
-          canvasContext: octx,
-          viewport: viewport,
-          ...(ocConfig && { optionalContentConfigPromise: Promise.resolve(ocConfig) }),
-        };
-
-        await page.render(screenshotRenderParams).promise;
-
-        // Map selection from on-screen canvas pixels to offscreen pixels
-        const renderToDisplayedRatio = viewport.width / canvas.width;
-        const rx = Math.max(0, Math.floor(canvasSx * renderToDisplayedRatio));
-        const ry = Math.max(0, Math.floor(canvasSy * renderToDisplayedRatio));
-        const rw = Math.max(1, Math.ceil(canvasSw * renderToDisplayedRatio));
-        const rh = Math.max(1, Math.ceil(canvasSh * renderToDisplayedRatio));
-
-        const cx = Math.min(rx, off.width - 1);
-        const cy = Math.min(ry, off.height - 1);
-        const cw = Math.min(rw, off.width - cx);
-        const ch = Math.min(rh, off.height - cy);
-
-        const out = document.createElement('canvas');
-        out.width = cw;
-        out.height = ch;
-        out.getContext('2d')!.drawImage(off, cx, cy, cw, ch, 0, 0, cw, ch);
-
-        // Thumbnail
-        const thumbMax = 240;
-        const r = Math.min(1, thumbMax / Math.max(cw, ch));
-        const tw = Math.max(1, Math.round(cw * r));
-        const th = Math.max(1, Math.round(ch * r));
-        const t = document.createElement('canvas');
-        t.width = tw;
-        t.height = th;
-        t.getContext('2d')!.drawImage(out, 0, 0, tw, th);
-
-        // Use maximum quality PNG (quality param doesn't apply to PNG, but it's lossless by default)
-        // PNG is always lossless, so this ensures we get the full quality
-        const [blob, thumb] = await Promise.all([
-          new Promise<Blob>(resolve => out.toBlob(b => resolve(b!), 'image/png')),
-          new Promise<Blob>(resolve => t.toBlob(b => resolve(b!), 'image/png')),
-        ]);
-
-        const res = await fetch('/api/screenshots/presign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectId: activeCheck?.project_id || assessmentId,
-            checkId: targetCheckId,
-          }),
-        });
-        if (!res.ok) throw new Error('Failed to get presigned URLs');
-        const { _screenshotId, uploadUrl, key, thumbUploadUrl, thumbKey } = await res.json();
-
-        await Promise.all([
-          fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: blob }),
-          fetch(thumbUploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'image/png' },
-            body: thumb,
-          }),
-        ]);
-
-        // Extract text from PDF region for elevations
-        let extractedText = '';
-        if (screenshotType === 'elevation' && page) {
-          extractedText = await extractTextFromRegion(page, {
-            x: sx,
-            y: sy,
-            width: sw,
-            height: sh,
-          });
-        }
-
-        await fetch('/api/screenshots', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            check_id: screenshotType === 'plan' ? targetCheckId : null, // Only assign to check for plan screenshots
-            page_number: currentState.pageNumber,
-            crop_coordinates: {
-              x: sx,
-              y: sy,
-              width: sw,
-              height: sh,
-              zoom_level: currentState.transform.scale,
-            },
-            screenshot_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${key}`,
-            thumbnail_url: `s3://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'bucket'}/${thumbKey}`,
-            caption: caption || '',
-            screenshot_type: screenshotType,
-            element_group_id: elementGroupId || null,
-            extracted_text: extractedText || null,
-          }),
-        });
-
-        onScreenshotSaved?.(targetCheckId);
-
-        // Refresh screenshot indicators immediately
-        refreshScreenshots();
       } catch (err) {
-        alert('Failed to save screenshot.');
         console.error('[PDFViewer] capture failed:', err);
-      } finally {
-        capturingRef.current = false;
+        alert('Failed to save screenshot.');
       }
     },
-    [
-      readOnly,
-      page,
-      activeCheck,
-      assessmentId,
-      renderScale,
-      dpr,
-      ocConfig,
-      getSafeRenderMultiplier,
-      onCheckAdded,
-      onCheckSelect,
-      onScreenshotSaved,
-    ]
+    [screenshotCapture, transform.scale]
   );
 
   // Stable callbacks for ElevationCapturePrompt to prevent infinite re-renders
@@ -1690,7 +763,7 @@ export function PDFViewer({
     return <BlueprintLoader />;
   }
 
-  const zoomPct = Math.round(state.transform.scale * 100);
+  const zoomPct = Math.round(transform.scale * 100);
 
   return (
     <div
@@ -1701,7 +774,7 @@ export function PDFViewer({
       className="relative h-full w-full outline-none overscroll-contain"
       style={{ touchAction: 'none' }}
     >
-      {state.screenshotMode && (
+      {state.mode.type === 'screenshot' && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
             📸 Screenshot Mode: Click and drag to select area
@@ -1709,7 +782,7 @@ export function PDFViewer({
         </div>
       )}
 
-      {state.measurementMode && (
+      {state.mode.type === 'measure' && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="bg-green-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
             📏 Measurement Mode: Draw lines to measure
@@ -1732,7 +805,7 @@ export function PDFViewer({
         </div>
       )}
 
-      {!state.measurementMode && selectedMeasurementId && measurements.length > 0 && !readOnly && (
+      {state.mode.type !== 'measure' && selectedMeasurementId && measurements.length > 0 && !readOnly && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
             Measurement selected • Press{' '}
@@ -1742,7 +815,7 @@ export function PDFViewer({
         </div>
       )}
 
-      {state.screenshotMode && state.selection && (
+      {state.mode.type === 'screenshot' && state.mode.selection && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
           <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-blue-500 font-mono">
             C - Save to Current (exits)
@@ -1844,7 +917,7 @@ export function PDFViewer({
             +
           </button>
         </div>
-        {layers.length > 0 && (
+        {layerList.length > 0 && (
           <button
             aria-pressed={showLayerPanel}
             aria-label="Toggle layers panel"
@@ -1867,25 +940,25 @@ export function PDFViewer({
               📦
             </button>
             <button
-              aria-pressed={state.screenshotMode}
+              aria-pressed={state.mode.type === 'screenshot'}
               aria-label="Toggle screenshot mode (S)"
               title="Capture a portion of the plan"
-              className={`btn-icon shadow-md ${state.screenshotMode ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => dispatch({ type: 'TOGGLE_SCREENSHOT_MODE' })}
+              className={`btn-icon shadow-md ${state.mode.type === 'screenshot' ? 'bg-blue-600 text-white' : 'bg-white'}`}
+              onClick={() => dispatch({ type: 'SET_MODE', payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot' })}
             >
               📸
             </button>
-            {state.screenshotMode && state.selection && (
+            {state.mode.type === 'screenshot' && state.mode.selection && (
               <button className="btn-secondary shadow-md" onClick={() => capture('current')}>
                 Save to Current
               </button>
             )}
             <button
-              aria-pressed={state.measurementMode}
+              aria-pressed={state.mode.type === 'measure'}
               aria-label="Toggle measurement mode (M)"
               title="Measure distances on the plan"
-              className={`btn-icon shadow-md ${state.measurementMode ? 'bg-green-600 text-white' : 'bg-white'}`}
-              onClick={() => dispatch({ type: 'TOGGLE_MEASUREMENT_MODE' })}
+              className={`btn-icon shadow-md ${state.mode.type === 'measure' ? 'bg-green-600 text-white' : 'bg-white'}`}
+              onClick={() => dispatch({ type: 'SET_MODE', payload: state.mode.type === 'measure' ? 'idle' : 'measure' })}
             >
               📏
             </button>
@@ -1901,7 +974,7 @@ export function PDFViewer({
         )}
       </div>
 
-      {showLayerPanel && layers.length > 0 && (
+      {showLayerPanel && layerList.length > 0 && (
         <div className="absolute top-16 right-3 z-50 bg-white border rounded shadow-lg p-3 w-64 pointer-events-auto">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold">PDF Layers</h3>
@@ -1913,7 +986,7 @@ export function PDFViewer({
             </button>
           </div>
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {layers.map(layer => (
+            {layerList.map((layer: any) => (
               <label
                 key={layer.id}
                 className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
@@ -1933,7 +1006,7 @@ export function PDFViewer({
 
       <div
         className={`absolute inset-0 overflow-hidden ${
-          state.screenshotMode || state.measurementMode || isDrawingCalibrationLine
+          state.mode.type !== 'idle' || isDrawingCalibrationLine
             ? 'cursor-crosshair'
             : state.isDragging
               ? 'cursor-grabbing'
@@ -1943,14 +1016,14 @@ export function PDFViewer({
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={() => {
-          if (!state.screenshotMode && !state.measurementMode && !isDrawingCalibrationLine)
+          if (state.mode.type === 'idle' && !isDrawingCalibrationLine)
             dispatch({ type: 'END_DRAG' });
         }}
         style={{ clipPath: 'inset(0)' }}
       >
         <div
           style={{
-            transform: `translate(${state.transform.tx}px, ${state.transform.ty}px) scale(${state.transform.scale})`,
+            transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
             transformOrigin: '0 0',
             willChange: 'transform',
             position: 'absolute',
@@ -1963,15 +1036,15 @@ export function PDFViewer({
         >
           <div ref={pageContainerRef} style={{ position: 'relative' }}>
             <canvas ref={canvasRef} />
-            {state.screenshotMode && state.selection && (
+            {state.mode.type === 'screenshot' && state.mode.selection && (
               <div
                 className="pointer-events-none"
                 style={{
                   position: 'absolute',
-                  left: Math.min(state.selection.startX, state.selection.endX),
-                  top: Math.min(state.selection.startY, state.selection.endY),
-                  width: Math.abs(state.selection.endX - state.selection.startX),
-                  height: Math.abs(state.selection.endY - state.selection.startY),
+                  left: Math.min(state.mode.selection.startX, state.mode.selection.endX),
+                  top: Math.min(state.mode.selection.startY, state.mode.selection.endY),
+                  width: Math.abs(state.mode.selection.endX - state.mode.selection.startX),
+                  height: Math.abs(state.mode.selection.endY - state.mode.selection.startY),
                   border: '2px solid rgba(37, 99, 235, 0.8)',
                   backgroundColor: 'rgba(37, 99, 235, 0.1)',
                   zIndex: 40,
@@ -2041,9 +1114,9 @@ export function PDFViewer({
           measurements={measurements}
           selectedMeasurementId={selectedMeasurementId}
           onMeasurementClick={setSelectedMeasurementId}
-          zoom={state.transform.scale}
-          translateX={state.transform.tx}
-          translateY={state.transform.ty}
+          zoom={transform.scale}
+          translateX={transform.tx}
+          translateY={transform.ty}
           calibrationLine={
             calibration && calibration.calibration_line_start && calibration.calibration_line_end
               ? {
@@ -2056,17 +1129,17 @@ export function PDFViewer({
       )}
 
       {/* Measurement mode line preview - sibling to MeasurementOverlay */}
-      {(state.measurementMode || isDrawingCalibrationLine) &&
-        state.selection &&
+      {state.mode.type !== 'idle' && (state.mode.type === 'measure' || isDrawingCalibrationLine) &&
+        state.mode.selection &&
         (() => {
           // Convert PDF coords to screen coords
           const toScreen = (pdfX: number, pdfY: number) => ({
-            x: pdfX * state.transform.scale + state.transform.tx,
-            y: pdfY * state.transform.scale + state.transform.ty,
+            x: pdfX * transform.scale + transform.tx,
+            y: pdfY * transform.scale + transform.ty,
           });
 
-          const start = toScreen(state.selection.startX, state.selection.startY);
-          const end = toScreen(state.selection.endX, state.selection.endY);
+          const start = toScreen(state.mode.selection.startX, state.mode.selection.startY);
+          const end = toScreen(state.mode.selection.endX, state.mode.selection.endY);
 
           // Calculate angle for arrow
           const dx = end.x - start.x;
