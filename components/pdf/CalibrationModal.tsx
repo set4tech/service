@@ -165,8 +165,19 @@ export function CalibrationModal({
       if (data.dimensions) {
         setDetectedDimensions(data.dimensions);
         // Auto-fill the print size
-        const width = Math.round(data.dimensions.widthInches);
-        const height = Math.round(data.dimensions.heightInches);
+        let width = Math.round(data.dimensions.widthInches);
+        let height = Math.round(data.dimensions.heightInches);
+
+        // Match orientation to PDF if we have pdfDimensions
+        if (pdfDimensions) {
+          const pdfIsLandscape = pdfDimensions.width > pdfDimensions.height;
+          const detectedIsLandscape = width > height;
+          // If orientations don't match, swap to match PDF
+          if (pdfIsLandscape !== detectedIsLandscape) {
+            [width, height] = [height, width];
+          }
+        }
+
         setPrintSize(`${width}x${height}`);
       }
     } catch (error) {
@@ -344,8 +355,18 @@ export function CalibrationModal({
                   onClick={
                     detectedDimensions
                       ? () => {
-                          const width = Math.round(detectedDimensions.widthInches);
-                          const height = Math.round(detectedDimensions.heightInches);
+                          let width = Math.round(detectedDimensions.widthInches);
+                          let height = Math.round(detectedDimensions.heightInches);
+
+                          // Match orientation to PDF
+                          if (pdfDimensions) {
+                            const pdfIsLandscape = pdfDimensions.width > pdfDimensions.height;
+                            const detectedIsLandscape = width > height;
+                            if (pdfIsLandscape !== detectedIsLandscape) {
+                              [width, height] = [height, width];
+                            }
+                          }
+
                           setPrintSize(`${width}x${height}`);
                         }
                       : handleDetectDimensions
