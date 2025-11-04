@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useMemo } from 'react';
+import { useFetch } from '@/lib/hooks/useFetch';
 
 interface CropCoordinates {
   x: number;
@@ -19,49 +20,42 @@ interface Screenshot {
   created_at: string;
 }
 
+interface AssessmentScreenshotsState {
+  screenshots: Screenshot[];
+  allScreenshots: Screenshot[];
+  loading: boolean;
+}
+
+interface AssessmentScreenshotsActions {
+  refresh: () => Promise<void>;
+}
+
 /**
  * Custom hook to fetch and manage screenshots for an assessment.
  * Returns screenshots filtered by the current page number.
  */
 export function useAssessmentScreenshots(assessmentId: string | undefined, currentPage: number) {
-  const [allScreenshots, setAllScreenshots] = useState<Screenshot[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Use the shared fetch hook
+  const { data, loading, refetch } = useFetch<{ screenshots: Screenshot[] }>(
+    assessmentId ? `/api/screenshots?assessment_id=${assessmentId}` : null
+  );
 
-  const fetchScreenshots = useCallback(async () => {
-    if (!assessmentId) {
-      setAllScreenshots([]);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/screenshots?assessment_id=${assessmentId}`);
-      if (!response.ok) {
-        console.error('[useAssessmentScreenshots] Failed to fetch screenshots:', response.status);
-        return;
-      }
-
-      const data = await response.json();
-      setAllScreenshots(data.screenshots || []);
-    } catch (error) {
-      console.error('[useAssessmentScreenshots] Error fetching screenshots:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [assessmentId]);
-
-  // Fetch screenshots on mount and when assessmentId changes
-  useEffect(() => {
-    fetchScreenshots();
-  }, [fetchScreenshots]);
+  const allScreenshots = data?.screenshots ?? [];
 
   // Filter screenshots to only those on the current page
-  const screenshots = allScreenshots.filter(s => s.page_number === currentPage);
+  const screenshots = useMemo(
+    () => allScreenshots.filter(s => s.page_number === currentPage),
+    [allScreenshots, currentPage]
+  );
 
   return {
-    screenshots,
-    allScreenshots,
-    loading,
-    refresh: fetchScreenshots,
+    state: {
+      screenshots,
+      allScreenshots,
+      loading,
+    },
+    actions: {
+      refresh: refetch,
+    },
   };
 }
