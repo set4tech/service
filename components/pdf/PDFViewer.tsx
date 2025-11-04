@@ -1011,8 +1011,8 @@ export function PDFViewer({
           return pixelsDistance / pixelsPerInch;
         }
 
-        // Method 2: Page Size Method (requires page, scale notation, and print size)
-        if (!calibration.scale_notation || !page) return null;
+        // Method 2: Page Size Method (requires scale notation and print size)
+        if (!calibration.scale_notation) return null;
         if (!calibration.print_width_inches || !calibration.print_height_inches) return null;
 
         // Parse scale notation to get ratio
@@ -1023,7 +1023,7 @@ export function PDFViewer({
 
         const [, paperInchStr, realFeetStr, realInchesStr] = match;
 
-        // Parse paper inches (could be fraction)
+        // Parse paper inches (could be fraction like 1/8)
         let paperInches: number;
         if (paperInchStr.includes('/')) {
           const [num, denom] = paperInchStr.split('/').map(Number);
@@ -1037,26 +1037,17 @@ export function PDFViewer({
         const realInches = realInchesStr ? parseFloat(realInchesStr) : 0;
         const realTotalInches = realFeet * 12 + realInches;
 
-        // Get PDF page dimensions at scale 1 (in PDF points, where 72 points = 1 inch)
-        const viewport = page.getViewport({ scale: 1 });
-        const pdfWidthInches = viewport.width / 72; // PDF spec: 72 points per inch
-
-        // Calculate how many screen pixels correspond to 1 inch on the printed page
-        // We know the PDF's internal size and the user's intended print size
+        // Get CSS pixel width (user interactions are in CSS pixels, not canvas backing store pixels)
         const canvas = canvasRef.current;
         if (!canvas) return null;
+        const cssWidth = parseFloat(canvas.style.width) || canvas.offsetWidth;
 
-        // Pixels per PDF inch (screen pixels per inch in PDF coordinate space)
-        const pixelsPerPdfInch = canvas.width / pdfWidthInches;
-
-        // Scale factor from PDF to print (how much to scale up/down for print)
-        const printScaleFactor = calibration.print_width_inches / pdfWidthInches;
-
-        // Pixels per paper inch (screen pixels per inch on the printed page)
-        const pixelsPerPaperInch = pixelsPerPdfInch / printScaleFactor;
+        // Direct calculation: CSS pixels to print inches
+        // We know the canvas CSS width matches the print width we calibrated to
+        const pixelsPerPrintInch = cssWidth / calibration.print_width_inches;
 
         // Convert pixel distance to paper inches
-        const paperInchesDistance = pixelsDistance / pixelsPerPaperInch;
+        const paperInchesDistance = pixelsDistance / pixelsPerPrintInch;
 
         // Convert paper inches to real inches using architectural scale
         const scaleRatio = paperInches / realTotalInches; // paper inches per real inch
@@ -1068,7 +1059,7 @@ export function PDFViewer({
         return null;
       }
     },
-    [calibration, page]
+    [calibration]
   );
 
   // Measurement handlers
