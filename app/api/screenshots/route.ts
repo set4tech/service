@@ -174,27 +174,6 @@ export async function POST(req: NextRequest) {
       console.error('[screenshots] Missing host header, cannot trigger OCR extraction');
       return NextResponse.json({ screenshot });
     }
-
-    // More robust protocol detection for local development
-    const isLocal =
-      host.includes('localhost') ||
-      host.includes('127.0.0.1') ||
-      host.includes('[::1]') || // IPv6 loopback
-      host.startsWith('192.168.');
-    const protocol = isLocal ? 'http' : 'https';
-    const baseUrl = `${protocol}://${host}`;
-
-    console.log(
-      `[screenshots] Triggering OCR extraction at: ${baseUrl}/api/screenshots/${screenshot.id}/extract-text`
-    );
-
-    // Fire and forget - don't await
-    fetch(`${baseUrl}/api/screenshots/${screenshot.id}/extract-text`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }).catch(err => {
-      console.error('[screenshots] OCR trigger failed:', err);
-    });
   }
 
   return NextResponse.json({ screenshot });
