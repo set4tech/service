@@ -717,22 +717,26 @@ export function PDFViewer({
       const currentState = stateRef.current;
       if (currentState.mode.type === 'idle' || !currentState.mode.selection) return;
       
+      // Save selection before clearing it
+      const selection = currentState.mode.selection;
+      
+      // Clear selection and exit screenshot mode IMMEDIATELY for plan screenshots
+      // This prevents the blue box from lingering during the async capture
+      if (screenshotType === 'plan') {
+        dispatch({ type: 'CLEAR_SELECTION' });
+        dispatch({ type: 'SET_MODE', payload: 'idle' });
+      }
+      
       try {
         await screenshotCapture.capture({
           target,
           type: screenshotType,
-          selection: currentState.mode.selection,
+          selection,
           elementGroupId,
           caption,
           pageNumber: currentState.pageNumber,
           zoomLevel: transform.scale,
         });
-        
-        // Clear selection and exit screenshot mode after plan screenshot
-        if (screenshotType === 'plan') {
-          dispatch({ type: 'CLEAR_SELECTION' });
-          dispatch({ type: 'SET_MODE', payload: 'idle' });
-        }
       } catch (err) {
         console.error('[PDFViewer] capture failed:', err);
         alert('Failed to save screenshot.');
