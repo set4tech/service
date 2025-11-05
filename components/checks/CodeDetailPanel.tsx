@@ -1172,7 +1172,11 @@ export function CodeDetailPanel({
                       </button>
                     )}
                     <ScreenshotGallery
-                      check={activeCheck}
+                      check={
+                        activeChildCheckId
+                          ? childChecks.find(c => c.id === activeChildCheckId) || activeCheck
+                          : activeCheck
+                      }
                       refreshKey={screenshotsRefreshKey}
                       onScreenshotAssigned={() => {
                         setScreenshotsRefreshKey(prev => prev + 1);
