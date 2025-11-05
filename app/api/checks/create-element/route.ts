@@ -117,23 +117,21 @@ export async function POST(req: NextRequest) {
   if (instanceLabel) {
     label = instanceLabel;
   } else {
-    // Auto-generate a unique label by finding the next available number
-    const { data: existingLabels } = await supabase
+    // Auto-generate label as {ElementGroupName} {total_count + 1}
+    // Count ALL existing instances for this element group (including any with suffixes)
+    const { data: existingInstances } = await supabase
       .from('checks')
       .select('instance_label')
       .eq('assessment_id', assessmentId)
       .eq('element_group_id', elementGroup.id)
       .not('instance_label', 'is', null);
 
-    const existingLabelSet = new Set((existingLabels || []).map((c: any) => c.instance_label));
+    // Get unique instance labels (since each instance has multiple checks)
+    const uniqueLabels = new Set((existingInstances || []).map((c: any) => c.instance_label));
+    const totalInstances = uniqueLabels.size;
 
-    // Find the next available number
-    let nextNumber = 1;
-    while (existingLabelSet.has(`${elementGroup.name} ${nextNumber}`)) {
-      nextNumber++;
-    }
-
-    label = `${elementGroup.name} ${nextNumber}`;
+    // Create label as "{Name} {total + 1}"
+    label = `${elementGroup.name} ${totalInstances + 1}`;
   }
 
   console.log('[create-element] Creating section checks with:', {
@@ -159,12 +157,16 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Create section checks directly (no parent element check)
-  // Retry with " (1)" appended if we hit a duplicate
+  // Retry with incremented base number if we hit a duplicate (race condition)
   let currentLabel = label;
   let createdChecks = null;
+  let attemptCount = 0;
+  const maxAttempts = 10;
 
-  // Keep trying with " (1)" appended until we succeed
-  while (!createdChecks) {
+  // Keep trying with incremented numbers until we succeed
+  while (!createdChecks && attemptCount < maxAttempts) {
+    attemptCount++;
+
     const sectionChecks = sections.map(section => ({
       assessment_id: assessmentId,
       check_name: `${currentLabel} - ${section.title}`,
@@ -183,11 +185,20 @@ export async function POST(req: NextRequest) {
       .select('*, element_groups(name)');
 
     if (result.error && result.error.code === '23505') {
-      // Duplicate found, append " (1)" and try again
+      // Duplicate found (race condition), increment the base number
+      // Extract the number from "Door 14" or "Door 14 (1)" -> get 14, increment to 15
+      const match = currentLabel.match(/^(.+?)\s+(\d+)(?:\s*\(\d+\))?$/);
+      if (match) {
+        const baseName = match[1]; // e.g., "Door"
+        const currentNum = parseInt(match[2], 10); // e.g., 14
+        currentLabel = `${baseName} ${currentNum + 1}`; // e.g., "Door 15"
+      } else {
+        // Fallback: append (1) if we can't parse
+        currentLabel = `${currentLabel} (1)`;
+      }
       console.log(
-        `[create-element] ℹ️ Duplicate found for "${currentLabel}", trying "${currentLabel} (1)"...`
+        `[create-element] ℹ️ Duplicate found (race condition), trying "${currentLabel}"...`
       );
-      currentLabel = `${currentLabel} (1)`;
     } else if (result.error) {
       // Some other error
       console.error('[create-element] ❌ Error creating section checks:', result.error);
@@ -202,6 +213,14 @@ export async function POST(req: NextRequest) {
         `[create-element] ✅ Created ${createdChecks.length} section checks for "${currentLabel}"`
       );
     }
+  }
+
+  if (!createdChecks) {
+    console.error('[create-element] ❌ Failed to create checks after max attempts');
+    return NextResponse.json(
+      { error: 'Failed to create element instance after multiple attempts' },
+      { status: 500 }
+    );
   }
 
   // 6. Return first check as representative (for UI compatibility)
