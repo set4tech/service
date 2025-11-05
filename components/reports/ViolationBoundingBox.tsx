@@ -122,18 +122,6 @@ export const ViolationBoundingBox = memo(function ViolationBoundingBox({
         />
       </div>
 
-      {/* Badge showing count if multiple violations */}
-      {violations.length > 1 && (
-        <div
-          className="absolute -top-2 -right-2 rounded-full bg-white border-2 shadow-md px-1.5 py-0.5 min-w-[20px] flex items-center justify-center"
-          style={{
-            borderColor: colors.border,
-          }}
-        >
-          <span className="text-[10px] font-bold text-ink-700">{violations.length}</span>
-        </div>
-      )}
-
       {/* Hover tooltip */}
       {hover && (
         <div className="absolute z-10 translate-x-3 -translate-y-2 select-none pointer-events-auto">
