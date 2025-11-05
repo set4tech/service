@@ -1,8 +1,6 @@
-// import { redirect } from 'next/navigation';
-// import { cookies } from 'next/headers';
 import { getProjectViolations } from '@/lib/reports/get-violations';
 import { CustomerReportViewer } from '@/components/reports/CustomerReportViewer';
-// import { isAuthenticatedForReport } from '@/lib/auth';
+import { PasswordGate } from '@/components/reports/PasswordGate';
 
 // Force dynamic rendering - don't use static cache
 export const dynamic = 'force-dynamic';
@@ -10,25 +8,6 @@ export const revalidate = 0;
 
 export default async function ProjectReportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: assessmentId } = await params;
-
-  // Skip all auth checks in development
-  // const isLocalDev = process.env.VERCEL_ENV !== 'production';
-
-  // TEMPORARILY DISABLED - Password authentication commented out
-  // if (!isLocalDev) {
-  //   // In production, check if user is a Vercel team member
-  //   const cookieStore = await cookies();
-  //   const isVercelTeamMember =
-  //     cookieStore.get('_vercel_jwt') || cookieStore.get('_vercel_no_index');
-
-  //   // If not a team member, check for password authentication
-  //   if (!isVercelTeamMember) {
-  //     const isAuthenticated = await isAuthenticatedForReport(assessmentId);
-  //     if (!isAuthenticated) {
-  //       redirect(`/projects/${assessmentId}/report/login`);
-  //     }
-  //   }
-  // }
 
   const data = await getProjectViolations(assessmentId);
 
@@ -43,5 +22,9 @@ export default async function ProjectReportPage({ params }: { params: Promise<{ 
     );
   }
 
-  return <CustomerReportViewer data={data} />;
+  return (
+    <PasswordGate>
+      <CustomerReportViewer data={data} />
+    </PasswordGate>
+  );
 }
