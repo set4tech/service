@@ -1650,7 +1650,7 @@ export function PDFViewer({
           }}
         >
           <div ref={pageContainerRef} style={{ position: 'relative' }}>
-            <canvas ref={canvasRef} />
+            <canvas ref={canvasRef} style={{ display: 'block' }} />
             {state.screenshotMode && state.selection && (
               <div
                 className="pointer-events-none"
