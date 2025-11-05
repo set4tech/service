@@ -117,8 +117,8 @@ export async function POST(req: NextRequest) {
   if (instanceLabel) {
     label = instanceLabel;
   } else {
-    // Auto-generate label as {ElementGroupName} {total_count + 1}
-    // Count ALL existing instances for this element group (including any with suffixes)
+    // Auto-generate label as {ElementGroupName} {max_number + 1}
+    // Find the HIGHEST number currently in use for this element group
     const { data: existingInstances } = await supabase
       .from('checks')
       .select('instance_label')
@@ -127,11 +127,24 @@ export async function POST(req: NextRequest) {
       .not('instance_label', 'is', null);
 
     // Get unique instance labels (since each instance has multiple checks)
-    const uniqueLabels = new Set((existingInstances || []).map((c: any) => c.instance_label));
-    const totalInstances = uniqueLabels.size;
+    const uniqueLabels = Array.from(
+      new Set((existingInstances || []).map((c: any) => c.instance_label))
+    );
 
-    // Create label as "{Name} {total + 1}"
-    label = `${elementGroup.name} ${totalInstances + 1}`;
+    // Extract numbers from labels like "Doors 14", "Doors 16 (1)", etc.
+    // Parse format: "{Name} {number}" or "{Name} {number} (...)"
+    const numbers = uniqueLabels
+      .map(label => {
+        const match = label.match(/\s+(\d+)(?:\s|$)/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(n => n > 0);
+
+    // Find the max number in use, default to 0 if none exist
+    const maxNumber = numbers.length > 0 ? Math.max(...numbers) : 0;
+
+    // Create label as "{Name} {max + 1}"
+    label = `${elementGroup.name} ${maxNumber + 1}`;
   }
 
   console.log('[create-element] Creating section checks with:', {
