@@ -148,20 +148,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: screenshotError.message }, { status: 400 });
   }
 
-  // 2. Create assignment as original (if check_id provided)
+  // 2. Create assignment (if check_id provided)
+  // Use RPC function to assign to all checks in element instance
   if (check_id) {
-    const { error: assignmentError } = await supabase.from('screenshot_check_assignments').insert({
+    console.log('[screenshots] Assigning screenshot to check(s):', {
       screenshot_id: screenshot.id,
-      check_id: check_id,
-      is_original: true,
+      check_id,
     });
 
+    const { data: assignResult, error: assignmentError } = await supabase.rpc(
+      'assign_screenshot_to_element_instances',
+      {
+        p_screenshot_id: screenshot.id,
+        p_check_ids: [check_id],
+      }
+    );
+
     if (assignmentError) {
-      console.error('Error creating assignment:', assignmentError);
+      console.error('[screenshots] Error creating assignment:', assignmentError);
       // Rollback screenshot if assignment fails
       await supabase.from('screenshots').delete().eq('id', screenshot.id);
       return NextResponse.json({ error: assignmentError.message }, { status: 400 });
     }
+
+    console.log('[screenshots] ✅ Assigned to', assignResult?.assigned_count, 'checks');
   }
 
   // 3. Trigger background OCR extraction (non-blocking)

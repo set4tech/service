@@ -131,6 +131,8 @@ export async function POST(req: NextRequest) {
       new Set((existingInstances || []).map((c: any) => c.instance_label))
     );
 
+    console.log('[create-element] Found existing labels:', uniqueLabels);
+
     // Extract numbers from labels like "Doors 14", "Doors 16 (1)", etc.
     // Parse format: "{Name} {number}" or "{Name} {number} (...)"
     const numbers = uniqueLabels
@@ -142,6 +144,8 @@ export async function POST(req: NextRequest) {
 
     // Find the max number in use, default to 0 if none exist
     const maxNumber = numbers.length > 0 ? Math.max(...numbers) : 0;
+
+    console.log('[create-element] Extracted numbers:', numbers, 'Max:', maxNumber);
 
     // Create label as "{Name} {max + 1}"
     label = `${elementGroup.name} ${maxNumber + 1}`;
