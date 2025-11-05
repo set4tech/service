@@ -82,21 +82,27 @@ export const ViolationBoundingBox = memo(function ViolationBoundingBox({
   };
 
   return (
-    <BoundingBox
-      bounds={adjustedBounds}
-      borderColor={hover || isHighlighted ? colors.borderHover : colors.border}
-      backgroundColor={hover || isHighlighted ? colors.bg : 'transparent'}
-      borderStyle={isHighlighted ? 'solid' : 'dashed'}
-      onClick={() => onClick(primaryViolation)}
-      className="transition-all"
+    <div
+      className="absolute"
+      style={{
+        left: `${adjustedBounds.x}px`,
+        top: `${adjustedBounds.y}px`,
+        width: `${adjustedBounds.width}px`,
+        height: `${adjustedBounds.height}px`,
+        transform: hover ? 'scale(1.02)' : 'scale(1)',
+        transformOrigin: 'center',
+        transition: 'transform 120ms cubic-bezier(0.2,0,0,1)',
+      }}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
     >
-      <div
-        className="absolute inset-0"
-        onPointerEnter={() => setHover(true)}
-        onPointerLeave={() => setHover(false)}
-        style={{
-          transform: hover ? 'scale(1.02)' : 'scale(1)',
-        }}
+      <BoundingBox
+        bounds={{ x: 0, y: 0, width: adjustedBounds.width, height: adjustedBounds.height }}
+        borderColor={hover || isHighlighted ? colors.borderHover : colors.border}
+        backgroundColor={hover || isHighlighted ? colors.bg : 'transparent'}
+        borderStyle={isHighlighted ? 'solid' : 'dashed'}
+        onClick={() => onClick(primaryViolation)}
+        className="transition-colors"
       />
 
       {/* Corner marker dot */}
@@ -166,6 +172,6 @@ export const ViolationBoundingBox = memo(function ViolationBoundingBox({
           </div>
         </div>
       )}
-    </BoundingBox>
+    </div>
   );
 });
