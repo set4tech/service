@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 
-const CORRECT_PASSWORD = 'daneilian1';
+const CORRECT_PASSWORD = 'danielian1';
 const STORAGE_KEY = 'report_password_authenticated';
 
 export function PasswordGate({ children }: { children: React.ReactNode }) {
