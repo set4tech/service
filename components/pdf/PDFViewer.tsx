@@ -465,15 +465,24 @@ export function PDFViewer({
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const startTime = performance.now();
+      console.log('[PDFViewer] 📄 Starting PDF URL presigning process', { pdfUrl });
       setLoadingUrl(true);
       try {
         // Check cache first
         const cached = PRESIGN_CACHE.get(pdfUrl);
         if (cached && cached.expiresAt > Date.now()) {
+          const elapsed = performance.now() - startTime;
+          console.log('[PDFViewer] ✅ Using cached presigned URL', {
+            elapsedMs: elapsed.toFixed(2),
+          });
           if (!cancelled) setPresignedUrl(cached.url);
           if (!cancelled) setLoadingUrl(false);
           return;
         }
+
+        console.log('[PDFViewer] 🔄 Cache miss, fetching new presigned URL');
+        const presignStart = performance.now();
 
         // Check if request is already in-flight
         let inflightPromise = PRESIGN_INFLIGHT.get(pdfUrl);
@@ -500,11 +509,23 @@ export function PDFViewer({
           })();
 
           PRESIGN_INFLIGHT.set(pdfUrl, inflightPromise);
+        } else {
+          console.log('[PDFViewer] ⏳ Waiting for in-flight presign request');
         }
 
         const url = await inflightPromise;
+        const presignElapsed = performance.now() - presignStart;
+        console.log('[PDFViewer] ✅ Presigned URL fetched', {
+          presignMs: presignElapsed.toFixed(2),
+          totalMs: (performance.now() - startTime).toFixed(2),
+        });
         if (!cancelled) setPresignedUrl(url);
-      } catch {
+      } catch (err) {
+        const elapsed = performance.now() - startTime;
+        console.error('[PDFViewer] ❌ Failed to get presigned URL', {
+          error: err,
+          elapsedMs: elapsed.toFixed(2),
+        });
         if (!cancelled) setPresignedUrl(null);
         PRESIGN_INFLIGHT.delete(pdfUrl);
       } finally {
@@ -537,6 +558,9 @@ export function PDFViewer({
     if (!presignedUrl) return;
     let cancelled = false;
     (async () => {
+      const startTime = performance.now();
+      console.log('[PDFViewer] 📥 Starting PDF.js document download', { url: presignedUrl });
+
       const loadingTask = pdfjs.getDocument({
         url: presignedUrl,
         // Enable streaming and range requests for large files
@@ -545,8 +569,23 @@ export function PDFViewer({
         disableRange: false,
       });
 
+      // Track download progress
+      loadingTask.onProgress = function (progress: { loaded: number; total: number }) {
+        const percent =
+          progress.total > 0 ? ((progress.loaded / progress.total) * 100).toFixed(1) : '?';
+        const loadedMB = (progress.loaded / 1024 / 1024).toFixed(2);
+        const totalMB = progress.total > 0 ? (progress.total / 1024 / 1024).toFixed(2) : '?';
+        console.log(`[PDFViewer] 📊 Download progress: ${percent}% (${loadedMB}MB / ${totalMB}MB)`);
+      };
+
       try {
         const doc = await loadingTask.promise;
+        const elapsed = performance.now() - startTime;
+        console.log('[PDFViewer] ✅ PDF document loaded successfully', {
+          numPages: doc.numPages,
+          elapsedMs: elapsed.toFixed(2),
+          elapsedSec: (elapsed / 1000).toFixed(2),
+        });
         if (cancelled) return;
         setPdfDoc(doc);
         setPage(null);
@@ -554,7 +593,11 @@ export function PDFViewer({
         setLayers([]);
         dispatch({ type: 'SET_NUM_PAGES', payload: doc.numPages });
       } catch (error) {
-        console.error('[PDFViewer] Failed to load PDF:', error);
+        const elapsed = performance.now() - startTime;
+        console.error('[PDFViewer] ❌ Failed to load PDF document', {
+          error,
+          elapsedMs: elapsed.toFixed(2),
+        });
         if (!cancelled) setPdfDoc(null);
       }
     })();
@@ -582,12 +625,25 @@ export function PDFViewer({
 
     let cancelled = false;
     (async () => {
+      const startTime = performance.now();
+      console.log('[PDFViewer] 📄 Loading page', { pageNumber: state.pageNumber });
       try {
         const p = await pdfDoc.getPage(state.pageNumber);
+        const elapsed = performance.now() - startTime;
+        console.log('[PDFViewer] ✅ Page loaded', {
+          pageNumber: state.pageNumber,
+          elapsedMs: elapsed.toFixed(2),
+        });
         if (cancelled) return;
         currentPageNumRef.current = state.pageNumber;
         setPage(p);
-      } catch {
+      } catch (error) {
+        const elapsed = performance.now() - startTime;
+        console.error('[PDFViewer] ❌ Failed to load page', {
+          pageNumber: state.pageNumber,
+          error,
+          elapsedMs: elapsed.toFixed(2),
+        });
         if (!cancelled) setPage(null);
       }
     })();
@@ -745,10 +801,16 @@ export function PDFViewer({
 
   // Core render function (single path)
   const renderPage = useCallback(async () => {
+    const startTime = performance.now();
     const c = canvasRef.current;
     if (!c || !page) {
       return;
     }
+
+    console.log('[PDFViewer] 🎨 Starting page render', {
+      pageNumber: state.pageNumber,
+      renderScale,
+    });
 
     // Validate page object has required methods
     if (typeof page.getViewport !== 'function' || typeof page.render !== 'function') {
@@ -835,15 +897,40 @@ export function PDFViewer({
 
     try {
       await task.promise;
+      const elapsed = performance.now() - startTime;
+      console.log('[PDFViewer] ✅ Page rendered successfully', {
+        pageNumber: state.pageNumber,
+        canvasSize: `${c.width}x${c.height}`,
+        renderScale,
+        elapsedMs: elapsed.toFixed(2),
+      });
     } catch (err: any) {
+      const elapsed = performance.now() - startTime;
       if (err?.name !== 'RenderingCancelledException') {
         // Only log unexpected errors
-        console.error('[PDFViewer] Render error:', err);
+        console.error('[PDFViewer] ❌ Render error', {
+          pageNumber: state.pageNumber,
+          error: err,
+          elapsedMs: elapsed.toFixed(2),
+        });
+      } else {
+        console.log('[PDFViewer] ⏹️ Render cancelled', {
+          pageNumber: state.pageNumber,
+          elapsedMs: elapsed.toFixed(2),
+        });
       }
     } finally {
       if (renderTaskRef.current === task) renderTaskRef.current = null;
     }
-  }, [page, renderScale, ocConfig, layers, getSafeRenderMultiplier, disableLayers]);
+  }, [
+    page,
+    renderScale,
+    ocConfig,
+    layers,
+    getSafeRenderMultiplier,
+    disableLayers,
+    state.pageNumber,
+  ]);
 
   // Kick renders when inputs change
   // Note: renderPage is not in deps because it already depends on all these values

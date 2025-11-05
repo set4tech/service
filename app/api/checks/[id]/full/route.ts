@@ -19,7 +19,21 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   try {
     // Execute both queries in parallel for optimal performance
     const [checkResult, initialRunsResult] = await Promise.all([
-      supabase.from('checks').select('*').eq('id', checkId).single(),
+      supabase
+        .from('checks')
+        .select(
+          `
+          *,
+          screenshots:screenshot_check_assignments(
+            screenshot_id,
+            is_original,
+            assigned_at,
+            screenshots(*)
+          )
+        `
+        )
+        .eq('id', checkId)
+        .single(),
       supabase
         .from('analysis_runs')
         .select('*')
@@ -32,6 +46,21 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     }
 
     const check = checkResult.data;
+
+    // Flatten screenshots array from junction table structure
+    // Transform from: screenshots: [{ screenshot_id, is_original, screenshots: {...} }]
+    // To: screenshots: [{ ...screenshot, is_original }]
+    if (check.screenshots && Array.isArray(check.screenshots)) {
+      check.screenshots = check.screenshots
+        .map((assignment: any) => ({
+          ...assignment.screenshots,
+          is_original: assignment.is_original,
+        }))
+        .filter((s: any) => s.id); // Filter out null screenshots
+      console.log('[checks/full] Loaded check with', check.screenshots.length, 'screenshots');
+    } else {
+      check.screenshots = [];
+    }
 
     // Determine if element-grouped and get all relevant check IDs
     let checkIds: string[] = [checkId];
