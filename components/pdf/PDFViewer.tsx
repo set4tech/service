@@ -120,6 +120,7 @@ export function PDFViewer({
   onPageChange,
   highlightedViolationId,
   disableLayers = false,
+  hiddenLayers,
   screenshotNavigation,
 }: {
   pdfUrl: string;
@@ -136,6 +137,7 @@ export function PDFViewer({
   onPageChange?: (page: number) => void;
   highlightedViolationId?: string | null;
   disableLayers?: boolean;
+  hiddenLayers?: string[]; // If provided, these layer names will be hidden (case-insensitive)
   screenshotNavigation?: {
     current: number;
     total: number;
@@ -661,31 +663,56 @@ export function PDFViewer({
         const initialLayers: PDFLayer[] = [];
         for (const id of order) {
           const group = cfg.getGroup?.(id);
+          const layerName = group?.name || `Layer ${id}`;
           initialLayers.push({
             id: String(id),
-            name: group?.name || `Layer ${id}`,
+            name: layerName,
             visible: cfg.isVisible?.(id),
           });
         }
 
-        // Restore saved visibility (if any)
-        if (assessmentId && typeof window !== 'undefined') {
-          const raw = localStorage.getItem(`pdf-layers-${assessmentId}`);
-          if (raw) {
+        console.log(
+          '[PDFViewer] Available PDF layers:',
+          initialLayers.map(l => l.name)
+        );
+
+        // If hiddenLayers prop is provided, hide those layers and show everything else
+        if (hiddenLayers && hiddenLayers.length > 0) {
+          console.log('[PDFViewer] Hiding these layers:', hiddenLayers);
+          const hiddenLayersLower = hiddenLayers.map(n => n.toLowerCase());
+          for (const layer of initialLayers) {
+            const shouldBeHidden = hiddenLayersLower.includes(layer.name.toLowerCase());
+            const shouldBeVisible = !shouldBeHidden;
+            layer.visible = shouldBeVisible;
             try {
-              const saved = JSON.parse(raw) as Record<string, boolean>;
-              for (const layer of initialLayers) {
-                if (Object.prototype.hasOwnProperty.call(saved, layer.id)) {
-                  layer.visible = !!saved[layer.id];
-                  try {
-                    cfg.setVisibility?.(layer.id, layer.visible);
-                  } catch {
-                    // ignore per-id errors
+              cfg.setVisibility?.(layer.id, shouldBeVisible);
+              console.log(
+                `[PDFViewer] Layer "${layer.name}": ${shouldBeVisible ? 'visible' : 'hidden'}`
+              );
+            } catch {
+              // ignore per-id errors
+            }
+          }
+        } else {
+          // Restore saved visibility (if any) only if hiddenLayers not provided
+          if (assessmentId && typeof window !== 'undefined') {
+            const raw = localStorage.getItem(`pdf-layers-${assessmentId}`);
+            if (raw) {
+              try {
+                const saved = JSON.parse(raw) as Record<string, boolean>;
+                for (const layer of initialLayers) {
+                  if (Object.prototype.hasOwnProperty.call(saved, layer.id)) {
+                    layer.visible = !!saved[layer.id];
+                    try {
+                      cfg.setVisibility?.(layer.id, layer.visible);
+                    } catch {
+                      // ignore per-id errors
+                    }
                   }
                 }
+              } catch {
+                // ignore parse errors
               }
-            } catch {
-              // ignore parse errors
             }
           }
         }
@@ -703,7 +730,7 @@ export function PDFViewer({
     return () => {
       cancelled = true;
     };
-  }, [pdfDoc, assessmentId, disableLayers]);
+  }, [pdfDoc, assessmentId, disableLayers, hiddenLayers]);
 
   // Calculate safe rendering multiplier that respects canvas limits
   const getSafeRenderMultiplier = useCallback((baseViewport: any, desiredMultiplier: number) => {
