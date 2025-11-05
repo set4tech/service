@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
   let currentLabel = label;
   let createdChecks = null;
   let attemptCount = 0;
-  const maxAttempts = 10;
+  const maxAttempts = 50; // Increased from 10 to handle gaps
 
   // Keep trying with incremented numbers until we succeed
   while (!createdChecks && attemptCount < maxAttempts) {
