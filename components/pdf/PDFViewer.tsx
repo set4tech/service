@@ -166,7 +166,7 @@ export function PDFViewer({
     pageNumber: persistence.state.page,
     numPages: 0,
     isDragging: false,
-    mode: { type: 'idle' },
+    mode: { type: 'idle', selection: null },
   });
 
   // Keep a ref to the current state to avoid stale closures
@@ -1117,7 +1117,8 @@ export function PDFViewer({
         >
           <div ref={pageContainerRef} style={{ position: 'relative' }}>
             <canvas ref={canvasRef} />
-            {state.mode.type === 'screenshot' && state.mode.selection && (
+            {/* Selection boxes for screenshot and idle (measurement selection) modes */}
+            {(state.mode.type === 'screenshot' || state.mode.type === 'idle') && state.mode.selection && (
               <div
                 className="pointer-events-none"
                 style={{
@@ -1126,8 +1127,12 @@ export function PDFViewer({
                   top: Math.min(state.mode.selection.startY, state.mode.selection.endY),
                   width: Math.abs(state.mode.selection.endX - state.mode.selection.startX),
                   height: Math.abs(state.mode.selection.endY - state.mode.selection.startY),
-                  border: '2px solid rgba(37, 99, 235, 0.8)',
-                  backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                  border: state.mode.type === 'idle' 
+                    ? '2px dashed rgba(59, 130, 246, 0.8)'  // Blue dashed for selection
+                    : '2px solid rgba(37, 99, 235, 0.8)',    // Blue solid for screenshot
+                  backgroundColor: state.mode.type === 'idle'
+                    ? 'rgba(59, 130, 246, 0.05)'             // Lighter blue for selection
+                    : 'rgba(37, 99, 235, 0.1)',              // Darker blue for screenshot
                   zIndex: 40,
                 }}
               />

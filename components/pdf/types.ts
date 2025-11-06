@@ -12,13 +12,13 @@ export interface Selection {
  * Discriminated union for viewer mode.
  *
  * Using a discriminated union prevents impossible states like:
- * - Being in idle mode with an active selection
  * - Being in multiple modes at once
  *
  * Each mode can have its own associated data.
+ * Note: idle mode can have a selection for the measurement selection tool.
  */
 export type ViewerMode =
-  | { type: 'idle' }
+  | { type: 'idle'; selection: Selection | null }
   | { type: 'screenshot'; selection: Selection | null }
   | { type: 'measure'; selection: Selection | null }
   | { type: 'calibrate'; selection: Selection | null };
@@ -56,20 +56,18 @@ export function enterMode(type: 'screenshot' | 'measure' | 'calibrate'): ViewerM
 }
 
 export function exitMode(): ViewerMode {
-  return { type: 'idle' };
+  return { type: 'idle', selection: null };
 }
 
 export function startSelection(mode: ViewerMode, x: number, y: number): ViewerMode {
-  if (mode.type === 'idle') return mode;
   return { ...mode, selection: { startX: x, startY: y, endX: x, endY: y } };
 }
 
 export function updateSelection(mode: ViewerMode, x: number, y: number): ViewerMode {
-  if (mode.type === 'idle' || !mode.selection) return mode;
+  if (!mode.selection) return mode;
   return { ...mode, selection: { ...mode.selection, endX: x, endY: y } };
 }
 
 export function clearSelection(mode: ViewerMode): ViewerMode {
-  if (mode.type === 'idle') return mode;
   return { ...mode, selection: null };
 }
