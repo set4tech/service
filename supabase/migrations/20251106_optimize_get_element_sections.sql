@@ -1,5 +1,6 @@
 -- Optimize get_element_sections to return full section details
 -- This eliminates the need for an extra query in the API
+DROP function IF EXISTS get_element_sections(uuid, uuid);
 CREATE OR REPLACE FUNCTION get_element_sections(
   p_element_group_id uuid,
   p_assessment_id uuid
