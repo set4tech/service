@@ -14,13 +14,13 @@ import { PDFSearchOverlay } from './PDFSearchOverlay';
 import { TextHighlight } from './TextHighlight';
 import { MeasurementOverlay } from './MeasurementOverlay';
 import { CalibrationModal } from './CalibrationModal';
-import { 
-  ViewerMode, 
-  enterMode, 
-  exitMode, 
-  startSelection, 
-  updateSelection, 
-  clearSelection 
+import {
+  ViewerMode,
+  enterMode,
+  exitMode,
+  startSelection,
+  updateSelection,
+  clearSelection,
 } from './types';
 import { usePresignedUrl } from '@/hooks/usePresignedUrl';
 import { usePdfDocument } from '@/hooks/usePdfDocument';
@@ -202,7 +202,10 @@ export function PDFViewer({
   // ============================================================================
   const measurementsHook = useMeasurements(readOnly ? undefined : projectId, state.pageNumber);
   const calibrationHook = useCalibration(readOnly ? undefined : projectId, state.pageNumber);
-  const screenshotsHook = useAssessmentScreenshots(readOnly ? undefined : assessmentId, state.pageNumber);
+  const screenshotsHook = useAssessmentScreenshots(
+    readOnly ? undefined : assessmentId,
+    state.pageNumber
+  );
   const viewTransform = useViewTransform(
     viewportRef as React.RefObject<HTMLElement>,
     transform,
@@ -245,7 +248,6 @@ export function PDFViewer({
   // ============================================================================
   // SECTION 6: COMPUTED VALUES
   // ============================================================================
-
 
   // Memoize violation groups
   const violationGroups = useMemo(() => {
@@ -294,7 +296,6 @@ export function PDFViewer({
     }
   }, [numPages, state.numPages]);
 
-  // Center on highlighted violation
   useEffect(() => {
     if (!readOnly || !highlightedViolationId || !canvasRef.current || !viewportRef.current) {
       return;
@@ -355,7 +356,13 @@ export function PDFViewer({
     }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [textSearch.isOpen, textSearch.matches, textSearch.currentIndex, state.pageNumber, viewTransform]);
+  }, [
+    textSearch.isOpen,
+    textSearch.matches,
+    textSearch.currentIndex,
+    state.pageNumber,
+    viewTransform,
+  ]);
 
   // External page control
   const prevExternalPageRef = useRef(externalCurrentPage);
@@ -371,10 +378,10 @@ export function PDFViewer({
   // Load saved render scale
   useEffect(() => {
     if (!assessmentId || readOnly || loadedScaleForRef.current === assessmentId) return;
-    
+
     // Mark as loading immediately to prevent duplicate fetches
     loadedScaleForRef.current = assessmentId;
-    
+
     let cancelled = false;
     (async () => {
       try {
@@ -419,8 +426,7 @@ export function PDFViewer({
       transform.ty < -viewport.height ||
       transform.ty > container.clientHeight;
 
-    const isInitialLoad =
-      transform.tx === 0 && transform.ty === 0 && transform.scale === 1;
+    const isInitialLoad = transform.tx === 0 && transform.ty === 0 && transform.scale === 1;
 
     if (isInitialLoad || isOffScreen) {
       setTransform({ tx: centeredTx, ty: centeredTy, scale: 1 });
@@ -428,7 +434,6 @@ export function PDFViewer({
       pageCenteredRef.current = state.pageNumber;
     }
   }, [page, state.pageNumber]);
-
 
   // Core render function
   const renderPage = useCallback(async () => {
@@ -450,10 +455,10 @@ export function PDFViewer({
         scaleMultiplier: renderScale,
         optionalContentConfig: ocConfig && !disableLayers ? ocConfig : undefined,
       });
-      
+
       // Store task so we can cancel next time
       renderTaskRef.current = result.task;
-      
+
       // Now await the render
       await result.task.promise;
     } catch (err: any) {
@@ -486,7 +491,6 @@ export function PDFViewer({
     },
     [viewTransform]
   );
-
 
   // Measurement handlers
   const saveMeasurement = useCallback(
@@ -521,15 +525,18 @@ export function PDFViewer({
     [projectId, state.pageNumber, calculateRealDistance, measurementsHook.actions]
   );
 
-  const deleteMeasurement = useCallback(async (measurementId: string) => {
-    try {
-      await measurementsHook.actions.remove(measurementId);
-      setSelectedMeasurementId(null);
-    } catch (error) {
-      console.error('[PDFViewer] Error deleting measurement:', error);
-      alert('Failed to delete measurement');
-    }
-  }, [measurementsHook.actions, setSelectedMeasurementId]);
+  const deleteMeasurement = useCallback(
+    async (measurementId: string) => {
+      try {
+        await measurementsHook.actions.remove(measurementId);
+        setSelectedMeasurementId(null);
+      } catch (error) {
+        console.error('[PDFViewer] Error deleting measurement:', error);
+        alert('Failed to delete measurement');
+      }
+    },
+    [measurementsHook.actions, setSelectedMeasurementId]
+  );
 
   const saveCalibration = useCallback(
     async (scaleNotation: string, printWidth: number, printHeight: number) => {
@@ -602,18 +609,21 @@ export function PDFViewer({
     },
     {
       onPrevPage: () => dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) }),
-      onNextPage: () => dispatch({ type: 'SET_PAGE', payload: Math.min(state.numPages, state.pageNumber + 1) }),
+      onNextPage: () =>
+        dispatch({ type: 'SET_PAGE', payload: Math.min(state.numPages, state.pageNumber + 1) }),
       onZoomIn: () => viewTransform.zoom('in'),
       onZoomOut: () => viewTransform.zoom('out'),
       onResetZoom: () => viewTransform.reset(),
-      onToggleScreenshot: () => dispatch({
-        type: 'SET_MODE',
-        payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot',
-      }),
-      onToggleMeasure: () => dispatch({
-        type: 'SET_MODE',
-        payload: state.mode.type === 'measure' ? 'idle' : 'measure',
-      }),
+      onToggleScreenshot: () =>
+        dispatch({
+          type: 'SET_MODE',
+          payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot',
+        }),
+      onToggleMeasure: () =>
+        dispatch({
+          type: 'SET_MODE',
+          payload: state.mode.type === 'measure' ? 'idle' : 'measure',
+        }),
       onOpenCalibration: () => setShowCalibrationModal(true),
       onOpenSearch: projectId ? textSearch.open : undefined,
       onExit: () => {
@@ -639,7 +649,8 @@ export function PDFViewer({
   const onMouseDown = (e: React.MouseEvent) => {
     // Special modes: only left-click for selection, no panning allowed
     if ((state.mode.type !== 'idle' || isDrawingCalibrationLine) && !readOnly) {
-      if (e.button === 0) { // Left-click only
+      if (e.button === 0) {
+        // Left-click only
         e.preventDefault();
         e.stopPropagation();
         const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
@@ -647,7 +658,7 @@ export function PDFViewer({
       }
       return;
     }
-    
+
     // Idle mode left-click: selection box for measurements
     if (e.button === 0 && state.mode.type === 'idle' && !readOnly) {
       e.preventDefault();
@@ -656,7 +667,7 @@ export function PDFViewer({
       dispatch({ type: 'START_SELECTION', payload: { x, y } });
       return;
     }
-    
+
     // Middle-click (1) or right-click (2) for panning
     if (e.button === 1 || e.button === 2) {
       e.preventDefault();
@@ -681,7 +692,7 @@ export function PDFViewer({
       }
       return;
     }
-    
+
     // Idle mode with selection: update selection box
     if (state.mode.type === 'idle' && state.mode.selection) {
       e.preventDefault();
@@ -690,12 +701,16 @@ export function PDFViewer({
       dispatch({ type: 'UPDATE_SELECTION', payload: { x, y } });
       return;
     }
-    
+
     // Pan mode: update transform
     if (!state.isDragging) return;
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
-    setTransform({ ...transform, tx: dragStartRef.current.tx + dx, ty: dragStartRef.current.ty + dy });
+    setTransform({
+      ...transform,
+      tx: dragStartRef.current.tx + dx,
+      ty: dragStartRef.current.ty + dy,
+    });
   };
 
   const onMouseUp = (e: React.MouseEvent) => {
@@ -727,15 +742,13 @@ export function PDFViewer({
 
       // Find all measurements that intersect with the selection box
       const selectedIds = measurements
-        .filter(m =>
-          lineIntersectsRect(m.start_point, m.end_point, selectionRect)
-        )
+        .filter(m => lineIntersectsRect(m.start_point, m.end_point, selectionRect))
         .map(m => m.id);
 
       // Check if Shift key is held for append mode
       const shiftHeld = e.shiftKey;
       measurementsHook.actions.selectMultiple(selectedIds, shiftHeld);
-      
+
       // Clear the selection box
       dispatch({ type: 'CLEAR_SELECTION' });
     }
@@ -777,17 +790,17 @@ export function PDFViewer({
     ) => {
       const currentState = stateRef.current;
       if (currentState.mode.type === 'idle' || !currentState.mode.selection) return;
-      
+
       // Save selection before clearing it
       const selection = currentState.mode.selection;
-      
+
       // Clear selection and exit screenshot mode IMMEDIATELY for plan screenshots
       // This prevents the blue box from lingering during the async capture
       if (screenshotType === 'plan') {
         dispatch({ type: 'CLEAR_SELECTION' });
         dispatch({ type: 'SET_MODE', payload: 'idle' });
       }
-      
+
       try {
         await screenshotCapture.capture({
           target,
@@ -887,15 +900,18 @@ export function PDFViewer({
         </div>
       )}
 
-      {state.mode.type !== 'measure' && selectedMeasurementId && measurements.length > 0 && !readOnly && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            Measurement selected • Press{' '}
-            <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">Delete</kbd>{' '}
-            to remove
+      {state.mode.type !== 'measure' &&
+        selectedMeasurementId &&
+        measurements.length > 0 &&
+        !readOnly && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+            <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
+              Measurement selected • Press{' '}
+              <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">Delete</kbd>{' '}
+              to remove
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {state.mode.type === 'screenshot' && state.mode.selection && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
@@ -1026,7 +1042,12 @@ export function PDFViewer({
               aria-label="Toggle screenshot mode (S)"
               title="Capture a portion of the plan"
               className={`btn-icon shadow-md ${state.mode.type === 'screenshot' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => dispatch({ type: 'SET_MODE', payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot' })}
+              onClick={() =>
+                dispatch({
+                  type: 'SET_MODE',
+                  payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot',
+                })
+              }
             >
               📸
             </button>
@@ -1040,7 +1061,12 @@ export function PDFViewer({
               aria-label="Toggle measurement mode (M)"
               title="Measure distances on the plan"
               className={`btn-icon shadow-md ${state.mode.type === 'measure' ? 'bg-green-600 text-white' : 'bg-white'}`}
-              onClick={() => dispatch({ type: 'SET_MODE', payload: state.mode.type === 'measure' ? 'idle' : 'measure' })}
+              onClick={() =>
+                dispatch({
+                  type: 'SET_MODE',
+                  payload: state.mode.type === 'measure' ? 'idle' : 'measure',
+                })
+              }
             >
               📏
             </button>
@@ -1099,7 +1125,7 @@ export function PDFViewer({
           if (state.mode.type === 'idle' && !isDrawingCalibrationLine)
             dispatch({ type: 'END_DRAG' });
         }}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={e => e.preventDefault()}
         style={{ clipPath: 'inset(0)' }}
       >
         <div
@@ -1118,25 +1144,28 @@ export function PDFViewer({
           <div ref={pageContainerRef} style={{ position: 'relative' }}>
             <canvas ref={canvasRef} />
             {/* Selection boxes for screenshot and idle (measurement selection) modes */}
-            {(state.mode.type === 'screenshot' || state.mode.type === 'idle') && state.mode.selection && (
-              <div
-                className="pointer-events-none"
-                style={{
-                  position: 'absolute',
-                  left: Math.min(state.mode.selection.startX, state.mode.selection.endX),
-                  top: Math.min(state.mode.selection.startY, state.mode.selection.endY),
-                  width: Math.abs(state.mode.selection.endX - state.mode.selection.startX),
-                  height: Math.abs(state.mode.selection.endY - state.mode.selection.startY),
-                  border: state.mode.type === 'idle' 
-                    ? '2px dashed rgba(59, 130, 246, 0.8)'  // Blue dashed for selection
-                    : '2px solid rgba(37, 99, 235, 0.8)',    // Blue solid for screenshot
-                  backgroundColor: state.mode.type === 'idle'
-                    ? 'rgba(59, 130, 246, 0.05)'             // Lighter blue for selection
-                    : 'rgba(37, 99, 235, 0.1)',              // Darker blue for screenshot
-                  zIndex: 40,
-                }}
-              />
-            )}
+            {(state.mode.type === 'screenshot' || state.mode.type === 'idle') &&
+              state.mode.selection && (
+                <div
+                  className="pointer-events-none"
+                  style={{
+                    position: 'absolute',
+                    left: Math.min(state.mode.selection.startX, state.mode.selection.endX),
+                    top: Math.min(state.mode.selection.startY, state.mode.selection.endY),
+                    width: Math.abs(state.mode.selection.endX - state.mode.selection.startX),
+                    height: Math.abs(state.mode.selection.endY - state.mode.selection.startY),
+                    border:
+                      state.mode.type === 'idle'
+                        ? '2px dashed rgba(59, 130, 246, 0.8)' // Blue dashed for selection
+                        : '2px solid rgba(37, 99, 235, 0.8)', // Blue solid for screenshot
+                    backgroundColor:
+                      state.mode.type === 'idle'
+                        ? 'rgba(59, 130, 246, 0.05)' // Lighter blue for selection
+                        : 'rgba(37, 99, 235, 0.1)', // Darker blue for screenshot
+                    zIndex: 40,
+                  }}
+                />
+              )}
 
             {/* Screenshot area indicators (show previously captured areas) */}
             {!readOnly &&
@@ -1215,7 +1244,8 @@ export function PDFViewer({
       )}
 
       {/* Measurement mode line preview - sibling to MeasurementOverlay */}
-      {state.mode.type !== 'idle' && (state.mode.type === 'measure' || isDrawingCalibrationLine) &&
+      {state.mode.type !== 'idle' &&
+        (state.mode.type === 'measure' || isDrawingCalibrationLine) &&
         state.mode.selection &&
         (() => {
           // Convert PDF coords to screen coords

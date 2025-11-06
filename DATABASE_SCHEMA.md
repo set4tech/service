@@ -249,9 +249,10 @@ Individual compliance checks for code sections within an assessment. All checks 
 | `code_section_title`   | TEXT                           | Section title                                                                                |
 | `check_name`           | VARCHAR(255)                   | Custom check name                                                                            |
 | `check_location`       | VARCHAR(255)                   | Location identifier                                                                          |
-| `instance_label`       | TEXT                           | Groups element checks (e.g., "Door 1", "Door 2"); NULL for standalone sections               |
-| `check_type`           | TEXT                           | 'section' or 'element' (default 'section')                                                   |
-| `element_group_id`     | UUID FK → element_groups.id    | Element group reference (SET NULL delete); NULL for standalone section checks                |
+| `element_instance_id`  | UUID FK → element_instances.id | Element instance reference (CASCADE delete); NULL for standalone section checks              |
+| `instance_label`       | TEXT                           | **DEPRECATED**: Groups element checks (e.g., "Door 1"); use element_instance_id instead      |
+| `check_type`           | TEXT                           | **DEPRECATED**: 'section' or 'element' (default 'section'); use element_instance_id instead  |
+| `element_group_id`     | UUID FK → element_groups.id    | **DEPRECATED**: Element group reference; use element_instance_id instead                     |
 | `human_readable_title` | TEXT                           | Optional human-readable title for the check                                                  |
 | `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                                                    |
 | `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                                                 |
@@ -268,12 +269,15 @@ Individual compliance checks for code sections within an assessment. All checks 
 
 **Architecture Notes:**
 
-- **Two Check Types**:
-  - `check_type='section'`: Traditional single-section checks
-  - `check_type='element'`: Element-based checks covering multiple sections
-- **Element Grouping**: Element checks use `element_group_id` + `instance_label` to group related sections
+- **New Normalized Design** (v2):
+  - Element checks are linked via `element_instance_id` → `element_instances` table
+  - Standalone section checks have `element_instance_id = NULL`
+  - Example: "Door 1" has one row in `element_instances`, with multiple rows in `checks` (one per section)
+- **Legacy Denormalized Design** (deprecated):
+  - Old element checks used `element_group_id` + `instance_label` to group sections
+  - These columns will be removed in a future migration after all code is updated
 - **Exclusion System**: `is_excluded` flag allows checks to be removed from assessment without deletion
-- **Example**: "Door 1" element check with `element_group_id='doors'` and `instance_label='Door 1'`
+- **Migration**: Existing data automatically migrated to `element_instances` during schema update
 
 **Indexes:**
 
@@ -312,6 +316,41 @@ Reusable groupings of related code sections by building element.
 | `icon`        | TEXT                 | Optional icon identifier                |
 | `sort_order`  | INTEGER              | Display order (default 0)               |
 | `created_at`  | TIMESTAMPTZ          | Creation timestamp                      |
+
+---
+
+### `element_instances`
+
+Physical instances of building elements (e.g., "Door 1", "Bathroom 2"). Each instance represents a single physical element that needs to be checked against multiple code sections.
+
+**Schema:**
+
+| Column             | Type                        | Description                                   |
+| ------------------ | --------------------------- | --------------------------------------------- |
+| `id`               | UUID PK                     | Primary key                                   |
+| `assessment_id`    | UUID FK → assessments.id    | Assessment reference (CASCADE delete)         |
+| `element_group_id` | UUID FK → element_groups.id | Element group reference (CASCADE delete)      |
+| `label`            | VARCHAR NOT NULL            | Instance label (e.g., "Door 1", "Bathroom 2") |
+| `created_at`       | TIMESTAMPTZ                 | Creation timestamp                            |
+| `updated_at`       | TIMESTAMPTZ                 | Last update timestamp                         |
+
+**Indexes:**
+
+- `idx_element_instances_assessment_group` on `(assessment_id, element_group_id)`
+- `unique_element_instance_label` UNIQUE on `(assessment_id, element_group_id, label)`
+
+**Architecture Notes:**
+
+- **Auto-generated labels**: If label is not provided on insert, a trigger automatically generates it as `{element_group.name} {max_number + 1}`
+- **One-to-Many with checks**: Each element_instance can have multiple checks (one per applicable code section)
+- **Normalized design**: Replaces the denormalized `element_group_id` + `instance_label` pattern in the checks table
+- **Example workflow**:
+  1. Create instance: `INSERT INTO element_instances (assessment_id, element_group_id, label) VALUES (...)` → returns "Door 1"
+  2. Create checks: `INSERT INTO checks (element_instance_id, section_id, ...) VALUES (...)`
+
+**Trigger:**
+
+- `trigger_generate_element_instance_label`: Auto-generates label if NULL or empty on insert
 
 ---
 
