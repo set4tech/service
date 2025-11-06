@@ -157,9 +157,6 @@ async function createSectionChecks(
     element_instance_id: elementInstanceId,
     check_name: `${instanceLabel} - ${section.section_title}`,
     section_id: section.section_id,
-    code_section_key: section.section_key, // Still required for backwards compat
-    code_section_number: section.section_number,
-    code_section_title: section.section_title,
     status: 'pending',
   }));
 
