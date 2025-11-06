@@ -5,9 +5,9 @@ CREATE OR REPLACE FUNCTION get_element_sections(
   p_assessment_id uuid
 ) RETURNS TABLE (
   section_id uuid,
-  section_key varchar,
-  section_number varchar,
-  section_title varchar
+  section_key text,
+  section_number text,
+  section_title text
 ) AS $$
 BEGIN
   -- First check if there are any assessment-specific mappings
