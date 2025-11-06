@@ -157,6 +157,8 @@ async function createSectionChecks(
     element_instance_id: elementInstanceId,
     check_name: `${instanceLabel} - ${section.section_title}`,
     section_id: section.section_id,
+    code_section_number: section.section_number, // Keep for display
+    code_section_title: section.section_title, // Keep for display
     status: 'pending',
   }));
 
