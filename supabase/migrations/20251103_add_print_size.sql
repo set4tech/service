@@ -9,3 +9,4 @@ COMMENT ON COLUMN pdf_scale_calibrations.print_width_inches IS 'Intended print w
 COMMENT ON COLUMN pdf_scale_calibrations.print_height_inches IS 'Intended print height in inches (e.g., 36 for 24x36 sheet)';
 
 
+

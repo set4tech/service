@@ -143,3 +143,4 @@ export function usePolling(callback: () => Promise<boolean>, options: UsePolling
     options.maxErrors,
   ]);
 }
+

@@ -8,3 +8,4 @@ ADD COLUMN IF NOT EXISTS pdf_height_points NUMERIC(10, 2);
 COMMENT ON COLUMN pdf_scale_calibrations.pdf_width_points IS 'PDF page width in points (72 points = 1 inch)';
 COMMENT ON COLUMN pdf_scale_calibrations.pdf_height_points IS 'PDF page height in points (72 points = 1 inch)';
 
+

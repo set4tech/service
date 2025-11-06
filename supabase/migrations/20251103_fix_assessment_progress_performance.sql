@@ -63,3 +63,4 @@ WHERE is_excluded IS FALSE;
 COMMENT ON FUNCTION get_assessment_progress IS 'Returns progress statistics for a specific assessment. Fixed in 20251103 to filter by assessment_uuid instead of scanning entire database.';
 
 
+

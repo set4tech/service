@@ -40,3 +40,4 @@ export function useMultiStepForm(initialStep = 1, totalSteps?: number) {
     progress: totalSteps ? (step / totalSteps) * 100 : 0,
   };
 }
+

@@ -32,6 +32,7 @@ import { useCalibration } from '@/hooks/useCalibration';
 import { useScreenshotCapture } from '@/hooks/useScreenshotCapture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { renderPdfPage } from '@/lib/pdf/canvas-utils';
+import { lineIntersectsRect } from '@/lib/pdf/geometry-utils';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -647,7 +648,16 @@ export function PDFViewer({
       return;
     }
     
-    // Normal mode: middle-click (1) or right-click (2) for panning
+    // Idle mode left-click: selection box for measurements
+    if (e.button === 0 && state.mode.type === 'idle' && !readOnly) {
+      e.preventDefault();
+      e.stopPropagation();
+      const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
+      dispatch({ type: 'START_SELECTION', payload: { x, y } });
+      return;
+    }
+    
+    // Middle-click (1) or right-click (2) for panning
     if (e.button === 1 || e.button === 2) {
       e.preventDefault();
       dispatch({ type: 'START_DRAG' });
@@ -658,10 +668,10 @@ export function PDFViewer({
         ty: transform.ty,
       };
     }
-    // Left-click (button 0) does nothing in normal mode - reserved for selection tool
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
+    // Handle selection box drawing in any mode that has selection
     if (state.mode.type !== 'idle' || isDrawingCalibrationLine) {
       if (state.mode.type !== 'idle' && state.mode.selection) {
         e.preventDefault();
@@ -671,13 +681,24 @@ export function PDFViewer({
       }
       return;
     }
+    
+    // Idle mode with selection: update selection box
+    if (state.mode.type === 'idle' && state.mode.selection) {
+      e.preventDefault();
+      e.stopPropagation();
+      const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
+      dispatch({ type: 'UPDATE_SELECTION', payload: { x, y } });
+      return;
+    }
+    
+    // Pan mode: update transform
     if (!state.isDragging) return;
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
     setTransform({ ...transform, tx: dragStartRef.current.tx + dx, ty: dragStartRef.current.ty + dy });
   };
 
-  const onMouseUp = () => {
+  const onMouseUp = (e: React.MouseEvent) => {
     if (state.mode.type === 'screenshot' && state.mode.selection) {
       // Keep the selection visible so user can save it with button or keyboard shortcut
       // Don't auto-clear like we do for measurements
@@ -693,6 +714,29 @@ export function PDFViewer({
       });
       setIsDrawingCalibrationLine(false);
       setShowCalibrationModal(true);
+      dispatch({ type: 'CLEAR_SELECTION' });
+    } else if (state.mode.type === 'idle' && state.mode.selection) {
+      // Idle mode: select measurements that intersect with selection box
+      const selection = state.mode.selection;
+      const selectionRect = {
+        x: Math.min(selection.startX, selection.endX),
+        y: Math.min(selection.startY, selection.endY),
+        width: Math.abs(selection.endX - selection.startX),
+        height: Math.abs(selection.endY - selection.startY),
+      };
+
+      // Find all measurements that intersect with the selection box
+      const selectedIds = measurements
+        .filter(m =>
+          lineIntersectsRect(m.start_point, m.end_point, selectionRect)
+        )
+        .map(m => m.id);
+
+      // Check if Shift key is held for append mode
+      const shiftHeld = e.shiftKey;
+      measurementsHook.actions.selectMultiple(selectedIds, shiftHeld);
+      
+      // Clear the selection box
       dispatch({ type: 'CLEAR_SELECTION' });
     }
     dispatch({ type: 'END_DRAG' });

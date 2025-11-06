@@ -24,7 +24,8 @@ export interface NewMeasurement {
 
 interface MeasurementsState {
   measurements: Measurement[];
-  selectedId: string | null;
+  selectedId: string | null; // Legacy single selection
+  selectedIds: string[]; // New multi-selection support
   loading: boolean;
   error: string | null;
 }
@@ -32,7 +33,10 @@ interface MeasurementsState {
 interface MeasurementsActions {
   save: (measurement: NewMeasurement) => Promise<Measurement>;
   remove: (id: string) => Promise<void>;
-  select: (id: string | null) => void;
+  removeMultiple: (ids: string[]) => Promise<void>;
+  select: (id: string | null) => void; // Legacy single selection
+  selectMultiple: (ids: string[], append?: boolean) => void; // New multi-selection
+  clearSelection: () => void;
   refresh: () => Promise<void>;
 }
 
@@ -73,6 +77,7 @@ export function useMeasurements(
   pageNumber: number
 ): HookReturn<MeasurementsState, MeasurementsActions> {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const { data, loading, error, refetch } = useFetch<{ measurements: Measurement[] }>(
     projectId ? `/api/measurements?projectId=${projectId}&pageNumber=${pageNumber}` : null
@@ -112,23 +117,73 @@ export function useMeasurements(
       }
 
       setSelectedId(null);
+      setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
       await refetch();
     },
     [refetch]
   );
 
+  const removeMultiple = useCallback(
+    async (ids: string[]) => {
+      // Delete all measurements in parallel
+      await Promise.all(
+        ids.map(id =>
+          fetch(`/api/measurements?id=${id}`, {
+            method: 'DELETE',
+          })
+        )
+      );
+
+      setSelectedId(null);
+      setSelectedIds([]);
+      await refetch();
+    },
+    [refetch]
+  );
+
+  const selectMultiple = useCallback((ids: string[], append: boolean = false) => {
+    setSelectedIds(prev => {
+      if (append) {
+        // Toggle: add if not present, remove if present
+        const newSelection = [...prev];
+        ids.forEach(id => {
+          const index = newSelection.indexOf(id);
+          if (index >= 0) {
+            newSelection.splice(index, 1);
+          } else {
+            newSelection.push(id);
+          }
+        });
+        return newSelection;
+      }
+      return ids;
+    });
+    // Keep selectedId in sync with the first item (for legacy compatibility)
+    setSelectedId(ids.length > 0 ? ids[0] : null);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedId(null);
+    setSelectedIds([]);
+  }, []);
+
   return {
     state: {
       measurements,
       selectedId,
+      selectedIds,
       loading,
       error,
     },
     actions: {
       save,
       remove,
+      removeMultiple,
       select: setSelectedId,
+      selectMultiple,
+      clearSelection,
       refresh: refetch,
     },
   };
 }
+

@@ -13,3 +13,4 @@ ALTER COLUMN known_distance_inches DROP NOT NULL;
 COMMENT ON COLUMN pdf_scale_calibrations.scale_notation IS 'Architectural scale notation (e.g., "1/8\"=1''-0\"") for automatic calculation';
 
 
+

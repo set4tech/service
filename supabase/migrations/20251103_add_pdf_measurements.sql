@@ -46,3 +46,4 @@ COMMENT ON COLUMN pdf_scale_calibrations.pixels_per_inch IS 'Number of PDF pixel
 COMMENT ON COLUMN pdf_measurements.real_distance_inches IS 'Calculated distance in inches using page calibration (NULL if page not calibrated)';
 
 
+

@@ -27,3 +27,4 @@ export function TextHighlight({ bounds, isCurrent }: TextHighlightProps) {
   );
 }
 
+
