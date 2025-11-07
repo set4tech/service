@@ -786,6 +786,9 @@ export function PDFViewer({
 
       // Clear the selection box
       dispatch({ type: 'CLEAR_SELECTION' });
+
+      // Refocus viewport so keyboard shortcuts work (especially Delete key)
+      setTimeout(() => viewportRef.current?.focus(), 0);
     }
     dispatch({ type: 'END_DRAG' });
   };

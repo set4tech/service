@@ -11,15 +11,15 @@ describe('useMeasurements', () => {
 
   it('should load measurements on mount', async () => {
     const mockMeasurements = [
-      { 
-        id: '1', 
-        project_id: 'proj1', 
-        page_number: 1, 
+      {
+        id: '1',
+        project_id: 'proj1',
+        page_number: 1,
         start_point: { x: 0, y: 0 },
         end_point: { x: 100, y: 100 },
         pixels_distance: 100,
         real_distance_inches: null,
-        created_at: '2024-01-01'
+        created_at: '2024-01-01',
       },
     ];
 
@@ -74,7 +74,7 @@ describe('useMeasurements', () => {
     });
 
     expect(saved).toEqual({ id: 'new1' });
-    
+
     await waitFor(() => {
       expect(result.current.state.measurements).toHaveLength(1);
     });
@@ -129,5 +129,122 @@ describe('useMeasurements', () => {
 
     expect(result.current.state.selectedId).toBe('measurement-1');
   });
-});
 
+  it('should support multi-select', () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ measurements: [] }),
+    });
+
+    const { result } = renderHook(() => useMeasurements('proj1', 1));
+
+    expect(result.current.state.selectedIds).toEqual([]);
+
+    // Select multiple measurements
+    act(() => {
+      result.current.actions.selectMultiple(['measurement-1', 'measurement-2']);
+    });
+
+    expect(result.current.state.selectedIds).toEqual(['measurement-1', 'measurement-2']);
+    expect(result.current.state.selectedId).toBe('measurement-1'); // Legacy compatibility
+  });
+
+  it('should toggle selection when appending', () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ measurements: [] }),
+    });
+
+    const { result } = renderHook(() => useMeasurements('proj1', 1));
+
+    // Select first measurement
+    act(() => {
+      result.current.actions.selectMultiple(['measurement-1']);
+    });
+
+    expect(result.current.state.selectedIds).toEqual(['measurement-1']);
+
+    // Append second measurement (with toggle mode)
+    act(() => {
+      result.current.actions.selectMultiple(['measurement-2'], true);
+    });
+
+    expect(result.current.state.selectedIds).toEqual(['measurement-1', 'measurement-2']);
+
+    // Toggle off first measurement
+    act(() => {
+      result.current.actions.selectMultiple(['measurement-1'], true);
+    });
+
+    expect(result.current.state.selectedIds).toEqual(['measurement-2']);
+  });
+
+  it('should delete multiple measurements', async () => {
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({
+          measurements: [
+            { id: '1', project_id: 'proj1', page_number: 1 },
+            { id: '2', project_id: 'proj1', page_number: 1 },
+            { id: '3', project_id: 'proj1', page_number: 1 },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) }) // Delete '1'
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) }) // Delete '2'
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ measurements: [{ id: '3' }] }),
+      });
+
+    const { result } = renderHook(() => useMeasurements('proj1', 1));
+
+    await waitFor(() => {
+      expect(result.current.state.measurements).toHaveLength(3);
+    });
+
+    // Select two measurements
+    act(() => {
+      result.current.actions.selectMultiple(['1', '2']);
+    });
+
+    // Delete them
+    await act(async () => {
+      await result.current.actions.removeMultiple(['1', '2']);
+    });
+
+    expect(result.current.state.selectedIds).toEqual([]);
+
+    await waitFor(() => {
+      expect(result.current.state.measurements).toHaveLength(1);
+    });
+  });
+
+  it('should clear selection', () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ measurements: [] }),
+    });
+
+    const { result } = renderHook(() => useMeasurements('proj1', 1));
+
+    act(() => {
+      result.current.actions.selectMultiple(['measurement-1', 'measurement-2']);
+    });
+
+    expect(result.current.state.selectedIds).toEqual(['measurement-1', 'measurement-2']);
+
+    act(() => {
+      result.current.actions.clearSelection();
+    });
+
+    expect(result.current.state.selectedIds).toEqual([]);
+    expect(result.current.state.selectedId).toBeNull();
+  });
+});

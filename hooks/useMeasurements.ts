@@ -127,11 +127,18 @@ export function useMeasurements(
     async (ids: string[]) => {
       // Delete all measurements in parallel
       await Promise.all(
-        ids.map(id =>
-          fetch(`/api/measurements?id=${id}`, {
+        ids.map(async id => {
+          const response = await fetch(`/api/measurements?id=${id}`, {
             method: 'DELETE',
-          })
-        )
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || `Failed to delete measurement ${id}`);
+          }
+
+          return response;
+        })
       );
 
       setSelectedId(null);
@@ -186,4 +193,3 @@ export function useMeasurements(
     },
   };
 }
-

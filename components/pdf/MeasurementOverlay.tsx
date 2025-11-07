@@ -17,8 +17,9 @@ export interface Measurement {
 
 interface MeasurementOverlayProps {
   measurements: Measurement[];
-  selectedMeasurementId: string | null;
-  onMeasurementClick?: (measurementId: string) => void;
+  selectedMeasurementId: string | null; // Legacy - kept for backward compatibility
+  selectedMeasurementIds?: string[]; // New multi-select support
+  onMeasurementClick?: (measurementId: string, ctrlKey?: boolean, shiftKey?: boolean) => void;
   zoom: number;
   translateX: number;
   translateY: number;
@@ -31,6 +32,7 @@ interface MeasurementOverlayProps {
 export function MeasurementOverlay({
   measurements,
   selectedMeasurementId,
+  selectedMeasurementIds = [],
   onMeasurementClick,
   zoom,
   translateX,
@@ -63,7 +65,7 @@ export function MeasurementOverlay({
 
   const handleMeasurementClick = (e: React.MouseEvent, measurementId: string) => {
     e.stopPropagation();
-    onMeasurementClick?.(measurementId);
+    onMeasurementClick?.(measurementId, e.ctrlKey || e.metaKey, e.shiftKey);
   };
 
   // Generate unique marker IDs for each measurement to support different colors
@@ -137,7 +139,10 @@ export function MeasurementOverlay({
 
       {/* Measurements */}
       {measurements.map(measurement => {
-        const isSelected = measurement.id === selectedMeasurementId;
+        // Check both legacy single select and new multi-select
+        const isSelected =
+          measurement.id === selectedMeasurementId ||
+          selectedMeasurementIds.includes(measurement.id);
         const color = measurement.color || '#3B82F6';
 
         // Convert coordinates
@@ -242,8 +247,10 @@ export function MeasurementOverlay({
                   {measurement.label}
                 </div>
               )}
-              {isSelected && (
-                <div className="text-[9px] mt-0.5 opacity-90">Press Delete to remove</div>
+              {isSelected && selectedMeasurementIds.length <= 1 && (
+                <div className="text-[9px] mt-0.5 opacity-90">
+                  Delete to remove • Ctrl+Click for multi-select
+                </div>
               )}
             </div>
           </React.Fragment>
