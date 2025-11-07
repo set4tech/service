@@ -40,6 +40,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 // Stable empty function to avoid creating new functions on every render
 const NOOP = () => {};
 
+// Minimum distances to avoid accidental clicks being saved
+const MIN_MEASUREMENT_PIXELS = 5; // Minimum line length for measurements
+const MIN_CALIBRATION_PIXELS = 10; // Minimum line length for calibration
+
 interface ViewerState {
   pageNumber: number;
   numPages: number;
@@ -216,6 +220,7 @@ export function PDFViewer({
 
   const measurements = measurementsHook.state.measurements;
   const selectedMeasurementId = measurementsHook.state.selectedId;
+  const selectedMeasurementIds = measurementsHook.state.selectedIds;
   const setSelectedMeasurementId = measurementsHook.actions.select;
   const calibration = calibrationHook.state.calibration;
   const calculateRealDistance = calibrationHook.computed?.calculateRealDistance ?? (() => null);
@@ -504,6 +509,12 @@ export function PDFViewer({
       const dy = selection.endY - selection.startY;
       const pixelsDistance = Math.sqrt(dx * dx + dy * dy);
 
+      // Ignore measurements that are too short (accidental clicks)
+      if (pixelsDistance < MIN_MEASUREMENT_PIXELS) {
+        console.log('[PDFViewer] Ignoring measurement - too short:', pixelsDistance);
+        return;
+      }
+
       // Get canvas CSS width for page-size calibration method
       const cssWidth = canvasRef.current?.offsetWidth;
 
@@ -539,6 +550,19 @@ export function PDFViewer({
       }
     },
     [measurementsHook.actions, setSelectedMeasurementId]
+  );
+
+  const handleMeasurementClick = useCallback(
+    (measurementId: string, ctrlKey?: boolean, _shiftKey?: boolean) => {
+      if (ctrlKey) {
+        // Ctrl/Cmd+Click: toggle measurement in multi-select
+        measurementsHook.actions.selectMultiple([measurementId], true);
+      } else {
+        // Regular click: select single measurement
+        measurementsHook.actions.selectMultiple([measurementId], false);
+      }
+    },
+    [measurementsHook.actions]
   );
 
   const saveCalibration = useCallback(
@@ -721,17 +745,26 @@ export function PDFViewer({
       // Keep the selection visible so user can save it with button or keyboard shortcut
       // Don't auto-clear like we do for measurements
     } else if (state.mode.type === 'measure' && state.mode.selection) {
-      // Auto-save measurement when line is complete
+      // Auto-save measurement (validation happens in saveMeasurement)
       saveMeasurement(state.mode.selection);
       dispatch({ type: 'CLEAR_SELECTION' });
     } else if (isDrawingCalibrationLine && state.mode.type !== 'idle' && state.mode.selection) {
-      // Save calibration line and show modal
-      setCalibrationLine({
-        start: { x: state.mode.selection.startX, y: state.mode.selection.startY },
-        end: { x: state.mode.selection.endX, y: state.mode.selection.endY },
-      });
+      // Validate calibration line length before showing modal
+      const selection = state.mode.selection;
+      const dx = selection.endX - selection.startX;
+      const dy = selection.endY - selection.startY;
+      const pixelsDistance = Math.sqrt(dx * dx + dy * dy);
+
+      if (pixelsDistance >= MIN_CALIBRATION_PIXELS) {
+        setCalibrationLine({
+          start: { x: selection.startX, y: selection.startY },
+          end: { x: selection.endX, y: selection.endY },
+        });
+        setShowCalibrationModal(true);
+      } else {
+        console.log('[PDFViewer] Ignoring calibration line - too short:', pixelsDistance);
+      }
       setIsDrawingCalibrationLine(false);
-      setShowCalibrationModal(true);
       dispatch({ type: 'CLEAR_SELECTION' });
     } else if (state.mode.type === 'idle' && state.mode.selection) {
       // Idle mode: select measurements that intersect with selection box
@@ -904,14 +937,29 @@ export function PDFViewer({
       )}
 
       {state.mode.type !== 'measure' &&
-        selectedMeasurementId &&
+        selectedMeasurementIds.length > 0 &&
         measurements.length > 0 &&
         !readOnly && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
             <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-              Measurement selected • Press{' '}
-              <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">Delete</kbd>{' '}
-              to remove
+              {selectedMeasurementIds.length === 1 ? (
+                <>
+                  Measurement selected • Press{' '}
+                  <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">
+                    Delete
+                  </kbd>{' '}
+                  to remove
+                  <span className="ml-3 opacity-90 text-xs">Ctrl+Click for multi-select</span>
+                </>
+              ) : (
+                <>
+                  {selectedMeasurementIds.length} measurements selected • Press{' '}
+                  <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">
+                    Delete
+                  </kbd>{' '}
+                  to remove all
+                </>
+              )}
             </div>
           </div>
         )}
@@ -1231,7 +1279,8 @@ export function PDFViewer({
         <MeasurementOverlay
           measurements={measurements}
           selectedMeasurementId={selectedMeasurementId}
-          onMeasurementClick={setSelectedMeasurementId}
+          selectedMeasurementIds={selectedMeasurementIds}
+          onMeasurementClick={handleMeasurementClick}
           zoom={transform.scale}
           translateX={transform.tx}
           translateY={transform.ty}
