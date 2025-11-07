@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { CodeSection, AnalysisRun } from '@/types/analysis';
 
 interface Check {
@@ -20,9 +20,17 @@ export function useCheckData(checkId: string | null, filterToSectionKey: string 
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
   const [assessing, setAssessing] = useState(false);
 
+  // Refresh trigger for manual refetch
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
   // For element instances: all checks for that instance
   const [childChecks, setChildChecks] = useState<Check[]>([]);
   const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
+
+  // Expose refresh function to trigger refetch
+  const refresh = useCallback(() => {
+    setRefreshCounter(prev => prev + 1);
+  }, []);
 
   // Load check data
   useEffect(() => {
@@ -175,7 +183,7 @@ export function useCheckData(checkId: string | null, filterToSectionKey: string 
         setAnalysisRuns([]);
         setAssessing(false);
       });
-  }, [check, childChecks, activeChildCheckId]);
+  }, [check, childChecks, activeChildCheckId, refreshCounter]);
 
   // Get manual override from the active check
   const activeCheck = activeChildCheckId
@@ -195,5 +203,6 @@ export function useCheckData(checkId: string | null, filterToSectionKey: string 
     manualOverrideNote: activeCheck?.manual_status_note || '',
     showSingleSectionOnly: false,
     setActiveChildCheckId,
+    refresh,
   };
 }

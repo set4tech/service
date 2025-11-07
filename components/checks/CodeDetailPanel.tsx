@@ -9,7 +9,7 @@ import { AnalysisHistory } from './AnalysisHistory';
 import { useManualOverride } from '@/hooks/useManualOverride';
 import { useAssessmentPolling } from '@/hooks/useAssessmentPolling';
 import { useCheckData } from './hooks/useCheckData';
-import type { SectionResult, AnalysisRun } from '@/types/analysis';
+import type { SectionResult } from '@/types/analysis';
 
 interface CodeDetailPanelProps {
   checkId: string | null;
@@ -44,12 +44,13 @@ export function CodeDetailPanel({
     childChecks,
     activeChildCheckId,
     sections,
-    analysisRuns: initialAnalysisRuns,
+    analysisRuns,
     assessing: initialAssessing,
     manualOverride: initialManualOverride,
     manualOverrideNote: initialManualOverrideNote,
     showSingleSectionOnly,
     setActiveChildCheckId,
+    refresh,
   } = useCheckData(checkId, filterToSectionKey || null);
 
   // Manual override hook
@@ -81,18 +82,13 @@ export function CodeDetailPanel({
     },
   } = manualOverrideHook;
 
-  // Use hook data directly (analysisRuns)
-  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>(initialAnalysisRuns);
-
-  // Reset analysis runs and manual override when they change in the hook
+  // Reset manual override when they change in the hook
   useEffect(() => {
-    setAnalysisRuns(initialAnalysisRuns);
     setManualOverride(initialManualOverride);
     setManualOverrideNote(initialManualOverrideNote);
   }, [
     checkId,
     activeChildCheckId,
-    initialAnalysisRuns,
     initialManualOverride,
     initialManualOverrideNote,
     setManualOverride,
@@ -110,22 +106,16 @@ export function CodeDetailPanel({
 
   // Polling hook
   const handleAssessmentComplete = useCallback(() => {
-    if (checkId) {
-      // Refresh analysis runs after assessment completes
-      fetch(`/api/checks/${checkId}/full`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.analysisRuns) {
-            setAnalysisRuns(data.analysisRuns);
-            if (data.analysisRuns.length > 0) {
-              setExpandedRuns(new Set([data.analysisRuns[0].id]));
-            }
-          }
-        })
-        .catch(err => console.error('Failed to refresh analysis runs:', err));
+    // Trigger hook to refetch analysis runs
+    refresh();
+
+    // Auto-expand the first run if we have runs
+    if (analysisRuns.length > 0) {
+      setExpandedRuns(new Set([analysisRuns[0].id]));
     }
+
     if (onCheckUpdate) onCheckUpdate();
-  }, [checkId, onCheckUpdate]);
+  }, [refresh, analysisRuns, onCheckUpdate]);
 
   const {
     assessing,
@@ -1275,18 +1265,8 @@ export function CodeDetailPanel({
           sections={triageSections}
           onClose={handleTriageComplete}
           onSave={async () => {
-            if (!checkId) return;
-
-            try {
-              const runsRes = await fetch(`/api/checks/${checkId}/analysis-runs`);
-              const runsData = await runsRes.json();
-              setAnalysisRuns(runsData.runs || []);
-
-              if (onCheckUpdate) onCheckUpdate();
-            } catch (error: any) {
-              console.error('Failed to save analysis runs:', error);
-              alert('Failed to save analysis runs: ' + error.message);
-            }
+            refresh();
+            if (onCheckUpdate) onCheckUpdate();
           }}
         />
       )}
