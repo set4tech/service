@@ -43,6 +43,7 @@ export function CodeDetailPanel({
     error: panelError,
     childChecks,
     activeChildCheckId,
+    activeCheck: activeCheckFromHook,
     sections,
     analysisRuns,
     assessing: initialAssessing,
@@ -53,7 +54,25 @@ export function CodeDetailPanel({
     refresh,
   } = useCheckData(checkId, filterToSectionKey || null);
 
+  // Use the check from the hook (has element_instances data) or fall back to the prop
+  const activeCheckWithData = activeCheckFromHook || activeCheck;
+
+  // Debug log to verify element instance data
+  // console.log('[CodeDetailPanel] 🏷️ Active check data:', {
+  //   hasActiveCheckWithData: !!activeCheckWithData,
+  //   hasElementInstances: !!activeCheckWithData?.element_instances,
+  //   hasElementGroups: !!activeCheckWithData?.element_instances?.element_groups,
+  //   elementGroupName: activeCheckWithData?.element_instances?.element_groups?.name,
+  //   instanceLabel: activeCheckWithData?.element_instances?.label,
+  // });
+
   // Manual override hook
+  // console.log('[CodeDetailPanel] 🎯 Passing to useManualOverride:', {
+  //   initialManualOverride,
+  //   initialManualOverrideNote,
+  //   activeChildCheckId,
+  // });
+
   const manualOverrideHook = useManualOverride({
     initialOverride: initialManualOverride,
     initialNote: initialManualOverrideNote,
@@ -81,15 +100,6 @@ export function CodeDetailPanel({
       saveOverride,
     },
   } = manualOverrideHook;
-
-  // Handle tab switching - just update the active child check ID
-  const handleTabSwitch = useCallback(
-    (childCheckId: string) => {
-      console.log('[CodeDetailPanel] Switching to child check:', childCheckId);
-      setActiveChildCheckId(childCheckId);
-    },
-    [setActiveChildCheckId]
-  );
 
   // Polling hook
   const handleAssessmentComplete = useCallback(() => {
@@ -208,29 +218,29 @@ export function CodeDetailPanel({
 
     // Prevent double-clicks
     if (assessing) {
-      console.log('[CodeDetailPanel] Assessment already in progress, ignoring click');
+      // console.log('[CodeDetailPanel] Assessment already in progress, ignoring click');
       return;
     }
 
-    console.log('[CodeDetailPanel] Starting assessment for check:', checkId);
-    console.log('[CodeDetailPanel] Check details:', {
-      checkId,
-      elementGroupId: activeCheck?.element_group_id,
-      instanceLabel: activeCheck?.instance_label,
-      isElementCheck: !!activeCheck?.element_group_id,
-      childChecksCount: childChecks.length,
-    });
+    // console.log('[CodeDetailPanel] Starting assessment for check:', checkId);
+    // console.log('[CodeDetailPanel] Check details:', {
+    //   checkId,
+    //   elementGroupId: activeCheckWithData?.element_group_id,
+    //   instanceLabel: activeCheckWithData?.instance_label,
+    //   isElementCheck: !!activeCheckWithData?.element_group_id,
+    //   childChecksCount: childChecks.length,
+    // });
 
     setAssessing(true);
     setAssessmentError(null);
     localStorage.setItem('lastSelectedAIModel', selectedModel);
 
     try {
-      console.log('[CodeDetailPanel] Sending assess request with:', {
-        aiProvider: selectedModel,
-        hasCustomPrompt: !!customPrompt.trim(),
-        hasExtraContext: !!extraContext.trim(),
-      });
+      // console.log('[CodeDetailPanel] Sending assess request with:', {
+      //   aiProvider: selectedModel,
+      //   hasCustomPrompt: !!customPrompt.trim(),
+      //   hasExtraContext: !!extraContext.trim(),
+      // });
 
       const response = await fetch(`/api/checks/${checkId}/assess`, {
         method: 'POST',
@@ -251,17 +261,17 @@ export function CodeDetailPanel({
         throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
       }
 
-      console.log('[CodeDetailPanel] Assess response:', {
-        ok: response.ok,
-        status: response.status,
-        data,
-      });
+      // console.log('[CodeDetailPanel] Assess response:', {
+      //   ok: response.ok,
+      //   status: response.status,
+      //   data,
+      // });
 
       if (!response.ok) {
         throw new Error(data.error || 'Assessment failed');
       }
 
-      console.log('[CodeDetailPanel] Assessment initiated successfully');
+      // console.log('[CodeDetailPanel] Assessment initiated successfully');
     } catch (err: any) {
       console.error('[CodeDetailPanel] Assessment error:', err);
       setAssessmentError(err.message);
@@ -313,7 +323,7 @@ export function CodeDetailPanel({
   };
 
   const handleExcludeSection = async () => {
-    if (!effectiveCheckId || !excludeReason.trim() || !activeCheck?.assessment_id) return;
+    if (!effectiveCheckId || !excludeReason.trim() || !activeCheckWithData?.assessment_id) return;
 
     const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
     const activeChild = childChecks.find(c => c.id === activeChildCheckId);
@@ -324,7 +334,7 @@ export function CodeDetailPanel({
     setExcludingSection(true);
     try {
       const response = await fetch(
-        `/api/assessments/${activeCheck.assessment_id}/exclude-section`,
+        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -364,12 +374,16 @@ export function CodeDetailPanel({
   };
 
   const handleOpenExcludeGroup = async () => {
-    if (!activeCheck?.code_section_key || !activeCheck?.assessment_id || !section?.parent_key)
+    if (
+      !activeCheckWithData?.code_section_key ||
+      !activeCheckWithData?.assessment_id ||
+      !section?.parent_key
+    )
       return;
 
     try {
       const response = await fetch(
-        `/api/assessments/${activeCheck.assessment_id}/exclude-section-group?sectionKey=${encodeURIComponent(section.parent_key)}`
+        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section-group?sectionKey=${encodeURIComponent(section.parent_key)}`
       );
 
       const data = await response.json();
@@ -392,13 +406,17 @@ export function CodeDetailPanel({
   };
 
   const handleExcludeGroup = async () => {
-    if (!activeCheck?.assessment_id || selectedSectionKeys.size === 0 || !excludeReason.trim())
+    if (
+      !activeCheckWithData?.assessment_id ||
+      selectedSectionKeys.size === 0 ||
+      !excludeReason.trim()
+    )
       return;
 
     setExcludingGroup(true);
     try {
       const response = await fetch(
-        `/api/assessments/${activeCheck.assessment_id}/exclude-section-group`,
+        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section-group`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -507,7 +525,11 @@ export function CodeDetailPanel({
       <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-semibold text-gray-900">
-            {isElementCheck ? 'Element Instance Details' : 'Code Section Details'}
+            {isElementCheck && activeCheckWithData?.element_instances?.element_groups?.name
+              ? `${activeCheckWithData.element_instances.element_groups.name}: ${activeCheckWithData.element_instances.label}`
+              : isElementCheck
+                ? 'Element Instance Details'
+                : 'Code Section Details'}
           </h3>
         </div>
         <button
@@ -558,7 +580,7 @@ export function CodeDetailPanel({
                 {childChecks.map(childCheck => (
                   <button
                     key={childCheck.id}
-                    onClick={() => handleTabSwitch(childCheck.id)}
+                    onClick={() => setActiveChildCheckId(childCheck.id)}
                     className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors text-left ${
                       childCheck.id === activeChildCheckId
                         ? 'bg-blue-600 text-white'
@@ -855,7 +877,7 @@ export function CodeDetailPanel({
         >
           <div className="p-4 space-y-6">
             {/* Screenshots Section */}
-            {activeCheck && (
+            {activeCheckWithData && (
               <div className="border-t pt-6">
                 <div className="mb-3">
                   <button
@@ -883,7 +905,7 @@ export function CodeDetailPanel({
 
                 {showScreenshots && (
                   <div className="pb-4 space-y-2">
-                    {activeCheck?.element_group_id && (
+                    {activeCheckWithData?.element_group_id && (
                       <button
                         className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                         onClick={() => setShowElevationSearch(true)}
@@ -892,7 +914,7 @@ export function CodeDetailPanel({
                       </button>
                     )}
                     <ScreenshotGallery
-                      check={activeCheck}
+                      check={activeCheckWithData}
                       refreshKey={screenshotsRefreshKey}
                       onScreenshotAssigned={() => {
                         setScreenshotsRefreshKey(prev => prev + 1);
@@ -1258,18 +1280,18 @@ export function CodeDetailPanel({
         />
       )}
 
-      {showElevationSearch && activeCheck && (
+      {showElevationSearch && activeCheckWithData && (
         <SearchElevationsModal
           open={showElevationSearch}
           onClose={() => setShowElevationSearch(false)}
-          assessmentId={activeCheck.assessment_id}
-          currentCheckId={activeCheck.id}
+          assessmentId={activeCheckWithData.assessment_id}
+          currentCheckId={activeCheckWithData.id}
           onAssign={async screenshotIds => {
             for (const screenshotId of screenshotIds) {
               await fetch(`/api/screenshots/${screenshotId}/assign`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ checkIds: [activeCheck.id] }),
+                body: JSON.stringify({ checkIds: [activeCheckWithData.id] }),
               });
             }
 
