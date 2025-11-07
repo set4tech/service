@@ -37,12 +37,14 @@ export function CodeDetailPanel({
   // Local state to track screenshot changes for ScreenshotGallery
   const [screenshotsRefreshKey, setScreenshotsRefreshKey] = useState(0);
 
+  // UI state: which child check the user is viewing
+  const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
+
   // Coordinated data loading
   const {
     loading: panelLoading,
     error: panelError,
     childChecks,
-    activeChildCheckId,
     activeCheck: activeCheckFromHook,
     sections,
     analysisRuns,
@@ -50,9 +52,15 @@ export function CodeDetailPanel({
     manualOverride: initialManualOverride,
     manualOverrideNote: initialManualOverrideNote,
     showSingleSectionOnly,
-    setActiveChildCheckId,
     refresh,
-  } = useCheckData(checkId, filterToSectionKey || null);
+  } = useCheckData(checkId, activeChildCheckId, filterToSectionKey || null);
+
+  // Initialize activeChildCheckId when check loads
+  useEffect(() => {
+    if (checkId && !activeChildCheckId) {
+      setActiveChildCheckId(checkId);
+    }
+  }, [checkId, activeChildCheckId]);
 
   // Use the check from the hook (has element_instances data) or fall back to the prop
   const activeCheckWithData = activeCheckFromHook || activeCheck;

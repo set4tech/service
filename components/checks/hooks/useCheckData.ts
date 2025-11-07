@@ -15,7 +15,11 @@ interface Check {
   };
 }
 
-export function useCheckData(checkId: string | null, _filterToSectionKey: string | null) {
+export function useCheckData(
+  checkId: string | null,
+  activeChildCheckId: string | null,
+  _filterToSectionKey: string | null
+) {
   const [check, setCheck] = useState<Check | null>(null);
   const [sections, setSections] = useState<CodeSection[]>([]);
   const [loading, setLoading] = useState(false);
@@ -25,38 +29,30 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
 
   // Refresh trigger for manual refetch
   const [refreshCounter, setRefreshCounter] = useState(0);
-  const [isBackgroundRefresh, setIsBackgroundRefresh] = useState(false);
 
   // For element instances: all checks for that instance
   const [childChecks, setChildChecks] = useState<Check[]>([]);
-  const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
-
-  // Store the currently active check's fresh data (separate from childChecks array)
-  const [activeChildCheckData, setActiveChildCheckData] = useState<Check | null>(null);
 
   // Expose refresh function to trigger refetch
   // silent = don't show loading skeleton, for background updates
   const refresh = useCallback((silent = false) => {
-    setIsBackgroundRefresh(silent);
+    if (!silent) {
+      setLoading(true);
+    }
     setRefreshCounter(prev => prev + 1);
   }, []);
 
-  // Load ALL data in a single optimized request
+  // Load parent check data
   useEffect(() => {
     if (!checkId) {
       setCheck(null);
       setChildChecks([]);
-      setActiveChildCheckId(null);
       setSections([]);
       setAnalysisRuns([]);
       setAssessing(false);
       return;
     }
 
-    // Only show loading skeleton on initial load or explicit refresh
-    if (!isBackgroundRefresh) {
-      setLoading(true);
-    }
     setError(null);
 
     fetch(`/api/checks/${checkId}/complete`)
@@ -68,114 +64,80 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
           return;
         }
 
-        // console.log('useCheckData: Loaded complete data', {
-        //   check: data.check?.id,
-        //   siblingChecks: data.siblingChecks?.length,
-        //   hasCodeSection: !!data.codeSection,
-        //   analysisRuns: data.analysisRuns?.length,
-        // });
-
-        // Set check data
         setCheck(data.check);
-
-        // Set sibling checks (if element instance)
         setChildChecks(data.siblingChecks || []);
-        setActiveChildCheckId(data.check.id);
-        setActiveChildCheckData(data.check); // Initialize active child check data
 
-        // Set code section
+        // Set initial section (will be overridden if viewing child)
         if (data.codeSection) {
           setSections([data.codeSection]);
         } else {
           setSections([]);
         }
 
-        // Set analysis runs
         setAnalysisRuns(data.analysisRuns || []);
         setAssessing(data.check?.status === 'processing' || data.check?.status === 'analyzing');
-
         setLoading(false);
-        setIsBackgroundRefresh(false);
       })
       .catch(err => {
         console.error('Failed to load check data:', err);
         setError(err.message);
         setLoading(false);
-        setIsBackgroundRefresh(false);
       });
-  }, [checkId, refreshCounter, isBackgroundRefresh]);
+  }, [checkId, refreshCounter]);
 
-  // When active child check changes, fetch section + analysis for that check
+  // When viewing a child check, fetch its section + analysis
   useEffect(() => {
     if (!activeChildCheckId || !childChecks.length) return;
+    if (activeChildCheckId === check?.id) return; // Already loaded parent
 
-    const activeCheck = childChecks.find(c => c.id === activeChildCheckId);
-    if (!activeCheck) return;
+    const activeChild = childChecks.find(c => c.id === activeChildCheckId);
+    if (!activeChild) return;
 
-    // If we're switching to a different check, load its section + analysis
-    if (activeCheck.id !== check?.id) {
-      const sectionKey = activeCheck.sections?.key;
+    const sectionKey = activeChild.sections?.key;
 
-      // Load section and analysis in parallel
-      const promises: Promise<any>[] = [];
+    // Load section and analysis in parallel
+    const promises: Promise<any>[] = [];
 
-      if (sectionKey) {
-        promises.push(
-          fetch(`/api/code-sections/${sectionKey}`)
-            .then(res => res.json())
-            .then(data => {
-              if (data.error) {
-                setSections([]);
-              } else {
-                setSections([data]);
-              }
-            })
-        );
-      } else {
-        setSections([]);
-      }
-
+    if (sectionKey) {
       promises.push(
-        fetch(`/api/checks/${activeCheck.id}/full`)
+        fetch(`/api/code-sections/${sectionKey}`)
           .then(res => res.json())
           .then(data => {
-            setAnalysisRuns(data.analysisRuns || []);
-            setAssessing(data.check?.status === 'processing' || data.check?.status === 'analyzing');
-            // Store the fresh check data for the active child
-            if (data.check) {
-              setActiveChildCheckData(data.check);
+            if (data.error) {
+              setSections([]);
+            } else {
+              setSections([data]);
             }
           })
       );
-
-      Promise.all(promises).catch(err => {
-        console.error('Failed to load child check data:', err);
-      });
+    } else {
+      setSections([]);
     }
-  }, [activeChildCheckId, childChecks, check]);
 
-  // Get manual override from the active check
-  // Use activeChildCheckData if we have it (fresh data), otherwise fall back to childChecks array
+    promises.push(
+      fetch(`/api/checks/${activeChild.id}/full`)
+        .then(res => res.json())
+        .then(data => {
+          setAnalysisRuns(data.analysisRuns || []);
+          setAssessing(data.check?.status === 'processing' || data.check?.status === 'analyzing');
+        })
+    );
+
+    Promise.all(promises).catch(err => {
+      console.error('Failed to load child check data:', err);
+    });
+  }, [activeChildCheckId, childChecks, check?.id]);
+
+  // Derive active check from current selection
   const activeCheck = activeChildCheckId
-    ? (activeChildCheckData?.id === activeChildCheckId
-        ? activeChildCheckData
-        : childChecks.find(c => c.id === activeChildCheckId)) || check
+    ? childChecks.find(c => c.id === activeChildCheckId) || check
     : check;
-
-  // console.log('[useCheckData] 📊 Returning manual override:', {
-  //   activeChildCheckId,
-  //   activeCheckId: activeCheck?.id,
-  //   manual_status: activeCheck?.manual_status,
-  //   manual_status_note: activeCheck?.manual_status_note,
-  //   usingFreshData: activeChildCheckData?.id === activeChildCheckId,
-  // });
 
   return {
     loading,
     error,
     check,
     childChecks,
-    activeChildCheckId,
     activeCheck,
     sections,
     analysisRuns,
@@ -183,7 +145,6 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
     manualOverride: activeCheck?.manual_status || null,
     manualOverrideNote: activeCheck?.manual_status_note || '',
     showSingleSectionOnly: false,
-    setActiveChildCheckId,
     refresh,
   };
 }
