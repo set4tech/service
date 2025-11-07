@@ -11,9 +11,9 @@ export async function GET(req: NextRequest) {
 
   // If querying by element_group_id + instance_label, return all sections for that instance
   if (assessmentId && elementGroupId && instanceLabel) {
-    const { data: checks, error } = await supabase
+    const { data: checksData, error } = await supabase
       .from('checks')
-      .select('*')
+      .select('*, sections!checks_section_id_fkey(key)')
       .eq('assessment_id', assessmentId)
       .eq('element_group_id', elementGroupId)
       .eq('instance_label', instanceLabel)
@@ -21,7 +21,8 @@ export async function GET(req: NextRequest) {
       .limit(10000); // Override Supabase default limit
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(checks || []);
+
+    return NextResponse.json(checksData || []);
   }
 
   // Otherwise use check_summary view

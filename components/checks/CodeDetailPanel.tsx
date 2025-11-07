@@ -274,7 +274,7 @@ export function CodeDetailPanel({
 
     const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
     const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    const sectionKeyToMark = isViewingChildSection ? activeChild?.section?.key : sectionKey;
+    const sectionKeyToMark = isViewingChildSection ? activeChild?.sections?.key : sectionKey;
 
     if (!sectionKeyToMark) return;
 
@@ -317,7 +317,7 @@ export function CodeDetailPanel({
 
     const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
     const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    const sectionKeyToExclude = isViewingChildSection ? activeChild?.section?.key : sectionKey;
+    const sectionKeyToExclude = isViewingChildSection ? activeChild?.sections?.key : sectionKey;
 
     if (!sectionKeyToExclude) return;
 

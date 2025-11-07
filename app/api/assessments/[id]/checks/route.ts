@@ -9,14 +9,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = supabaseAdmin();
 
   try {
-    // Join with element_groups to get element_group_name and sections to get floorplan_relevant and never_relevant
+    // Join with element_groups to get element_group_name and sections to get floorplan_relevant, never_relevant, and key
     let query = supabase
       .from('checks')
       .select(
         `
         *, 
         element_instances(id, label, element_group_id, element_groups(id, name, slug)),
-        sections!section_id(floorplan_relevant, never_relevant)
+        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)
       `
       )
       .eq('assessment_id', id)
@@ -44,7 +44,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Build base query for checks with element_groups and sections joins
       let checksQuery = supabase
         .from('checks')
-        .select('*, element_groups(name), sections!section_id(floorplan_relevant, never_relevant)')
+        .select(
+          '*, element_groups(name), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)'
+        )
         .eq('assessment_id', id)
         .limit(20000); // Override Supabase default 1000 row limit
 
@@ -152,7 +154,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           ...check,
           element_group_name: check.element_groups?.name || null, // Flatten element group name
           element_groups: undefined, // Remove nested element_groups object
-          sections: undefined, // Remove nested sections object (used only for sorting)
+          // Keep sections object with key for frontend
           latest_status: analysis?.compliance_status || null,
           latest_confidence: analysis?.confidence || null,
           latest_reasoning: analysis?.ai_reasoning || null,
@@ -355,9 +357,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         element_group_id: elementGroup?.id || null,
         element_group_name: elementGroup?.name || null,
         element_group_slug: elementGroup?.slug || null,
-        // Remove nested objects
+        // Remove nested element_instances, keep sections with key
         element_instances: undefined,
-        sections: undefined,
         // Analysis data
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,

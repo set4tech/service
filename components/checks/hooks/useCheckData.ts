@@ -5,11 +5,14 @@ interface Check {
   id: string;
   element_instance_id?: string;
   section_id?: string;
-  code_section_key?: string;
   code_section_number?: string;
   code_section_title?: string;
   manual_status?: string | null;
   manual_status_note?: string;
+  sections?: {
+    key: string;
+    [key: string]: any;
+  };
 }
 
 export function useCheckData(checkId: string | null, filterToSectionKey: string | null) {
@@ -49,7 +52,8 @@ export function useCheckData(checkId: string | null, filterToSectionKey: string 
             id: data.check.id,
             element_instance_id: data.check.element_instance_id,
             section_id: data.check.section_id,
-            code_section_key: data.check.code_section_key,
+            section_key: data.check.sections?.key,
+            has_sections: !!data.check.sections,
           });
           setCheck(data.check);
 
@@ -63,6 +67,10 @@ export function useCheckData(checkId: string | null, filterToSectionKey: string 
               .then(res => res.json())
               .then(instanceData => {
                 console.log('useCheckData: Loaded instance checks:', instanceData.checks?.length);
+                console.log('useCheckData: First check section data:', {
+                  has_sections: !!instanceData.checks?.[0]?.sections,
+                  section_key: instanceData.checks?.[0]?.sections?.key,
+                });
                 setChildChecks(instanceData.checks || []);
                 setActiveChildCheckId(data.check.id); // Set the clicked check as active
               })
@@ -97,18 +105,18 @@ export function useCheckData(checkId: string | null, filterToSectionKey: string 
       checkToLoad: checkToLoad
         ? {
             id: checkToLoad.id,
-            code_section_key: checkToLoad.code_section_key,
+            section_key: checkToLoad.sections?.key,
           }
         : null,
     });
 
-    // Load section from the active check's code_section_key
-    if (checkToLoad?.code_section_key) {
-      console.log('useCheckData: Loading section:', checkToLoad.code_section_key);
+    // Load section from the active check's sections.key (from JOIN)
+    if (checkToLoad?.sections?.key) {
+      console.log('useCheckData: Loading section:', checkToLoad.sections.key);
       setLoading(true);
       setError(null);
 
-      fetch(`/api/code-sections/${checkToLoad.code_section_key}`)
+      fetch(`/api/code-sections/${checkToLoad.sections.key}`)
         .then(res => res.json())
         .then(data => {
           if (data.error) {

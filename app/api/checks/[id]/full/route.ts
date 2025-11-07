@@ -19,7 +19,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   try {
     // Execute both queries in parallel for optimal performance
     const [checkResult, initialRunsResult] = await Promise.all([
-      supabase.from('checks').select('*').eq('id', checkId).single(),
+      supabase
+        .from('checks')
+        .select('*, sections!checks_section_id_fkey(key)')
+        .eq('id', checkId)
+        .single(),
       supabase
         .from('analysis_runs')
         .select('*')
