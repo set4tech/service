@@ -48,7 +48,7 @@ export function useManualOverride(options: UseManualOverrideOptions = {}): UseMa
 
   // Sync internal state when initial values change (e.g., switching checks)
   useEffect(() => {
-    console.log('[useManualOverride] 🔄 Syncing state:', { initialOverride, initialNote });
+    // console.log('[useManualOverride] 🔄 Syncing state:', { initialOverride, initialNote });
     setOverride(initialOverride);
     setNote(initialNote);
   }, [initialOverride, initialNote]);
