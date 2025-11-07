@@ -493,6 +493,11 @@ export function CheckList({
 
                         // Call create-element API directly (no template needed)
                         try {
+                          console.log('[CheckList] Creating element instance:', {
+                            assessmentId,
+                            elementGroupSlug,
+                          });
+
                           const res = await fetch('/api/checks/create-element', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -503,16 +508,26 @@ export function CheckList({
                           });
 
                           if (res.ok) {
-                            const { check } = await res.json();
-                            onCheckAdded?.(check);
+                            const data = await res.json();
+                            console.log('[CheckList] Element instance created:', {
+                              element_instance_id: data.element_instance_id,
+                              label: data.label,
+                              checks_created: data.checks_created,
+                            });
+
+                            console.log('[CheckList] Calling refetchChecks...');
+                            // Refetch all checks since multiple were created
+                            await refetchChecks?.();
+                            console.log('[CheckList] refetchChecks completed');
                           } else {
                             const data = await res.json();
+                            console.error('[CheckList] Failed to create element instance:', data);
                             alert(
                               `Failed to create element instance: ${data.error || 'Unknown error'}`
                             );
                           }
                         } catch (error) {
-                          console.error('Error creating element instance:', error);
+                          console.error('[CheckList] Error creating element instance:', error);
                           alert('Failed to create element instance');
                         }
                       }}

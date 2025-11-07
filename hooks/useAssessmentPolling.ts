@@ -37,11 +37,6 @@ export function useAssessmentPolling(
 ): UseAssessmentPollingReturn {
   const { checkId, initialAssessing = false, onComplete, pollInterval = 2000 } = options;
 
-  console.log('[useAssessmentPolling] Hook initialized with:', {
-    checkId,
-    initialAssessing,
-  });
-
   const [assessing, setAssessing] = useState(initialAssessing);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
@@ -50,24 +45,14 @@ export function useAssessmentPolling(
     async () => {
       if (!checkId) return true;
 
-      console.log('[useAssessmentPolling] Fetching progress...');
       const res = await fetch(`/api/checks/${checkId}/full`);
       const fullData = await res.json();
       const data = fullData.progress;
-
-      console.log('[useAssessmentPolling] Progress data:', {
-        inProgress: data.inProgress,
-        completed: data.completed,
-        total: data.total,
-        batchGroupId: data.batchGroupId,
-        runsCount: fullData.analysisRuns?.length,
-      });
 
       if (data.inProgress) {
         const percent = Math.round((data.completed / data.total) * 100);
         setProgress(percent);
         setMessage(`Analyzing... (${data.completed}/${data.total})`);
-        console.log('[useAssessmentPolling] Still in progress:', percent + '%');
 
         // Trigger queue processing
         fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
@@ -75,19 +60,14 @@ export function useAssessmentPolling(
         return false; // Keep polling
       }
 
-      // Assessment complete
-      console.log('[useAssessmentPolling] Assessment complete, loading results...');
       setProgress(100);
       setMessage('Loading results...');
 
       if (onComplete) {
-        console.log('[useAssessmentPolling] Calling onComplete...');
         await onComplete();
-        console.log('[useAssessmentPolling] onComplete finished');
       }
 
       setMessage('Assessment complete!');
-      console.log('[useAssessmentPolling] Stopped assessing');
 
       return true; // Stop polling
     },

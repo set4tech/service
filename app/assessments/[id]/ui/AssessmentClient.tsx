@@ -455,10 +455,23 @@ export default function AssessmentClient({
   };
 
   const refetchChecks = async () => {
+    console.log('[AssessmentClient] refetchChecks called, current checks count:', checks.length);
     const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
     if (checksRes.ok) {
       const updatedChecks = await checksRes.json();
+      console.log('[AssessmentClient] Fetched updated checks:', {
+        previousCount: checks.length,
+        newCount: updatedChecks.length,
+        diff: updatedChecks.length - checks.length,
+      });
       setChecks(updatedChecks);
+      console.log('[AssessmentClient] Checks state updated');
+    } else {
+      console.error(
+        '[AssessmentClient] Failed to fetch checks:',
+        checksRes.status,
+        checksRes.statusText
+      );
     }
   };
 
