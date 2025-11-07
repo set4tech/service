@@ -348,9 +348,16 @@ Physical instances of building elements (e.g., "Door 1", "Bathroom 2"). Each ins
   1. Create instance: `INSERT INTO element_instances (assessment_id, element_group_id, label) VALUES (...)` → returns "Door 1"
   2. Create checks: `INSERT INTO checks (element_instance_id, section_id, ...) VALUES (...)`
 
-**Trigger:**
+**Trigger & Function:**
 
-- `trigger_generate_element_instance_label`: Auto-generates label if NULL or empty on insert
+- **Function**: `generate_element_instance_label()` - PL/pgSQL function that auto-generates labels
+  - Extracts the element group name (e.g., "Doors")
+  - Finds the highest number used for that element group in the assessment
+  - Generates next sequential label: `{element_group_name} {max_number + 1}`
+  - Example: If "Door 1" and "Door 2" exist, creates "Door 3"
+- **Trigger**: `trigger_generate_element_instance_label` (BEFORE INSERT)
+  - Calls `generate_element_instance_label()` when label is NULL or empty
+  - Runs before each INSERT on `element_instances` table
 
 ---
 
