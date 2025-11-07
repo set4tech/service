@@ -30,6 +30,9 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
   const [childChecks, setChildChecks] = useState<Check[]>([]);
   const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
 
+  // Store the currently active check's fresh data (separate from childChecks array)
+  const [activeChildCheckData, setActiveChildCheckData] = useState<Check | null>(null);
+
   // Expose refresh function to trigger refetch
   const refresh = useCallback(() => {
     setRefreshCounter(prev => prev + 1);
@@ -72,6 +75,7 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
         // Set sibling checks (if element instance)
         setChildChecks(data.siblingChecks || []);
         setActiveChildCheckId(data.check.id);
+        setActiveChildCheckData(data.check); // Initialize active child check data
 
         // Set code section
         if (data.codeSection) {
@@ -129,6 +133,10 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
           .then(data => {
             setAnalysisRuns(data.analysisRuns || []);
             setAssessing(data.check?.status === 'processing' || data.check?.status === 'analyzing');
+            // Store the fresh check data for the active child
+            if (data.check) {
+              setActiveChildCheckData(data.check);
+            }
           })
       );
 
@@ -139,8 +147,11 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
   }, [activeChildCheckId, childChecks, check]);
 
   // Get manual override from the active check
+  // Use activeChildCheckData if we have it (fresh data), otherwise fall back to childChecks array
   const activeCheck = activeChildCheckId
-    ? childChecks.find(c => c.id === activeChildCheckId) || check
+    ? (activeChildCheckData?.id === activeChildCheckId
+        ? activeChildCheckData
+        : childChecks.find(c => c.id === activeChildCheckId)) || check
     : check;
 
   // console.log('[useCheckData] 📊 Returning manual override:', {
@@ -148,6 +159,7 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
   //   activeCheckId: activeCheck?.id,
   //   manual_status: activeCheck?.manual_status,
   //   manual_status_note: activeCheck?.manual_status_note,
+  //   usingFreshData: activeChildCheckData?.id === activeChildCheckId,
   // });
 
   return {

@@ -57,6 +57,9 @@ export function CodeDetailPanel({
   // Use the check from the hook (has element_instances data) or fall back to the prop
   const activeCheckWithData = activeCheckFromHook || activeCheck;
 
+  // Calculate effective check ID early (needed for manual override hook)
+  const effectiveCheckId = activeChildCheckId || checkId;
+
   // Debug log to verify element instance data
   // console.log('[CodeDetailPanel] 🏷️ Active check data:', {
   //   hasActiveCheckWithData: !!activeCheckWithData,
@@ -74,6 +77,7 @@ export function CodeDetailPanel({
   // });
 
   const manualOverrideHook = useManualOverride({
+    checkId: effectiveCheckId,
     initialOverride: initialManualOverride,
     initialNote: initialManualOverrideNote,
     onSaveSuccess: () => {
@@ -159,7 +163,6 @@ export function CodeDetailPanel({
   const [sectionContentHeight, setSectionContentHeight] = useState(40);
 
   const section = sections[0] || null;
-  const effectiveCheckId = activeChildCheckId || checkId;
 
   // Load last selected model from localStorage
   useEffect(() => {
