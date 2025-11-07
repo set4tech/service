@@ -25,6 +25,7 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
 
   // Refresh trigger for manual refetch
   const [refreshCounter, setRefreshCounter] = useState(0);
+  const [isBackgroundRefresh, setIsBackgroundRefresh] = useState(false);
 
   // For element instances: all checks for that instance
   const [childChecks, setChildChecks] = useState<Check[]>([]);
@@ -34,7 +35,9 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
   const [activeChildCheckData, setActiveChildCheckData] = useState<Check | null>(null);
 
   // Expose refresh function to trigger refetch
-  const refresh = useCallback(() => {
+  // silent = don't show loading skeleton, for background updates
+  const refresh = useCallback((silent = false) => {
+    setIsBackgroundRefresh(silent);
     setRefreshCounter(prev => prev + 1);
   }, []);
 
@@ -50,7 +53,10 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
       return;
     }
 
-    setLoading(true);
+    // Only show loading skeleton on initial load or explicit refresh
+    if (!isBackgroundRefresh) {
+      setLoading(true);
+    }
     setError(null);
 
     fetch(`/api/checks/${checkId}/complete`)
@@ -89,13 +95,15 @@ export function useCheckData(checkId: string | null, _filterToSectionKey: string
         setAssessing(data.check?.status === 'processing' || data.check?.status === 'analyzing');
 
         setLoading(false);
+        setIsBackgroundRefresh(false);
       })
       .catch(err => {
         console.error('Failed to load check data:', err);
         setError(err.message);
         setLoading(false);
+        setIsBackgroundRefresh(false);
       });
-  }, [checkId, refreshCounter]);
+  }, [checkId, refreshCounter, isBackgroundRefresh]);
 
   // When active child check changes, fetch section + analysis for that check
   useEffect(() => {

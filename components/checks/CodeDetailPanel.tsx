@@ -109,8 +109,8 @@ export function CodeDetailPanel({
   // IMPORTANT: Keep this callback stable - don't depend on analysisRuns or it will
   // cause the polling to restart every time runs change, creating a render loop
   const handleAssessmentComplete = useCallback(() => {
-    // Trigger hook to refetch analysis runs
-    refresh();
+    // Trigger hook to refetch analysis runs (silent = no loading skeleton)
+    refresh(true);
 
     if (onCheckUpdate) onCheckUpdate();
   }, [refresh, onCheckUpdate]);
