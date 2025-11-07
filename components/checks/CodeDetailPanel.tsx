@@ -106,17 +106,14 @@ export function CodeDetailPanel({
   } = manualOverrideHook;
 
   // Polling hook
+  // IMPORTANT: Keep this callback stable - don't depend on analysisRuns or it will
+  // cause the polling to restart every time runs change, creating a render loop
   const handleAssessmentComplete = useCallback(() => {
     // Trigger hook to refetch analysis runs
     refresh();
 
-    // Auto-expand the first run if we have runs
-    if (analysisRuns.length > 0) {
-      setExpandedRuns(new Set([analysisRuns[0].id]));
-    }
-
     if (onCheckUpdate) onCheckUpdate();
-  }, [refresh, analysisRuns, onCheckUpdate]);
+  }, [refresh, onCheckUpdate]);
 
   const {
     assessing,
@@ -174,6 +171,13 @@ export function CodeDetailPanel({
   useEffect(() => {
     if (childChecks.length > 1) setShowSectionTabs(true);
   }, [childChecks.length]);
+
+  // Auto-expand first analysis run when assessment completes
+  useEffect(() => {
+    if (!assessing && analysisRuns.length > 0 && expandedRuns.size === 0) {
+      setExpandedRuns(new Set([analysisRuns[0].id]));
+    }
+  }, [assessing, analysisRuns, expandedRuns.size]);
 
   // Handlers
   const handleViewPrompt = async () => {

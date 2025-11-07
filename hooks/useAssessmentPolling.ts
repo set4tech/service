@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { usePolling } from '@/lib/hooks/usePolling';
 
 export interface AssessmentPollingState {
@@ -31,6 +31,8 @@ export interface UseAssessmentPollingOptions {
  * - Triggering queue processing
  * - Completing assessment when done
  * - Cleanup on unmount
+ *
+ * IMPORTANT: Uses stable callback references to prevent polling restarts
  */
 export function useAssessmentPolling(
   options: UseAssessmentPollingOptions
@@ -41,46 +43,52 @@ export function useAssessmentPolling(
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
 
-  usePolling(
-    async () => {
-      if (!checkId) return true;
+  // Use ref to keep onComplete stable - prevents polling restarts
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
-      const res = await fetch(`/api/checks/${checkId}/full`);
-      const fullData = await res.json();
-      const data = fullData.progress;
+  // Memoize polling callback to prevent usePolling from restarting
+  const pollCallback = useCallback(async () => {
+    if (!checkId) return true;
 
-      if (data.inProgress) {
-        const percent = Math.round((data.completed / data.total) * 100);
-        setProgress(percent);
-        setMessage(`Analyzing... (${data.completed}/${data.total})`);
+    const res = await fetch(`/api/checks/${checkId}/full`);
+    const fullData = await res.json();
+    const data = fullData.progress;
 
-        // Trigger queue processing
-        fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
+    if (data.inProgress) {
+      const percent = Math.round((data.completed / data.total) * 100);
+      setProgress(percent);
+      setMessage(`Analyzing... (${data.completed}/${data.total})`);
 
-        return false; // Keep polling
-      }
+      // Trigger queue processing
+      fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
 
-      setProgress(100);
-      setMessage('Loading results...');
-
-      if (onComplete) {
-        await onComplete();
-      }
-
-      setMessage('Assessment complete!');
-
-      return true; // Stop polling
-    },
-    {
-      enabled: assessing && !!checkId,
-      interval: pollInterval,
-      onComplete: () => setAssessing(false),
-      onError: error => {
-        console.error('[useAssessmentPolling] Poll error:', error);
-        setAssessing(false);
-      },
+      return false; // Keep polling
     }
-  );
+
+    setProgress(100);
+    setMessage('Loading results...');
+
+    if (onCompleteRef.current) {
+      await onCompleteRef.current();
+    }
+
+    setMessage('Assessment complete!');
+
+    return true; // Stop polling
+  }, [checkId]); // Only recreate when checkId changes
+
+  usePolling(pollCallback, {
+    enabled: assessing && !!checkId,
+    interval: pollInterval,
+    onComplete: () => setAssessing(false),
+    onError: error => {
+      console.error('[useAssessmentPolling] Poll error:', error);
+      setAssessing(false);
+    },
+  });
 
   return { assessing, progress, message, setAssessing };
 }
