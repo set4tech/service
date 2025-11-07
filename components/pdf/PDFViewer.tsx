@@ -221,7 +221,6 @@ export function PDFViewer({
   const measurements = measurementsHook.state.measurements;
   const selectedMeasurementId = measurementsHook.state.selectedId;
   const selectedMeasurementIds = measurementsHook.state.selectedIds;
-  const setSelectedMeasurementId = measurementsHook.actions.select;
   const calibration = calibrationHook.state.calibration;
   const calculateRealDistance = calibrationHook.computed?.calculateRealDistance ?? (() => null);
   const screenshotIndicators = screenshotsHook.state.screenshots;
@@ -539,18 +538,16 @@ export function PDFViewer({
     [projectId, state.pageNumber, calculateRealDistance, measurementsHook.actions]
   );
 
-  const deleteMeasurement = useCallback(
-    async (measurementId: string) => {
-      try {
-        await measurementsHook.actions.remove(measurementId);
-        setSelectedMeasurementId(null);
-      } catch (error) {
-        console.error('[PDFViewer] Error deleting measurement:', error);
-        alert('Failed to delete measurement');
-      }
-    },
-    [measurementsHook.actions, setSelectedMeasurementId]
-  );
+  const deleteSelectedMeasurements = useCallback(async () => {
+    if (selectedMeasurementIds.length === 0) return;
+
+    try {
+      await measurementsHook.actions.removeMultiple(selectedMeasurementIds);
+    } catch (error) {
+      console.error('[PDFViewer] Error deleting measurements:', error);
+      alert('Failed to delete measurements');
+    }
+  }, [measurementsHook.actions, selectedMeasurementIds]);
 
   const handleMeasurementClick = useCallback(
     (measurementId: string, ctrlKey?: boolean, _shiftKey?: boolean) => {
@@ -561,6 +558,9 @@ export function PDFViewer({
         // Regular click: select single measurement
         measurementsHook.actions.selectMultiple([measurementId], false);
       }
+
+      // Refocus viewport so keyboard shortcuts work
+      setTimeout(() => viewportRef.current?.focus(), 0);
     },
     [measurementsHook.actions]
   );
@@ -661,9 +661,8 @@ export function PDFViewer({
         dispatch({ type: 'SET_MODE', payload: 'idle' });
         dispatch({ type: 'CLEAR_SELECTION' });
       },
-      onDeleteMeasurement: selectedMeasurementId
-        ? () => deleteMeasurement(selectedMeasurementId)
-        : undefined,
+      onDeleteMeasurement:
+        selectedMeasurementIds.length > 0 ? deleteSelectedMeasurements : undefined,
       onCaptureCurrent: () => capture('current', 'plan'),
       onCaptureElevation: () => setShowElevationPrompt(true),
       onCaptureBathroom: () => capture('bathroom', 'plan'),
