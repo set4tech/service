@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 export interface ManualOverrideState {
   override: string | null;
@@ -45,6 +45,12 @@ export function useManualOverride(options: UseManualOverrideOptions = {}): UseMa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNoteInput, setShowNoteInput] = useState(false);
+
+  // Sync internal state when initial values change (e.g., switching checks)
+  useEffect(() => {
+    setOverride(initialOverride);
+    setNote(initialNote);
+  }, [initialOverride, initialNote]);
 
   const saveOverride = useCallback(
     async (checkId: string) => {

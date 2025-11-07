@@ -82,19 +82,6 @@ export function CodeDetailPanel({
     },
   } = manualOverrideHook;
 
-  // Reset manual override when they change in the hook
-  useEffect(() => {
-    setManualOverride(initialManualOverride);
-    setManualOverrideNote(initialManualOverrideNote);
-  }, [
-    checkId,
-    activeChildCheckId,
-    initialManualOverride,
-    initialManualOverrideNote,
-    setManualOverride,
-    setManualOverrideNote,
-  ]);
-
   // Handle tab switching - just update the active child check ID
   const handleTabSwitch = useCallback(
     (childCheckId: string) => {
@@ -287,7 +274,7 @@ export function CodeDetailPanel({
 
     const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
     const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    const sectionKeyToMark = isViewingChildSection ? activeChild?.code_section_key : sectionKey;
+    const sectionKeyToMark = isViewingChildSection ? activeChild?.section?.key : sectionKey;
 
     if (!sectionKeyToMark) return;
 
@@ -330,7 +317,7 @@ export function CodeDetailPanel({
 
     const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
     const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    const sectionKeyToExclude = isViewingChildSection ? activeChild?.code_section_key : sectionKey;
+    const sectionKeyToExclude = isViewingChildSection ? activeChild?.section?.key : sectionKey;
 
     if (!sectionKeyToExclude) return;
 
