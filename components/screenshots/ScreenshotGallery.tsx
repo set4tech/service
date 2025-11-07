@@ -67,12 +67,23 @@ export function ScreenshotGallery({
       refreshKey
     );
     (async () => {
-      const res = await fetch(`/api/screenshots?check_id=${check.id}`);
+      // For element instances, fetch screenshots by element_instance_id
+      // For regular checks, fetch by check_id
+      const queryParam = (check as any).element_instance_id
+        ? `element_instance_id=${(check as any).element_instance_id}`
+        : `check_id=${check.id}`;
+
+      const res = await fetch(`/api/screenshots?${queryParam}`);
       const { screenshots } = await res.json();
-      console.log('[ScreenshotGallery] ✅ Fetched screenshots:', screenshots?.length);
+      console.log(
+        '[ScreenshotGallery] ✅ Fetched screenshots:',
+        screenshots?.length,
+        'for',
+        queryParam
+      );
       setShots(screenshots || []);
     })();
-  }, [refreshKey, check.id]);
+  }, [refreshKey, check.id, (check as any).element_instance_id]);
 
   // Fetch presigned URLs for screenshots
   useEffect(() => {

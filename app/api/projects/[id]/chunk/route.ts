@@ -234,5 +234,3 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Failed to fetch chunking status' }, { status: 500 });
   }
 }
-
-

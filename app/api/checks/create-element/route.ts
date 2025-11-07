@@ -47,7 +47,13 @@ export async function POST(req: NextRequest) {
     // 3. Get sections for this element group
     const sections = await getElementSections(supabase, elementGroup.id, assessmentId);
 
-    if (sections.length === 0) {
+    console.log('[create-element] Got sections:', {
+      type: typeof sections,
+      isArray: Array.isArray(sections),
+      sections,
+    });
+
+    if (!Array.isArray(sections) || sections.length === 0) {
       return NextResponse.json(
         { error: 'No section mappings found for this element group' },
         { status: 400 }
@@ -88,10 +94,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
-
-// ============================================================================
-// Helper Functions (modular, testable, reusable)
-// ============================================================================
 
 async function getElementGroup(supabase: any, slug: string) {
   const { data, error } = await supabase
@@ -159,23 +161,13 @@ async function createSectionChecks(
     element_instance_id: elementInstanceId,
     check_name: `${instanceLabel} - ${section.section_title}`,
     section_id: section.section_id,
+    // Don't set code_section_key - it's deprecated and triggers old unique constraint
     code_section_number: section.section_number,
     code_section_title: section.section_title,
     status: 'pending',
   }));
 
-  console.log('[create-element] Inserting checks:', {
-    count: checksToInsert.length,
-    sample: checksToInsert[0],
-  });
+  const { data } = await supabase.from('checks').insert(checksToInsert).select();
 
-  const { data, error } = await supabase.from('checks').insert(checksToInsert).select();
-
-  if (error) {
-    console.error('[create-element] Error inserting checks:', error);
-    throw error;
-  }
-
-  console.log('[create-element] Successfully inserted checks:', data?.length);
   return data;
 }

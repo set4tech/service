@@ -379,32 +379,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       instance_count: 0,
     }));
 
-    // Log element instance checks
-    const elementInstanceChecks = checks.filter((c: any) => c.element_instance_id);
-    if (elementInstanceChecks.length > 0) {
-      console.log('[CHECKS API] Element instance checks found:', elementInstanceChecks.length);
-      // Group by element_instance_id to show instances
-      const byInstance = new Map();
-      elementInstanceChecks.forEach((c: any) => {
-        if (!byInstance.has(c.element_instance_id)) {
-          byInstance.set(c.element_instance_id, []);
-        }
-        byInstance.get(c.element_instance_id).push(c);
-      });
-      console.log('[CHECKS API] Element instances:', byInstance.size);
-      Array.from(byInstance.entries())
-        .slice(0, 3)
-        .forEach(([instanceId, instanceChecks]: [any, any]) => {
-          const firstCheck = instanceChecks[0];
-          console.log(`[CHECKS API] Instance ${instanceId}:`, {
-            label: firstCheck.instance_label,
-            element_group: firstCheck.element_group_name,
-            checks_count: instanceChecks.length,
-            sections: instanceChecks.map((c: any) => c.code_section_number).join(', '),
-          });
-        });
-    }
-
     // Log detailed screenshot info for checks with instances
     const checksWithInstances = checks.filter((c: any) => c.instances && c.instances.length > 0);
     console.log('[CHECKS API] Checks with instances array:', checksWithInstances.length);

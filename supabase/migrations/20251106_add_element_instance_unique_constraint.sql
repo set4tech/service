@@ -8,3 +8,4 @@ WHERE element_instance_id IS NOT NULL;
 COMMENT ON INDEX unique_check_per_element_instance_section IS
 'Ensures uniqueness of checks per element instance and section. Only applies to checks with element_instance_id (new pattern).';
 
+

@@ -64,5 +64,3 @@ export const BoundingBox = memo(function BoundingBox({
     </div>
   );
 });
-
-

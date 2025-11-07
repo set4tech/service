@@ -32,5 +32,3 @@ export const ScreenshotIndicatorOverlay = memo(function ScreenshotIndicatorOverl
     />
   );
 });
-
-

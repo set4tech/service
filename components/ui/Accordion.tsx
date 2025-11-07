@@ -31,5 +31,3 @@ export function Accordion({ title, expanded, onToggle, children, className = '' 
     </div>
   );
 }
-
-

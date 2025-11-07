@@ -116,3 +116,4 @@ COMMENT ON COLUMN checks.element_instance_id IS 'Links section checks to their p
 -- NOTE: Old columns (element_group_id, instance_label) will be dropped in a future migration
 -- after all code has been updated to use element_instance_id
 
+

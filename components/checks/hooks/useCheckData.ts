@@ -1,29 +1,30 @@
 import { useState, useEffect } from 'react';
-import type { CodeSection } from '@/types/analysis';
+import type { CodeSection, AnalysisRun } from '@/types/analysis';
 
 interface Check {
   id: string;
-  check_type?: string;
-  element_sections?: string[];
-  element_group_name?: string;
-  instance_number?: number;
+  element_instance_id?: string;
+  section_id?: string;
+  code_section_key?: string;
+  code_section_number?: string;
+  code_section_title?: string;
+  manual_status?: string | null;
+  manual_status_note?: string;
 }
 
-export function useCheckData(checkId: string | null, sectionKey: string | null) {
+export function useCheckData(checkId: string | null, filterToSectionKey: string | null) {
   const [check, setCheck] = useState<Check | null>(null);
   const [sections, setSections] = useState<CodeSection[]>([]);
-  const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
+  const [assessing, setAssessing] = useState(false);
 
-  // For element checks: child section checks
-  const [childChecks, setChildChecks] = useState<any[]>([]);
+  // For element instances: all checks for that instance
+  const [childChecks, setChildChecks] = useState<Check[]>([]);
   const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
 
-  // Computed: current section to display
-  const section = sections[activeSectionIndex] || null;
-
-  // Load check data and determine if it's an element check
+  // Load check data
   useEffect(() => {
     if (!checkId) {
       setCheck(null);
@@ -32,51 +33,42 @@ export function useCheckData(checkId: string | null, sectionKey: string | null) 
       return;
     }
 
-    // Reset child check state when loading a new check to prevent stale data
-    setActiveChildCheckId(null);
-    setChildChecks([]);
-
     fetch(`/api/checks/${checkId}`)
       .then(res => res.json())
       .then(data => {
         if (data.check) {
           console.log('useCheckData: Loaded check', {
             id: data.check.id,
-            type: data.check.check_type,
-            instance_number: data.check.instance_number,
-            element_sections: data.check.element_sections,
+            element_instance_id: data.check.element_instance_id,
+            section_id: data.check.section_id,
+            code_section_key: data.check.code_section_key,
           });
           setCheck(data.check);
 
-          // If this is an element check, fetch child section checks
-          if (data.check.check_type === 'element') {
-            console.log('useCheckData: Fetching child checks for element check', checkId);
-            return fetch(`/api/checks?parent_check_id=${checkId}`).then(res => res.json());
+          // If this check belongs to an element instance, fetch all checks for that instance
+          if (data.check.element_instance_id) {
+            console.log(
+              'useCheckData: Fetching all checks for element instance:',
+              data.check.element_instance_id
+            );
+            fetch(`/api/element-instances/${data.check.element_instance_id}/checks`)
+              .then(res => res.json())
+              .then(instanceData => {
+                console.log('useCheckData: Loaded instance checks:', instanceData.checks?.length);
+                setChildChecks(instanceData.checks || []);
+                setActiveChildCheckId(data.check.id); // Set the clicked check as active
+              })
+              .catch(err => {
+                console.error('Failed to load instance checks:', err);
+                setChildChecks([]);
+              });
+          } else {
+            // Standalone check - no children
+            setChildChecks([]);
+            setActiveChildCheckId(null);
           }
         }
         return null;
-      })
-      .then(childData => {
-        if (childData && Array.isArray(childData)) {
-          console.log('useCheckData: Loaded child checks', {
-            count: childData.length,
-            sections: childData.map((c: any) => c.code_section_number),
-          });
-          // Sort by section number
-          const sorted = childData.sort((a: any, b: any) =>
-            (a.code_section_number || '').localeCompare(b.code_section_number || '')
-          );
-          setChildChecks(sorted);
-          // Set first child as active
-          if (sorted.length > 0) {
-            setActiveChildCheckId(sorted[0].id);
-          } else {
-            setActiveChildCheckId(null);
-          }
-        } else {
-          console.log('useCheckData: No child checks found');
-          setActiveChildCheckId(null);
-        }
       })
       .catch(err => {
         console.error('Failed to load check:', err);
@@ -85,18 +77,30 @@ export function useCheckData(checkId: string | null, sectionKey: string | null) 
 
   // Load code sections
   useEffect(() => {
-    // For element checks with child checks, load section based on active child check
-    if (childChecks.length > 0 && activeChildCheckId) {
-      const activeChild = childChecks.find((c: any) => c.id === activeChildCheckId);
-      if (!activeChild?.code_section_key) {
-        setSections([]);
-        return;
-      }
+    // Determine which check to load section for
+    const checkToLoad = activeChildCheckId
+      ? childChecks.find(c => c.id === activeChildCheckId) || check
+      : check;
 
+    console.log('useCheckData: Section loading effect triggered', {
+      hasCheck: !!check,
+      hasChildChecks: childChecks.length > 0,
+      activeChildCheckId,
+      checkToLoad: checkToLoad
+        ? {
+            id: checkToLoad.id,
+            code_section_key: checkToLoad.code_section_key,
+          }
+        : null,
+    });
+
+    // Load section from the active check's code_section_key
+    if (checkToLoad?.code_section_key) {
+      console.log('useCheckData: Loading section:', checkToLoad.code_section_key);
       setLoading(true);
       setError(null);
 
-      fetch(`/api/code-sections/${activeChild.code_section_key}`)
+      fetch(`/api/code-sections/${checkToLoad.code_section_key}`)
         .then(res => res.json())
         .then(data => {
           if (data.error) {
@@ -104,7 +108,6 @@ export function useCheckData(checkId: string | null, sectionKey: string | null) 
             setSections([]);
           } else {
             setSections([data]);
-            setActiveSectionIndex(0);
           }
           setLoading(false);
         })
@@ -117,79 +120,80 @@ export function useCheckData(checkId: string | null, sectionKey: string | null) 
       return;
     }
 
-    // Original logic for non-element checks
-    if (!sectionKey && !check?.element_sections) {
-      setSections([]);
-      setActiveSectionIndex(0);
+    // For standalone section checks with filterToSectionKey
+    if (!checkToLoad && filterToSectionKey) {
+      setLoading(true);
+      setError(null);
+
+      fetch(`/api/code-sections/${filterToSectionKey}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            setError(data.error);
+            setSections([]);
+          } else {
+            setSections([data]);
+          }
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error('Failed to load section:', err);
+          setError(err.message);
+          setLoading(false);
+        });
+
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    // No section to load
+    setSections([]);
+  }, [filterToSectionKey, check, childChecks, activeChildCheckId]);
 
-    // Determine which sections to load
-    const sectionKeys = check?.element_sections || (sectionKey ? [sectionKey] : []);
+  // Load analysis runs for the active check
+  useEffect(() => {
+    const checkToLoad = activeChildCheckId
+      ? childChecks.find(c => c.id === activeChildCheckId) || check
+      : check;
 
-    if (sectionKeys.length === 0) {
-      setSections([]);
-      setLoading(false);
+    if (!checkToLoad?.id) {
+      setAnalysisRuns([]);
+      setAssessing(false);
       return;
     }
 
-    // Load all sections using batch endpoint
-    fetch('/api/sections/batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keys: sectionKeys }),
-    })
+    console.log('useCheckData: Loading analysis runs for check:', checkToLoad.id);
+
+    fetch(`/api/checks/${checkToLoad.id}/full`)
       .then(res => res.json())
-      .then(sections => {
-        setSections(sections || []);
-        setActiveSectionIndex(0);
-        setLoading(false);
+      .then(data => {
+        console.log('useCheckData: Loaded analysis runs:', data.analysisRuns?.length);
+        setAnalysisRuns(data.analysisRuns || []);
+        setAssessing(data.check?.status === 'processing' || data.check?.status === 'analyzing');
       })
       .catch(err => {
-        console.error('Failed to load sections:', err);
-        setError(err.message);
-        setLoading(false);
+        console.error('Failed to load analysis runs:', err);
+        setAnalysisRuns([]);
+        setAssessing(false);
       });
-  }, [sectionKey, check, childChecks, activeChildCheckId]);
+  }, [check, childChecks, activeChildCheckId]);
 
-  // Function to refresh child checks (used after marking never relevant or excluding)
-  const refreshChildChecks = async () => {
-    if (!checkId || check?.check_type !== 'element') return;
-
-    console.log('Refreshing child checks');
-    try {
-      const res = await fetch(`/api/checks?parent_check_id=${checkId}`);
-      const childData = await res.json();
-
-      if (Array.isArray(childData)) {
-        const sorted = childData.sort((a: any, b: any) =>
-          (a.code_section_number || '').localeCompare(b.code_section_number || '')
-        );
-        setChildChecks(sorted);
-        // If current child was removed, switch to first available
-        if (sorted.length > 0 && !sorted.find((c: any) => c.id === activeChildCheckId)) {
-          setActiveChildCheckId(sorted[0].id);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to reload child checks:', err);
-    }
-  };
+  // Get manual override from the active check
+  const activeCheck = activeChildCheckId
+    ? childChecks.find(c => c.id === activeChildCheckId) || check
+    : check;
 
   return {
-    check,
-    sections,
-    section,
-    activeSectionIndex,
     loading,
     error,
+    check,
     childChecks,
     activeChildCheckId,
+    sections,
+    analysisRuns,
+    assessing,
+    manualOverride: activeCheck?.manual_status || null,
+    manualOverrideNote: activeCheck?.manual_status_note || '',
+    showSingleSectionOnly: false,
     setActiveChildCheckId,
-    setChildChecks,
-    refreshChildChecks,
   };
 }

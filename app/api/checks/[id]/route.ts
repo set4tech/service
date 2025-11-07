@@ -6,6 +6,15 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const supabase = supabaseAdmin();
   const { data, error } = await supabase.from('checks').select('*').eq('id', id).single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+
+  console.log('[GET /api/checks/[id]] Check data:', {
+    id: data?.id,
+    element_instance_id: data?.element_instance_id,
+    section_id: data?.section_id,
+    code_section_key: data?.code_section_key,
+    check_name: data?.check_name,
+  });
+
   return NextResponse.json({ check: data });
 }
 
