@@ -475,19 +475,24 @@ export default function AssessmentClient({
     }
   };
 
-  const handleInstanceDeleted = (elementGroupId: string, instanceLabel: string) => {
-    // Remove all checks for this element instance with a single filter operation
-    setChecks(prevChecks =>
-      prevChecks.filter(
-        c => !(c.element_group_id === elementGroupId && c.instance_label === instanceLabel)
-      )
-    );
+  const handleInstanceDeleted = (elementInstanceId: string) => {
+    console.log('[AssessmentClient] handleInstanceDeleted called:', { elementInstanceId });
+
+    // Remove all checks for this element instance
+    setChecks(prevChecks => {
+      const filtered = prevChecks.filter(c => c.element_instance_id !== elementInstanceId);
+      console.log('[AssessmentClient] Removed checks for instance:', {
+        elementInstanceId,
+        before: prevChecks.length,
+        after: filtered.length,
+        removed: prevChecks.length - filtered.length,
+      });
+      return filtered;
+    });
 
     // Clear active check if it was in the deleted instance
-    if (
-      activeCheck?.element_group_id === elementGroupId &&
-      activeCheck?.instance_label === instanceLabel
-    ) {
+    if (activeCheck?.element_instance_id === elementInstanceId) {
+      console.log('[AssessmentClient] Clearing active check (was in deleted instance)');
       setActiveCheckId(null);
       setShowDetailPanel(false);
       // Clear URL hash

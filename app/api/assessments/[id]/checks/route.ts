@@ -12,7 +12,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Join with element_groups to get element_group_name and sections to get floorplan_relevant and never_relevant
     let query = supabase
       .from('checks')
-      .select('*, element_groups(name), sections!section_id(floorplan_relevant, never_relevant)')
+      .select(
+        `
+        *, 
+        element_instances(id, label, element_group_id, element_groups(id, name, slug)),
+        sections!section_id(floorplan_relevant, never_relevant)
+      `
+      )
       .eq('assessment_id', id)
       .limit(20000); // Override Supabase default 1000 row limit
 
@@ -333,16 +339,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       totalScreenshots: Array.from(screenshotsMap.values()).flat().length,
     });
 
-    // Add analysis data and screenshots (element_groups is kept from JOIN)
+    // Add analysis data and screenshots
     const mappedChecks = (sortedChecks || []).map((check: any) => {
       const analysis = analysisMap.get(check.id);
       const screenshots = screenshotsMap.get(check.id) || [];
 
+      // Flatten element_instances data
+      const elementInstance = check.element_instances;
+      const elementGroup = elementInstance?.element_groups;
+
       return {
         ...check,
-        element_group_name: check.element_groups?.name || null, // Flatten element group name
-        element_groups: undefined, // Remove nested element_groups object
-        sections: undefined, // Remove nested sections object (used only for sorting)
+        // New schema fields
+        element_instance_label: elementInstance?.label || null,
+        element_group_id: elementGroup?.id || null,
+        element_group_name: elementGroup?.name || null,
+        element_group_slug: elementGroup?.slug || null,
+        // Remove nested objects
+        element_instances: undefined,
+        sections: undefined,
+        // Analysis data
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
         latest_reasoning: analysis?.ai_reasoning || null,
@@ -363,19 +379,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       instance_count: 0,
     }));
 
+    // Log element instance checks
+    const elementInstanceChecks = checks.filter((c: any) => c.element_instance_id);
+    if (elementInstanceChecks.length > 0) {
+      console.log('[CHECKS API] Element instance checks found:', elementInstanceChecks.length);
+      // Group by element_instance_id to show instances
+      const byInstance = new Map();
+      elementInstanceChecks.forEach((c: any) => {
+        if (!byInstance.has(c.element_instance_id)) {
+          byInstance.set(c.element_instance_id, []);
+        }
+        byInstance.get(c.element_instance_id).push(c);
+      });
+      console.log('[CHECKS API] Element instances:', byInstance.size);
+      Array.from(byInstance.entries())
+        .slice(0, 3)
+        .forEach(([instanceId, instanceChecks]: [any, any]) => {
+          const firstCheck = instanceChecks[0];
+          console.log(`[CHECKS API] Instance ${instanceId}:`, {
+            label: firstCheck.instance_label,
+            element_group: firstCheck.element_group_name,
+            checks_count: instanceChecks.length,
+            sections: instanceChecks.map((c: any) => c.code_section_number).join(', '),
+          });
+        });
+    }
+
     // Log detailed screenshot info for checks with instances
     const checksWithInstances = checks.filter((c: any) => c.instances && c.instances.length > 0);
-    console.log('[CHECKS API] Checks with instances:', checksWithInstances.length);
-    checksWithInstances.slice(0, 3).forEach((check: any) => {
-      console.log(`[CHECKS API] Parent check ${check.code_section_number}:`, {
-        parentScreenshots: check.screenshots?.length || 0,
-        instances: check.instances.map((i: any) => ({
-          label: i.instance_label,
-          screenshots: i.screenshots?.length || 0,
-        })),
-      });
-    });
+    console.log('[CHECKS API] Checks with instances array:', checksWithInstances.length);
 
+    console.log('[CHECKS API] Returning', checks.length, 'total checks');
     return NextResponse.json(checks);
   } catch (error) {
     return NextResponse.json(

@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     const checks = await createSectionChecks(
       supabase,
       assessmentId,
+      elementGroup.id,
       instance.id,
       instance.label,
       sections
@@ -143,6 +144,7 @@ async function getElementSections(supabase: any, elementGroupId: string, assessm
 async function createSectionChecks(
   supabase: any,
   assessmentId: string,
+  elementGroupId: string,
   elementInstanceId: string,
   instanceLabel: string,
   sections: Array<{
@@ -157,13 +159,23 @@ async function createSectionChecks(
     element_instance_id: elementInstanceId,
     check_name: `${instanceLabel} - ${section.section_title}`,
     section_id: section.section_id,
-    code_section_number: section.section_number, // Keep for display
-    code_section_title: section.section_title, // Keep for display
+    code_section_number: section.section_number,
+    code_section_title: section.section_title,
     status: 'pending',
   }));
 
+  console.log('[create-element] Inserting checks:', {
+    count: checksToInsert.length,
+    sample: checksToInsert[0],
+  });
+
   const { data, error } = await supabase.from('checks').insert(checksToInsert).select();
 
-  if (error) throw error;
+  if (error) {
+    console.error('[create-element] Error inserting checks:', error);
+    throw error;
+  }
+
+  console.log('[create-element] Successfully inserted checks:', data?.length);
   return data;
 }
