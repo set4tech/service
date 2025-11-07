@@ -112,6 +112,7 @@ export function PDFViewer({
   highlightedViolationId,
   disableLayers = false,
   screenshotNavigation,
+  refetchChecks,
 }: {
   pdfUrl: string;
   projectId?: string;
@@ -135,6 +136,7 @@ export function PDFViewer({
     canGoNext: boolean;
     canGoPrev: boolean;
   };
+  refetchChecks?: () => Promise<void>;
 }) {
   const assessmentId = useMemo(
     () => propAssessmentId || activeCheck?.assessment_id,
@@ -243,6 +245,7 @@ export function PDFViewer({
     onCheckSelect,
     onScreenshotSaved,
     refreshScreenshots,
+    refetchChecks,
   });
 
   // ============================================================================

@@ -34,6 +34,7 @@ interface ScreenshotCaptureParams {
   onCheckSelect?: (id: string) => void;
   onScreenshotSaved?: (checkId: string) => void;
   refreshScreenshots: () => void;
+  refetchChecks?: () => Promise<void>;
 }
 
 /**
@@ -82,6 +83,7 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
     onCheckSelect,
     onScreenshotSaved,
     refreshScreenshots,
+    refetchChecks,
   } = params;
 
   const capturingRef = useRef(false);
@@ -111,6 +113,8 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
             throw new Error(`Failed to create ${target} instance`);
           }
           targetCheckId = newCheck.id;
+          // Refetch ALL checks to get the full set (create-element creates 206 checks)
+          await refetchChecks?.();
           onCheckAdded?.(newCheck);
           onCheckSelect?.(newCheck.id);
         }

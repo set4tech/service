@@ -134,15 +134,8 @@ export function CheckList({
       filtered.forEach(check => {
         // Only show checks that belong to an element instance
         if (!check.element_instance_id || !check.element_instance_label) {
-          console.log('[CheckList] Skipping check (no element_instance_id):', {
-            id: check.id,
-            name: check.check_name,
-            element_instance_id: check.element_instance_id,
-            element_instance_label: check.element_instance_label,
-          });
           return;
         }
-
         const groupName = check.element_group_name || 'Other';
 
         if (!mainGroups.has(groupName)) {
@@ -532,10 +525,8 @@ export function CheckList({
                               checks_created: data.checks_created,
                             });
 
-                            console.log('[CheckList] Calling refetchChecks...');
-                            // Refetch all checks since multiple were created
+                            setSearchResults(null);
                             await refetchChecks?.();
-                            console.log('[CheckList] refetchChecks completed');
                           } else {
                             const data = await res.json();
                             console.error('[CheckList] Failed to create element instance:', data);

@@ -986,6 +986,7 @@ export default function AssessmentClient({
             onScreenshotSaved={refetchCheckScreenshots}
             onCheckAdded={handleCheckAdded}
             onCheckSelect={handleCheckSelect}
+            refetchChecks={refetchChecks}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">
