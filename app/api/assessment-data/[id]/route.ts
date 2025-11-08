@@ -3,26 +3,23 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 
 /**
  * GET /api/assessment-data/[id]
- * 
+ *
  * Consolidated endpoint that fetches all data needed for PDFViewer initialization:
  * - Measurements (for a specific project + page)
  * - Calibration (for a specific project + page)
  * - Screenshots (for the assessment)
  * - PDF Scale (for the assessment)
- * 
+ *
  * Query Parameters:
  * - projectId: UUID of the project (required for measurements/calibration)
  * - pageNumber: Page number to fetch data for (required for measurements/calibration)
  * - include: Comma-separated list of data to fetch (optional, defaults to all)
  *            Options: measurements, calibration, screenshots, pdf_scale
- * 
+ *
  * Example:
  * /api/assessment-data/[id]?projectId=xxx&pageNumber=1&include=measurements,calibration,screenshots,pdf_scale
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: assessmentId } = await params;
     const searchParams = request.nextUrl.searchParams;
@@ -38,45 +35,42 @@ export async function GET(
     const supabase = supabaseAdmin();
 
     // Prepare promises for parallel fetching
-    const promises: {
-      measurements?: Promise<any>;
-      calibration?: Promise<any>;
-      screenshots?: Promise<any>;
-      pdf_scale?: Promise<any>;
-    } = {};
+    const promises: Record<string, Promise<any>> = {};
 
     // Fetch measurements if requested
     if (shouldInclude('measurements') && projectId && pageNumber) {
-      promises.measurements = supabase
-        .from('pdf_measurements')
-        .select('*')
-        .eq('project_id', projectId)
-        .eq('page_number', parseInt(pageNumber))
-        .order('created_at', { ascending: true })
-        .then(({ data, error }) => {
-          if (error) {
-            console.error('[assessment-data] Error fetching measurements:', error);
-            throw error;
-          }
-          return data || [];
-        });
+      promises.measurements = (async () => {
+        const { data, error } = await supabase
+          .from('pdf_measurements')
+          .select('*')
+          .eq('project_id', projectId)
+          .eq('page_number', parseInt(pageNumber))
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.error('[assessment-data] Error fetching measurements:', error);
+          throw error;
+        }
+        return data || [];
+      })();
     }
 
     // Fetch calibration if requested
     if (shouldInclude('calibration') && projectId && pageNumber) {
-      promises.calibration = supabase
-        .from('pdf_scale_calibrations')
-        .select('*')
-        .eq('project_id', projectId)
-        .eq('page_number', parseInt(pageNumber))
-        .maybeSingle()
-        .then(({ data, error }) => {
-          if (error) {
-            console.error('[assessment-data] Error fetching calibration:', error);
-            throw error;
-          }
-          return data || null;
-        });
+      promises.calibration = (async () => {
+        const { data, error } = await supabase
+          .from('pdf_scale_calibrations')
+          .select('*')
+          .eq('project_id', projectId)
+          .eq('page_number', parseInt(pageNumber))
+          .maybeSingle();
+
+        if (error) {
+          console.error('[assessment-data] Error fetching calibration:', error);
+          throw error;
+        }
+        return data || null;
+      })();
     }
 
     // Fetch screenshots if requested
@@ -156,18 +150,19 @@ export async function GET(
 
     // Fetch PDF scale if requested
     if (shouldInclude('pdf_scale') && assessmentId) {
-      promises.pdf_scale = supabase
-        .from('assessments')
-        .select('pdf_scale')
-        .eq('id', assessmentId)
-        .single()
-        .then(({ data, error }) => {
-          if (error) {
-            console.error('[assessment-data] Error fetching pdf_scale:', error);
-            throw error;
-          }
-          return data?.pdf_scale || 2.0;
-        });
+      promises.pdf_scale = (async () => {
+        const { data, error } = await supabase
+          .from('assessments')
+          .select('pdf_scale')
+          .eq('id', assessmentId)
+          .single();
+
+        if (error) {
+          console.error('[assessment-data] Error fetching pdf_scale:', error);
+          throw error;
+        }
+        return data?.pdf_scale || 2.0;
+      })();
     }
 
     // Execute all promises in parallel
@@ -199,7 +194,7 @@ export async function GET(
   } catch (error) {
     console.error('[assessment-data] Unexpected error:', error);
     return NextResponse.json(
-      { 
+      {
         success: false,
         error: 'Internal server error',
         data: {
@@ -207,10 +202,9 @@ export async function GET(
           calibration: null,
           screenshots: null,
           pdf_scale: null,
-        }
+        },
       },
       { status: 500 }
     );
   }
 }
-

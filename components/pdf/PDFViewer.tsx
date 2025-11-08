@@ -31,6 +31,7 @@ import { useMeasurements } from '@/hooks/useMeasurements';
 import { useCalibration } from '@/hooks/useCalibration';
 import { useScreenshotCapture } from '@/hooks/useScreenshotCapture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useAssessmentData } from '@/hooks/useAssessmentData';
 import { renderPdfPage } from '@/lib/pdf/canvas-utils';
 import { lineIntersectsRect } from '@/lib/pdf/geometry-utils';
 
@@ -206,11 +207,30 @@ export function PDFViewer({
   // ============================================================================
   // SECTION 5: FEATURE HOOKS
   // ============================================================================
-  const measurementsHook = useMeasurements(readOnly ? undefined : projectId, state.pageNumber);
-  const calibrationHook = useCalibration(readOnly ? undefined : projectId, state.pageNumber);
+
+  // Use consolidated data fetch for initial load (optimization)
+  const consolidatedData = useAssessmentData(
+    readOnly ? undefined : assessmentId,
+    readOnly ? undefined : projectId,
+    state.pageNumber,
+    !readOnly // only fetch if not read-only
+  );
+
+  // Individual hooks with initial data from consolidated fetch
+  const measurementsHook = useMeasurements(
+    readOnly ? undefined : projectId,
+    state.pageNumber,
+    consolidatedData.state.measurements
+  );
+  const calibrationHook = useCalibration(
+    readOnly ? undefined : projectId,
+    state.pageNumber,
+    consolidatedData.state.calibration
+  );
   const screenshotsHook = useAssessmentScreenshots(
     readOnly ? undefined : assessmentId,
-    state.pageNumber
+    state.pageNumber,
+    consolidatedData.state.allScreenshots
   );
   const viewTransform = useViewTransform(
     viewportRef as React.RefObject<HTMLElement>,
@@ -382,32 +402,20 @@ export function PDFViewer({
     }
   }, [externalCurrentPage, state.pageNumber]);
 
-  // Load saved render scale
+  // Load saved render scale from consolidated data
   useEffect(() => {
     if (!assessmentId || readOnly || loadedScaleForRef.current === assessmentId) return;
+    if (consolidatedData.state.loading) return; // Wait for consolidated data to load
 
-    // Mark as loading immediately to prevent duplicate fetches
+    // Mark as loaded immediately to prevent duplicate fetches
     loadedScaleForRef.current = assessmentId;
 
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/assessments/${assessmentId}/pdf-scale`);
-        if (res.ok && !cancelled) {
-          const data = await res.json();
-          if (data?.pdf_scale) {
-            const loadedScale = Math.min(8, Math.max(2, data.pdf_scale));
-            setRenderScale(loadedScale < 3 ? 4 : loadedScale);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [assessmentId, readOnly]);
+    const pdfScale = consolidatedData.state.pdf_scale;
+    if (pdfScale) {
+      const loadedScale = Math.min(8, Math.max(2, pdfScale));
+      setRenderScale(loadedScale < 3 ? 4 : loadedScale);
+    }
+  }, [assessmentId, readOnly, consolidatedData.state.loading, consolidatedData.state.pdf_scale]);
 
   // Center the page initially when it first loads
   // Track whether we've already centered this page to avoid re-centering on zoom

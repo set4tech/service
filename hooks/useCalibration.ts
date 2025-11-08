@@ -45,7 +45,7 @@ interface CalibrationComputed {
   /**
    * Calculate real-world distance from pixel distance using current calibration.
    * Returns null if no calibration is set.
-   * 
+   *
    * @param pixelsDistance - Distance in pixels to convert
    * @param cssWidth - CSS width of the canvas (required for page-size method)
    */
@@ -58,6 +58,10 @@ interface CalibrationComputed {
  * Supports two calibration methods:
  * 1. Page Size Method: Uses architectural scale notation (e.g., "1/4" = 1'-0")
  * 2. Known Length Method: Uses a drawn line with known real-world distance
+ *
+ * @param projectId - Project UUID
+ * @param pageNumber - Page number to fetch calibration for
+ * @param initialData - Pre-loaded calibration (skips initial fetch if provided)
  *
  * @example
  * ```typescript
@@ -86,13 +90,19 @@ interface CalibrationComputed {
  */
 export function useCalibration(
   projectId: string | undefined,
-  pageNumber: number
+  pageNumber: number,
+  initialData?: Calibration | null
 ): HookReturn<CalibrationState, CalibrationActions, CalibrationComputed> {
+  // Skip fetch if initialData is provided
+  const shouldFetch = initialData === undefined && projectId;
+
   const { data, loading, error, refetch } = useFetch<{ calibration: Calibration | null }>(
-    projectId ? `/api/measurements/calibrate?projectId=${projectId}&pageNumber=${pageNumber}` : null
+    shouldFetch
+      ? `/api/measurements/calibrate?projectId=${projectId}&pageNumber=${pageNumber}`
+      : null
   );
 
-  const calibration = data?.calibration ?? null;
+  const calibration = initialData !== undefined ? initialData : (data?.calibration ?? null);
 
   const savePageSize = useCallback(
     async (

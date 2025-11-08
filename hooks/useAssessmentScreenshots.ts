@@ -23,14 +23,25 @@ interface Screenshot {
 /**
  * Custom hook to fetch and manage screenshots for an assessment.
  * Returns screenshots filtered by the current page number.
+ *
+ * @param assessmentId - Assessment UUID
+ * @param currentPage - Current page number to filter screenshots
+ * @param initialData - Pre-loaded screenshots (skips initial fetch if provided)
  */
-export function useAssessmentScreenshots(assessmentId: string | undefined, currentPage: number) {
+export function useAssessmentScreenshots(
+  assessmentId: string | undefined,
+  currentPage: number,
+  initialData?: Screenshot[]
+) {
+  // Skip fetch if initialData is provided
+  const shouldFetch = !initialData && assessmentId;
+
   // Use the shared fetch hook
   const { data, loading, refetch } = useFetch<{ screenshots: Screenshot[] }>(
-    assessmentId ? `/api/screenshots?assessment_id=${assessmentId}` : null
+    shouldFetch ? `/api/screenshots?assessment_id=${assessmentId}` : null
   );
 
-  const allScreenshots = data?.screenshots ?? [];
+  const allScreenshots = initialData || data?.screenshots || [];
 
   // Filter screenshots to only those on the current page
   const screenshots = useMemo(

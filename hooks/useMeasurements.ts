@@ -49,6 +49,10 @@ interface MeasurementsActions {
  * - Delete measurements
  * - Track selected measurement
  *
+ * @param projectId - Project UUID
+ * @param pageNumber - Page number to fetch measurements for
+ * @param initialData - Pre-loaded measurements (skips initial fetch if provided)
+ *
  * @example
  * ```typescript
  * const measurements = useMeasurements(projectId, pageNumber);
@@ -74,16 +78,20 @@ interface MeasurementsActions {
  */
 export function useMeasurements(
   projectId: string | undefined,
-  pageNumber: number
+  pageNumber: number,
+  initialData?: Measurement[]
 ): HookReturn<MeasurementsState, MeasurementsActions> {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Skip fetch if initialData is provided
+  const shouldFetch = !initialData && projectId;
+
   const { data, loading, error, refetch } = useFetch<{ measurements: Measurement[] }>(
-    projectId ? `/api/measurements?projectId=${projectId}&pageNumber=${pageNumber}` : null
+    shouldFetch ? `/api/measurements?projectId=${projectId}&pageNumber=${pageNumber}` : null
   );
 
-  const measurements = data?.measurements ?? [];
+  const measurements = initialData || data?.measurements || [];
 
   const save = useCallback(
     async (measurement: NewMeasurement): Promise<Measurement> => {
