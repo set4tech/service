@@ -106,13 +106,6 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
       try {
         // Step 1: Determine target check ID
         let targetCheckId = activeCheck?.id;
-        console.log('[useScreenshotCapture] Active check:', {
-          id: activeCheck?.id,
-          code_section_number: activeCheck?.code_section_number,
-          code_section_title: activeCheck?.code_section_title,
-          target,
-          type,
-        });
 
         if (target !== 'current') {
           const result = await createElementInstance(target, assessmentId);
@@ -169,7 +162,6 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
         }
 
         // Step 6: Save metadata
-        console.log('[useScreenshotCapture] Saving screenshot metadata for check:', targetCheckId);
         const saveResponse = await fetch('/api/screenshots', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -193,18 +185,10 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
         });
 
         if (!saveResponse.ok) {
-          console.error(
-            '[useScreenshotCapture] Failed to save screenshot:',
-            await saveResponse.text()
-          );
           throw new Error('Failed to save screenshot');
         }
 
-        const savedScreenshot = await saveResponse.json();
-        console.log('[useScreenshotCapture] Screenshot saved successfully:', savedScreenshot);
-
         // Step 7: Notify and refresh
-        console.log('[useScreenshotCapture] Calling onScreenshotSaved for check:', targetCheckId);
         onScreenshotSaved?.(targetCheckId!);
         refreshScreenshots();
       } finally {

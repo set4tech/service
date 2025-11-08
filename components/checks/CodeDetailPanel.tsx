@@ -21,6 +21,7 @@ interface CodeDetailPanelProps {
   onChecksRefresh?: () => void;
   activeCheck?: any;
   onScreenshotAssigned?: () => void;
+  screenshotRefreshTrigger?: number;
 }
 
 export function CodeDetailPanel({
@@ -33,9 +34,17 @@ export function CodeDetailPanel({
   onChecksRefresh,
   activeCheck,
   onScreenshotAssigned,
+  screenshotRefreshTrigger,
 }: CodeDetailPanelProps) {
   // Local state to track screenshot changes for ScreenshotGallery
   const [screenshotsRefreshKey, setScreenshotsRefreshKey] = useState(0);
+
+  // Sync with external screenshot refresh trigger (e.g., when 'C' key saves a screenshot)
+  useEffect(() => {
+    if (screenshotRefreshTrigger !== undefined && screenshotRefreshTrigger > 0) {
+      setScreenshotsRefreshKey(screenshotRefreshTrigger);
+    }
+  }, [screenshotRefreshTrigger]);
 
   // UI state: which child check the user is viewing
   const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);

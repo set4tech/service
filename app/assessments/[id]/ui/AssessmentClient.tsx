@@ -586,27 +586,20 @@ export default function AssessmentClient({
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
 
+  // Track screenshot refresh trigger to notify CodeDetailPanel
+  const screenshotRefreshTriggerRef = useRef(0);
+
   // Refetch screenshots for a specific check
   const refetchCheckScreenshots = async (checkId: string) => {
     try {
-      console.log('[refetchCheckScreenshots] Fetching screenshots for check:', checkId);
       const res = await fetch(`/api/checks/${checkId}/screenshots`);
       if (res.ok) {
         const screenshots = await res.json();
-        console.log(
-          '[refetchCheckScreenshots] Fetched',
-          screenshots.length,
-          'screenshots for check',
-          checkId
-        );
 
-        setChecks(prev => {
-          let checkFound = false;
-          const updated = prev.map(check => {
+        setChecks(prev =>
+          prev.map(check => {
             // Update top-level check if it matches
             if (check.id === checkId) {
-              checkFound = true;
-              console.log('[refetchCheckScreenshots] Found matching check, updating screenshots');
               return { ...check, screenshots };
             }
             // Update instance within check if it matches
@@ -615,28 +608,15 @@ export default function AssessmentClient({
                 instance.id === checkId ? { ...instance, screenshots } : instance
               );
               if (updatedInstances !== check.instances) {
-                checkFound = true;
-                console.log(
-                  '[refetchCheckScreenshots] Found matching instance, updating screenshots'
-                );
                 return { ...check, instances: updatedInstances };
               }
             }
             return check;
-          });
+          })
+        );
 
-          if (!checkFound) {
-            console.warn(
-              '[refetchCheckScreenshots] WARNING: Check',
-              checkId,
-              'not found in current checks array'
-            );
-          }
-
-          return updated;
-        });
-      } else {
-        console.error('[refetchCheckScreenshots] Failed to fetch screenshots, status:', res.status);
+        // Increment trigger to notify CodeDetailPanel immediately
+        screenshotRefreshTriggerRef.current += 1;
       }
     } catch (error) {
       console.error('[refetchCheckScreenshots] Error:', error);
@@ -971,6 +951,7 @@ export default function AssessmentClient({
                     sectionKey={activeCheck?.sections?.key || null}
                     filterToSectionKey={filterToSectionKey}
                     activeCheck={activeCheck}
+                    screenshotRefreshTrigger={screenshotRefreshTriggerRef.current}
                     onClose={() => {
                       setShowDetailPanel(false);
                       // Clear URL hash when panel is closed
