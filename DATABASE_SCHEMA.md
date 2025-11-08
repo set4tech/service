@@ -967,6 +967,55 @@ FROM projects
 WHERE id = $1;
 ```
 
+## Database Access
+
+### Supabase CLI (Recommended)
+
+The **Supabase CLI** is the preferred way to interact with the database:
+
+**Setup:**
+
+```bash
+# Login (opens browser for authentication)
+supabase login
+
+# Link to development project
+supabase link --project-ref prafecmdqiwgnsumlmqn --password crumblyboys33
+```
+
+**IMPORTANT:** Remove conflicting environment variables from `.envrc`:
+
+- Comment out `SUPABASE_PORT`, `SUPABASE_DB`, `SUPABASE_URL`, `SUPABASE_USER`
+- These env vars conflict with the CLI's internal configuration
+
+**Common Commands:**
+
+```bash
+# Run SQL queries
+supabase db query --linked "SELECT * FROM codes LIMIT 10"
+
+# List migrations
+supabase migration list --linked
+
+# Apply migrations to remote
+supabase db push
+
+# Pull schema from remote
+supabase db pull
+
+# Generate TypeScript types
+supabase gen types typescript --linked > lib/database.types.ts
+```
+
+### Direct psql (Alternative)
+
+If you need to use `psql` directly:
+
+```bash
+# Use pooler connection (IPv4 compatible)
+PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
+```
+
 ## Data Loading
 
 Use the upload script to load code data:

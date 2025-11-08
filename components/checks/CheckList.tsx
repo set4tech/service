@@ -640,18 +640,7 @@ export function CheckList({
                               !hasInstances && 'pl-6'
                             )}
                           >
-                            <span
-                              className={clsx(
-                                'mt-0.5 mr-2 text-sm',
-                                getStatusColor(check),
-                                isActivelyProcessing(check) && 'animate-bounce'
-                              )}
-                              style={
-                                isActivelyProcessing(check)
-                                  ? { animationDuration: '2s' }
-                                  : undefined
-                              }
-                            >
+                            <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>
                               {getStatusIcon(check)}
                             </span>
                             <div className="flex-1 min-w-0">
@@ -888,14 +877,8 @@ export function CheckList({
                                   <span
                                     className={clsx(
                                       'mt-0.5 mr-2 text-sm',
-                                      getStatusColor(instance),
-                                      isActivelyProcessing(instance) && 'animate-bounce'
+                                      getStatusColor(instance)
                                     )}
-                                    style={
-                                      isActivelyProcessing(instance)
-                                        ? { animationDuration: '2s' }
-                                        : undefined
-                                    }
                                   >
                                     {getStatusIcon(instance)}
                                   </span>
