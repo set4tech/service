@@ -35,7 +35,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const supabase = supabaseAdmin();
 
     // Prepare promises for parallel fetching
-    const promises: Record<string, PromiseLike<any>> = {};
+    const promises: {
+      measurements?: Promise<any[]>;
+      calibration?: Promise<any | null>;
+      screenshots?: Promise<any[]>;
+      pdf_scale?: Promise<any | null>;
+    } = {};
 
     // Fetch measurements if requested
     if (shouldInclude('measurements') && projectId && pageNumber) {

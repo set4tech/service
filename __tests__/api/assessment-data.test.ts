@@ -18,7 +18,7 @@ describe('GET /api/assessment-data/[id]', () => {
     const pageNumber = '1';
 
     const { supabaseAdmin } = await import('@/lib/supabase-server');
-    
+
     vi.mocked(supabaseAdmin).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'pdf_measurements') {
