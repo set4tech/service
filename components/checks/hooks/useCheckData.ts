@@ -18,7 +18,8 @@ interface Check {
 export function useCheckData(
   checkId: string | null,
   activeChildCheckId: string | null,
-  _filterToSectionKey: string | null
+  _filterToSectionKey: string | null,
+  screenshotsRefreshKey?: number
 ) {
   const [check, setCheck] = useState<Check | null>(null);
   const [sections, setSections] = useState<CodeSection[]>([]);
@@ -80,7 +81,7 @@ export function useCheckData(
         setError(err.message);
         setLoading(false);
       });
-  }, [checkId, refreshCounter]);
+  }, [checkId, refreshCounter, screenshotsRefreshKey]);
 
   // When viewing a child check, fetch its section + analysis
   useEffect(() => {

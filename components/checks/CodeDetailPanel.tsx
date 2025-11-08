@@ -52,7 +52,7 @@ export function CodeDetailPanel({
     manualOverrideNote: initialManualOverrideNote,
     showSingleSectionOnly,
     refresh,
-  } = useCheckData(checkId, activeChildCheckId, filterToSectionKey || null);
+  } = useCheckData(checkId, activeChildCheckId, filterToSectionKey || null, screenshotsRefreshKey);
 
   // Initialize activeChildCheckId when check loads
   useEffect(() => {

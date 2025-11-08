@@ -58,17 +58,42 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
         })
       : null;
 
+    // Fetch screenshots for this check
+    const screenshotsQuery = supabase
+      .from('screenshots')
+      .select(
+        `
+        *,
+        screenshot_check_assignments!inner(
+          check_id,
+          is_original,
+          assigned_at
+        )
+      `
+      )
+      .eq('screenshot_check_assignments.check_id', checkId)
+      .order('created_at', { ascending: false });
+
     // Execute all parallel queries
-    const [analysisRunsResult, siblingChecksResult, codeSectionResult] = await Promise.all([
-      analysisRunsQuery,
-      siblingChecksQuery || Promise.resolve({ data: null, error: null }),
-      codeSectionQuery || Promise.resolve({ data: null, error: null }),
-    ]);
+    const [analysisRunsResult, siblingChecksResult, codeSectionResult, screenshotsResult] =
+      await Promise.all([
+        analysisRunsQuery,
+        siblingChecksQuery || Promise.resolve({ data: null, error: null }),
+        codeSectionQuery || Promise.resolve({ data: null, error: null }),
+        screenshotsQuery,
+      ]);
 
     // Process results
     const analysisRuns = analysisRunsResult.data || [];
     const siblingChecks = siblingChecksResult.data || [];
     const codeSectionData = codeSectionResult.data;
+
+    // Flatten screenshot assignment metadata
+    const screenshots = (screenshotsResult.data || []).map((item: any) => ({
+      ...item,
+      is_original: item.screenshot_check_assignments?.[0]?.is_original,
+      screenshot_check_assignments: undefined,
+    }));
 
     // Format code section data
     let codeSection = null;
@@ -120,7 +145,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     }
 
     return NextResponse.json({
-      check,
+      check: { ...check, screenshots },
       siblingChecks: elementInstanceId ? siblingChecks : [],
       codeSection,
       analysisRuns,
