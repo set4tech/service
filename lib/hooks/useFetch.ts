@@ -68,8 +68,25 @@ export function useFetch<T = any>(
   const abortControllerRef = useRef<AbortController | null>(null);
   const retriesRef = useRef(0);
 
+  // Stable refs for callbacks to prevent unnecessary re-executions
+  const onSuccessRef = useRef(options?.onSuccess);
+  const onErrorRef = useRef(options?.onError);
+
+  useEffect(() => {
+    onSuccessRef.current = options?.onSuccess;
+    onErrorRef.current = options?.onError;
+  }, [options?.onSuccess, options?.onError]);
+
+  // Serialize complex option values to avoid unnecessary re-renders
+  const method = options?.method || 'GET';
+  const enabled = options?.enabled;
+  const retry = options?.retry;
+  const retryDelay = options?.retryDelay;
+  const headersString = options?.headers ? JSON.stringify(options.headers) : '';
+  const bodyString = options?.body ? JSON.stringify(options.body) : '';
+
   const execute = useCallback(async () => {
-    if (!url || options?.enabled === false) return;
+    if (!url || enabled === false) return;
 
     // Cancel previous request
     if (abortControllerRef.current) {
@@ -81,13 +98,16 @@ export function useFetch<T = any>(
     setError(null);
 
     try {
+      const headers = headersString ? JSON.parse(headersString) : {};
+      const body = bodyString ? JSON.parse(bodyString) : undefined;
+
       const response = await fetch(url, {
-        method: options?.method || 'GET',
+        method,
         headers: {
-          ...(options?.body && { 'Content-Type': 'application/json' }),
-          ...options?.headers,
+          ...(body && { 'Content-Type': 'application/json' }),
+          ...headers,
         },
-        body: options?.body ? JSON.stringify(options.body) : undefined,
+        body: body ? JSON.stringify(body) : undefined,
         signal: abortControllerRef.current.signal,
       });
 
@@ -106,7 +126,7 @@ export function useFetch<T = any>(
 
       setData(responseData);
       retriesRef.current = 0;
-      options?.onSuccess?.(responseData);
+      onSuccessRef.current?.(responseData);
     } catch (err: any) {
       // Don't set error if request was aborted
       if (err.name === 'AbortError') return;
@@ -114,19 +134,19 @@ export function useFetch<T = any>(
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
       // Retry logic
-      if (options?.retry && retriesRef.current < options.retry) {
+      if (retry && retriesRef.current < retry) {
         retriesRef.current++;
-        const delay = options.retryDelay || 1000;
+        const delay = retryDelay || 1000;
         setTimeout(() => execute(), delay * retriesRef.current);
         return;
       }
 
       setError(errorMessage);
-      options?.onError?.(errorMessage);
+      onErrorRef.current?.(errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [url, JSON.stringify(options)]);
+  }, [url, method, enabled, retry, retryDelay, headersString, bodyString]);
 
   const reset = useCallback(() => {
     setData(null);
@@ -136,7 +156,7 @@ export function useFetch<T = any>(
   }, []);
 
   useEffect(() => {
-    if (options?.enabled !== false) {
+    if (enabled !== false) {
       execute();
     }
 
@@ -145,8 +165,7 @@ export function useFetch<T = any>(
         abortControllerRef.current.abort();
       }
     };
-  }, [url, execute, options?.enabled]);
+  }, [execute, enabled]);
 
   return { data, loading, error, refetch: execute, reset };
 }
-

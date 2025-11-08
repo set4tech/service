@@ -1,0 +1,351 @@
+import { supabaseAdmin } from '@/lib/supabase-server';
+
+export interface GetAssessmentChecksOptions {
+  search?: string | null;
+  elementGroup?: string | null;
+}
+
+/**
+ * Fetch all checks for an assessment with associated data
+ * (analysis runs, screenshots, element instances, sections)
+ *
+ * This is a shared function that can be called from:
+ * - API routes (via NextResponse.json)
+ * - Server components (direct call)
+ */
+export async function getAssessmentChecks(
+  assessmentId: string,
+  options?: GetAssessmentChecksOptions
+) {
+  const supabase = supabaseAdmin();
+  const search = options?.search;
+  const elementGroup = options?.elementGroup;
+
+  // Join with element_instances to get element data and sections to get metadata
+  let query = supabase
+    .from('checks')
+    .select(
+      `
+      *, 
+      element_instances(id, label, element_group_id, element_groups(id, name, slug)),
+      sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)
+    `
+    )
+    .eq('assessment_id', assessmentId)
+    .limit(20000); // Override Supabase default 1000 row limit
+
+  // Filter by element group if specified
+  if (elementGroup) {
+    const { data: group } = await supabase
+      .from('element_groups')
+      .select('id')
+      .eq('slug', elementGroup)
+      .single();
+
+    if (group) {
+      query = query.eq('element_group_id', group.id);
+    }
+  }
+
+  // Handle search queries
+  if (search && search.trim()) {
+    console.log('[getAssessmentChecks] Search query:', search.trim(), 'Assessment:', assessmentId);
+    const searchPattern = search.trim().toLowerCase();
+
+    // Build base query for checks with joins
+    let checksQuery = supabase
+      .from('checks')
+      .select(
+        '*, element_groups(name), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)'
+      )
+      .eq('assessment_id', assessmentId)
+      .limit(20000);
+
+    // Apply element group filter to search as well
+    if (elementGroup) {
+      const { data: group } = await supabase
+        .from('element_groups')
+        .select('id')
+        .eq('slug', elementGroup)
+        .single();
+
+      if (group) {
+        checksQuery = checksQuery.eq('element_group_id', group.id);
+      }
+    }
+
+    // Get all checks for this assessment
+    const { data: allChecksData, error: checksError } = await checksQuery;
+    if (checksError) throw checksError;
+
+    // Filter out checks for sections marked as never_relevant
+    const filteredChecksData = (allChecksData || []).filter((check: any) => {
+      return check.sections?.never_relevant !== true;
+    });
+
+    // Fetch latest analysis runs and screenshots in parallel
+    const [{ data: allAnalysisRuns }, { data: allScreenshots }] = await Promise.all([
+      supabase
+        .from('analysis_runs')
+        .select(
+          'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, checks!inner(assessment_id)'
+        )
+        .eq('checks.assessment_id', assessmentId)
+        .order('run_number', { ascending: false }),
+      supabase
+        .from('screenshot_check_assignments')
+        .select(
+          `
+          check_id,
+          is_original,
+          screenshots (*),
+          checks!inner(assessment_id)
+        `
+        )
+        .eq('checks.assessment_id', assessmentId)
+        .order('screenshots(created_at)', { ascending: true }),
+    ]);
+
+    // Create analysis map - get latest run per check
+    const analysisMap = new Map();
+    (allAnalysisRuns || []).forEach((run: any) => {
+      if (!analysisMap.has(run.check_id)) {
+        analysisMap.set(run.check_id, run);
+      }
+    });
+
+    // Create screenshots map
+    const screenshotsMap = new Map<string, any[]>();
+    (allScreenshots || []).forEach((assignment: any) => {
+      if (!screenshotsMap.has(assignment.check_id)) {
+        screenshotsMap.set(assignment.check_id, []);
+      }
+      if (assignment.screenshots) {
+        screenshotsMap.get(assignment.check_id)!.push({
+          ...assignment.screenshots,
+          is_original: assignment.is_original,
+        });
+      }
+    });
+
+    // Sort by floorplan_relevant first, then by code_section_number
+    const sortedChecksData = filteredChecksData.sort((a: any, b: any) => {
+      const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
+      const bFloorplanRelevant = b.sections?.floorplan_relevant ?? false;
+
+      if (aFloorplanRelevant !== bFloorplanRelevant) {
+        return bFloorplanRelevant ? 1 : -1;
+      }
+
+      return (a.code_section_number || '').localeCompare(b.code_section_number || '');
+    });
+
+    // Add analysis data and screenshots
+    const mappedChecks = (sortedChecksData || []).map((check: any) => {
+      const analysis = analysisMap.get(check.id);
+      const screenshots = screenshotsMap.get(check.id) || [];
+
+      return {
+        ...check,
+        element_group_name: check.element_groups?.name || null,
+        element_groups: undefined,
+        latest_status: analysis?.compliance_status || null,
+        latest_confidence: analysis?.confidence || null,
+        latest_reasoning: analysis?.ai_reasoning || null,
+        latest_analysis: analysis?.violations
+          ? {
+              violations: analysis.violations,
+              recommendations: analysis.recommendations,
+            }
+          : null,
+        screenshots,
+      };
+    });
+
+    // Filter by check fields (fast, in-memory)
+    const checksMatchingCheckFields = mappedChecks.filter(
+      (check: any) =>
+        check.code_section_number?.toLowerCase().includes(searchPattern) ||
+        check.code_section_title?.toLowerCase().includes(searchPattern)
+    );
+
+    console.log(
+      '[getAssessmentChecks] Checks matching titles/numbers:',
+      checksMatchingCheckFields.length
+    );
+
+    // Get sections that match the search pattern
+    const { data: matchingSections, error: sectionsError } = await supabase
+      .from('sections')
+      .select('id')
+      .eq('never_relevant', false)
+      .ilike('text', `%${searchPattern}%`);
+
+    if (sectionsError) throw sectionsError;
+
+    console.log('[getAssessmentChecks] Sections matching content:', matchingSections?.length);
+
+    // Create a set of matching section IDs
+    const matchingSectionIds = new Set(matchingSections?.map((s: any) => s.id) || []);
+
+    // Get checks that reference matching sections
+    const checksMatchingSectionContent = mappedChecks.filter((check: any) =>
+      matchingSectionIds.has(check.section_id)
+    );
+
+    console.log(
+      '[getAssessmentChecks] Checks matching section content:',
+      checksMatchingSectionContent.length
+    );
+
+    // Combine both sets (unique checks)
+    const allMatchingCheckIds = new Set([
+      ...checksMatchingCheckFields.map((c: any) => c.id),
+      ...checksMatchingSectionContent.map((c: any) => c.id),
+    ]);
+
+    const allChecks = mappedChecks.filter((check: any) => allMatchingCheckIds.has(check.id));
+
+    console.log('[getAssessmentChecks] Total unique matches:', allChecks.length);
+
+    // Return checks with flat structure
+    return allChecks.map((check: any) => ({
+      ...check,
+      instances: [],
+      instance_count: 0,
+    }));
+  }
+
+  // No search - fetch all checks in batches
+  let allChecks: any[] = [];
+  let hasMore = true;
+  let offset = 0;
+  const batchSize = 1000;
+
+  while (hasMore) {
+    const { data: batch, error } = await query.range(offset, offset + batchSize - 1);
+    if (error) throw error;
+
+    if (batch && batch.length > 0) {
+      allChecks = allChecks.concat(batch);
+      offset += batchSize;
+      hasMore = batch.length === batchSize;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  console.log(
+    `[getAssessmentChecks] Fetched ${allChecks.length} checks in ${Math.ceil(allChecks.length / batchSize)} batches`
+  );
+
+  // Fetch screenshots and analysis runs in parallel
+  const [{ data: allScreenshots }, { data: allAnalysisRuns }] = await Promise.all([
+    supabase
+      .from('screenshot_check_assignments')
+      .select(
+        `
+        check_id,
+        is_original,
+        screenshots (*),
+        checks!inner(assessment_id)
+      `
+      )
+      .eq('checks.assessment_id', assessmentId)
+      .order('screenshots(created_at)', { ascending: true }),
+    allChecks.length > 0
+      ? supabase
+          .from('analysis_runs')
+          .select(
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, checks!inner(assessment_id)'
+          )
+          .eq('checks.assessment_id', assessmentId)
+          .order('run_number', { ascending: false })
+      : Promise.resolve({ data: null }),
+  ]);
+
+  console.log('[getAssessmentChecks] Fetched screenshot assignments:', allScreenshots?.length || 0);
+
+  // Sort checks by floorplan_relevant first, then by code_section_number
+  const sortedChecks = allChecks.sort((a: any, b: any) => {
+    const aFloorplanRelevant = a.sections?.floorplan_relevant ?? false;
+    const bFloorplanRelevant = b.sections?.floorplan_relevant ?? false;
+
+    if (aFloorplanRelevant !== bFloorplanRelevant) {
+      return bFloorplanRelevant ? 1 : -1;
+    }
+
+    return (a.code_section_number || '').localeCompare(b.code_section_number || '');
+  });
+
+  // Create analysis map - get latest run per check
+  const analysisMap = new Map();
+  (allAnalysisRuns || []).forEach((run: any) => {
+    if (!analysisMap.has(run.check_id)) {
+      analysisMap.set(run.check_id, run);
+    }
+  });
+
+  console.log('[getAssessmentChecks] Analysis map size:', analysisMap.size);
+
+  // Create screenshots map
+  const screenshotsMap = new Map<string, any[]>();
+  (allScreenshots || []).forEach((assignment: any) => {
+    if (!screenshotsMap.has(assignment.check_id)) {
+      screenshotsMap.set(assignment.check_id, []);
+    }
+    if (assignment.screenshots) {
+      screenshotsMap.get(assignment.check_id)!.push({
+        ...assignment.screenshots,
+        is_original: assignment.is_original,
+      });
+    }
+  });
+
+  console.log('[getAssessmentChecks] Screenshots map created:', {
+    checksWithScreenshots: screenshotsMap.size,
+    totalScreenshots: Array.from(screenshotsMap.values()).flat().length,
+  });
+
+  // Add analysis data and screenshots to checks
+  const mappedChecks = (sortedChecks || []).map((check: any) => {
+    const analysis = analysisMap.get(check.id);
+    const screenshots = screenshotsMap.get(check.id) || [];
+
+    // Flatten element_instances data
+    const elementInstance = check.element_instances;
+    const elementGroup = elementInstance?.element_groups;
+
+    return {
+      ...check,
+      // New schema fields
+      element_instance_label: elementInstance?.label || null,
+      element_group_id: elementGroup?.id || null,
+      element_group_name: elementGroup?.name || null,
+      element_group_slug: elementGroup?.slug || null,
+      // Remove nested element_instances, keep sections with key
+      element_instances: undefined,
+      // Analysis data
+      latest_status: analysis?.compliance_status || null,
+      latest_confidence: analysis?.confidence || null,
+      latest_reasoning: analysis?.ai_reasoning || null,
+      latest_analysis: analysis?.violations
+        ? {
+            violations: analysis.violations,
+            recommendations: analysis.recommendations,
+          }
+        : null,
+      screenshots,
+    };
+  });
+
+  // Return checks with flat structure
+  const checks = mappedChecks.map((check: any) => ({
+    ...check,
+    instances: [],
+    instance_count: 0,
+  }));
+
+  console.log('[getAssessmentChecks] Returning', checks.length, 'total checks');
+  return checks;
+}

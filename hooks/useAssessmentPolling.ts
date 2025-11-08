@@ -33,7 +33,7 @@ const stateCache = new Map<string, AssessmentPollingState>();
 export function useAssessmentPolling(
   options: UseAssessmentPollingOptions
 ): UseAssessmentPollingReturn {
-  const { checkId, onComplete, pollInterval = 1000 } = options;
+  const { checkId, onComplete, pollInterval = 2000 } = options; // Changed from 1000 to 2000
 
   // Initialize from cache if available
   const [state, setState] = useState<AssessmentPollingState>(() => {
@@ -47,6 +47,9 @@ export function useAssessmentPolling(
     };
   });
 
+  // Control polling based on page visibility
+  const [pollingEnabled, setPollingEnabled] = useState(true);
+
   // Stable refs for callbacks to prevent polling restarts
   const onCompleteRef = useRef(onComplete);
   const previousInProgressRef = useRef(false);
@@ -55,9 +58,25 @@ export function useAssessmentPolling(
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
+  // Stop polling when page is hidden
   useEffect(() => {
-    if (!checkId) {
-      setState({ assessing: false, progress: 0, message: '' });
+    const handleVisibilityChange = () => {
+      setPollingEnabled(!document.hidden);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!checkId || !pollingEnabled) {
+      // Clear state if no checkId, but keep state if just paused due to visibility
+      if (!checkId) {
+        setState({ assessing: false, progress: 0, message: '' });
+      }
       return;
     }
 
@@ -65,7 +84,7 @@ export function useAssessmentPolling(
     let timeoutId: NodeJS.Timeout | null = null;
 
     const poll = async () => {
-      if (!mounted) return;
+      if (!mounted || !pollingEnabled) return;
 
       try {
         const res = await fetch(`/api/checks/${checkId}/full`);
@@ -137,7 +156,7 @@ export function useAssessmentPolling(
         clearTimeout(timeoutId);
       }
     };
-  }, [checkId, pollInterval]);
+  }, [checkId, pollInterval, pollingEnabled]);
 
   return state;
 }
