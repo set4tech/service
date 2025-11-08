@@ -70,10 +70,6 @@ export async function POST(req: NextRequest) {
       sections
     );
 
-    console.log(
-      `[create-element] Created instance "${instance.label}" with ${checks.length} checks`
-    );
-
     return NextResponse.json({
       element_instance_id: instance.id,
       label: instance.label,
@@ -159,6 +155,7 @@ async function createSectionChecks(
   const checksToInsert = sections.map(section => ({
     assessment_id: assessmentId,
     element_instance_id: elementInstanceId,
+    element_group_id: elementGroupId, // FIX: Must set element_group_id to use correct unique constraint
     check_name: `${instanceLabel} - ${section.section_title}`,
     section_id: section.section_id,
     // Don't set code_section_key - it's deprecated and triggers old unique constraint
@@ -167,7 +164,24 @@ async function createSectionChecks(
     status: 'pending',
   }));
 
-  const { data } = await supabase.from('checks').insert(checksToInsert).select();
+  console.log(`[create-element] Inserting ${checksToInsert.length} checks for ${instanceLabel}`);
+
+  const { data, error } = await supabase.from('checks').insert(checksToInsert).select();
+
+  if (error) {
+    console.error(`[create-element] Failed to insert checks:`, error);
+    throw error;
+  }
+
+  // Verify all checks were created
+  if (!data || data.length !== sections.length) {
+    console.error(
+      `[create-element] Check count mismatch! Expected ${sections.length}, got ${data?.length || 0}`
+    );
+    throw new Error(
+      `Failed to create all checks. Expected ${sections.length}, created ${data?.length || 0}`
+    );
+  }
 
   return data;
 }
