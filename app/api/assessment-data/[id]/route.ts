@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const supabase = supabaseAdmin();
 
     // Prepare promises for parallel fetching
-    const promises: Record<string, Promise<any>> = {};
+    const promises: Record<string, PromiseLike<any>> = {};
 
     // Fetch measurements if requested
     if (shouldInclude('measurements') && projectId && pageNumber) {
