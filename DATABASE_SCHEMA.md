@@ -190,6 +190,10 @@ Individual building projects for customers.
 | `extraction_started_at`   | TIMESTAMPTZ            | When extraction started                                            |
 | `extraction_completed_at` | TIMESTAMPTZ            | When extraction completed                                          |
 | `extraction_error`        | TEXT                   | Error message if extraction failed                                 |
+| `chunking_status`         | VARCHAR(50)            | PDF text chunking status (default 'pending')                       |
+| `chunking_started_at`     | TIMESTAMPTZ            | When PDF text extraction started                                   |
+| `chunking_completed_at`   | TIMESTAMPTZ            | When PDF text extraction completed                                 |
+| `chunking_error`          | TEXT                   | Error message if chunking failed                                   |
 | `report_password`         | TEXT                   | Password for accessing compliance reports (optional)               |
 | `created_at`              | TIMESTAMPTZ            | Creation timestamp                                                 |
 | `updated_at`              | TIMESTAMPTZ            | Last update timestamp                                              |
@@ -197,6 +201,7 @@ Individual building projects for customers.
 **Indexes:**
 
 - `idx_projects_extraction_status` on `extraction_status`
+- `idx_projects_chunking_status` on `chunking_status`
 
 ---
 
@@ -244,9 +249,10 @@ Individual compliance checks for code sections within an assessment. All checks 
 | `code_section_title`   | TEXT                           | Section title                                                                                |
 | `check_name`           | VARCHAR(255)                   | Custom check name                                                                            |
 | `check_location`       | VARCHAR(255)                   | Location identifier                                                                          |
-| `instance_label`       | TEXT                           | Groups element checks (e.g., "Door 1", "Door 2"); NULL for standalone sections               |
-| `check_type`           | TEXT                           | 'section' or 'element' (default 'section')                                                   |
-| `element_group_id`     | UUID FK → element_groups.id    | Element group reference (SET NULL delete); NULL for standalone section checks                |
+| `element_instance_id`  | UUID FK → element_instances.id | Element instance reference (CASCADE delete); NULL for standalone section checks              |
+| `instance_label`       | TEXT                           | **DEPRECATED**: Groups element checks (e.g., "Door 1"); use element_instance_id instead      |
+| `check_type`           | TEXT                           | **DEPRECATED**: 'section' or 'element' (default 'section'); use element_instance_id instead  |
+| `element_group_id`     | UUID FK → element_groups.id    | **DEPRECATED**: Element group reference; use element_instance_id instead                     |
 | `human_readable_title` | TEXT                           | Optional human-readable title for the check                                                  |
 | `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                                                    |
 | `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                                                 |
@@ -263,12 +269,15 @@ Individual compliance checks for code sections within an assessment. All checks 
 
 **Architecture Notes:**
 
-- **Two Check Types**:
-  - `check_type='section'`: Traditional single-section checks
-  - `check_type='element'`: Element-based checks covering multiple sections
-- **Element Grouping**: Element checks use `element_group_id` + `instance_label` to group related sections
+- **New Normalized Design** (v2):
+  - Element checks are linked via `element_instance_id` → `element_instances` table
+  - Standalone section checks have `element_instance_id = NULL`
+  - Example: "Door 1" has one row in `element_instances`, with multiple rows in `checks` (one per section)
+- **Legacy Denormalized Design** (deprecated):
+  - Old element checks used `element_group_id` + `instance_label` to group sections
+  - These columns will be removed in a future migration after all code is updated
 - **Exclusion System**: `is_excluded` flag allows checks to be removed from assessment without deletion
-- **Example**: "Door 1" element check with `element_group_id='doors'` and `instance_label='Door 1'`
+- **Migration**: Existing data automatically migrated to `element_instances` during schema update
 
 **Indexes:**
 
@@ -307,6 +316,48 @@ Reusable groupings of related code sections by building element.
 | `icon`        | TEXT                 | Optional icon identifier                |
 | `sort_order`  | INTEGER              | Display order (default 0)               |
 | `created_at`  | TIMESTAMPTZ          | Creation timestamp                      |
+
+---
+
+### `element_instances`
+
+Physical instances of building elements (e.g., "Door 1", "Bathroom 2"). Each instance represents a single physical element that needs to be checked against multiple code sections.
+
+**Schema:**
+
+| Column             | Type                        | Description                                   |
+| ------------------ | --------------------------- | --------------------------------------------- |
+| `id`               | UUID PK                     | Primary key                                   |
+| `assessment_id`    | UUID FK → assessments.id    | Assessment reference (CASCADE delete)         |
+| `element_group_id` | UUID FK → element_groups.id | Element group reference (CASCADE delete)      |
+| `label`            | VARCHAR NOT NULL            | Instance label (e.g., "Door 1", "Bathroom 2") |
+| `created_at`       | TIMESTAMPTZ                 | Creation timestamp                            |
+| `updated_at`       | TIMESTAMPTZ                 | Last update timestamp                         |
+
+**Indexes:**
+
+- `idx_element_instances_assessment_group` on `(assessment_id, element_group_id)`
+- `unique_element_instance_label` UNIQUE on `(assessment_id, element_group_id, label)`
+
+**Architecture Notes:**
+
+- **Auto-generated labels**: If label is not provided on insert, a trigger automatically generates it as `{element_group.name} {max_number + 1}`
+- **One-to-Many with checks**: Each element_instance can have multiple checks (one per applicable code section)
+- **Normalized design**: Replaces the denormalized `element_group_id` + `instance_label` pattern in the checks table
+- **Example workflow**:
+  1. Create instance: `INSERT INTO element_instances (assessment_id, element_group_id, label) VALUES (...)` → returns "Door 1"
+  2. Create checks: `INSERT INTO checks (element_instance_id, section_id, ...) VALUES (...)`
+
+**Trigger & Function:**
+
+- **Function**: `generate_element_instance_label()` - PL/pgSQL function that auto-generates labels
+  - Extracts the element group name (e.g., "Doors")
+  - Finds the highest number used for that element group in the assessment
+  - Generates next sequential label: `{element_group_name} {max_number + 1}`
+  - Example: If "Door 1" and "Door 2" exist, creates "Door 3"
+- **Trigger**: `trigger_generate_element_instance_label` (BEFORE INSERT)
+  - Calls `generate_element_instance_label()` when label is NULL or empty
+  - Runs before each INSERT on `element_instances` table
 
 ---
 
@@ -623,6 +674,61 @@ Stores screenshots for the compliance viewer workflow, supporting multiple insta
 
 ---
 
+### `pdf_chunks`
+
+Searchable text chunks extracted from PDF pages for full-text search.
+
+**Schema:**
+
+| Column         | Type                  | Description                                           |
+| -------------- | --------------------- | ----------------------------------------------------- |
+| `id`           | UUID PK               | Primary key                                           |
+| `project_id`   | UUID FK → projects.id | Project reference (CASCADE delete)                    |
+| `page_number`  | INTEGER NOT NULL      | PDF page number                                       |
+| `chunk_number` | INTEGER NOT NULL      | Chunk number within page (for large pages)            |
+| `content`      | TEXT NOT NULL         | Raw text content extracted from PDF                   |
+| `tsv`          | TSVECTOR              | Generated column for full-text search (auto-computed) |
+| `created_at`   | TIMESTAMPTZ           | Creation timestamp                                    |
+
+**Indexes:**
+
+- `pdf_chunks_tsv_gin` GIN on `tsv` (full-text search index)
+- `pdf_chunks_trgm_gin` GIN on `content gin_trgm_ops` (fuzzy search for OCR errors)
+- `pdf_chunks_project_id` on `project_id`
+- `unique_project_page_chunk` UNIQUE on `(project_id, page_number, chunk_number)`
+
+**Purpose:**
+
+Enables fast full-text search across PDF drawings using PostgreSQL's built-in search capabilities:
+
+- **Full-text search** (tsvector): Fast keyword matching with stemming and ranking
+- **Fuzzy search** (pg_trgm): Tolerant of OCR errors and typos using trigram similarity
+- **Apostrophe normalization**: Search functions normalize apostrophes so "womens" matches "women's"
+- **Page-level results**: Returns matching pages, then client-side code finds exact positions
+
+**Search Functions:**
+
+Two stored procedures provide search capabilities:
+
+1. **`search_pdf_fulltext(project_id, query, limit)`**: Fast exact word matching using tsvector
+   - Returns: `page_number`, `chunk_number`, `rank`
+   - Uses websearch syntax (supports "quoted phrases", -exclusions, OR)
+
+2. **`search_pdf_fuzzy(project_id, query, threshold, limit)`**: Fuzzy matching for OCR tolerance
+   - Returns: `page_number`, `chunk_number`, `similarity`
+   - Uses trigram similarity (threshold default 0.3)
+   - Falls back when full-text search returns no results
+
+**Workflow:**
+
+1. Upload PDF → Background job extracts text page-by-page
+2. Text chunked into `pdf_chunks` records with auto-generated `tsv`
+3. User searches → API tries full-text first, falls back to fuzzy
+4. API returns matching page numbers
+5. Client loads those pages and highlights exact text positions using PDF.js
+
+---
+
 ## Entity Relationship Diagram
 
 ```
@@ -639,19 +745,22 @@ Stores screenshots for the compliance viewer workflow, supporting multiple insta
        │  code_ids)   ┌──────────────────────┐
        │              │      sections        │
        │ 1:N          └──────┬───────────────┘
-       ▼                     │ (self-join parent-child)
-┌──────────────┐             │
-│ assessments  │             │ M:N (references)
-└──────┬───────┘             │      ▼
-       │ 1:N          ┌──────────────────────┐
-       ▼              │ section_references   │
-┌──────────────┐      └──────────────────────┘
+       ├──────▶              │ (self-join parent-child)
+       │                     │
+       │ 1:N                 │ M:N (references)
+       │                     │      ▼
+       │              ┌──────────────────────┐
+       │              │ section_references   │
+       │              └──────────────────────┘
+       ▼
+┌──────────────┐
+│ assessments  │
+└──────┬───────┘
+       │ 1:N
+       ▼
+┌──────────────┐
 │   checks     │◀──── references section via code_section_key
 └──────┬───────┘
-       │
-       ├─────────┐ Self-join (parent-child instances)
-       │         │
-       │         ▼
        │    ┌─────────────────┐
        │    │ checks (child)  │
        │    └─────────────────┘
@@ -697,6 +806,14 @@ Stores screenshots for the compliance viewer workflow, supporting multiple insta
 ┌─────────────┐
 │  projects   │
 └──────┬──────┘
+       │ 1:N (pdf_chunks)
+       ├──────────────────────────┐
+       │                          │
+       │ 1:N                      ▼
+       │                   ┌──────────────┐
+       │                   │  pdf_chunks  │ (searchable text)
+       │                   └──────────────┘
+       │
        │ 1:N
        ▼
 ┌─────────────────────┐
@@ -812,6 +929,91 @@ JOIN checks c ON c.element_group_id = esm.element_group_id
 WHERE c.id = $1
   AND (esm.assessment_id = c.assessment_id OR esm.assessment_id IS NULL)
 ORDER BY s.number;
+```
+
+### Search PDF text (full-text)
+
+```sql
+SELECT * FROM search_pdf_fulltext(
+  'project-uuid-here'::uuid,
+  'womens restroom',
+  50
+) ORDER BY rank DESC;
+```
+
+### Search PDF text (fuzzy, for OCR errors)
+
+```sql
+SELECT * FROM search_pdf_fuzzy(
+  'project-uuid-here'::uuid,
+  'restrrom',  -- typo/OCR error
+  0.3,
+  50
+) ORDER BY similarity DESC;
+```
+
+### Check PDF chunking status
+
+```sql
+SELECT
+  id,
+  name,
+  chunking_status,
+  chunking_started_at,
+  chunking_completed_at,
+  chunking_error,
+  (SELECT COUNT(*) FROM pdf_chunks WHERE project_id = projects.id) as chunk_count
+FROM projects
+WHERE id = $1;
+```
+
+## Database Access
+
+### Supabase CLI (Recommended)
+
+The **Supabase CLI** is the preferred way to interact with the database:
+
+**Setup:**
+
+```bash
+# Login (opens browser for authentication)
+supabase login
+
+# Link to development project
+supabase link --project-ref prafecmdqiwgnsumlmqn --password crumblyboys33
+```
+
+**IMPORTANT:** Remove conflicting environment variables from `.envrc`:
+
+- Comment out `SUPABASE_PORT`, `SUPABASE_DB`, `SUPABASE_URL`, `SUPABASE_USER`
+- These env vars conflict with the CLI's internal configuration
+
+**Common Commands:**
+
+```bash
+# Run SQL queries
+supabase db query --linked "SELECT * FROM codes LIMIT 10"
+
+# List migrations
+supabase migration list --linked
+
+# Apply migrations to remote
+supabase db push
+
+# Pull schema from remote
+supabase db pull
+
+# Generate TypeScript types
+supabase gen types typescript --linked > lib/database.types.ts
+```
+
+### Direct psql (Alternative)
+
+If you need to use `psql` directly:
+
+```bash
+# Use pooler connection (IPv4 compatible)
+PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
 ```
 
 ## Data Loading

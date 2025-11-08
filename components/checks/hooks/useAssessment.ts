@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { usePersisted } from '@/lib/hooks/usePersisted';
+import { useFetch } from '@/lib/hooks/useFetch';
+import { usePolling } from '@/lib/hooks/usePolling';
 import type { AnalysisRun } from '@/types/analysis';
 
 export function useAssessment(
@@ -6,8 +9,8 @@ export function useAssessment(
   effectiveCheckId: string | null,
   onCheckUpdate?: () => void
 ) {
-  // Assessment state
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-pro');
+  // Assessment state - use persisted for model selection
+  const [selectedModel, setSelectedModel] = usePersisted('lastSelectedAIModel', 'gemini-2.5-pro');
   const [extraContext, setExtraContext] = useState('');
   const [showExtraContext, setShowExtraContext] = useState(false);
   const [assessing, setAssessing] = useState(false);
@@ -25,16 +28,7 @@ export function useAssessment(
 
   // Analysis history state
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
-  const [loadingRuns, setLoadingRuns] = useState(false);
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
-
-  // Load last selected model from localStorage
-  useEffect(() => {
-    const lastModel = localStorage.getItem('lastSelectedAIModel');
-    if (lastModel) {
-      setSelectedModel(lastModel);
-    }
-  }, []);
 
   // Check for in-progress analysis when checkId changes
   useEffect(() => {
@@ -55,110 +49,92 @@ export function useAssessment(
       .catch(() => setAssessing(false));
   }, [checkId]);
 
-  // Poll for progress whenever assessing is true
-  useEffect(() => {
-    if (!assessing || !checkId) return;
+  // Poll for progress whenever assessing is true - use usePolling
+  usePolling(
+    async () => {
+      if (!checkId) return true;
 
-    console.log('[Poll] Starting polling for checkId:', checkId);
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/checks/${checkId}/full`);
-        const fullData = await res.json();
-        const data = fullData.progress;
+      console.log('[Poll] Fetching progress...');
+      const res = await fetch(`/api/checks/${checkId}/full`);
+      const fullData = await res.json();
+      const data = fullData.progress;
 
-        if (data.inProgress) {
-          setAssessmentProgress(Math.round((data.completed / data.total) * 100));
-          setAssessmentMessage(`Analyzing... (${data.completed}/${data.total})`);
+      if (data.inProgress) {
+        setAssessmentProgress(Math.round((data.completed / data.total) * 100));
+        setAssessmentMessage(`Analyzing... (${data.completed}/${data.total})`);
 
-          // Trigger queue processing to ensure jobs are being processed
-          fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
+        // Trigger queue processing
+        fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
 
-          // Update runs (only add new ones)
-          if (fullData.analysisRuns && fullData.analysisRuns.length > 0) {
-            setAnalysisRuns(prev => {
-              const existingIds = new Set(prev.map((r: any) => r.id));
-              const newRuns = fullData.analysisRuns.filter((r: any) => !existingIds.has(r.id));
-              if (newRuns.length > 0) {
-                setExpandedRuns(prevExpanded => {
-                  const updated = new Set(prevExpanded);
-                  newRuns.forEach((r: any) => updated.add(r.id));
-                  return updated;
-                });
-                return [...newRuns, ...prev];
-              }
-              return prev;
-            });
-          }
-        } else {
-          console.log('[Poll] Assessment complete detected');
-          setAssessing(false);
-          setAssessmentMessage('Assessment complete!');
-          setExtraContext('');
-          setShowExtraContext(false);
-
-          // Fetch updated analysis runs
-          if (checkId) {
-            console.log('[Poll] Fetching updated analysis runs for check:', checkId);
-            fetch(`/api/checks/${checkId}/analysis-runs`)
-              .then(res => {
-                console.log('[Poll] Fetch response status:', res.status);
-                return res.json();
-              })
-              .then(runsData => {
-                console.log('[Poll] Received runs data:', runsData);
-                if (runsData.runs) {
-                  console.log('[Poll] Setting analysis runs, count:', runsData.runs.length);
-                  setAnalysisRuns(runsData.runs);
-                  // Expand the newest run
-                  if (runsData.runs.length > 0) {
-                    console.log('[Poll] Expanding newest run:', runsData.runs[0].id);
-                    setExpandedRuns(new Set([runsData.runs[0].id]));
-                  }
-                } else {
-                  console.log('[Poll] No runs in response');
-                }
-              })
-              .catch(err => console.error('[Poll] Failed to load updated analysis:', err));
-          } else {
-            console.log('[Poll] No checkId available for fetching runs');
-          }
-
-          if (onCheckUpdate) onCheckUpdate();
+        // Update runs (only add new ones)
+        if (fullData.analysisRuns && fullData.analysisRuns.length > 0) {
+          setAnalysisRuns(prev => {
+            const existingIds = new Set(prev.map((r: any) => r.id));
+            const newRuns = fullData.analysisRuns.filter((r: any) => !existingIds.has(r.id));
+            if (newRuns.length > 0) {
+              setExpandedRuns(prevExpanded => {
+                const updated = new Set(prevExpanded);
+                newRuns.forEach((r: any) => updated.add(r.id));
+                return updated;
+              });
+              return [...newRuns, ...prev];
+            }
+            return prev;
+          });
         }
-      } catch (err) {
+
+        return false; // Keep polling
+      }
+
+      // Assessment complete
+      console.log('[Poll] Assessment complete detected');
+      setAssessmentMessage('Assessment complete!');
+      setExtraContext('');
+      setShowExtraContext(false);
+
+      // Fetch updated analysis runs
+      if (checkId) {
+        console.log('[Poll] Fetching updated analysis runs for check:', checkId);
+        const runsRes = await fetch(`/api/checks/${checkId}/analysis-runs`);
+        const runsData = await runsRes.json();
+
+        if (runsData.runs) {
+          console.log('[Poll] Setting analysis runs, count:', runsData.runs.length);
+          setAnalysisRuns(runsData.runs);
+          if (runsData.runs.length > 0) {
+            setExpandedRuns(new Set([runsData.runs[0].id]));
+          }
+        }
+      }
+
+      if (onCheckUpdate) onCheckUpdate();
+
+      return true; // Stop polling
+    },
+    {
+      enabled: assessing && !!checkId,
+      interval: 2000,
+      onComplete: () => setAssessing(false),
+      onError: err => {
         console.error('Poll error:', err);
         setAssessing(false);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [assessing, checkId, onCheckUpdate]);
-
-  // Load analysis runs when effectiveCheckId changes
-  useEffect(() => {
-    console.log('[InitialLoad] effectiveCheckId changed:', effectiveCheckId);
-    if (!effectiveCheckId) {
-      setAnalysisRuns([]);
-      return;
+      },
     }
+  );
 
-    console.log('[InitialLoad] Fetching analysis runs for:', effectiveCheckId);
-    setLoadingRuns(true);
-    fetch(`/api/checks/${effectiveCheckId}/analysis-runs`)
-      .then(res => res.json())
-      .then(runsData => {
-        console.log('[InitialLoad] Received data:', runsData);
-        if (runsData.runs) {
-          console.log('[InitialLoad] Setting analysis runs, count:', runsData.runs.length);
-          setAnalysisRuns(runsData.runs);
+  // Load analysis runs when effectiveCheckId changes - use useFetch
+  const { data: _runsData, loading: loadingRuns } = useFetch<{ runs: AnalysisRun[] }>(
+    effectiveCheckId ? `/api/checks/${effectiveCheckId}/analysis-runs` : null,
+    {
+      onSuccess: data => {
+        console.log('[InitialLoad] Received data:', data);
+        if (data.runs) {
+          console.log('[InitialLoad] Setting analysis runs, count:', data.runs.length);
+          setAnalysisRuns(data.runs);
         }
-        setLoadingRuns(false);
-      })
-      .catch(err => {
-        console.error('[InitialLoad] Failed to load analysis runs:', err);
-        setLoadingRuns(false);
-      });
-  }, [effectiveCheckId]);
+      },
+    }
+  );
 
   // Load prompt when user clicks to view it
   const handleViewPrompt = async () => {
@@ -203,8 +179,7 @@ export function useAssessment(
     setAssessmentProgress(0);
     setAssessmentMessage('Starting assessment...');
 
-    // Save selected model to localStorage
-    localStorage.setItem('lastSelectedAIModel', selectedModel);
+    // Note: selectedModel is automatically persisted via usePersisted hook
 
     try {
       // 1. Start assessment (returns immediately with first batch)

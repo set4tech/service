@@ -57,7 +57,7 @@ interface CheckInstance {
 
 interface CheckData {
   id: string;
-  code_section_key?: string;
+  sections?: { key: string; [key: string]: unknown };
   element_group_id?: string | null;
   latest_status?: string | null;
   status?: string;
@@ -195,6 +195,12 @@ export default function AssessmentClient({
   });
 
   const handleCheckSelect = (checkId: string, sectionKey?: string) => {
+    console.log('[handleCheckSelect] Called with:', {
+      checkId,
+      sectionKey,
+      checksCount: checks.length,
+      checkExists: checks.some(c => c.id === checkId),
+    });
     setActiveCheckId(checkId);
     setShowDetailPanel(true);
     // Store sectionKey if provided (for filtering in CodeDetailPanel)
@@ -317,11 +323,13 @@ export default function AssessmentClient({
         }
         mainGroups.get(groupName)!.push(check);
       });
-      // Sort each group by instance label
+      // Sort each group by creation date (oldest first)
       mainGroups.forEach(group => {
-        group.sort((a, b) =>
-          ((a as any).instance_label || '').localeCompare((b as any).instance_label || '')
-        );
+        group.sort((a, b) => {
+          const aTime = new Date((a as any).created_at || 0).getTime();
+          const bTime = new Date((b as any).created_at || 0).getTime();
+          return aTime - bTime; // Oldest first
+        });
       });
     } else {
       // Section mode: group by section prefix
@@ -349,10 +357,12 @@ export default function AssessmentClient({
       checks.forEach(check => {
         ids.push(check.id);
         if (check.instances?.length) {
-          // Sort instances if they exist
-          const sortedInstances = [...check.instances].sort((a, b) =>
-            ((a as any).instance_label || '').localeCompare((b as any).instance_label || '')
-          );
+          // Sort instances by creation date (oldest first)
+          const sortedInstances = [...check.instances].sort((a, b) => {
+            const aTime = new Date((a as any).created_at || 0).getTime();
+            const bTime = new Date((b as any).created_at || 0).getTime();
+            return aTime - bTime; // Oldest first
+          });
           sortedInstances.forEach(instance => ids.push(instance.id));
         }
       });
@@ -455,26 +465,44 @@ export default function AssessmentClient({
   };
 
   const refetchChecks = async () => {
+    console.log('[AssessmentClient] refetchChecks called, current checks count:', checks.length);
     const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
     if (checksRes.ok) {
       const updatedChecks = await checksRes.json();
+      console.log('[AssessmentClient] Fetched updated checks:', {
+        previousCount: checks.length,
+        newCount: updatedChecks.length,
+        diff: updatedChecks.length - checks.length,
+      });
       setChecks(updatedChecks);
+      console.log('[AssessmentClient] Checks state updated');
+    } else {
+      console.error(
+        '[AssessmentClient] Failed to fetch checks:',
+        checksRes.status,
+        checksRes.statusText
+      );
     }
   };
 
-  const handleInstanceDeleted = (elementGroupId: string, instanceLabel: string) => {
-    // Remove all checks for this element instance with a single filter operation
-    setChecks(prevChecks =>
-      prevChecks.filter(
-        c => !(c.element_group_id === elementGroupId && c.instance_label === instanceLabel)
-      )
-    );
+  const handleInstanceDeleted = (elementInstanceId: string) => {
+    console.log('[AssessmentClient] handleInstanceDeleted called:', { elementInstanceId });
+
+    // Remove all checks for this element instance
+    setChecks(prevChecks => {
+      const filtered = prevChecks.filter(c => c.element_instance_id !== elementInstanceId);
+      console.log('[AssessmentClient] Removed checks for instance:', {
+        elementInstanceId,
+        before: prevChecks.length,
+        after: filtered.length,
+        removed: prevChecks.length - filtered.length,
+      });
+      return filtered;
+    });
 
     // Clear active check if it was in the deleted instance
-    if (
-      activeCheck?.element_group_id === elementGroupId &&
-      activeCheck?.instance_label === instanceLabel
-    ) {
+    if (activeCheck?.element_instance_id === elementInstanceId) {
+      console.log('[AssessmentClient] Clearing active check (was in deleted instance)');
       setActiveCheckId(null);
       setShowDetailPanel(false);
       // Clear URL hash
@@ -485,8 +513,22 @@ export default function AssessmentClient({
   };
 
   const activeCheck = useMemo(() => {
+    console.log('[activeCheck memo] Computing:', {
+      activeCheckId,
+      checksCount: checks.length,
+    });
     // First try to find the check directly
     const directMatch = checks.find(c => c.id === activeCheckId);
+    console.log('[activeCheck memo] Result:', {
+      found: !!directMatch,
+      check: directMatch
+        ? {
+            id: directMatch.id,
+            element_instance_id: directMatch.element_instance_id,
+            section_key: directMatch.sections?.key,
+          }
+        : null,
+    });
     if (directMatch) return directMatch;
 
     return null;
@@ -544,12 +586,16 @@ export default function AssessmentClient({
 
   const [pdfUrl, _setPdfUrl] = useState<string | null>(assessment?.pdf_url || null);
 
+  // Track screenshot refresh trigger to notify CodeDetailPanel
+  const screenshotRefreshTriggerRef = useRef(0);
+
   // Refetch screenshots for a specific check
   const refetchCheckScreenshots = async (checkId: string) => {
     try {
       const res = await fetch(`/api/checks/${checkId}/screenshots`);
       if (res.ok) {
         const screenshots = await res.json();
+
         setChecks(prev =>
           prev.map(check => {
             // Update top-level check if it matches
@@ -568,9 +614,12 @@ export default function AssessmentClient({
             return check;
           })
         );
+
+        // Increment trigger to notify CodeDetailPanel immediately
+        screenshotRefreshTriggerRef.current += 1;
       }
     } catch (error) {
-      console.error('Failed to refetch screenshots:', error);
+      console.error('[refetchCheckScreenshots] Error:', error);
     }
   };
 
@@ -883,66 +932,83 @@ export default function AssessmentClient({
               />
             ) : (
               /* Show CodeDetailPanel in section/element modes */
-              <CodeDetailPanel
-                checkId={activeCheck?.id || null}
-                sectionKey={activeCheck?.code_section_key || null}
-                filterToSectionKey={filterToSectionKey}
-                activeCheck={activeCheck}
-                onClose={() => {
-                  setShowDetailPanel(false);
-                  // Clear URL hash when panel is closed
-                  if (typeof window !== 'undefined') {
-                    window.history.replaceState(
-                      null,
-                      '',
-                      window.location.pathname + window.location.search
-                    );
-                  }
-                }}
-                onMoveToNextCheck={handleMoveToNextCheck}
-                onCheckUpdate={async () => {
-                  if (activeCheck?.id) {
-                    try {
-                      const res = await fetch(`/api/checks/${activeCheck.id}`);
-                      if (res.ok) {
-                        const { check: updatedCheck } = await res.json();
-                        setChecks(prev =>
-                          prev.map(c =>
-                            c.id === updatedCheck.id
-                              ? { ...c, ...updatedCheck } // ← Just update if ID matches
-                              : c
-                          )
+              (() => {
+                console.log('[AssessmentClient] Rendering CodeDetailPanel with:', {
+                  showDetailPanel,
+                  checkMode,
+                  activeCheckId,
+                  activeCheck: activeCheck
+                    ? {
+                        id: activeCheck.id,
+                        element_instance_id: activeCheck.element_instance_id,
+                        section_key: activeCheck.sections?.key,
+                      }
+                    : null,
+                });
+                return (
+                  <CodeDetailPanel
+                    checkId={activeCheck?.id || null}
+                    sectionKey={activeCheck?.sections?.key || null}
+                    filterToSectionKey={filterToSectionKey}
+                    activeCheck={activeCheck}
+                    screenshotRefreshTrigger={screenshotRefreshTriggerRef.current}
+                    onClose={() => {
+                      setShowDetailPanel(false);
+                      // Clear URL hash when panel is closed
+                      if (typeof window !== 'undefined') {
+                        window.history.replaceState(
+                          null,
+                          '',
+                          window.location.pathname + window.location.search
                         );
                       }
-                    } catch (error) {
-                      console.error('Failed to refetch check:', error);
-                    }
-                  }
-                }}
-                onChecksRefresh={async () => {
-                  // Refetch all checks (used after exclusion)
-                  try {
-                    const res = await fetch(`/api/assessments/${assessment.id}/checks`);
-                    if (res.ok) {
-                      const updatedChecks = (await res.json()) as CheckData[];
-                      setChecks(updatedChecks);
-                      // Close the detail panel if the active check was deleted
-                      if (!updatedChecks.find(c => c.id === activeCheck?.id)) {
-                        setShowDetailPanel(false);
-                        setActiveCheckId(null);
+                    }}
+                    onMoveToNextCheck={handleMoveToNextCheck}
+                    onCheckUpdate={async () => {
+                      if (activeCheck?.id) {
+                        try {
+                          const res = await fetch(`/api/checks/${activeCheck.id}`);
+                          if (res.ok) {
+                            const { check: updatedCheck } = await res.json();
+                            setChecks(prev =>
+                              prev.map(c =>
+                                c.id === updatedCheck.id
+                                  ? { ...c, ...updatedCheck } // ← Just update if ID matches
+                                  : c
+                              )
+                            );
+                          }
+                        } catch (error) {
+                          console.error('Failed to refetch check:', error);
+                        }
                       }
-                    }
-                  } catch (error) {
-                    console.error('Failed to refetch checks:', error);
-                  }
-                }}
-                onScreenshotAssigned={() => {
-                  // Refetch screenshots for the active check
-                  if (activeCheck?.id) {
-                    refetchCheckScreenshots(activeCheck.id);
-                  }
-                }}
-              />
+                    }}
+                    onChecksRefresh={async () => {
+                      // Refetch all checks (used after exclusion)
+                      try {
+                        const res = await fetch(`/api/assessments/${assessment.id}/checks`);
+                        if (res.ok) {
+                          const updatedChecks = (await res.json()) as CheckData[];
+                          setChecks(updatedChecks);
+                          // Close the detail panel if the active check was deleted
+                          if (!updatedChecks.find(c => c.id === activeCheck?.id)) {
+                            setShowDetailPanel(false);
+                            setActiveCheckId(null);
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Failed to refetch checks:', error);
+                      }
+                    }}
+                    onScreenshotAssigned={() => {
+                      // Refetch screenshots for the active check
+                      if (activeCheck?.id) {
+                        refetchCheckScreenshots(activeCheck.id);
+                      }
+                    }}
+                  />
+                );
+              })()
             )}
           </>
         )}
@@ -968,6 +1034,7 @@ export default function AssessmentClient({
             onScreenshotSaved={refetchCheckScreenshots}
             onCheckAdded={handleCheckAdded}
             onCheckSelect={handleCheckSelect}
+            refetchChecks={refetchChecks}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">

@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { normalizeVariables } from '@/lib/variables';
+import { getAssessmentChecks } from '@/lib/queries/get-assessment-checks';
 import AssessmentClient from './ui/AssessmentClient';
-import { headers } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -38,27 +38,8 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   const typedAssessment = assessment as unknown as AssessmentWithProject;
 
-  // Get ALL checks for the assessment (for CheckList component)
-  const headersList = await headers();
-  const host = headersList.get('host');
-
-  if (!host) {
-    throw new Error('Missing host header - cannot fetch checks');
-  }
-
-  // More robust protocol detection for local development
-  const isLocal =
-    host.includes('localhost') ||
-    host.includes('127.0.0.1') ||
-    host.includes('[::1]') || // IPv6 loopback
-    host.startsWith('192.168.');
-  const protocol = isLocal ? 'http' : 'https';
-  const baseUrl = `${protocol}://${host}`;
-
-  const checksResponse = await fetch(`${baseUrl}/api/assessments/${id}/checks`, {
-    cache: 'no-store',
-  });
-  const checks = checksResponse.ok ? await checksResponse.json() : [];
+  // Get ALL checks for the assessment directly (no HTTP overhead)
+  const checks = await getAssessmentChecks(id);
 
   // Get violations using RPC (already filtered - for ViolationsSummary component)
   const { data: rpcViolations } = await supabase.rpc('get_assessment_report', {

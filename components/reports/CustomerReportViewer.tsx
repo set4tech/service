@@ -566,7 +566,6 @@ export function CustomerReportViewer({ data }: Props) {
           currentPage={currentPage}
           onPageChange={handlePageChange}
           highlightedViolationId={highlightedViolationId}
-          hiddenLayers={['CONTRACT AREA', 'ACCESSIBLE SPACES']}
           screenshotNavigation={
             currentScreenshotInfo && currentScreenshotInfo.total > 1
               ? {

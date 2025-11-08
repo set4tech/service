@@ -8,18 +8,8 @@ import { TriageModal } from './TriageModal';
 import { AnalysisHistory } from './AnalysisHistory';
 import { useManualOverride } from '@/hooks/useManualOverride';
 import { useAssessmentPolling } from '@/hooks/useAssessmentPolling';
-import type { SectionResult, AnalysisRun, CodeSection } from '@/types/analysis';
-
-interface Check {
-  id: string;
-  element_group_id?: string | null;
-  code_section_key?: string;
-  manual_status?: string | null;
-  manual_status_note?: string;
-  element_groups?: {
-    name?: string;
-  };
-}
+import { useCheckData } from './hooks/useCheckData';
+import type { SectionResult } from '@/types/analysis';
 
 interface CodeDetailPanelProps {
   checkId: string | null;
@@ -31,213 +21,7 @@ interface CodeDetailPanelProps {
   onChecksRefresh?: () => void;
   activeCheck?: any;
   onScreenshotAssigned?: () => void;
-}
-
-// Simple in-memory cache for API responses
-const sectionCache = new Map<string, CodeSection>();
-const checkCache = new Map<string, any>(); // Cache check metadata
-const childChecksCache = new Map<string, any[]>(); // Cache child checks by parent key
-
-async function fetchSection(key: string): Promise<CodeSection> {
-  if (sectionCache.has(key)) {
-    return sectionCache.get(key)!;
-  }
-
-  const response = await fetch(`/api/code-sections/${key}`);
-
-  const data = await response.json();
-  if (data.error) throw new Error(data.error);
-
-  sectionCache.set(key, data);
-  return data;
-}
-
-interface CheckDataResult {
-  loading: boolean;
-  error: string | null;
-  check: Check | null;
-  childChecks: any[];
-  activeChildCheckId: string | null;
-  sections: CodeSection[];
-  analysisRuns: AnalysisRun[];
-  assessing: boolean;
-  manualOverride: string | null;
-  manualOverrideNote: string;
-  showSingleSectionOnly: boolean;
-}
-
-// Custom hook for coordinated initial data loading
-function useCheckData(
-  checkId: string | null,
-  filterToSectionKey: string | null | undefined
-): CheckDataResult {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<Omit<CheckDataResult, 'loading' | 'error'>>({
-    check: null,
-    childChecks: [],
-    activeChildCheckId: null,
-    sections: [],
-    analysisRuns: [],
-    assessing: false,
-    manualOverride: null,
-    manualOverrideNote: '',
-    showSingleSectionOnly: false,
-  });
-
-  useEffect(() => {
-    if (!checkId) {
-      setData({
-        check: null,
-        childChecks: [],
-        activeChildCheckId: null,
-        sections: [],
-        analysisRuns: [],
-        assessing: false,
-        manualOverride: null,
-        manualOverrideNote: '',
-        showSingleSectionOnly: false,
-      });
-      setLoading(false);
-      return;
-    }
-
-    let isCancelled = false;
-
-    async function loadAllData() {
-      // Only show loading if we don't have cached data
-      const hasCachedCheck = checkCache.has(checkId!);
-      if (!hasCachedCheck) {
-        setLoading(true);
-      }
-      setError(null);
-
-      try {
-        // Check cache first for faster loads
-        let check, analysisRuns, progress;
-
-        if (hasCachedCheck) {
-          const cached = checkCache.get(checkId!);
-          check = cached.check;
-          analysisRuns = cached.analysisRuns || [];
-          progress = cached.progress;
-        } else {
-          // Load check with analysis runs and progress in a single query
-          const fullResponse = await fetch(`/api/checks/${checkId}/full`);
-          const fullData = await fullResponse.json();
-
-          if (isCancelled) return;
-
-          if (!fullData.check) {
-            throw new Error('Check not found');
-          }
-
-          check = fullData.check;
-          analysisRuns = fullData.analysisRuns || [];
-          progress = fullData.progress;
-
-          // Cache the result
-          checkCache.set(checkId!, { check, analysisRuns, progress });
-        }
-
-        // Check if this is part of an element instance (has element_group_id + instance_label)
-        if (check.element_group_id && check.instance_label) {
-          // Create cache key for child checks
-          const childChecksCacheKey = `${check.assessment_id}:${check.element_group_id}:${check.instance_label}`;
-
-          let sorted;
-          if (childChecksCache.has(childChecksCacheKey)) {
-            sorted = childChecksCache.get(childChecksCacheKey)!;
-          } else {
-            // Load all sections for this element instance
-            const siblingsResponse = await fetch(
-              `/api/checks?assessment_id=${check.assessment_id}&element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(check.instance_label)}`
-            );
-            const siblings = await siblingsResponse.json();
-
-            if (isCancelled) return;
-
-            sorted = Array.isArray(siblings)
-              ? siblings.sort((a, b) =>
-                  (a.code_section_number || '').localeCompare(b.code_section_number || '')
-                )
-              : [];
-
-            // Cache the child checks
-            childChecksCache.set(childChecksCacheKey, sorted);
-          }
-
-          // Filter to requested section if specified
-          if (filterToSectionKey) {
-            const matchingSection = sorted.find(c => c.code_section_key === filterToSectionKey);
-            if (matchingSection) {
-              sorted = [matchingSection];
-            }
-          }
-
-          // The checkId passed in IS the check that was clicked - use it directly
-          const activeChildId = checkId;
-          const activeChild = sorted.find(c => c.id === activeChildId);
-
-          // Load code section if needed
-          const section =
-            activeChildId && activeChild?.code_section_key
-              ? await fetchSection(activeChild.code_section_key)
-              : null;
-
-          if (isCancelled) return;
-
-          setData({
-            check,
-            childChecks: sorted,
-            activeChildCheckId: activeChildId,
-            sections: section ? [section] : [],
-            analysisRuns,
-            assessing: progress.inProgress || false,
-            // Load the active child's override, not the first check's override
-            manualOverride: activeChild?.manual_status || null,
-            manualOverrideNote: activeChild?.manual_status_note || '',
-            showSingleSectionOnly: !!filterToSectionKey,
-          });
-          setLoading(false);
-          return;
-        }
-
-        // Standalone section check - load single section
-        const section = check.code_section_key ? await fetchSection(check.code_section_key) : null;
-
-        if (isCancelled) return;
-
-        // Set all state
-        setData({
-          check,
-          childChecks: [],
-          activeChildCheckId: null,
-          sections: section ? [section] : [],
-          analysisRuns,
-          assessing: progress.inProgress || false,
-          manualOverride: check.manual_status || null,
-          manualOverrideNote: check.manual_status_note || '',
-          showSingleSectionOnly: false,
-        });
-        setLoading(false);
-      } catch (err: any) {
-        if (!isCancelled) {
-          console.error('Failed to load check data:', err);
-          setError(err.message || 'Failed to load check data');
-          setLoading(false);
-        }
-      }
-    }
-
-    loadAllData();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [checkId, filterToSectionKey]);
-
-  return { loading, error, ...data };
+  screenshotRefreshTrigger?: number;
 }
 
 export function CodeDetailPanel({
@@ -250,31 +34,69 @@ export function CodeDetailPanel({
   onChecksRefresh,
   activeCheck,
   onScreenshotAssigned,
+  screenshotRefreshTrigger,
 }: CodeDetailPanelProps) {
   // Local state to track screenshot changes for ScreenshotGallery
   const [screenshotsRefreshKey, setScreenshotsRefreshKey] = useState(0);
+
+  // Sync with external screenshot refresh trigger (e.g., when 'C' key saves a screenshot)
+  useEffect(() => {
+    if (screenshotRefreshTrigger !== undefined && screenshotRefreshTrigger > 0) {
+      setScreenshotsRefreshKey(screenshotRefreshTrigger);
+    }
+  }, [screenshotRefreshTrigger]);
+
+  // UI state: which child check the user is viewing
+  const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
 
   // Coordinated data loading
   const {
     loading: panelLoading,
     error: panelError,
-    check,
-    childChecks: initialChildChecks,
-    activeChildCheckId: initialActiveChildId,
-    sections: initialSections,
-    analysisRuns: initialAnalysisRuns,
-    assessing: initialAssessing,
+    childChecks,
+    activeCheck: activeCheckFromHook,
+    sections,
+    analysisRuns,
     manualOverride: initialManualOverride,
     manualOverrideNote: initialManualOverrideNote,
     showSingleSectionOnly,
-  } = useCheckData(checkId, filterToSectionKey);
+    refresh,
+  } = useCheckData(checkId, activeChildCheckId, filterToSectionKey || null, screenshotsRefreshKey);
+
+  // Initialize activeChildCheckId when check loads
+  useEffect(() => {
+    if (checkId && !activeChildCheckId) {
+      setActiveChildCheckId(checkId);
+    }
+  }, [checkId, activeChildCheckId]);
+
+  // Use the check from the hook (has element_instances data) or fall back to the prop
+  const activeCheckWithData = activeCheckFromHook || activeCheck;
+
+  // Calculate effective check ID early (needed for manual override hook)
+  const effectiveCheckId = activeChildCheckId || checkId;
+
+  // Debug log to verify element instance data
+  // console.log('[CodeDetailPanel] 🏷️ Active check data:', {
+  //   hasActiveCheckWithData: !!activeCheckWithData,
+  //   hasElementInstances: !!activeCheckWithData?.element_instances,
+  //   hasElementGroups: !!activeCheckWithData?.element_instances?.element_groups,
+  //   elementGroupName: activeCheckWithData?.element_instances?.element_groups?.name,
+  //   instanceLabel: activeCheckWithData?.element_instances?.label,
+  // });
 
   // Manual override hook
+  // console.log('[CodeDetailPanel] 🎯 Passing to useManualOverride:', {
+  //   initialManualOverride,
+  //   initialManualOverrideNote,
+  //   activeChildCheckId,
+  // });
+
   const manualOverrideHook = useManualOverride({
+    checkId: effectiveCheckId,
     initialOverride: initialManualOverride,
     initialNote: initialManualOverrideNote,
     onSaveSuccess: () => {
-      setAssessing(false);
       if (onCheckUpdate) onCheckUpdate();
     },
     onCheckDeleted: () => {
@@ -298,99 +120,20 @@ export function CodeDetailPanel({
     },
   } = manualOverrideHook;
 
-  // Local state for tab navigation (when user clicks section tabs within an element check)
-  const [activeChildCheckId, setActiveChildCheckId] = useState<string | null>(null);
-  const [tabSections, setTabSections] = useState<CodeSection[]>([]);
-  const [activeSectionIndex] = useState(0);
-
-  // Use hook data directly (childChecks, sections, analysisRuns)
-  const childChecks = initialChildChecks;
-  const sections = activeChildCheckId && tabSections.length > 0 ? tabSections : initialSections;
-  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>(initialAnalysisRuns);
-
-  // Reset tab state when checkId changes
-  useEffect(() => {
-    setActiveChildCheckId(initialActiveChildId);
-    setTabSections([]);
-    setAnalysisRuns(initialAnalysisRuns);
-    setManualOverride(initialManualOverride);
-    setManualOverrideNote(initialManualOverrideNote);
-  }, [
-    checkId,
-    initialActiveChildId,
-    initialAnalysisRuns,
-    initialManualOverride,
-    initialManualOverrideNote,
-    setManualOverride,
-    setManualOverrideNote,
-  ]);
-
-  // Handle tab switching - update section data immediately if cached
-  const handleTabSwitch = useCallback(
-    (childCheckId: string) => {
-      const activeChild = childChecks.find(c => c.id === childCheckId);
-      if (!activeChild?.code_section_key) {
-        setActiveChildCheckId(childCheckId);
-        setTabSections([]);
-        return;
-      }
-
-      const sectionKey = activeChild.code_section_key;
-
-      // Check cache synchronously to avoid loading flicker
-      if (sectionCache.has(sectionKey)) {
-        const cached = sectionCache.get(sectionKey)!;
-        // Update all states together
-        setActiveChildCheckId(childCheckId);
-        setTabSections([cached]);
-        setManualOverride(activeChild.manual_status || null);
-        setManualOverrideNote(activeChild.manual_status_note || '');
-      } else {
-        // Update activeChildCheckId first
-        setActiveChildCheckId(childCheckId);
-        // Not cached - fetch it asynchronously
-        fetchSection(sectionKey)
-          .then(section => {
-            setTabSections([section]);
-            setManualOverride(activeChild.manual_status || null);
-            setManualOverrideNote(activeChild.manual_status_note || '');
-          })
-          .catch(err => {
-            console.error('Failed to load section:', err);
-            setTabSections([]);
-          });
-      }
-    },
-    [childChecks, setManualOverride, setManualOverrideNote]
-  );
-
-  // Polling hook
+  // Polling hook - API is the ONLY source of truth
   const handleAssessmentComplete = useCallback(() => {
-    if (checkId) {
-      // Refresh analysis runs after assessment completes
-      fetch(`/api/checks/${checkId}/full`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.analysisRuns) {
-            setAnalysisRuns(data.analysisRuns);
-            if (data.analysisRuns.length > 0) {
-              setExpandedRuns(new Set([data.analysisRuns[0].id]));
-            }
-          }
-        })
-        .catch(err => console.error('Failed to refresh analysis runs:', err));
-    }
+    // Trigger hook to refetch analysis runs (silent = no loading skeleton)
+    refresh(true);
+
     if (onCheckUpdate) onCheckUpdate();
-  }, [checkId, onCheckUpdate]);
+  }, [refresh, onCheckUpdate]);
 
   const {
     assessing,
     progress: assessmentProgress,
     message: assessmentMessage,
-    setAssessing,
   } = useAssessmentPolling({
     checkId,
-    initialAssessing,
     onComplete: handleAssessmentComplete,
   });
 
@@ -427,8 +170,7 @@ export function CodeDetailPanel({
   const [showElevationSearch, setShowElevationSearch] = useState(false);
   const [sectionContentHeight, setSectionContentHeight] = useState(40);
 
-  const section = sections[activeSectionIndex] || null;
-  const effectiveCheckId = activeChildCheckId || checkId;
+  const section = sections[0] || null;
 
   // Load last selected model from localStorage
   useEffect(() => {
@@ -440,6 +182,13 @@ export function CodeDetailPanel({
   useEffect(() => {
     if (childChecks.length > 1) setShowSectionTabs(true);
   }, [childChecks.length]);
+
+  // Auto-expand first analysis run when assessment completes
+  useEffect(() => {
+    if (!assessing && analysisRuns.length > 0 && expandedRuns.size === 0) {
+      setExpandedRuns(new Set([analysisRuns[0].id]));
+    }
+  }, [assessing, analysisRuns, expandedRuns.size]);
 
   // Handlers
   const handleViewPrompt = async () => {
@@ -487,30 +236,13 @@ export function CodeDetailPanel({
 
     // Prevent double-clicks
     if (assessing) {
-      console.log('[CodeDetailPanel] Assessment already in progress, ignoring click');
       return;
     }
 
-    console.log('[CodeDetailPanel] Starting assessment for check:', checkId);
-    console.log('[CodeDetailPanel] Check details:', {
-      checkId,
-      elementGroupId: activeCheck?.element_group_id,
-      instanceLabel: activeCheck?.instance_label,
-      isElementCheck: !!activeCheck?.element_group_id,
-      childChecksCount: childChecks.length,
-    });
-
-    setAssessing(true);
     setAssessmentError(null);
     localStorage.setItem('lastSelectedAIModel', selectedModel);
 
     try {
-      console.log('[CodeDetailPanel] Sending assess request with:', {
-        aiProvider: selectedModel,
-        hasCustomPrompt: !!customPrompt.trim(),
-        hasExtraContext: !!extraContext.trim(),
-      });
-
       const response = await fetch(`/api/checks/${checkId}/assess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -530,21 +262,15 @@ export function CodeDetailPanel({
         throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
       }
 
-      console.log('[CodeDetailPanel] Assess response:', {
-        ok: response.ok,
-        status: response.status,
-        data,
-      });
-
       if (!response.ok) {
         throw new Error(data.error || 'Assessment failed');
       }
 
-      console.log('[CodeDetailPanel] Assessment initiated successfully');
+      // Polling will automatically pick up the status change from DB
+      // No need for optimistic updates - API is the source of truth
     } catch (err: any) {
       console.error('[CodeDetailPanel] Assessment error:', err);
       setAssessmentError(err.message);
-      setAssessing(false);
     }
   };
 
@@ -553,7 +279,7 @@ export function CodeDetailPanel({
 
     const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
     const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    const sectionKeyToMark = isViewingChildSection ? activeChild?.code_section_key : sectionKey;
+    const sectionKeyToMark = isViewingChildSection ? activeChild?.sections?.key : sectionKey;
 
     if (!sectionKeyToMark) return;
 
@@ -592,18 +318,18 @@ export function CodeDetailPanel({
   };
 
   const handleExcludeSection = async () => {
-    if (!effectiveCheckId || !excludeReason.trim() || !activeCheck?.assessment_id) return;
+    if (!effectiveCheckId || !excludeReason.trim() || !activeCheckWithData?.assessment_id) return;
 
     const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
     const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    const sectionKeyToExclude = isViewingChildSection ? activeChild?.code_section_key : sectionKey;
+    const sectionKeyToExclude = isViewingChildSection ? activeChild?.sections?.key : sectionKey;
 
     if (!sectionKeyToExclude) return;
 
     setExcludingSection(true);
     try {
       const response = await fetch(
-        `/api/assessments/${activeCheck.assessment_id}/exclude-section`,
+        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -643,11 +369,11 @@ export function CodeDetailPanel({
   };
 
   const handleOpenExcludeGroup = async () => {
-    if (!section?.parent_key || !activeCheck?.assessment_id) return;
+    if (!activeCheckWithData?.assessment_id || !section?.parent_key) return;
 
     try {
       const response = await fetch(
-        `/api/assessments/${activeCheck.assessment_id}/exclude-section-group?sectionKey=${encodeURIComponent(section.parent_key)}`
+        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section-group?sectionKey=${encodeURIComponent(section.parent_key)}`
       );
 
       const data = await response.json();
@@ -670,13 +396,17 @@ export function CodeDetailPanel({
   };
 
   const handleExcludeGroup = async () => {
-    if (!activeCheck?.assessment_id || selectedSectionKeys.size === 0 || !excludeReason.trim())
+    if (
+      !activeCheckWithData?.assessment_id ||
+      selectedSectionKeys.size === 0 ||
+      !excludeReason.trim()
+    )
       return;
 
     setExcludingGroup(true);
     try {
       const response = await fetch(
-        `/api/assessments/${activeCheck.assessment_id}/exclude-section-group`,
+        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section-group`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -785,9 +515,11 @@ export function CodeDetailPanel({
       <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-semibold text-gray-900">
-            {isElementCheck
-              ? `${activeCheck?.element_groups?.name || check?.element_groups?.name || 'Element'} Instance Details`
-              : 'Code Section Details'}
+            {isElementCheck && activeCheckWithData?.element_instances?.element_groups?.name
+              ? `${activeCheckWithData.element_instances.element_groups.name}: ${activeCheckWithData.element_instances.label}`
+              : isElementCheck
+                ? 'Element Instance Details'
+                : 'Code Section Details'}
           </h3>
         </div>
         <button
@@ -838,7 +570,7 @@ export function CodeDetailPanel({
                 {childChecks.map(childCheck => (
                   <button
                     key={childCheck.id}
-                    onClick={() => handleTabSwitch(childCheck.id)}
+                    onClick={() => setActiveChildCheckId(childCheck.id)}
                     className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors text-left ${
                       childCheck.id === activeChildCheckId
                         ? 'bg-blue-600 text-white'
@@ -1135,7 +867,7 @@ export function CodeDetailPanel({
         >
           <div className="p-4 space-y-6">
             {/* Screenshots Section */}
-            {activeCheck && (
+            {activeCheckWithData && (
               <div className="border-t pt-6">
                 <div className="mb-3">
                   <button
@@ -1163,7 +895,7 @@ export function CodeDetailPanel({
 
                 {showScreenshots && (
                   <div className="pb-4 space-y-2">
-                    {activeCheck?.element_group_id && (
+                    {activeCheckWithData?.element_group_id && (
                       <button
                         className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                         onClick={() => setShowElevationSearch(true)}
@@ -1172,11 +904,7 @@ export function CodeDetailPanel({
                       </button>
                     )}
                     <ScreenshotGallery
-                      check={
-                        activeChildCheckId
-                          ? childChecks.find(c => c.id === activeChildCheckId) || activeCheck
-                          : activeCheck
-                      }
+                      check={activeCheckWithData}
                       refreshKey={screenshotsRefreshKey}
                       onScreenshotAssigned={() => {
                         setScreenshotsRefreshKey(prev => prev + 1);
@@ -1536,34 +1264,24 @@ export function CodeDetailPanel({
           sections={triageSections}
           onClose={handleTriageComplete}
           onSave={async () => {
-            if (!checkId) return;
-
-            try {
-              const runsRes = await fetch(`/api/checks/${checkId}/analysis-runs`);
-              const runsData = await runsRes.json();
-              setAnalysisRuns(runsData.runs || []);
-
-              if (onCheckUpdate) onCheckUpdate();
-            } catch (error: any) {
-              console.error('Failed to save analysis runs:', error);
-              alert('Failed to save analysis runs: ' + error.message);
-            }
+            refresh();
+            if (onCheckUpdate) onCheckUpdate();
           }}
         />
       )}
 
-      {showElevationSearch && activeCheck && (
+      {showElevationSearch && activeCheckWithData && (
         <SearchElevationsModal
           open={showElevationSearch}
           onClose={() => setShowElevationSearch(false)}
-          assessmentId={activeCheck.assessment_id}
-          currentCheckId={activeCheck.id}
+          assessmentId={activeCheckWithData.assessment_id}
+          currentCheckId={activeCheckWithData.id}
           onAssign={async screenshotIds => {
             for (const screenshotId of screenshotIds) {
               await fetch(`/api/screenshots/${screenshotId}/assign`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ checkIds: [activeCheck.id] }),
+                body: JSON.stringify({ checkIds: [activeCheckWithData.id] }),
               });
             }
 

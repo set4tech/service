@@ -35,7 +35,7 @@ interface CheckListProps {
   onSelect: (id: string) => void;
   assessmentId?: string;
   onCheckAdded?: (newCheck: any) => void;
-  onInstanceDeleted?: (elementGroupId: string, instanceLabel: string) => void;
+  onInstanceDeleted?: (elementInstanceId: string) => void;
   refetchChecks?: () => Promise<void>;
 }
 
@@ -130,13 +130,12 @@ export function CheckList({
     const mainGroups = new Map<string, any[]>();
 
     if (checkMode === 'element') {
-      // Group by element group name, then by instance_label
+      // Group by element group name, then by element_instance_id
       filtered.forEach(check => {
-        // Only show checks that belong to an element group
-        if (!check.element_group_id || !check.instance_label) {
+        // Only show checks that belong to an element instance
+        if (!check.element_instance_id || !check.element_instance_label) {
           return;
         }
-
         const groupName = check.element_group_name || 'Other';
 
         if (!mainGroups.has(groupName)) {
@@ -145,7 +144,9 @@ export function CheckList({
 
         // Find or create instance group
         const group = mainGroups.get(groupName)!;
-        let instanceGroup = group.find((g: any) => g.instance_label === check.instance_label);
+        let instanceGroup = group.find(
+          (g: any) => g.element_instance_id === check.element_instance_id
+        );
 
         if (!instanceGroup) {
           // Create new instance group with first check as representative
@@ -160,9 +161,22 @@ export function CheckList({
         }
       });
 
-      // Sort each group by instance label alphabetically
+      // Sort each group by creation date (newest first)
       mainGroups.forEach(group => {
-        group.sort((a, b) => (a.instance_label || '').localeCompare(b.instance_label || ''));
+        group.sort((a, b) => {
+          const aTime = new Date(a.created_at || 0).getTime();
+          const bTime = new Date(b.created_at || 0).getTime();
+          return aTime - bTime; // Oldest first
+        });
+      });
+
+      console.log('[CheckList] Element mode groups:', {
+        groupCount: mainGroups.size,
+        groups: Array.from(mainGroups.entries()).map(([name, instances]) => ({
+          name,
+          instanceCount: instances.length,
+          instances: instances.map((i: any) => i.element_instance_label),
+        })),
       });
     } else {
       // Section mode: flat list, no grouping
@@ -222,8 +236,7 @@ export function CheckList({
     try {
       // Single DELETE request
       const response = await fetch(
-        `/api/assessments/${assessmentId}/element-instances?` +
-          `element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(instanceLabel)}`,
+        `/api/assessments/${assessmentId}/element-instances/${check.element_instance_id}`,
         { method: 'DELETE' }
       );
 
@@ -236,7 +249,7 @@ export function CheckList({
 
       // Instant UI update - no refetch needed!
       if (onInstanceDeleted) {
-        onInstanceDeleted(check.element_group_id, instanceLabel);
+        onInstanceDeleted(check.element_instance_id);
       }
     } catch (error: any) {
       console.error('Delete error:', error);
@@ -274,17 +287,16 @@ export function CheckList({
       let response;
 
       // If this is an element check, update ALL checks for this instance
-      if (check.element_group_id && check.instance_label && assessmentId) {
+      if (check.element_instance_id && assessmentId) {
         console.log('[CheckList] Bulk updating instance label:', {
           checkId,
-          element_group_id: check.element_group_id,
-          old_label: check.instance_label,
+          element_instance_id: check.element_instance_id,
+          old_label: check.element_instance_label,
           new_label: newLabel,
         });
 
         response = await fetch(
-          `/api/assessments/${assessmentId}/element-instances?` +
-            `element_group_id=${check.element_group_id}&instance_label=${encodeURIComponent(check.instance_label)}`,
+          `/api/assessments/${assessmentId}/element-instances/${check.element_instance_id}`,
           {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -493,6 +505,11 @@ export function CheckList({
 
                         // Call create-element API directly (no template needed)
                         try {
+                          console.log('[CheckList] Creating element instance:', {
+                            assessmentId,
+                            elementGroupSlug,
+                          });
+
                           const res = await fetch('/api/checks/create-element', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -503,16 +520,25 @@ export function CheckList({
                           });
 
                           if (res.ok) {
-                            const { check } = await res.json();
-                            onCheckAdded?.(check);
+                            const data = await res.json();
+                            console.log('[CheckList] Element instance created:', {
+                              instance_id: data.instance.id,
+                              label: data.instance.label,
+                              checks_created: data.checks_created,
+                              first_check_id: data.first_check_id,
+                            });
+
+                            setSearchResults(null);
+                            await refetchChecks?.();
                           } else {
                             const data = await res.json();
+                            console.error('[CheckList] Failed to create element instance:', data);
                             alert(
                               `Failed to create element instance: ${data.error || 'Unknown error'}`
                             );
                           }
                         } catch (error) {
-                          console.error('Error creating element instance:', error);
+                          console.error('[CheckList] Error creating element instance:', error);
                           alert('Failed to create element instance');
                         }
                       }}
@@ -614,18 +640,7 @@ export function CheckList({
                               !hasInstances && 'pl-6'
                             )}
                           >
-                            <span
-                              className={clsx(
-                                'mt-0.5 mr-2 text-sm',
-                                getStatusColor(check),
-                                isActivelyProcessing(check) && 'animate-bounce'
-                              )}
-                              style={
-                                isActivelyProcessing(check)
-                                  ? { animationDuration: '2s' }
-                                  : undefined
-                              }
-                            >
+                            <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>
                               {getStatusIcon(check)}
                             </span>
                             <div className="flex-1 min-w-0">
@@ -660,13 +675,13 @@ export function CheckList({
                                           e.stopPropagation();
                                           handleStartEdit(
                                             check.id,
-                                            check.instance_label ||
+                                            check.element_instance_label ||
                                               `Instance ${check.instance_number}`
                                           );
                                         }}
                                         title="Click to edit"
                                       >
-                                        {check.instance_label ||
+                                        {check.element_instance_label ||
                                           `Instance ${check.instance_number}`}
                                       </span>
                                     )}
@@ -757,7 +772,8 @@ export function CheckList({
                                 e.stopPropagation();
                                 handleDeleteInstance(
                                   check,
-                                  check.instance_label || `Instance ${check.instance_number}`
+                                  check.element_instance_label ||
+                                    `Instance ${check.instance_number}`
                                 );
                               }}
                               disabled={deletingCheckId === check.id}
@@ -861,21 +877,15 @@ export function CheckList({
                                   <span
                                     className={clsx(
                                       'mt-0.5 mr-2 text-sm',
-                                      getStatusColor(instance),
-                                      isActivelyProcessing(instance) && 'animate-bounce'
+                                      getStatusColor(instance)
                                     )}
-                                    style={
-                                      isActivelyProcessing(instance)
-                                        ? { animationDuration: '2s' }
-                                        : undefined
-                                    }
                                   >
                                     {getStatusIcon(instance)}
                                   </span>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
                                       <div className="text-sm text-gray-700 font-medium">
-                                        {instance.instance_label ||
+                                        {instance.element_instance_label ||
                                           `Instance ${instance.instance_number}`}
                                       </div>
                                       {instance.manual_status && (
@@ -896,7 +906,7 @@ export function CheckList({
                                     e.stopPropagation();
                                     handleDeleteInstance(
                                       instance,
-                                      instance.instance_label ||
+                                      instance.element_instance_label ||
                                         `Instance ${instance.instance_number}`
                                     );
                                   }}

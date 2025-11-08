@@ -11,7 +11,6 @@ export interface Check {
   id: string;
   assessment_id: string;
   section_id: string; // UUID reference to sections.id
-  code_section_key?: string; // Deprecated: kept for backwards compatibility
   code_section_number: string;
   code_section_title: string;
   check_name: string;
@@ -38,6 +37,7 @@ export interface Check {
   // Virtual fields (populated by queries, not in DB)
   element_group_slug?: string;
   section_results?: SectionResult[]; // For element checks: per-section breakdown
+  sections?: { key: string }; // Joined section data from Supabase JOIN (table name is plural)
 }
 
 // Helper function to compute check type from element_group_id

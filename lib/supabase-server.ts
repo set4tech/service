@@ -8,9 +8,6 @@ async function fetchWithRetry(
 ): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     try {
-      const urlString =
-        typeof url === 'string' ? url : url instanceof URL ? url.toString() : '[Request object]';
-      console.log(`[SUPABASE] Attempt ${i + 1}/${retries} for:`, urlString);
       return await globalThis.fetch(url, {
         ...options,
         // Add timeout
@@ -28,7 +25,6 @@ async function fetchWithRetry(
 
       // Wait before retrying (exponential backoff: 100ms, 200ms, 400ms...)
       const delay = Math.pow(2, i) * 100;
-      console.log(`[SUPABASE] Retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -39,8 +35,6 @@ async function fetchWithRetry(
 export function supabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-  console.log('[SUPABASE] Creating client with URL:', url?.substring(0, 30) + '...');
 
   return createClient(url, key, {
     auth: { persistSession: false },

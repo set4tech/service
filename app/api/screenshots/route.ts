@@ -3,11 +3,46 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest) {
   const checkId = new URL(req.url).searchParams.get('check_id');
+  const elementInstanceId = new URL(req.url).searchParams.get('element_instance_id');
   const assessmentId = new URL(req.url).searchParams.get('assessment_id');
   const screenshotType = new URL(req.url).searchParams.get('screenshot_type');
   const supabase = supabaseAdmin();
 
-  if (checkId) {
+  if (elementInstanceId) {
+    // Fetch screenshots assigned to this element instance
+    let query = supabase
+      .from('screenshots')
+      .select(
+        `
+        *,
+        screenshot_element_instance_assignments!inner(
+          element_instance_id,
+          is_original,
+          assigned_at
+        ),
+        element_groups(id, name, slug)
+      `
+      )
+      .eq('screenshot_element_instance_assignments.element_instance_id', elementInstanceId);
+
+    // Filter by screenshot_type if provided
+    if (screenshotType && ['plan', 'elevation'].includes(screenshotType)) {
+      query = query.eq('screenshot_type', screenshotType);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Flatten assignment metadata into screenshot objects
+    const screenshots = (data || []).map((item: any) => ({
+      ...item,
+      is_original: item.screenshot_element_instance_assignments?.[0]?.is_original,
+      screenshot_element_instance_assignments: undefined, // Remove nested structure
+    }));
+
+    return NextResponse.json({ screenshots });
+  } else if (checkId) {
     // Fetch screenshots assigned to this check via junction table
     let query = supabase
       .from('screenshots')
@@ -184,27 +219,6 @@ export async function POST(req: NextRequest) {
       console.error('[screenshots] Missing host header, cannot trigger OCR extraction');
       return NextResponse.json({ screenshot });
     }
-
-    // More robust protocol detection for local development
-    const isLocal =
-      host.includes('localhost') ||
-      host.includes('127.0.0.1') ||
-      host.includes('[::1]') || // IPv6 loopback
-      host.startsWith('192.168.');
-    const protocol = isLocal ? 'http' : 'https';
-    const baseUrl = `${protocol}://${host}`;
-
-    console.log(
-      `[screenshots] Triggering OCR extraction at: ${baseUrl}/api/screenshots/${screenshot.id}/extract-text`
-    );
-
-    // Fire and forget - don't await
-    fetch(`${baseUrl}/api/screenshots/${screenshot.id}/extract-text`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }).catch(err => {
-      console.error('[screenshots] OCR trigger failed:', err);
-    });
   }
 
   return NextResponse.json({ screenshot });

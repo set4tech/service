@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 export interface ManualOverrideState {
   override: string | null;
@@ -19,6 +19,7 @@ export interface ManualOverrideActions {
 export interface UseManualOverrideOptions {
   initialOverride?: string | null;
   initialNote?: string;
+  checkId?: string | null; // Add checkId to detect when we switch checks
   onSaveSuccess?: () => void;
   onCheckDeleted?: () => void;
 }
@@ -38,13 +39,28 @@ export interface UseManualOverrideReturn {
  * - 404 handling for deleted checks
  */
 export function useManualOverride(options: UseManualOverrideOptions = {}): UseManualOverrideReturn {
-  const { initialOverride = null, initialNote = '', onSaveSuccess, onCheckDeleted } = options;
+  const {
+    initialOverride = null,
+    initialNote = '',
+    checkId = null,
+    onSaveSuccess,
+    onCheckDeleted,
+  } = options;
 
   const [override, setOverride] = useState<string | null>(initialOverride);
   const [note, setNote] = useState(initialNote);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNoteInput, setShowNoteInput] = useState(false);
+
+  // Sync internal state when check ID or initial values change (e.g., switching checks)
+  useEffect(() => {
+    // console.log('[useManualOverride] 🔄 Syncing state:', { checkId, initialOverride, initialNote });
+    setOverride(initialOverride);
+    setNote(initialNote);
+    setShowNoteInput(false); // Reset UI state when switching checks
+    setError(null); // Clear errors when switching checks
+  }, [checkId, initialOverride, initialNote]);
 
   const saveOverride = useCallback(
     async (checkId: string) => {

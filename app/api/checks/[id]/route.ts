@@ -4,8 +4,21 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = supabaseAdmin();
-  const { data, error } = await supabase.from('checks').select('*').eq('id', id).single();
+  const { data, error } = await supabase
+    .from('checks')
+    .select('*, sections!checks_section_id_fkey(key)')
+    .eq('id', id)
+    .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+
+  console.log('[GET /api/checks/[id]] Check data:', {
+    id: data.id,
+    element_instance_id: data.element_instance_id,
+    section_id: data.section_id,
+    section_key: data.sections?.key,
+    check_name: data.check_name,
+  });
+
   return NextResponse.json({ check: data });
 }
 

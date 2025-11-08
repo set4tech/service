@@ -11,15 +11,9 @@ export async function GET(req: NextRequest) {
 
   // If querying by element_group_id + instance_label, return all sections for that instance
   if (assessmentId && elementGroupId && instanceLabel) {
-    console.log('[checks] Fetching element instance checks:', {
-      assessmentId,
-      elementGroupId,
-      instanceLabel,
-    });
-
-    const { data: checks, error } = await supabase
+    const { data: checksData, error } = await supabase
       .from('checks')
-      .select('*')
+      .select('*, sections!checks_section_id_fkey(key)')
       .eq('assessment_id', assessmentId)
       .eq('element_group_id', elementGroupId)
       .eq('instance_label', instanceLabel)
@@ -28,52 +22,7 @@ export async function GET(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Fetch screenshots for these checks
-    const checkIds = (checks || []).map(c => c.id);
-    console.log('[checks] Fetching screenshots for', checkIds.length, 'checks');
-
-    const { data: allScreenshots, error: screenshotsError } = await supabase
-      .from('screenshot_check_assignments')
-      .select(
-        `
-        check_id,
-        is_original,
-        screenshots (*)
-      `
-      )
-      .in('check_id', checkIds)
-      .order('screenshots(created_at)', { ascending: true });
-
-    if (screenshotsError) {
-      console.error('[checks] Error fetching screenshots:', screenshotsError);
-    }
-
-    // Create screenshots map
-    const screenshotsMap = new Map<string, any[]>();
-    (allScreenshots || []).forEach((assignment: any) => {
-      if (!screenshotsMap.has(assignment.check_id)) {
-        screenshotsMap.set(assignment.check_id, []);
-      }
-      if (assignment.screenshots) {
-        screenshotsMap.get(assignment.check_id)!.push({
-          ...assignment.screenshots,
-          is_original: assignment.is_original,
-        });
-      }
-    });
-
-    console.log('[checks] Screenshots map:', {
-      checksWithScreenshots: screenshotsMap.size,
-      totalScreenshots: Array.from(screenshotsMap.values()).flat().length,
-    });
-
-    // Add screenshots to each check
-    const checksWithScreenshots = (checks || []).map(check => ({
-      ...check,
-      screenshots: screenshotsMap.get(check.id) || [],
-    }));
-
-    return NextResponse.json(checksWithScreenshots);
+    return NextResponse.json(checksData || []);
   }
 
   // Otherwise use check_summary view
