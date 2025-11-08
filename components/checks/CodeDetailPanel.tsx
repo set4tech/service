@@ -48,7 +48,6 @@ export function CodeDetailPanel({
     activeCheck: activeCheckFromHook,
     sections,
     analysisRuns,
-    assessing: initialAssessing,
     manualOverride: initialManualOverride,
     manualOverrideNote: initialManualOverrideNote,
     showSingleSectionOnly,
@@ -89,7 +88,6 @@ export function CodeDetailPanel({
     initialOverride: initialManualOverride,
     initialNote: initialManualOverrideNote,
     onSaveSuccess: () => {
-      setAssessing(false);
       if (onCheckUpdate) onCheckUpdate();
     },
     onCheckDeleted: () => {
@@ -113,9 +111,7 @@ export function CodeDetailPanel({
     },
   } = manualOverrideHook;
 
-  // Polling hook
-  // IMPORTANT: Keep this callback stable - don't depend on analysisRuns or it will
-  // cause the polling to restart every time runs change, creating a render loop
+  // Polling hook - API is the ONLY source of truth
   const handleAssessmentComplete = useCallback(() => {
     // Trigger hook to refetch analysis runs (silent = no loading skeleton)
     refresh(true);
@@ -127,10 +123,8 @@ export function CodeDetailPanel({
     assessing,
     progress: assessmentProgress,
     message: assessmentMessage,
-    setAssessing,
   } = useAssessmentPolling({
     checkId,
-    initialAssessing,
     onComplete: handleAssessmentComplete,
   });
 
@@ -233,30 +227,13 @@ export function CodeDetailPanel({
 
     // Prevent double-clicks
     if (assessing) {
-      // console.log('[CodeDetailPanel] Assessment already in progress, ignoring click');
       return;
     }
 
-    // console.log('[CodeDetailPanel] Starting assessment for check:', checkId);
-    // console.log('[CodeDetailPanel] Check details:', {
-    //   checkId,
-    //   elementGroupId: activeCheckWithData?.element_group_id,
-    //   instanceLabel: activeCheckWithData?.instance_label,
-    //   isElementCheck: !!activeCheckWithData?.element_group_id,
-    //   childChecksCount: childChecks.length,
-    // });
-
-    setAssessing(true);
     setAssessmentError(null);
     localStorage.setItem('lastSelectedAIModel', selectedModel);
 
     try {
-      // console.log('[CodeDetailPanel] Sending assess request with:', {
-      //   aiProvider: selectedModel,
-      //   hasCustomPrompt: !!customPrompt.trim(),
-      //   hasExtraContext: !!extraContext.trim(),
-      // });
-
       const response = await fetch(`/api/checks/${checkId}/assess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -276,21 +253,15 @@ export function CodeDetailPanel({
         throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
       }
 
-      // console.log('[CodeDetailPanel] Assess response:', {
-      //   ok: response.ok,
-      //   status: response.status,
-      //   data,
-      // });
-
       if (!response.ok) {
         throw new Error(data.error || 'Assessment failed');
       }
 
-      // console.log('[CodeDetailPanel] Assessment initiated successfully');
+      // Polling will automatically pick up the status change from DB
+      // No need for optimistic updates - API is the source of truth
     } catch (err: any) {
       console.error('[CodeDetailPanel] Assessment error:', err);
       setAssessmentError(err.message);
-      setAssessing(false);
     }
   };
 
@@ -389,12 +360,7 @@ export function CodeDetailPanel({
   };
 
   const handleOpenExcludeGroup = async () => {
-    if (
-      !activeCheckWithData?.code_section_key ||
-      !activeCheckWithData?.assessment_id ||
-      !section?.parent_key
-    )
-      return;
+    if (!activeCheckWithData?.assessment_id || !section?.parent_key) return;
 
     try {
       const response = await fetch(

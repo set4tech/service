@@ -57,7 +57,7 @@ interface CheckInstance {
 
 interface CheckData {
   id: string;
-  code_section_key?: string;
+  sections?: { key: string; [key: string]: unknown };
   element_group_id?: string | null;
   latest_status?: string | null;
   status?: string;
@@ -521,7 +521,7 @@ export default function AssessmentClient({
         ? {
             id: directMatch.id,
             element_instance_id: directMatch.element_instance_id,
-            code_section_key: directMatch.code_section_key,
+            section_key: directMatch.sections?.key,
           }
         : null,
     });
@@ -930,14 +930,14 @@ export default function AssessmentClient({
                     ? {
                         id: activeCheck.id,
                         element_instance_id: activeCheck.element_instance_id,
-                        code_section_key: activeCheck.code_section_key,
+                        section_key: activeCheck.sections?.key,
                       }
                     : null,
                 });
                 return (
                   <CodeDetailPanel
                     checkId={activeCheck?.id || null}
-                    sectionKey={activeCheck?.code_section_key || null}
+                    sectionKey={activeCheck?.sections?.key || null}
                     filterToSectionKey={filterToSectionKey}
                     activeCheck={activeCheck}
                     onClose={() => {

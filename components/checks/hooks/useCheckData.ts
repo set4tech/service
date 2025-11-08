@@ -25,7 +25,6 @@ export function useCheckData(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
-  const [assessing, setAssessing] = useState(false);
 
   // Refresh trigger for manual refetch
   const [refreshCounter, setRefreshCounter] = useState(0);
@@ -49,7 +48,6 @@ export function useCheckData(
       setChildChecks([]);
       setSections([]);
       setAnalysisRuns([]);
-      setAssessing(false);
       return;
     }
 
@@ -75,7 +73,6 @@ export function useCheckData(
         }
 
         setAnalysisRuns(data.analysisRuns || []);
-        setAssessing(data.check?.status === 'processing' || data.check?.status === 'analyzing');
         setLoading(false);
       })
       .catch(err => {
@@ -119,7 +116,6 @@ export function useCheckData(
         .then(res => res.json())
         .then(data => {
           setAnalysisRuns(data.analysisRuns || []);
-          setAssessing(data.check?.status === 'processing' || data.check?.status === 'analyzing');
         })
     );
 
@@ -141,7 +137,6 @@ export function useCheckData(
     activeCheck,
     sections,
     analysisRuns,
-    assessing,
     manualOverride: activeCheck?.manual_status || null,
     manualOverrideNote: activeCheck?.manual_status_note || '',
     showSingleSectionOnly: false,

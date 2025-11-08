@@ -1,5 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { usePolling } from '@/lib/hooks/usePolling';
+import { useState, useEffect, useRef } from 'react';
 
 export interface AssessmentPollingState {
   assessing: boolean;
@@ -7,88 +6,138 @@ export interface AssessmentPollingState {
   message: string;
 }
 
-export interface AssessmentPollingActions {
-  setAssessing: (value: boolean) => void;
-}
-
-export interface UseAssessmentPollingReturn
-  extends AssessmentPollingState,
-    AssessmentPollingActions {}
+export type UseAssessmentPollingReturn = AssessmentPollingState;
 
 export interface UseAssessmentPollingOptions {
   checkId: string | null;
-  initialAssessing?: boolean;
   onComplete?: () => void;
   pollInterval?: number;
 }
 
+// Cache state across component mounts per checkId
+const stateCache = new Map<string, AssessmentPollingState>();
+
 /**
- * Hook for polling assessment progress
+ * Ultra-simple polling hook - API is the ONLY source of truth.
  *
- * Handles:
- * - Polling check assessment progress at regular intervals
- * - Tracking progress percentage and messages
- * - Triggering queue processing
- * - Completing assessment when done
- * - Cleanup on unmount
+ * Core principles:
+ * 1. No optimistic updates - just reflect what API says
+ * 2. Continuous lightweight polling - always check status
+ * 3. Stable dependencies - don't restart on every render
+ * 4. Let DB check.status drive UI state
+ * 5. Cache state across unmount/remount to prevent flicker
  *
- * IMPORTANT: Uses stable callback references to prevent polling restarts
+ * The component should call /api/checks/[id]/assess, then this hook
+ * will automatically pick up the status change from the DB.
  */
 export function useAssessmentPolling(
   options: UseAssessmentPollingOptions
 ): UseAssessmentPollingReturn {
-  const { checkId, initialAssessing = false, onComplete, pollInterval = 2000 } = options;
+  const { checkId, onComplete, pollInterval = 1000 } = options;
 
-  const [assessing, setAssessing] = useState(initialAssessing);
-  const [progress, setProgress] = useState(0);
-  const [message, setMessage] = useState('');
+  // Initialize from cache if available
+  const [state, setState] = useState<AssessmentPollingState>(() => {
+    if (checkId && stateCache.has(checkId)) {
+      return stateCache.get(checkId)!;
+    }
+    return {
+      assessing: false,
+      progress: 0,
+      message: '',
+    };
+  });
 
-  // Use ref to keep onComplete stable - prevents polling restarts
+  // Stable refs for callbacks to prevent polling restarts
   const onCompleteRef = useRef(onComplete);
+  const previousInProgressRef = useRef(false);
+
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  // Memoize polling callback to prevent usePolling from restarting
-  const pollCallback = useCallback(async () => {
-    if (!checkId) return true;
-
-    const res = await fetch(`/api/checks/${checkId}/full`);
-    const fullData = await res.json();
-    const data = fullData.progress;
-
-    if (data.inProgress) {
-      const percent = Math.round((data.completed / data.total) * 100);
-      setProgress(percent);
-      setMessage(`Analyzing... (${data.completed}/${data.total})`);
-
-      // Trigger queue processing
-      fetch('/api/queue/process').catch(err => console.error('Failed to trigger queue:', err));
-
-      return false; // Keep polling
+  useEffect(() => {
+    if (!checkId) {
+      setState({ assessing: false, progress: 0, message: '' });
+      return;
     }
 
-    setProgress(100);
-    setMessage('Loading results...');
+    let mounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
 
-    if (onCompleteRef.current) {
-      await onCompleteRef.current();
-    }
+    const poll = async () => {
+      if (!mounted) return;
 
-    setMessage('Assessment complete!');
+      try {
+        const res = await fetch(`/api/checks/${checkId}/full`);
+        if (!mounted) return;
 
-    return true; // Stop polling
-  }, [checkId]); // Only recreate when checkId changes
+        const fullData = await res.json();
+        const progress = fullData.progress;
+        const check = fullData.check;
 
-  usePolling(pollCallback, {
-    enabled: assessing && !!checkId,
-    interval: pollInterval,
-    onComplete: () => setAssessing(false),
-    onError: error => {
-      console.error('[useAssessmentPolling] Poll error:', error);
-      setAssessing(false);
-    },
-  });
+        // Check if assessment is in progress
+        const isInProgress =
+          progress.inProgress || check.status === 'processing' || check.status === 'analyzing';
 
-  return { assessing, progress, message, setAssessing };
+        let newState: AssessmentPollingState;
+
+        if (isInProgress) {
+          // Assessment is running
+          const percent =
+            progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+
+          newState = {
+            assessing: true,
+            progress: percent,
+            message:
+              progress.total > 0
+                ? `Analyzing... (${progress.completed}/${progress.total})`
+                : 'Starting assessment...',
+          };
+
+          // Trigger queue processing
+          fetch('/api/queue/process').catch(() => {});
+        } else {
+          // Assessment complete or not started
+          newState = {
+            assessing: false,
+            progress: 0,
+            message: '',
+          };
+
+          // If we were just in progress, call onComplete
+          if (previousInProgressRef.current && !isInProgress) {
+            onCompleteRef.current?.();
+          }
+        }
+
+        // Update both component state and cache
+        setState(newState);
+        stateCache.set(checkId, newState);
+
+        // Track previous state for completion detection
+        previousInProgressRef.current = isInProgress;
+      } catch (error) {
+        console.error('[useAssessmentPolling] Poll error:', error);
+        // On error, don't change state - keep showing last known state
+      }
+
+      // Schedule next poll
+      if (mounted) {
+        timeoutId = setTimeout(poll, pollInterval);
+      }
+    };
+
+    // Poll immediately on mount
+    poll();
+
+    return () => {
+      mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [checkId, pollInterval]);
+
+  return state;
 }
