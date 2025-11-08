@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
 /**
- * Create a new element check instance
+ * Create a new element instance with all its associated checks
  *
  * Flow:
- * 1. Creates a row in element_instances (label auto-generated if not provided)
- * 2. Fetches applicable sections for the element group
- * 3. Creates one check per section, all linked to the element instance
+ * 1. Get element group by slug
+ * 2. Create element_instances row (label auto-generated if not provided)
+ * 3. Seed all checks via seed_element_checks() SQL function (atomic)
  *
  * POST /api/checks/create-element
  * Body: { assessmentId, elementGroupSlug, instanceLabel? }
  *
- * Returns: { element_instance_id, label, checks_created, check }
+ * Returns: { instance: { id, label, element_group_id, ... }, checks_created }
  */
 export async function POST(req: NextRequest) {
   try {
@@ -44,37 +44,29 @@ export async function POST(req: NextRequest) {
       instanceLabel
     );
 
-    // 3. Get sections for this element group
-    const sections = await getElementSections(supabase, elementGroup.id, assessmentId);
-
-    console.log('[create-element] Got sections:', {
-      type: typeof sections,
-      isArray: Array.isArray(sections),
-      sections,
-    });
-
-    if (!Array.isArray(sections) || sections.length === 0) {
-      return NextResponse.json(
-        { error: 'No section mappings found for this element group' },
-        { status: 400 }
-      );
-    }
-
-    // 4. Create checks for each section
-    const checks = await createSectionChecks(
+    // 3. Seed all checks for this element instance (done entirely in SQL)
+    const result = await seedElementChecks(
       supabase,
       assessmentId,
       elementGroup.id,
       instance.id,
-      instance.label,
-      sections
+      instance.label
+    );
+
+    console.log(
+      `[create-element] Created instance "${instance.label}" with ${result.checks_created} checks`
     );
 
     return NextResponse.json({
-      element_instance_id: instance.id,
-      label: instance.label,
-      checks_created: checks.length,
-      check: checks[0], // For backwards compatibility
+      instance: {
+        id: instance.id,
+        label: instance.label,
+        element_group_id: elementGroup.id,
+        element_group_name: elementGroup.name,
+        assessment_id: assessmentId,
+      },
+      checks_created: result.checks_created,
+      first_check_id: result.first_check_id, // For selecting/assigning screenshots
     });
   } catch (error: any) {
     console.error('[create-element] Error:', error);
@@ -129,59 +121,35 @@ async function createElementInstance(
   return data;
 }
 
-async function getElementSections(supabase: any, elementGroupId: string, assessmentId: string) {
-  const { data, error } = await supabase.rpc('get_element_sections', {
-    p_element_group_id: elementGroupId,
-    p_assessment_id: assessmentId,
-  });
-
-  if (error) throw error;
-  return data || [];
-}
-
-async function createSectionChecks(
+async function seedElementChecks(
   supabase: any,
   assessmentId: string,
   elementGroupId: string,
   elementInstanceId: string,
-  instanceLabel: string,
-  sections: Array<{
-    section_id: string;
-    section_key: string;
-    section_number: string;
-    section_title: string;
-  }>
-) {
-  const checksToInsert = sections.map(section => ({
-    assessment_id: assessmentId,
-    element_instance_id: elementInstanceId,
-    element_group_id: elementGroupId, // FIX: Must set element_group_id to use correct unique constraint
-    check_name: `${instanceLabel} - ${section.section_title}`,
-    section_id: section.section_id,
-    // Don't set code_section_key - it's deprecated and triggers old unique constraint
-    code_section_number: section.section_number,
-    code_section_title: section.section_title,
-    status: 'pending',
-  }));
-
-  console.log(`[create-element] Inserting ${checksToInsert.length} checks for ${instanceLabel}`);
-
-  const { data, error } = await supabase.from('checks').insert(checksToInsert).select();
+  instanceLabel: string
+): Promise<{ checks_created: number; sections_processed: number; first_check_id: string }> {
+  const { data, error } = await supabase.rpc('seed_element_checks', {
+    p_assessment_id: assessmentId,
+    p_element_group_id: elementGroupId,
+    p_element_instance_id: elementInstanceId,
+    p_instance_label: instanceLabel,
+  });
 
   if (error) {
-    console.error(`[create-element] Failed to insert checks:`, error);
+    console.error('[seed_element_checks] Database error:', error);
     throw error;
   }
 
-  // Verify all checks were created
-  if (!data || data.length !== sections.length) {
-    console.error(
-      `[create-element] Check count mismatch! Expected ${sections.length}, got ${data?.length || 0}`
-    );
-    throw new Error(
-      `Failed to create all checks. Expected ${sections.length}, created ${data?.length || 0}`
-    );
+  if (!data || data.length === 0) {
+    throw new Error('seed_element_checks returned no data');
   }
 
-  return data;
+  // Function returns a single row with counts
+  const result = data[0];
+
+  console.log(
+    `[seed_element_checks] Created ${result.checks_created} checks from ${result.sections_processed} sections (first_check_id: ${result.first_check_id})`
+  );
+
+  return result;
 }

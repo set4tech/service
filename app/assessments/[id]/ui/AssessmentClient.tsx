@@ -323,11 +323,13 @@ export default function AssessmentClient({
         }
         mainGroups.get(groupName)!.push(check);
       });
-      // Sort each group by instance label
+      // Sort each group by creation date (oldest first)
       mainGroups.forEach(group => {
-        group.sort((a, b) =>
-          ((a as any).instance_label || '').localeCompare((b as any).instance_label || '')
-        );
+        group.sort((a, b) => {
+          const aTime = new Date((a as any).created_at || 0).getTime();
+          const bTime = new Date((b as any).created_at || 0).getTime();
+          return aTime - bTime; // Oldest first
+        });
       });
     } else {
       // Section mode: group by section prefix
@@ -355,10 +357,12 @@ export default function AssessmentClient({
       checks.forEach(check => {
         ids.push(check.id);
         if (check.instances?.length) {
-          // Sort instances if they exist
-          const sortedInstances = [...check.instances].sort((a, b) =>
-            ((a as any).instance_label || '').localeCompare((b as any).instance_label || '')
-          );
+          // Sort instances by creation date (oldest first)
+          const sortedInstances = [...check.instances].sort((a, b) => {
+            const aTime = new Date((a as any).created_at || 0).getTime();
+            const bTime = new Date((b as any).created_at || 0).getTime();
+            return aTime - bTime; // Oldest first
+          });
           sortedInstances.forEach(instance => ids.push(instance.id));
         }
       });

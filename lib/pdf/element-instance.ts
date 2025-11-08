@@ -6,17 +6,31 @@ const ELEMENT_GROUP_SLUGS: Record<ElementType, string> = {
   kitchen: 'kitchens',
 };
 
+export interface ElementInstance {
+  id: string;
+  label: string;
+  element_group_id: string;
+  element_group_name: string;
+  assessment_id: string;
+}
+
+export interface CreateElementInstanceResponse {
+  instance: ElementInstance;
+  checks_created: number;
+  first_check_id: string;
+}
+
 /**
- * Create a new element instance check.
+ * Create a new element instance with all its associated checks.
  *
  * @param elementType - Type of element to create
  * @param assessmentId - Assessment ID to attach to
- * @returns Created check object or null if failed
+ * @returns Created element instance data (instance, checks_created, first_check_id) or null if failed
  */
 export async function createElementInstance(
   elementType: ElementType,
   assessmentId?: string
-): Promise<any | null> {
+): Promise<CreateElementInstanceResponse | null> {
   const slug = ELEMENT_GROUP_SLUGS[elementType];
   if (!slug || !assessmentId) {
     console.error('[createElementInstance] Missing slug or assessment ID');
@@ -39,8 +53,8 @@ export async function createElementInstance(
       return null;
     }
 
-    const { check } = await response.json();
-    return check;
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error('[createElementInstance] Request failed:', error);
     return null;

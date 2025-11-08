@@ -108,15 +108,22 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
         let targetCheckId = activeCheck?.id;
 
         if (target !== 'current') {
-          const newCheck = await createElementInstance(target, assessmentId);
-          if (!newCheck) {
+          const result = await createElementInstance(target, assessmentId);
+          if (!result) {
             throw new Error(`Failed to create ${target} instance`);
           }
-          targetCheckId = newCheck.id;
-          // Refetch ALL checks to get the full set (create-element creates 206 checks)
+          console.log(
+            `[useScreenshotCapture] Created ${target} instance "${result.instance.label}" (${result.checks_created} checks)`
+          );
+
+          // Use the first check ID for screenshot assignment
+          targetCheckId = result.first_check_id;
+
+          // Refetch ALL checks to get the newly created checks
           await refetchChecks?.();
-          onCheckAdded?.(newCheck);
-          onCheckSelect?.(newCheck.id);
+
+          // Select the first check in the new instance
+          onCheckSelect?.(result.first_check_id);
         }
 
         if (!targetCheckId && type === 'plan') {

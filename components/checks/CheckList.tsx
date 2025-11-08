@@ -161,11 +161,13 @@ export function CheckList({
         }
       });
 
-      // Sort each group by instance label alphabetically
+      // Sort each group by creation date (newest first)
       mainGroups.forEach(group => {
-        group.sort((a, b) =>
-          (a.element_instance_label || '').localeCompare(b.element_instance_label || '')
-        );
+        group.sort((a, b) => {
+          const aTime = new Date(a.created_at || 0).getTime();
+          const bTime = new Date(b.created_at || 0).getTime();
+          return aTime - bTime; // Oldest first
+        });
       });
 
       console.log('[CheckList] Element mode groups:', {
@@ -520,9 +522,10 @@ export function CheckList({
                           if (res.ok) {
                             const data = await res.json();
                             console.log('[CheckList] Element instance created:', {
-                              element_instance_id: data.element_instance_id,
-                              label: data.label,
+                              instance_id: data.instance.id,
+                              label: data.instance.label,
                               checks_created: data.checks_created,
+                              first_check_id: data.first_check_id,
                             });
 
                             setSearchResults(null);
