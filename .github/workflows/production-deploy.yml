@@ -94,7 +94,18 @@ jobs:
       - name: Apply migrations to branch
         run: |
           BRANCH_NAME="${{ steps.create-branch.outputs.branch_name }}"
-          echo "📦 Applying migrations to branch: $BRANCH_NAME"
+          echo "📦 Checking for migrations to apply to branch: $BRANCH_NAME"
+
+          # Check if there are any migration files
+          MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f | wc -l)
+
+          if [ "$MIGRATION_COUNT" -eq 0 ]; then
+            echo "ℹ️  No new migrations to apply (supabase/migrations/ is empty)"
+            echo "   This is expected if all migrations are already in production"
+            exit 0
+          fi
+
+          echo "📦 Found $MIGRATION_COUNT migration(s) to apply"
 
           # Get branch database URL (pooled connection)
           BRANCH_DB_URL=$(supabase branches get $BRANCH_NAME --output json | jq -r '.POSTGRES_URL')
@@ -196,7 +207,18 @@ jobs:
           echo "🔗 Linking to production project..."
           supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
 
-          echo "🚀 Applying migrations to PRODUCTION database..."
+          echo "📦 Checking for migrations to apply to PRODUCTION..."
+
+          # Check if there are any migration files
+          MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f | wc -l)
+
+          if [ "$MIGRATION_COUNT" -eq 0 ]; then
+            echo "ℹ️  No new migrations to apply (supabase/migrations/ is empty)"
+            echo "   Skipping migration step - no database changes needed"
+            exit 0
+          fi
+
+          echo "🚀 Applying $MIGRATION_COUNT migration(s) to PRODUCTION database..."
           echo "   This will apply all pending migrations from supabase/migrations/"
 
           supabase db push
