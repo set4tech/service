@@ -3,11 +3,33 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { AIResponse } from './types';
 
-const gemini = new GoogleGenerativeAI(
-  process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
-);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Lazy initialization to avoid build-time errors when env vars are not available
+let geminiInstance: GoogleGenerativeAI | null = null;
+let openaiInstance: OpenAI | null = null;
+let anthropicInstance: Anthropic | null = null;
+
+function getGemini(): GoogleGenerativeAI {
+  if (!geminiInstance) {
+    geminiInstance = new GoogleGenerativeAI(
+      process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
+    );
+  }
+  return geminiInstance;
+}
+
+function getOpenAI(): OpenAI {
+  if (!openaiInstance) {
+    openaiInstance = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiInstance;
+}
+
+function getAnthropic(): Anthropic {
+  if (!anthropicInstance) {
+    anthropicInstance = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return anthropicInstance;
+}
 
 export interface AnalysisRequest {
   prompt: string;
@@ -60,7 +82,7 @@ export async function runAI(
   if (req.provider === 'gemini') {
     return withRetry(async () => {
       const modelName = req.model || 'gemini-2.5-pro';
-      const model = gemini.getGenerativeModel({ model: modelName });
+      const model = getGemini().getGenerativeModel({ model: modelName });
       const parts: any[] = [{ text: req.prompt }];
 
       // Convert screenshots to base64 inline data
@@ -135,7 +157,7 @@ export async function runAI(
         ...imageBlocks,
       ];
 
-      const resp = await anthropic.messages.create({
+      const resp = await getAnthropic().messages.create({
         model: modelName,
         max_tokens: 4096,
         messages: [{ role: 'user', content }],
@@ -158,7 +180,7 @@ export async function runAI(
           ],
         },
       ];
-      const resp = await openai.chat.completions.create(
+      const resp = await getOpenAI().chat.completions.create(
         {
           model: modelName,
           messages,
