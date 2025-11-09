@@ -42,7 +42,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 const NOOP = () => {};
 
 // Minimum distances to avoid accidental clicks being saved
-const MIN_MEASUREMENT_PIXELS = 5; // Minimum line length for measurements
+const MIN_MEASUREMENT_PIXELS = 2; // Minimum line length for measurements (very small to allow short measurements)
 const MIN_CALIBRATION_PIXELS = 10; // Minimum line length for calibration
 
 interface ViewerState {
@@ -159,6 +159,7 @@ export function PDFViewer({
   const onPageChangeRef = useRef(onPageChange);
   onPageChangeRef.current = onPageChange;
   const loadedScaleForRef = useRef<string | null>(null);
+  const lastClickTimeRef = useRef<number>(0);
 
   // ============================================================================
   // SECTION 2: PERSISTENCE & STATE
@@ -510,7 +511,9 @@ export function PDFViewer({
   // Measurement handlers
   const saveMeasurement = useCallback(
     async (selection: any) => {
-      if (!projectId || !selection) return;
+      if (!projectId || !selection) {
+        return;
+      }
 
       const dx = selection.endX - selection.startX;
       const dy = selection.endY - selection.startY;
@@ -537,10 +540,11 @@ export function PDFViewer({
           pixels_distance: pixelsDistance,
           real_distance_inches: realDistanceInches,
         });
-        dispatch({ type: 'CLEAR_SELECTION' });
       } catch (error) {
         console.error('[PDFViewer] Error saving measurement:', error);
-        alert('Failed to save measurement');
+        alert(
+          'Failed to save measurement: ' + (error instanceof Error ? error.message : String(error))
+        );
       }
     },
     [projectId, state.pageNumber, calculateRealDistance, measurementsHook.actions]
@@ -681,6 +685,15 @@ export function PDFViewer({
 
   // Mouse handlers for pan / selection
   const onMouseDown = (e: React.MouseEvent) => {
+    // Prevent rapid double-clicks from creating 0-pixel measurements
+    const now = Date.now();
+    const timeSinceLastClick = now - lastClickTimeRef.current;
+
+    if (timeSinceLastClick < 300 && state.mode.type === 'measure') {
+      return;
+    }
+    lastClickTimeRef.current = now;
+
     // Special modes: only left-click for selection, no panning allowed
     if ((state.mode.type !== 'idle' || isDrawingCalibrationLine) && !readOnly) {
       if (e.button === 0) {
@@ -753,8 +766,11 @@ export function PDFViewer({
       // Don't auto-clear like we do for measurements
     } else if (state.mode.type === 'measure' && state.mode.selection) {
       // Auto-save measurement (validation happens in saveMeasurement)
-      saveMeasurement(state.mode.selection);
+      const selectionToSave = state.mode.selection;
+      // Clear selection immediately so it doesn't interfere with next drag
       dispatch({ type: 'CLEAR_SELECTION' });
+      // Save async in background
+      saveMeasurement(selectionToSave);
     } else if (isDrawingCalibrationLine && state.mode.type !== 'idle' && state.mode.selection) {
       // Validate calibration line length before showing modal
       const selection = state.mode.selection;
@@ -1170,6 +1186,13 @@ export function PDFViewer({
               </label>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Mode Indicator */}
+      {state.mode.type !== 'idle' && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg font-semibold">
+          MODE: {state.mode.type.toUpperCase()}
         </div>
       )}
 

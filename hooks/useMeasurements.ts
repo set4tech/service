@@ -84,14 +84,15 @@ export function useMeasurements(
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Skip fetch if initialData is provided
-  const shouldFetch = !initialData && projectId;
+  // Always fetch - if we have initialData, the fetch will just update it with fresh data
+  const fetchUrl = projectId
+    ? `/api/measurements?projectId=${projectId}&pageNumber=${pageNumber}`
+    : null;
 
-  const { data, loading, error, refetch } = useFetch<{ measurements: Measurement[] }>(
-    shouldFetch ? `/api/measurements?projectId=${projectId}&pageNumber=${pageNumber}` : null
-  );
+  const { data, loading, error, refetch } = useFetch<{ measurements: Measurement[] }>(fetchUrl);
 
-  const measurements = initialData || data?.measurements || [];
+  // Use fetched data if available, otherwise fall back to initialData (until first fetch completes)
+  const measurements = data?.measurements || initialData || [];
 
   const save = useCallback(
     async (measurement: NewMeasurement): Promise<Measurement> => {
