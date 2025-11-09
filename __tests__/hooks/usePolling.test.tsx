@@ -2,11 +2,14 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { usePolling } from '@/lib/hooks/usePolling';
 import { vi } from 'vitest';
 
-vi.useFakeTimers();
-
 describe('usePolling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   afterEach(() => {
     vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it('should call callback at regular intervals', async () => {
