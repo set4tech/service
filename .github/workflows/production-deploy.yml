@@ -73,8 +73,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Create database branch from production
-        id: create-branch
+      - name: Setup and test database branch
+        id: setup-branch
         run: |
           echo "🔐 Logging into Supabase..."
           supabase login --token ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -91,38 +91,26 @@ jobs:
 
           echo "✅ Branch created successfully"
 
-      - name: Apply migrations to branch
-        run: |
-          BRANCH_NAME="${{ steps.create-branch.outputs.branch_name }}"
-          echo "📦 Checking for migrations to apply to branch: $BRANCH_NAME"
-
-          # Check if there are any migration files
+          # Check for migrations
+          echo "📦 Checking for migrations to apply..."
           MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f | wc -l)
 
           if [ "$MIGRATION_COUNT" -eq 0 ]; then
             echo "ℹ️  No new migrations to apply (supabase/migrations/ is empty)"
-            echo "   This is expected if all migrations are already in production"
-            exit 0
+          else
+            echo "📦 Found $MIGRATION_COUNT migration(s) to apply"
+            
+            # Get branch database URL (pooled connection)
+            BRANCH_DB_URL=$(supabase branches get $BRANCH_NAME --output json | jq -r '.POSTGRES_URL')
+            
+            # Apply all pending migrations to the branch using db-url
+            supabase db push --db-url "$BRANCH_DB_URL"
+            
+            echo "✅ Migrations applied successfully"
           fi
 
-          echo "📦 Found $MIGRATION_COUNT migration(s) to apply"
-
-          # Get branch database URL (pooled connection)
-          BRANCH_DB_URL=$(supabase branches get $BRANCH_NAME --output json | jq -r '.POSTGRES_URL')
-
-          # Apply all pending migrations to the branch using db-url
-          supabase db push --db-url "$BRANCH_DB_URL"
-
-          echo "✅ Migrations applied successfully"
-
-      - name: Get branch connection details
-        id: branch-details
-        run: |
-          BRANCH_NAME="${{ steps.create-branch.outputs.branch_name }}"
-
+          # Get branch connection details
           echo "🔍 Getting branch connection details..."
-
-          # Get branch info as JSON
           BRANCH_INFO=$(supabase branches get $BRANCH_NAME --output json)
 
           # Extract connection details
@@ -135,7 +123,9 @@ jobs:
           echo "BRANCH_ANON_KEY=$BRANCH_ANON_KEY" >> $GITHUB_ENV
           echo "BRANCH_SERVICE_KEY=$BRANCH_SERVICE_KEY" >> $GITHUB_ENV
 
-          echo "✅ Branch URL: $BRANCH_URL"
+          echo "✅ Branch setup complete"
+          echo "   Branch name: $BRANCH_NAME"
+          echo "   Branch URL: $BRANCH_URL"
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -174,8 +164,18 @@ jobs:
       - name: Cleanup database branch
         if: always()
         run: |
-          BRANCH_NAME="${{ steps.create-branch.outputs.branch_name }}"
+          BRANCH_NAME="${{ steps.setup-branch.outputs.branch_name }}"
+
+          if [ -z "$BRANCH_NAME" ]; then
+            echo "⚠️  No branch name found, skipping cleanup"
+            exit 0
+          fi
+
           echo "🧹 Cleaning up database branch: $BRANCH_NAME"
+
+          # Re-login and link for cleanup
+          supabase login --token ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
 
           # Force delete without confirmation
           supabase branches delete $BRANCH_NAME --force || echo "⚠️  Branch may have already been deleted"
