@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAIClient() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 export interface ViolationTitleInput {
   codeSectionNumber: string;
@@ -41,18 +43,20 @@ export async function generateViolationTitle(input: ViolationTitleInput): Promis
   if (input.codeSectionText) {
     // Truncate section text if too long
     const maxSectionLength = 500;
-    const sectionText = input.codeSectionText.length > maxSectionLength
-      ? input.codeSectionText.slice(0, maxSectionLength) + '...'
-      : input.codeSectionText;
+    const sectionText =
+      input.codeSectionText.length > maxSectionLength
+        ? input.codeSectionText.slice(0, maxSectionLength) + '...'
+        : input.codeSectionText;
     contextParts.push(`Section Text: ${sectionText}`);
   }
 
   if (input.aiReasoning) {
     // Truncate reasoning if too long
     const maxReasoningLength = 300;
-    const reasoning = input.aiReasoning.length > maxReasoningLength
-      ? input.aiReasoning.slice(0, maxReasoningLength) + '...'
-      : input.aiReasoning;
+    const reasoning =
+      input.aiReasoning.length > maxReasoningLength
+        ? input.aiReasoning.slice(0, maxReasoningLength) + '...'
+        : input.aiReasoning;
     contextParts.push(`Violation Analysis: ${reasoning}`);
   }
 
@@ -88,12 +92,14 @@ BAD EXAMPLES:
 Generate ONLY the title, nothing else:`;
 
   try {
+    const openai = getOpenAIClient();
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: 'You are an expert at converting technical building code violations into clear, concise, actionable titles for non-technical audiences.',
+          content:
+            'You are an expert at converting technical building code violations into clear, concise, actionable titles for non-technical audiences.',
         },
         {
           role: 'user',
@@ -107,7 +113,10 @@ Generate ONLY the title, nothing else:`;
     let title = response.choices[0]?.message?.content?.trim() || '';
 
     // Remove surrounding quotes if present (LLM sometimes adds them)
-    if ((title.startsWith('"') && title.endsWith('"')) || (title.startsWith("'") && title.endsWith("'"))) {
+    if (
+      (title.startsWith('"') && title.endsWith('"')) ||
+      (title.startsWith("'") && title.endsWith("'"))
+    ) {
       title = title.slice(1, -1);
     }
 
