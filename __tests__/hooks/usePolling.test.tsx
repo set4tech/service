@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { usePolling } from '@/lib/hooks/usePolling';
 import { vi } from 'vitest';
 
@@ -18,14 +18,14 @@ describe('usePolling', () => {
     renderHook(() => usePolling(callback, { enabled: true, interval: 1000 }));
 
     // Should be called immediately
-    expect(callback).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
 
-    // Advance timers
-    vi.advanceTimersByTime(1000);
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
+    // Advance timers and run promises
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
 
-    vi.advanceTimersByTime(1000);
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(3));
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(3));
   });
 
   it('should stop polling when callback returns true', async () => {
@@ -40,21 +40,21 @@ describe('usePolling', () => {
     renderHook(() => usePolling(callback, { enabled: true, interval: 1000, onComplete }));
 
     // Wait for initial call
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
 
     // Second call
-    vi.advanceTimersByTime(1000);
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
 
     // Third call should stop
-    vi.advanceTimersByTime(1000);
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(3));
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(3));
 
     // Should call onComplete
-    expect(onComplete).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
 
     // Should not poll anymore
-    vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(callback).toHaveBeenCalledTimes(3);
   });
 
@@ -87,15 +87,15 @@ describe('usePolling', () => {
       })
     );
 
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
-    expect(onError).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
 
-    vi.advanceTimersByTime(1000);
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
-    expect(onError).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(2));
 
-    vi.advanceTimersByTime(1000);
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(3));
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(3));
 
     // Should continue after errors
   });
@@ -113,16 +113,16 @@ describe('usePolling', () => {
       })
     );
 
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
 
-    vi.advanceTimersByTime(1000);
-    await waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(2));
 
     // Should stop after 2 errors
-    vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(callback).toHaveBeenCalledTimes(2);
 
-    expect(onError).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(2));
   });
 
   it('should cleanup on unmount', () => {

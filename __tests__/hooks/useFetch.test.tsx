@@ -70,19 +70,18 @@ describe('useFetch', () => {
 
     const { result } = renderHook(() => useFetch('/api/test', { retry: 2, retryDelay: 100 }));
 
-    await waitFor(() => {
+    // Wait for initial fetch
+    await vi.waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    // Fast-forward to trigger retry
-    vi.advanceTimersByTime(200);
+    // Fast-forward to trigger retry and run promises
+    await vi.advanceTimersByTimeAsync(200);
 
-    await waitFor(
-      () => {
-        expect(result.current.data).toEqual({ success: true });
-      },
-      { timeout: 3000 }
-    );
+    // Check result
+    await vi.waitFor(() => {
+      expect(result.current.data).toEqual({ success: true });
+    });
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
 
@@ -107,9 +106,12 @@ describe('useFetch', () => {
 
     renderHook(() => useFetch('/api/test', { onSuccess }));
 
-    await waitFor(() => {
-      expect(onSuccess).toHaveBeenCalledWith(mockData);
-    });
+    await waitFor(
+      () => {
+        expect(onSuccess).toHaveBeenCalledWith(mockData);
+      },
+      { timeout: 1000 }
+    );
   });
 
   it('should refetch when calling refetch', async () => {
@@ -121,14 +123,22 @@ describe('useFetch', () => {
 
     const { result } = renderHook(() => useFetch('/api/test'));
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
+    await waitFor(
+      () => {
+        expect(result.current.loading).toBe(false);
+      },
+      { timeout: 1000 }
+    );
 
     (global.fetch as any).mockClear();
 
     await result.current.refetch();
 
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    await waitFor(
+      () => {
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 1000 }
+    );
   });
 });
