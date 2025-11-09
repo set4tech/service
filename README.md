@@ -79,19 +79,240 @@ npm run dev
 # Open http://localhost:3000
 ```
 
-## Deployment
+## Deployment & CI/CD
 
-- **main branch** → Auto-deploys to production (Vercel)
-- **Feature branches** → Auto-creates preview deploys with dev environment
-- **CI/CD**: GitHub Actions runs tests on all PRs to main
+### Overview
 
-### Run Tests
+We use an automated CI/CD pipeline that tests database migrations on production-like data before deployment.
+
+**Deployment Flow:**
+
+```
+Pull Request → Migration tests on prod branch → Merge → Apply to production → Vercel deploy → Health check
+```
+
+### CI/CD Pipeline
+
+#### Pull Requests (Any Branch → Main)
+
+When you open a PR, GitHub Actions automatically:
+
+1. **Lint & Build** (2-3 min)
+   - Runs linter and type checking
+   - Executes unit tests
+   - Verifies build succeeds
+
+2. **Test Migrations on Production Branch** (10-15 min)
+   - Creates ephemeral Supabase branch from production database
+   - Applies your migrations to the branch
+   - Runs E2E tests against migrated database
+   - Cleans up branch automatically
+   - **Production is never touched during PR testing**
+
+#### Production Deployment (Merge to Main)
+
+After PR is merged to `main`:
+
+1. **Repeats migration tests** (safety check)
+2. **Applies migrations to production** (1-2 min)
+3. **Vercel auto-deploys** application code
+4. **Health check** validates deployment (2-3 min)
+
+### Database Migrations
+
+#### Creating a Migration
 
 ```bash
+# Create new migration file
+supabase migration new your_feature_description
+
+# Edit: supabase/migrations/YYYYMMDD_your_feature_description.sql
+
+# Test locally
+supabase db reset
+npm run dev
+npm run test:e2e
+
+# Commit and push
+git add supabase/migrations/
+git commit -m "feat: your feature description"
+git push
+```
+
+#### Migration Best Practices
+
+- ✅ Use `IF NOT EXISTS` for idempotency
+- ✅ Add columns as nullable first
+- ✅ Test with `supabase db reset` before pushing
+- ✅ Document rollback steps in migration file
+- ✅ Keep migrations small and focused
+- ❌ Never edit committed migrations
+- ❌ Avoid `DROP COLUMN` without expand-contract pattern
+
+**See `supabase/MIGRATION_GUIDE.md` for detailed patterns**
+
+#### Rolling Back Migrations
+
+Supabase uses **forward-only migrations**. To rollback:
+
+**Option 1: Application Rollback** (instant)
+
+- Vercel dashboard → Previous deployment → Promote to Production
+- Works if schema is backward compatible
+
+**Option 2: Forward Rollback Migration** (recommended)
+
+- Create new migration that reverses the changes
+- Example: `20251109_remove_new_column.sql`
+- Test and deploy like any migration
+
+**Option 3: Emergency Restore** (last resort)
+
+- Point-in-time restore via Supabase dashboard
+- Data loss from backup point forward
+
+**See `.github/MIGRATION_ROLLBACK.md` for detailed procedures**
+
+### Running Tests
+
+```bash
+# Unit tests
 npm test                  # Run once
 npm run test:watch       # Watch mode
 npm run test:coverage    # With coverage
+
+# E2E tests
+npm run test:e2e         # Run all E2E tests
+npm run test:e2e:ui      # Run with Playwright UI
+npm run test:e2e:debug   # Debug mode
 ```
+
+### Deployment Workflow
+
+#### Standard Feature Development
+
+```bash
+# 1. Create feature branch
+git checkout -b feat/your-feature
+
+# 2. Develop and test locally
+npm run dev
+npm test
+
+# 3. Create migration if needed
+supabase migration new your_change
+# Edit migration, test with: supabase db reset
+
+# 4. Push and open PR
+git push origin feat/your-feature
+# Open PR in GitHub UI
+
+# 5. Wait for CI (15-20 min)
+# - lint-and-build must pass
+# - test-migrations-on-prod-branch must pass
+
+# 6. Merge PR
+# GitHub UI → Merge pull request
+
+# 7. Watch production deploy
+# GitHub Actions → View workflow run
+# - Migrations applied to production
+# - Vercel deploys application
+# - Health check validates
+```
+
+#### Hotfix Workflow
+
+```bash
+# 1. Create hotfix branch from main
+git checkout main
+git pull
+git checkout -b hotfix/critical-issue
+
+# 2. Make minimal fix
+# ... edit files ...
+
+# 3. Test thoroughly
+npm test
+npm run test:e2e
+
+# 4. Push and open PR
+git push origin hotfix/critical-issue
+
+# 5. Monitor CI closely
+# 6. Merge immediately after CI passes
+# 7. Verify production deployment
+```
+
+### Branch Protection
+
+The `main` branch is protected:
+
+- ✅ Pull requests required for all changes
+- ✅ CI tests must pass before merge
+- ✅ Direct pushes blocked
+- ✅ Force pushes blocked
+
+**See `.github/BRANCH_PROTECTION_SETUP.md` for configuration**
+
+### Health Monitoring
+
+The `/api/health` endpoint provides deployment validation:
+
+```bash
+# Check production health
+curl https://your-app.vercel.app/api/health
+```
+
+**Response includes:**
+
+- Database connection status
+- Latest migration version
+- Response time metrics
+- Environment information
+
+### Troubleshooting Deployments
+
+#### Migration Test Failed in CI
+
+1. Check GitHub Actions logs for error
+2. Fix migration locally and test: `supabase db reset`
+3. Push fix - CI retries automatically
+
+#### Production Deployment Failed
+
+1. Check GitHub Actions logs
+2. Check Vercel deployment logs
+3. Verify health endpoint: `/api/health`
+4. Consider rollback if needed
+
+#### Application Errors After Deploy
+
+1. Check Vercel logs for errors
+2. Check Supabase logs for database issues
+3. Rollback Vercel deployment (instant)
+4. Create forward migration if schema issue
+
+### Required Secrets (For Setup)
+
+GitHub Actions requires these secrets:
+
+- `SUPABASE_ACCESS_TOKEN` - For branch creation
+- `SUPABASE_PROD_PROJECT_REF` - Production project ID
+- `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
+- `AWS_*` secrets for S3
+- AI provider keys
+
+**See `.github/GITHUB_SECRETS.md` for setup instructions**
+
+### Documentation
+
+- **`.github/LOCAL_SETUP.md`** - Test Supabase branching locally
+- **`.github/GITHUB_SECRETS.md`** - Configure CI secrets
+- **`.github/BRANCH_PROTECTION_SETUP.md`** - Set up branch protection
+- **`.github/MIGRATION_ROLLBACK.md`** - Rollback procedures
+- **`.github/TESTING_WORKFLOW.md`** - End-to-end testing guide
+- **`supabase/MIGRATION_GUIDE.md`** - Migration best practices
 
 ## Core Workflows
 

@@ -40,6 +40,10 @@ export default defineConfig({
 
     /* Video on failure */
     video: 'retain-on-failure',
+
+    /* CI-specific timeouts (slower machines, network latency) */
+    actionTimeout: process.env.CI ? 30000 : 10000,
+    navigationTimeout: process.env.CI ? 60000 : 30000,
   },
 
   /* Configure projects for major browsers */

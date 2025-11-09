@@ -1,0 +1,267 @@
+name: Production Deploy with Migration Testing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # Job 1: Fast feedback on code quality
+  lint-and-build:
+    name: Lint, Type Check, Unit Tests, Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Build application
+        run: npm run build
+        env:
+          # Use dummy values for build verification
+          NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy_key
+          SUPABASE_SERVICE_ROLE_KEY: dummy_key
+          AWS_S3_BUCKET_NAME: dummy-bucket
+          NEXT_PUBLIC_S3_BUCKET_NAME: dummy-bucket
+
+  # Job 2: Test migrations on production database branch
+  test-migrations-on-prod-branch:
+    name: Test Migrations on Production Branch
+    runs-on: ubuntu-latest
+    needs: lint-and-build
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create database branch from production
+        id: create-branch
+        run: |
+          echo "🔐 Logging into Supabase..."
+          supabase login --token ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+          echo "🔗 Linking to production project..."
+          supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+
+          # Create unique branch name
+          BRANCH_NAME="ci-test-${{ github.run_id }}-${{ github.run_attempt }}"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+          echo "🌿 Creating database branch: $BRANCH_NAME"
+          supabase branches create $BRANCH_NAME
+
+          echo "✅ Branch created successfully"
+
+      - name: Apply migrations to branch
+        run: |
+          BRANCH_NAME="${{ steps.create-branch.outputs.branch_name }}"
+          echo "📦 Applying migrations to branch: $BRANCH_NAME"
+
+          # Get branch database URL (pooled connection)
+          BRANCH_DB_URL=$(supabase branches get $BRANCH_NAME --output json | jq -r '.POSTGRES_URL')
+
+          # Apply all pending migrations to the branch using db-url
+          supabase db push --db-url "$BRANCH_DB_URL"
+
+          echo "✅ Migrations applied successfully"
+
+      - name: Get branch connection details
+        id: branch-details
+        run: |
+          BRANCH_NAME="${{ steps.create-branch.outputs.branch_name }}"
+
+          echo "🔍 Getting branch connection details..."
+
+          # Get branch info as JSON
+          BRANCH_INFO=$(supabase branches get $BRANCH_NAME --output json)
+
+          # Extract connection details
+          BRANCH_URL=$(echo $BRANCH_INFO | jq -r '.SUPABASE_URL')
+          BRANCH_ANON_KEY=$(echo $BRANCH_INFO | jq -r '.SUPABASE_ANON_KEY')
+          BRANCH_SERVICE_KEY=$(echo $BRANCH_INFO | jq -r '.SUPABASE_SERVICE_ROLE_KEY')
+
+          # Set as environment variables for next steps
+          echo "BRANCH_URL=$BRANCH_URL" >> $GITHUB_ENV
+          echo "BRANCH_ANON_KEY=$BRANCH_ANON_KEY" >> $GITHUB_ENV
+          echo "BRANCH_SERVICE_KEY=$BRANCH_SERVICE_KEY" >> $GITHUB_ENV
+
+          echo "✅ Branch URL: $BRANCH_URL"
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests against migration branch
+        run: |
+          echo "🧪 Running E2E tests against branch database..."
+          echo "   Database URL: $BRANCH_URL"
+          npm run test:e2e
+        env:
+          # Point tests to the branch database
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.BRANCH_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.BRANCH_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.BRANCH_SERVICE_KEY }}
+
+          # AWS credentials for screenshot uploads
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+          NEXT_PUBLIC_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+
+          # AI provider keys (may not be needed for all E2E tests)
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-report-migration-test
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Cleanup database branch
+        if: always()
+        run: |
+          BRANCH_NAME="${{ steps.create-branch.outputs.branch_name }}"
+          echo "🧹 Cleaning up database branch: $BRANCH_NAME"
+
+          # Force delete without confirmation
+          supabase branches delete $BRANCH_NAME --force || echo "⚠️  Branch may have already been deleted"
+
+          echo "✅ Cleanup complete"
+
+  # Job 3: Apply migrations to production (only on main push, only if tests pass)
+  apply-migrations-to-production:
+    name: Apply Migrations to Production
+    runs-on: ubuntu-latest
+    needs: test-migrations-on-prod-branch
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply migrations to PRODUCTION
+        run: |
+          echo "🔐 Logging into Supabase..."
+          supabase login --token ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+          echo "🔗 Linking to production project..."
+          supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+
+          echo "🚀 Applying migrations to PRODUCTION database..."
+          echo "   This will apply all pending migrations from supabase/migrations/"
+
+          supabase db push
+
+          echo "✅ Production migrations applied successfully"
+
+      - name: Create deployment marker
+        run: |
+          echo "::notice::Production database migrations applied at $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo ""
+          echo "✅ PRODUCTION DATABASE UPDATED"
+          echo "   Migrations applied successfully"
+          echo "   Vercel deployment will follow automatically"
+
+  # Job 4: Verify deployment health
+  verify-deployment:
+    name: Verify Production Deployment
+    runs-on: ubuntu-latest
+    needs: apply-migrations-to-production
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 10
+
+    steps:
+      - name: Wait for Vercel deployment
+        run: |
+          echo "⏳ Waiting 90 seconds for Vercel to deploy..."
+          echo "   (Vercel auto-deploys when main branch is updated)"
+          sleep 90
+
+      - name: Health check production
+        run: |
+          echo "🏥 Running health check on production..."
+
+          # Replace with your actual production URL
+          PROD_URL="https://service.vercel.app"
+
+          # Attempt health check (retry up to 3 times)
+          for i in 1 2 3; do
+            echo "Attempt $i/3..."
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $PROD_URL/api/health || echo "000")
+            
+            if [ "$RESPONSE" == "200" ]; then
+              echo "✅ Production is healthy (HTTP $RESPONSE)"
+              exit 0
+            else
+              echo "⚠️  Health check returned: $RESPONSE"
+              if [ $i -lt 3 ]; then
+                echo "   Retrying in 30 seconds..."
+                sleep 30
+              fi
+            fi
+          done
+
+          echo "❌ Production health check failed after 3 attempts"
+          echo "   Manual verification required"
+          echo "   Check Vercel deployment logs: https://vercel.com/set4tech/service"
+          exit 1
+
+      - name: Deployment successful
+        run: |
+          echo "🎉 Deployment complete and verified!"
+          echo ""
+          echo "Summary:"
+          echo "  ✅ Migrations tested on production branch"
+          echo "  ✅ E2E tests passed"
+          echo "  ✅ Migrations applied to production"
+          echo "  ✅ Application deployed"
+          echo "  ✅ Health check passed"
