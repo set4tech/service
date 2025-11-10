@@ -89,7 +89,33 @@ jobs:
           echo "🌿 Creating database branch: $BRANCH_NAME"
           supabase branches create $BRANCH_NAME
 
-          echo "✅ Branch created successfully"
+          echo "✅ Branch creation initiated"
+
+          # Wait for branch to be fully provisioned
+          echo "⏳ Waiting for branch to be ready..."
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            BRANCH_STATUS=$(supabase branches list --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .status")
+            
+            if [ "$BRANCH_STATUS" = "ACTIVE" ]; then
+              echo "✅ Branch is ready!"
+              break
+            elif [ "$BRANCH_STATUS" = "CREATING_PROJECT" ] || [ "$BRANCH_STATUS" = "CREATING_DATABASE" ]; then
+              echo "   Status: $BRANCH_STATUS (attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS)"
+              sleep 2
+              ATTEMPT=$((ATTEMPT + 1))
+            else
+              echo "❌ Unexpected branch status: $BRANCH_STATUS"
+              exit 1
+            fi
+          done
+
+          if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            echo "❌ Branch did not become ready within 60 seconds"
+            exit 1
+          fi
 
           # Check for migrations
           echo "📦 Checking for migrations to apply..."
