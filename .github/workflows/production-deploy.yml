@@ -53,27 +53,48 @@ jobs:
     name: Test Migrations on Production Branch
     runs-on: ubuntu-latest
     needs: lint-and-build
+    # Only run on push to main (not PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Check if migrations exist
+        id: check-migrations
+        run: |
+          MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f | wc -l)
+          echo "count=$MIGRATION_COUNT" >> $GITHUB_OUTPUT
+
+          if [ "$MIGRATION_COUNT" -eq 0 ]; then
+            echo "✅ No migrations to test - skipping branch creation"
+            echo "   This is expected if all migrations are already in production"
+            echo "has_migrations=false" >> $GITHUB_OUTPUT
+          else
+            echo "📦 Found $MIGRATION_COUNT migration(s) to test"
+            echo "has_migrations=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Setup Node.js
+        if: steps.check-migrations.outputs.has_migrations == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
       - name: Setup Supabase CLI
+        if: steps.check-migrations.outputs.has_migrations == 'true'
         uses: supabase/setup-cli@v1
         with:
           version: latest
 
       - name: Install dependencies
+        if: steps.check-migrations.outputs.has_migrations == 'true'
         run: npm ci
 
       - name: Setup and test database branch
+        if: steps.check-migrations.outputs.has_migrations == 'true'
         id: setup-branch
         run: |
           echo "🔐 Logging into Supabase..."
@@ -158,9 +179,11 @@ jobs:
           echo "   Branch URL: $BRANCH_URL"
 
       - name: Install Playwright browsers
+        if: steps.check-migrations.outputs.has_migrations == 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests against migration branch
+        if: steps.check-migrations.outputs.has_migrations == 'true'
         run: |
           echo "🧪 Running E2E tests against branch database..."
           echo "   Database URL: $BRANCH_URL"
@@ -184,7 +207,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Upload Playwright report
-        if: always()
+        if: always() && steps.check-migrations.outputs.has_migrations == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-migration-test
@@ -192,7 +215,7 @@ jobs:
           retention-days: 7
 
       - name: Cleanup database branch
-        if: always()
+        if: always() && steps.check-migrations.outputs.has_migrations == 'true'
         run: |
           BRANCH_NAME="${{ steps.setup-branch.outputs.branch_name }}"
 
@@ -224,12 +247,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Check if migrations exist
+        id: check-migrations
+        run: |
+          MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f | wc -l)
+          echo "count=$MIGRATION_COUNT" >> $GITHUB_OUTPUT
+
+          if [ "$MIGRATION_COUNT" -eq 0 ]; then
+            echo "✅ No migrations to apply - skipping"
+            echo "has_migrations=false" >> $GITHUB_OUTPUT
+          else
+            echo "📦 Found $MIGRATION_COUNT migration(s) to apply"
+            echo "has_migrations=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Setup Supabase CLI
+        if: steps.check-migrations.outputs.has_migrations == 'true'
         uses: supabase/setup-cli@v1
         with:
           version: latest
 
       - name: Apply migrations to PRODUCTION
+        if: steps.check-migrations.outputs.has_migrations == 'true'
         run: |
           echo "🔐 Logging into Supabase..."
           supabase login --token ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -237,18 +276,7 @@ jobs:
           echo "🔗 Linking to production project..."
           supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
 
-          echo "📦 Checking for migrations to apply to PRODUCTION..."
-
-          # Check if there are any migration files
-          MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f | wc -l)
-
-          if [ "$MIGRATION_COUNT" -eq 0 ]; then
-            echo "ℹ️  No new migrations to apply (supabase/migrations/ is empty)"
-            echo "   Skipping migration step - no database changes needed"
-            exit 0
-          fi
-
-          echo "🚀 Applying $MIGRATION_COUNT migration(s) to PRODUCTION database..."
+          echo "🚀 Applying ${{ steps.check-migrations.outputs.count }} migration(s) to PRODUCTION database..."
           echo "   This will apply all pending migrations from supabase/migrations/"
 
           supabase db push
