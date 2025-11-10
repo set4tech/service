@@ -121,16 +121,17 @@ jobs:
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             BRANCH_STATUS=$(supabase branches list --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .status")
             
-            if [ "$BRANCH_STATUS" = "ACTIVE" ]; then
+            if [ "$BRANCH_STATUS" = "ACTIVE" ] || [ "$BRANCH_STATUS" = "ACTIVE_HEALTHY" ]; then
               echo "✅ Branch is ready! (took $((ATTEMPT * SLEEP_INTERVAL)) seconds)"
               break
-            elif [ "$BRANCH_STATUS" = "CREATING_PROJECT" ] || [ "$BRANCH_STATUS" = "CREATING_DATABASE" ] || [ "$BRANCH_STATUS" = "ACTIVE_HEALTHY" ]; then
+            elif [ "$BRANCH_STATUS" = "CREATING_PROJECT" ] || [ "$BRANCH_STATUS" = "CREATING_DATABASE" ] || [ "$BRANCH_STATUS" = "RUNNING_MIGRATIONS" ] || [ "$BRANCH_STATUS" = "PROVISIONING" ]; then
               ELAPSED=$((ATTEMPT * SLEEP_INTERVAL))
               echo "   Status: $BRANCH_STATUS (${ELAPSED}s elapsed)"
               sleep $SLEEP_INTERVAL
               ATTEMPT=$((ATTEMPT + 1))
             else
               echo "❌ Unexpected branch status: $BRANCH_STATUS"
+              echo "   Branch may be in an error state. Check Supabase dashboard."
               exit 1
             fi
           done
