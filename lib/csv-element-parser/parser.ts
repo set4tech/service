@@ -93,16 +93,10 @@ function groupDoorRows(rows: CSVRow[]): DoorGroup[] {
     doorGroup.pageLabel = doorRows[0]['Page Label'];
   }
 
-  // Extract label from any row with a Label field
-  for (const row of doorRows) {
-    const label = row.Label;
-    if (label && label.trim() && label.toLowerCase() !== 'no') {
-      doorGroup.label = extractDoorLabel(label, '');
-      break;
-    }
-  }
+  // Don't extract label - let database trigger auto-generate it (e.g., "Doors 1", "Doors 2")
+  doorGroup.label = 'AUTO'; // Will be replaced by trigger
 
-  console.log(`Creating door group: "${doorGroup.label}" on page ${doorGroup.pageNumber}`);
+  console.log(`Creating door group on page ${doorGroup.pageNumber}`);
 
   // Extract rectangle (bounding box) - use first Rectangle with reasonable dimensions
   const rectangleRows = doorRows.filter(row => row.Subject === 'Rectangle');
@@ -154,25 +148,6 @@ function groupDoorRows(rows: CSVRow[]): DoorGroup[] {
   }
 
   return [doorGroup];
-}
-
-/**
- * Extract clean door label from Label field or Comments
- */
-function extractDoorLabel(label: string, comments: string): string {
-  // Use Label field if available
-  if (label && label.trim() && label !== 'No') {
-    // Clean up the label (remove extra quotes, trim)
-    return label.replace(/^["']|["']$/g, '').trim();
-  }
-
-  // Fall back to Comments if it looks like a door label
-  if (comments && comments.trim()) {
-    return comments.trim();
-  }
-
-  // Default fallback
-  return 'Door';
 }
 
 /**
