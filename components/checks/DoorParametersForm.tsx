@@ -67,7 +67,7 @@ export function DoorParametersForm({
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            checked={parameters.is_on_accessible_route}
+            checked={parameters.is_on_accessible_route ?? true}
             onChange={e => updateParameter('is_on_accessible_route', e.target.checked)}
             className="rounded"
           />
@@ -83,7 +83,7 @@ export function DoorParametersForm({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={parameters.is_hinged_door}
+              checked={parameters.is_hinged_door ?? false}
               onChange={e => updateParameter('is_hinged_door', e.target.checked)}
               className="rounded"
             />
@@ -93,7 +93,7 @@ export function DoorParametersForm({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={parameters.is_sliding_door}
+              checked={parameters.is_sliding_door ?? false}
               onChange={e => updateParameter('is_sliding_door', e.target.checked)}
               className="rounded"
             />
@@ -103,7 +103,7 @@ export function DoorParametersForm({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={parameters.is_automatic_door}
+              checked={parameters.is_automatic_door ?? false}
               onChange={e => updateParameter('is_automatic_door', e.target.checked)}
               className="rounded"
             />
@@ -113,7 +113,7 @@ export function DoorParametersForm({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={parameters.is_double_leaf}
+              checked={parameters.is_double_leaf ?? false}
               onChange={e => updateParameter('is_double_leaf', e.target.checked)}
               className="rounded"
             />
@@ -159,7 +159,7 @@ export function DoorParametersForm({
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            checked={parameters.is_opening_depth_greater_than_24_inches}
+            checked={parameters.is_opening_depth_greater_than_24_inches ?? false}
             onChange={e =>
               updateParameter('is_opening_depth_greater_than_24_inches', e.target.checked)
             }
@@ -246,7 +246,7 @@ export function DoorParametersForm({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={parameters.has_door_closer}
+              checked={parameters.has_door_closer ?? false}
               onChange={e => updateParameter('has_door_closer', e.target.checked)}
               className="rounded"
             />
@@ -256,7 +256,7 @@ export function DoorParametersForm({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={parameters.has_latch}
+              checked={parameters.has_latch ?? false}
               onChange={e => updateParameter('has_latch', e.target.checked)}
               className="rounded"
             />
@@ -273,7 +273,7 @@ export function DoorParametersForm({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={parameters.is_exterior_door}
+              checked={parameters.is_exterior_door ?? false}
               onChange={e => updateParameter('is_exterior_door', e.target.checked)}
               className="rounded"
             />
@@ -283,7 +283,7 @@ export function DoorParametersForm({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={parameters.is_interior_doorway}
+              checked={parameters.is_interior_doorway ?? false}
               onChange={e => updateParameter('is_interior_doorway', e.target.checked)}
               className="rounded"
             />
