@@ -6,10 +6,12 @@ import { SearchElevationsModal } from '@/components/screenshots/SearchElevations
 import { TableRenderer } from '@/components/ui/TableRenderer';
 import { TriageModal } from './TriageModal';
 import { AnalysisHistory } from './AnalysisHistory';
+import { DoorParametersForm } from './DoorParametersForm';
 import { useManualOverride } from '@/hooks/useManualOverride';
 import { useAssessmentPolling } from '@/hooks/useAssessmentPolling';
 import { useCheckData } from './hooks/useCheckData';
 import type { SectionResult } from '@/types/analysis';
+import type { DoorParameters } from '@/types/compliance';
 
 interface CodeDetailPanelProps {
   checkId: string | null;
@@ -162,6 +164,8 @@ export function CodeDetailPanel({
 
   const [showSectionTabs, setShowSectionTabs] = useState(false);
   const [showTriageModal, setShowTriageModal] = useState(false);
+  const [showParametersForm, setShowParametersForm] = useState(false);
+  const [elementParameters, setElementParameters] = useState<DoorParameters | null>(null);
   const [triageSections, setTriageSections] = useState<SectionResult[]>([]);
   const [showScreenshots, setShowScreenshots] = useState(true);
   const [showElevationSearch, setShowElevationSearch] = useState(false);
@@ -268,6 +272,56 @@ export function CodeDetailPanel({
     } catch (err: any) {
       console.error('[CodeDetailPanel] Assessment error:', err);
       setAssessmentError(err.message);
+    }
+  };
+
+  // Fetch element parameters if this is a door element
+  useEffect(() => {
+    if (activeCheckWithData?.element_instances?.id) {
+      fetchElementParameters();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCheckWithData?.element_instances?.id]);
+
+  const fetchElementParameters = async () => {
+    if (!activeCheckWithData?.element_instances?.id) return;
+
+    try {
+      const response = await fetch(
+        `/api/element-instances/${activeCheckWithData.element_instances.id}/parameters`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setElementParameters(data.parameters?.parameters || null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch element parameters:', error);
+    }
+  };
+
+  const handleSaveParameters = async (parameters: DoorParameters) => {
+    if (!activeCheckWithData?.element_instances?.id) return;
+
+    const response = await fetch(
+      `/api/element-instances/${activeCheckWithData.element_instances.id}/parameters`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parameters }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to save parameters');
+    }
+
+    const data = await response.json();
+    setElementParameters(data.parameters);
+    setShowParametersForm(false);
+
+    // Refresh checks to show updated compliance status
+    if (onChecksRefresh) {
+      await onChecksRefresh();
     }
   };
 
@@ -539,6 +593,40 @@ export function CodeDetailPanel({
           )}
         </div>
       )}
+
+      {/* Parameters Section for Door Elements */}
+      {isElementCheck &&
+        activeCheckWithData?.element_instances?.element_groups?.slug === 'doors' && (
+          <div className="border-b bg-gray-50 flex-shrink-0 px-4 py-3">
+            {!showParametersForm ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">Door Parameters</span>
+                  {elementParameters && (
+                    <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                      Configured ✓
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowParametersForm(true)}
+                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+                >
+                  {elementParameters ? 'Edit Parameters' : 'Add Parameters'}
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white rounded p-4 max-h-[600px] overflow-y-auto">
+                <DoorParametersForm
+                  instanceId={activeCheckWithData.element_instances.id}
+                  currentParameters={elementParameters || undefined}
+                  onSave={handleSaveParameters}
+                  onCancel={() => setShowParametersForm(false)}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
       {/* Manual Override Section - preserving exact JSX from original lines 1185-1373 */}
       {(effectiveCheckId || (checkId && sectionKey)) && (
