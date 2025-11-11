@@ -9,6 +9,7 @@ import { CodeDetailPanel } from '@/components/checks/CodeDetailPanel';
 import { ViolationsSummary } from '@/components/checks/ViolationsSummary';
 import { ViolationDetailPanel } from '@/components/checks/ViolationDetailPanel';
 import { AssessmentScreenshotGallery } from '@/components/screenshots/AssessmentScreenshotGallery';
+import { ImportCSVDoorsModal } from '@/components/assessments/ImportCSVDoorsModal';
 import type { ViolationMarker } from '@/lib/reports/get-violations';
 
 // Load PDF viewer only on client side - removes need for wrapper component
@@ -218,7 +219,6 @@ export default function AssessmentClient({
   const handleEditCheck = (violation: ViolationMarker) => {
     // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
     console.log('[handleEditCheck] Called with violation:', {
-      checkId: violation.checkId,
       codeSectionKey: violation.codeSectionKey,
       checkType: violation.checkType,
     });
@@ -513,22 +513,8 @@ export default function AssessmentClient({
   };
 
   const activeCheck = useMemo(() => {
-    console.log('[activeCheck memo] Computing:', {
-      activeCheckId,
-      checksCount: checks.length,
-    });
     // First try to find the check directly
     const directMatch = checks.find(c => c.id === activeCheckId);
-    console.log('[activeCheck memo] Result:', {
-      found: !!directMatch,
-      check: directMatch
-        ? {
-            id: directMatch.id,
-            element_instance_id: directMatch.element_instance_id,
-            section_key: directMatch.sections?.key,
-          }
-        : null,
-    });
     if (directMatch) return directMatch;
 
     return null;
@@ -837,6 +823,13 @@ export default function AssessmentClient({
             </button>
           </div>
 
+          {/* CSV Import Button (only show in Element mode) */}
+          {checkMode === 'element' && (
+            <div className="mb-3">
+              <ImportCSVDoorsModal assessmentId={assessment.id} onSuccess={refetchChecks} />
+            </div>
+          )}
+
           {/* Progress Bar */}
           <div className="mb-3">
             <div className="flex justify-between text-sm text-gray-600 mb-1">
@@ -933,18 +926,6 @@ export default function AssessmentClient({
             ) : (
               /* Show CodeDetailPanel in section/element modes */
               (() => {
-                console.log('[AssessmentClient] Rendering CodeDetailPanel with:', {
-                  showDetailPanel,
-                  checkMode,
-                  activeCheckId,
-                  activeCheck: activeCheck
-                    ? {
-                        id: activeCheck.id,
-                        element_instance_id: activeCheck.element_instance_id,
-                        section_key: activeCheck.sections?.key,
-                      }
-                    : null,
-                });
                 return (
                   <CodeDetailPanel
                     checkId={activeCheck?.id || null}
