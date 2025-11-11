@@ -134,6 +134,20 @@ export interface VLMAnalysisResult {
 }
 
 /**
+ * Compliance Violation
+ * Represents a specific compliance violation found during door compliance checking
+ */
+export interface ComplianceViolation {
+  code_section: string;
+  code_text: string;
+  description: string;
+  severity: 'error' | 'warning';
+  measured_value?: number | null;
+  required_value?: number | null;
+  approach_direction?: string | null; // Which approach this violation applies to
+}
+
+/**
  * Compliance status
  */
 export type ComplianceStatus = 'compliant' | 'non_compliant' | 'needs_review' | 'pending';

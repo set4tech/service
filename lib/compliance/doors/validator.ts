@@ -1,5 +1,5 @@
-import { ValidationResponse, DoorParameters } from '@/types/compliance';
-import { doorRules, getRulesForSections, getApplicableRules } from './rules';
+import { ValidationResponse, DoorParameters, ValidationResult } from '@/types/compliance';
+import { checkDoorCompliance } from './rules';
 import { validateDoorParameters } from './parameters';
 
 /**
@@ -13,51 +13,74 @@ import { validateDoorParameters } from './parameters';
 export async function validateDoorCompliance(
   parameters: DoorParameters,
   codeSections?: string[],
-  mode: 'all' | 'applicable' = 'applicable'
+  _mode: 'all' | 'applicable' = 'applicable'
 ): Promise<ValidationResponse> {
   // Validate parameters structure
   if (!validateDoorParameters(parameters)) {
     throw new Error('Invalid door parameters structure');
   }
 
-  // Determine which rules to run
-  const rulesToRun = codeSections
-    ? getRulesForSections(codeSections)
-    : mode === 'applicable'
-      ? getApplicableRules(parameters)
-      : doorRules;
+  // Check compliance and get violations
+  const violations = checkDoorCompliance(parameters);
 
-  // Run all validation rules
-  const results = rulesToRun.map(rule => {
-    try {
-      return rule.validate(parameters);
-    } catch (error) {
-      console.error(`Error running rule ${rule.id}:`, error);
-      return {
-        section_key: '',
-        section_number: rule.sectionNumbers[0] || 'unknown',
-        section_title: rule.name,
-        rule_type: 'deterministic' as const,
-        status: 'needs_review' as const,
-        required_value: 'Error',
-        actual_value: 'Error',
-        passed: null,
-        message: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        confidence: 'low' as const,
-        auto_applicable: false,
-      };
-    }
+  // Convert violations to validation results
+  const results: ValidationResult[] = violations.map(violation => {
+    const sectionKey = `ICC:CBC_Chapter11A_11B:2025:CA:${violation.code_section}`;
+    const passed = false; // All violations are failures
+
+    return {
+      section_key: sectionKey,
+      section_number: violation.code_section,
+      section_title: violation.code_text.substring(0, 100), // Truncate for title
+      rule_type: 'deterministic', // Door rules are deterministic
+      status: violation.severity === 'error' ? 'non_compliant' : 'needs_review',
+      required_value:
+        violation.required_value !== null && violation.required_value !== undefined
+          ? `${violation.required_value}"`
+          : 'See code text',
+      actual_value:
+        violation.measured_value !== null && violation.measured_value !== undefined
+          ? `${violation.measured_value}"`
+          : 'See description',
+      passed,
+      message: violation.description,
+      confidence: 'high',
+      auto_applicable: true,
+    };
   });
 
+  // If no violations, create compliant results for key sections
+  if (results.length === 0) {
+    // Add a summary result indicating compliance
+    results.push({
+      section_key: 'ICC:CBC_Chapter11A_11B:2025:CA:11B-404',
+      section_number: '11B-404',
+      section_title: 'Doors, Doorways, and Gates',
+      rule_type: 'deterministic',
+      status: 'compliant',
+      required_value: 'All requirements met',
+      actual_value: 'All requirements met',
+      passed: true,
+      message: 'All CBC Section 11B-404 requirements are satisfied',
+      confidence: 'high',
+      auto_applicable: true,
+    });
+  }
+
+  // Filter by specific code sections if requested
+  const filteredResults = codeSections
+    ? results.filter(r => codeSections.some(section => r.section_number.includes(section)))
+    : results;
+
   // Calculate metadata
-  const deterministicCount = results.filter(r => r.rule_type === 'deterministic').length;
-  const contextualCount = results.filter(r => r.rule_type === 'contextual').length;
+  const deterministicCount = filteredResults.filter(r => r.rule_type === 'deterministic').length;
+  const contextualCount = filteredResults.filter(r => r.rule_type === 'contextual').length;
 
   return {
-    results,
+    results: filteredResults,
     validation_metadata: {
-      rules_version: '1.0.0', // TODO: Version the rules
-      total_sections_checked: results.length,
+      rules_version: '1.0.0-cbc-11b-404',
+      total_sections_checked: filteredResults.length,
       deterministic_checks: deterministicCount,
       contextual_checks: contextualCount,
     },
