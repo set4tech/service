@@ -166,26 +166,79 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           ) || [];
       console.log(`[import-csv-doors] Found ${sections.length} sections mapped to doors`);
 
-      // Create checks for each section
+      // Get all existing checks for this element instance in one query
+      console.log(`[import-csv-doors] Fetching existing checks...`);
+      const { data: existingChecks } = await supabase
+        .from('checks')
+        .select('id, section_id, code_section_number, code_section_title')
+        .eq('assessment_id', assessmentId)
+        .eq('element_instance_id', elementInstance.id)
+        .eq('element_group_id', elementGroup.id);
+
+      const existingSectionIds = new Set(existingChecks?.map(c => c.section_id) || []);
+      console.log(
+        `[import-csv-doors] Found ${existingSectionIds.size} existing checks for this door`
+      );
+
+      // Update existing checks that are missing code_section_number or code_section_title
+      const checksToUpdate = existingChecks?.filter(
+        check => !check.code_section_number || !check.code_section_title
+      );
+      if (checksToUpdate && checksToUpdate.length > 0) {
+        console.log(
+          `[import-csv-doors] Updating ${checksToUpdate.length} existing checks with section info in parallel...`
+        );
+
+        // Update all checks in parallel
+        await Promise.all(
+          checksToUpdate.map(async check => {
+            const section = sections.find(s => s.id === check.section_id);
+            if (section) {
+              return supabase
+                .from('checks')
+                .update({
+                  code_section_number: section.number,
+                  code_section_title: section.title,
+                })
+                .eq('id', check.id);
+            }
+          })
+        );
+
+        console.log(`[import-csv-doors] Updated ${checksToUpdate.length} checks`);
+      }
+
+      // Create checks for each section (skip if already exists)
       let checksCreated = 0;
       if (sections && sections.length > 0) {
-        for (const section of sections) {
-          const { error: checkError } = await supabase.from('checks').insert({
+        console.log(`[import-csv-doors] Filtering sections...`);
+        const checksToInsert = sections
+          .filter(section => !existingSectionIds.has(section.id))
+          .map(section => ({
             assessment_id: assessmentId,
             element_instance_id: elementInstance.id,
             section_id: section.id,
             element_group_id: elementGroup.id,
             human_readable_title: `${door.instanceLabel} - ${section.number}`,
-          });
+            code_section_number: section.number,
+            code_section_title: section.title,
+          }));
+
+        console.log(
+          `[import-csv-doors] Inserting ${checksToInsert.length} new checks (${existingSectionIds.size} already exist)...`
+        );
+
+        if (checksToInsert.length > 0) {
+          const { error: checkError } = await supabase.from('checks').insert(checksToInsert);
 
           if (checkError) {
-            console.error(
-              `[import-csv-doors] Error creating check for section ${section.key}:`,
-              checkError
-            );
+            console.error(`[import-csv-doors] Error creating checks:`, checkError);
           } else {
-            checksCreated++;
+            checksCreated = checksToInsert.length;
+            console.log(`[import-csv-doors] Successfully inserted ${checksCreated} checks`);
           }
+        } else {
+          console.log(`[import-csv-doors] All checks already exist, nothing to insert`);
         }
       }
 

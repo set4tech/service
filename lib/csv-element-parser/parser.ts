@@ -93,17 +93,13 @@ function groupDoorRows(rows: CSVRow[]): DoorGroup[] {
     doorGroup.pageLabel = doorRows[0]['Page Label'];
   }
 
-  // Extract label from Text Box with "Door" in it, or use first Text Box
-  const textBoxRows = doorRows.filter(row => row.Subject === 'Text Box');
-  for (const textBox of textBoxRows) {
-    const comments = textBox.Comments || '';
-    if (comments.toLowerCase().includes('door') || comments.toLowerCase().includes('front')) {
-      doorGroup.label = extractDoorLabel(textBox.Comments, '');
+  // Extract label from any row with a Label field
+  for (const row of doorRows) {
+    const label = row.Label;
+    if (label && label.trim() && label.toLowerCase() !== 'no') {
+      doorGroup.label = extractDoorLabel(label, '');
       break;
     }
-  }
-  if (doorGroup.label === 'Door' && textBoxRows.length > 0) {
-    doorGroup.label = extractDoorLabel(textBoxRows[0].Comments, '');
   }
 
   console.log(`Creating door group: "${doorGroup.label}" on page ${doorGroup.pageNumber}`);
