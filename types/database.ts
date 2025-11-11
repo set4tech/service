@@ -126,6 +126,17 @@ export interface ElementGroup {
   created_at?: string;
 }
 
+export interface ElementInstance {
+  id: string;
+  label: string;
+  element_group_id: string;
+  assessment_id: string;
+  parameters?: any; // JSONB field for element-specific parameters (e.g., DoorParameters)
+  created_at?: string;
+  updated_at?: string;
+  element_groups?: ElementGroup;
+}
+
 export interface ElementSectionMapping {
   id: string;
   element_group_id: string;

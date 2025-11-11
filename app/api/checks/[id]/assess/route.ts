@@ -3,6 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { kv } from '@/lib/kv';
+import { checkDoorCompliance } from '@/lib/compliance/doors/rules';
+import { isCaliforniaProject, splitDoorChecks } from '@/lib/compliance/doors/sections';
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION!,
@@ -67,10 +69,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const supabase = supabaseAdmin();
 
   try {
-    // 1. Fetch check from DB
+    // 1. Fetch check from DB with project and element instance info
     const { data: check, error: checkError } = await supabase
       .from('checks')
-      .select('*, assessments(project_id, projects(extracted_variables, code_assembly_id))')
+      .select(
+        `
+        *, 
+        assessments(
+          project_id, 
+          projects(
+            extracted_variables, 
+            code_assembly_id, 
+            selected_code_ids
+          )
+        ),
+        element_instances(
+          id,
+          parameters,
+          element_groups(slug, name)
+        )
+      `
+      )
       .eq('id', checkId)
       .single();
 
@@ -91,6 +110,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const assessment = check.assessments as any;
     const project = assessment?.projects;
     const buildingContext = project?.extracted_variables || {};
+    const selectedCodeIds = project?.selected_code_ids || [];
 
     // 3. Check if this is an element-grouped check
     const isElementGrouped = !!check.element_group_id && !!check.instance_label;
@@ -123,9 +143,85 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     console.log(`[Assess] Will assess ${sectionChecks.length} section(s)`);
 
-    // 4. Fetch all screenshots for ALL checks in this element group
-    const checkIds = sectionChecks.map(c => c.id);
-    console.log(`[Assess] Fetching screenshots for ${checkIds.length} checks`);
+    // 4. Check if this is a California door with parameters - use hybrid approach
+    const elementInstance = Array.isArray(check.element_instances)
+      ? check.element_instances[0]
+      : check.element_instances;
+    const elementGroupSlug = (elementInstance?.element_groups as any)?.slug;
+    const instanceParameters = elementInstance?.parameters;
+
+    const isCaliforniaDoor =
+      elementGroupSlug === 'doors' && isCaliforniaProject(selectedCodeIds) && instanceParameters;
+
+    let ruleBasedSections: any[] = [];
+    let aiBasedSections: any[] = sectionChecks;
+
+    if (isCaliforniaDoor) {
+      console.log(`[Assess] 🚪 California door detected - using hybrid compliance checking`);
+
+      const { ruleBasedChecks, aiBasedChecks } = splitDoorChecks(sectionChecks);
+      ruleBasedSections = ruleBasedChecks;
+      aiBasedSections = aiBasedChecks;
+
+      console.log(
+        `[Assess] Split: ${ruleBasedSections.length} rule-based, ${aiBasedSections.length} AI-based`
+      );
+
+      // 5. Process rule-based sections immediately
+      if (ruleBasedSections.length > 0) {
+        try {
+          const violations = checkDoorCompliance(instanceParameters);
+
+          console.log(`[Assess] Rule engine found ${violations.length} violations`);
+
+          // Update each rule-based check with compliance status
+          for (const ruleCheck of ruleBasedSections) {
+            // Find violations for this specific section
+            const sectionViolations = violations.filter(v =>
+              ruleCheck.code_section_number.startsWith(v.code_section.replace(/_.*$/, ''))
+            );
+
+            const status = sectionViolations.length > 0 ? 'non_compliant' : 'compliant';
+            const note =
+              sectionViolations.length > 0
+                ? sectionViolations.map(v => `${v.description} (${v.severity})`).join('\n')
+                : 'All rule-based requirements satisfied';
+
+            await supabase
+              .from('checks')
+              .update({
+                manual_status: status,
+                manual_status_note: note,
+                manual_status_at: new Date().toISOString(),
+                manual_status_by: 'rules_engine',
+                status: 'completed',
+              })
+              .eq('id', ruleCheck.id);
+
+            console.log(`[Assess] ✅ Rule-checked: ${ruleCheck.code_section_number} = ${status}`);
+          }
+        } catch (error) {
+          console.error('[Assess] Rule engine error:', error);
+          // Fall back to AI for these sections if rules fail
+          aiBasedSections = sectionChecks;
+        }
+      }
+    }
+
+    // 6. If no AI sections to process, return early
+    if (aiBasedSections.length === 0) {
+      console.log('[Assess] All sections processed by rules engine');
+      return NextResponse.json({
+        success: true,
+        message: 'All sections processed by rule-based compliance checking',
+        sections_processed: ruleBasedSections.length,
+        rule_based: true,
+      });
+    }
+
+    // 7. Fetch all screenshots for AI-based checks only
+    const checkIds = aiBasedSections.map(c => c.id);
+    console.log(`[Assess] Fetching screenshots for ${checkIds.length} AI-based checks`);
 
     const { data: screenshotData, error: screenshotsError } = await supabase
       .from('screenshots')
@@ -154,28 +250,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       (screenshots || []).map(async s => await getPresignedUrl(s.screenshot_url))
     );
 
-    // 5. Mark all checks as processing immediately
+    // 8. Mark AI-based checks as processing
     await supabase.from('checks').update({ status: 'processing' }).in('id', checkIds);
 
-    // 6. Prepare job metadata
+    // 9. Prepare job metadata for AI processing
     const batchGroupId = crypto.randomUUID();
-    const totalBatches = sectionChecks.length;
+    const totalBatches = aiBasedSections.length;
     const { provider, modelName } = getModelConfig(aiProvider);
 
-    console.log(`[Assess] Creating element-group meta-job for ${totalBatches} sections:`, {
+    console.log(`[Assess] Creating element-group meta-job for ${totalBatches} AI sections:`, {
       batchGroupId,
       totalBatches,
       isElementGrouped,
       elementLabel: check.instance_label,
+      ruleProcessed: ruleBasedSections.length,
     });
 
-    // 7. Create a single META-job that will be expanded by queue processor
+    // 10. Create a single META-job that will be expanded by queue processor
     const metaJobId = crypto.randomUUID();
     await kv.hset(`job:${metaJobId}`, {
       id: metaJobId,
       type: 'element_group_assessment',
       payload: JSON.stringify({
-        checkIds: sectionChecks.map(c => c.id),
+        checkIds: aiBasedSections.map(c => c.id),
         batchGroupId,
         totalBatches,
         screenshotUrls,
@@ -196,14 +293,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     await kv.lpush('queue:analysis', metaJobId);
 
-    console.log(`[Assess] Queued meta-job ${metaJobId} for ${totalBatches} sections`);
+    console.log(`[Assess] Queued meta-job ${metaJobId} for ${totalBatches} AI sections`);
 
-    // 8. Return response IMMEDIATELY
+    // 11. Return response IMMEDIATELY
     const responsePayload = {
       success: true,
       batchGroupId,
       totalBatches,
-      message: `Assessment queued. Processing ${totalBatches} section(s) in background.`,
+      message: `Assessment queued. Processing ${totalBatches} section(s) via AI${ruleBasedSections.length > 0 ? `, ${ruleBasedSections.length} via rules` : ''}.`,
+      rule_based_sections: ruleBasedSections.length,
+      ai_based_sections: aiBasedSections.length,
     };
     console.log(`[Assess] Returning response:`, responsePayload);
 
