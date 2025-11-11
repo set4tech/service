@@ -323,27 +323,6 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
   }
 
   // ==================== VIOLATION DETAIL PAGES ====================
-  // Fetch section texts for all violations
-  console.log('[PDF Export] Fetching section texts...');
-  const sectionKeys = Array.from(new Set(violations.map(v => v.codeSectionKey).filter(Boolean)));
-  const sectionTextsMap = new Map<string, string>();
-
-  try {
-    const response = await fetch('/api/sections/batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keys: sectionKeys }),
-    });
-    if (response.ok) {
-      const sections = await response.json();
-      sections.forEach((s: any) => {
-        sectionTextsMap.set(s.key, s.text || 'No text available');
-      });
-    }
-  } catch (err) {
-    console.error('[PDF Export] Failed to fetch section texts:', err);
-  }
-
   // Process each violation
   for (let i = 0; i < violations.length; i++) {
     const violation = violations[i];
@@ -371,24 +350,7 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
     pdf.text(`Code Section: ${violation.codeSectionNumber}`, PAGE_MARGIN, yPos);
-    yPos += 8;
-
-    // Code text
-    const sectionText = sectionTextsMap.get(violation.codeSectionKey) || 'Code text not available';
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(40, 40, 40);
-    const codeTextLines = pdf.splitTextToSize(sectionText, contentWidth);
-    const maxCodeLines = 15;
-    pdf.text(codeTextLines.slice(0, maxCodeLines), PAGE_MARGIN, yPos);
-    yPos += 5 * Math.min(codeTextLines.length, maxCodeLines) + 8;
-
-    if (codeTextLines.length > maxCodeLines) {
-      pdf.setFontSize(8);
-      pdf.setTextColor(100, 100, 100);
-      pdf.text('(truncated...)', PAGE_MARGIN, yPos);
-      yPos += 6;
-    }
+    yPos += 10;
 
     // Violation description
     pdf.setFontSize(10);

@@ -3,65 +3,57 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export interface GetAssessmentChecksOptions {
   search?: string | null;
   elementGroup?: string | null;
+  mode: 'section' | 'element'; // Required: determines query structure and filtering
 }
 
 /**
- * Fetch all checks for an assessment with associated data
+ * Fetch checks for an assessment with associated data
  * (analysis runs, screenshots, element instances, sections)
  *
  * This is a shared function that can be called from:
  * - API routes (via NextResponse.json)
  * - Server components (direct call)
+ *
+ * @param mode - 'section' for code section checks (no element joins), 'element' for element-based checks (with element joins)
  */
 export async function getAssessmentChecks(
   assessmentId: string,
-  options?: GetAssessmentChecksOptions
+  options: GetAssessmentChecksOptions
 ) {
   const supabase = supabaseAdmin();
-  const search = options?.search;
-  const elementGroup = options?.elementGroup;
+  const { search, elementGroup, mode } = options;
 
-  // Join with element_instances to get element data and sections to get metadata
-  let query = supabase
-    .from('checks')
-    .select(
-      `
-      *, 
-      element_instances(id, label, element_group_id, element_groups(id, name, slug)),
-      sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)
-    `
-    )
-    .eq('assessment_id', assessmentId)
-    .limit(20000); // Override Supabase default 1000 row limit
+  let query;
 
-  // Filter by element group if specified
-  if (elementGroup) {
-    const { data: group } = await supabase
-      .from('element_groups')
-      .select('id')
-      .eq('slug', elementGroup)
-      .single();
-
-    if (group) {
-      query = query.eq('element_group_id', group.id);
-    }
-  }
-
-  // Handle search queries
-  if (search && search.trim()) {
-    console.log('[getAssessmentChecks] Search query:', search.trim(), 'Assessment:', assessmentId);
-    const searchPattern = search.trim().toLowerCase();
-
-    // Build base query for checks with joins
-    let checksQuery = supabase
+  if (mode === 'section') {
+    // Section mode: No element joins needed, fetch only non-element checks
+    query = supabase
       .from('checks')
       .select(
-        '*, element_groups(name), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)'
+        `
+        *, 
+        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)
+      `
       )
       .eq('assessment_id', assessmentId)
+      .is('element_group_id', null) // Only section checks
+      .limit(20000);
+  } else {
+    // Element mode: INNER JOIN on element_instances (more efficient since we know it exists)
+    query = supabase
+      .from('checks')
+      .select(
+        `
+        *, 
+        element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)),
+        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)
+      `
+      )
+      .eq('assessment_id', assessmentId)
+      .not('element_group_id', 'is', null) // Only element checks
       .limit(20000);
 
-    // Apply element group filter to search as well
+    // Filter by specific element group if specified (only applicable in element mode)
     if (elementGroup) {
       const { data: group } = await supabase
         .from('element_groups')
@@ -70,7 +62,54 @@ export async function getAssessmentChecks(
         .single();
 
       if (group) {
-        checksQuery = checksQuery.eq('element_group_id', group.id);
+        query = query.eq('element_group_id', group.id);
+      }
+    }
+  }
+
+  // Handle search queries
+  if (search && search.trim()) {
+    console.log(
+      '[getAssessmentChecks] Search query:',
+      search.trim(),
+      'Assessment:',
+      assessmentId,
+      'Mode:',
+      mode
+    );
+    const searchPattern = search.trim().toLowerCase();
+
+    // Build base query for checks - structure depends on mode
+    let checksQuery;
+
+    if (mode === 'section') {
+      checksQuery = supabase
+        .from('checks')
+        .select('*, sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)')
+        .eq('assessment_id', assessmentId)
+        .is('element_group_id', null)
+        .limit(20000);
+    } else {
+      checksQuery = supabase
+        .from('checks')
+        .select(
+          '*, element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)'
+        )
+        .eq('assessment_id', assessmentId)
+        .not('element_group_id', 'is', null)
+        .limit(20000);
+
+      // Apply element group filter to search in element mode
+      if (elementGroup) {
+        const { data: group } = await supabase
+          .from('element_groups')
+          .select('id')
+          .eq('slug', elementGroup)
+          .single();
+
+        if (group) {
+          checksQuery = checksQuery.eq('element_group_id', group.id);
+        }
       }
     }
 
@@ -145,10 +184,19 @@ export async function getAssessmentChecks(
       const analysis = analysisMap.get(check.id);
       const screenshots = screenshotsMap.get(check.id) || [];
 
+      // Extract element data based on mode
+      const elementInstance = mode === 'element' ? check.element_instances : null;
+      const elementGroup = elementInstance?.element_groups;
+
       return {
         ...check,
-        element_group_name: check.element_groups?.name || null,
-        element_groups: undefined,
+        // Flatten element data
+        element_instance_label: elementInstance?.label || null,
+        element_group_id: elementGroup?.id || null,
+        element_group_name: elementGroup?.name || null,
+        element_group_slug: elementGroup?.slug || null,
+        element_instances: undefined,
+        // Analysis data
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
         latest_reasoning: analysis?.ai_reasoning || null,

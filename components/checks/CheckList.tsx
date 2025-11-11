@@ -87,7 +87,7 @@ export function CheckList({
     const timeoutId = setTimeout(async () => {
       try {
         const response = await fetch(
-          `/api/assessments/${assessmentId}/checks?search=${encodeURIComponent(q)}`
+          `/api/assessments/${assessmentId}/checks?mode=${checkMode}&search=${encodeURIComponent(q)}`
         );
         if (response.ok) {
           const results = await response.json();
@@ -101,7 +101,7 @@ export function CheckList({
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [query, assessmentId]);
+  }, [query, assessmentId, checkMode]);
 
   const filtered = useMemo(() => {
     // Use search results if available, otherwise use passed checks

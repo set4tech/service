@@ -466,7 +466,9 @@ export default function AssessmentClient({
 
   const refetchChecks = async () => {
     console.log('[AssessmentClient] refetchChecks called, current checks count:', checks.length);
-    const checksRes = await fetch(`/api/assessments/${assessment.id}/checks`);
+    const checksRes = await fetch(
+      `/api/assessments/${assessment.id}/checks?mode=${checkMode === 'element' ? 'element' : 'section'}`
+    );
     if (checksRes.ok) {
       const updatedChecks = await checksRes.json();
       console.log('[AssessmentClient] Fetched updated checks:', {
@@ -482,6 +484,27 @@ export default function AssessmentClient({
         checksRes.status,
         checksRes.statusText
       );
+    }
+  };
+
+  const handleModeChange = async (newMode: 'section' | 'element' | 'summary' | 'gallery') => {
+    setCheckMode(newMode);
+    localStorage.setItem(`checkMode-${assessment.id}`, newMode);
+
+    // Fetch data when switching between section and element modes
+    if (newMode === 'section' || newMode === 'element') {
+      try {
+        const checksRes = await fetch(`/api/assessments/${assessment.id}/checks?mode=${newMode}`);
+        if (checksRes.ok) {
+          const updatedChecks = await checksRes.json();
+          console.log('[AssessmentClient] Fetched checks for mode:', newMode, updatedChecks.length);
+          setChecks(updatedChecks);
+        } else {
+          console.error('[AssessmentClient] Failed to fetch checks for mode:', newMode);
+        }
+      } catch (error) {
+        console.error('[AssessmentClient] Error fetching checks for mode:', newMode, error);
+      }
     }
   };
 
@@ -766,10 +789,7 @@ export default function AssessmentClient({
           {/* Mode Toggle */}
           <div className="mb-3 flex items-center gap-2 bg-gray-100 rounded-lg p-1">
             <button
-              onClick={() => {
-                setCheckMode('section');
-                localStorage.setItem(`checkMode-${assessment.id}`, 'section');
-              }}
+              onClick={() => handleModeChange('section')}
               className={clsx(
                 'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
                 checkMode === 'section'
@@ -780,10 +800,7 @@ export default function AssessmentClient({
               By Section
             </button>
             <button
-              onClick={() => {
-                setCheckMode('element');
-                localStorage.setItem(`checkMode-${assessment.id}`, 'element');
-              }}
+              onClick={() => handleModeChange('element')}
               className={clsx(
                 'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
                 checkMode === 'element'
@@ -794,10 +811,7 @@ export default function AssessmentClient({
               By Element
             </button>
             <button
-              onClick={() => {
-                setCheckMode('summary');
-                localStorage.setItem(`checkMode-${assessment.id}`, 'summary');
-              }}
+              onClick={() => handleModeChange('summary')}
               className={clsx(
                 'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
                 checkMode === 'summary'
@@ -808,10 +822,7 @@ export default function AssessmentClient({
               Summary
             </button>
             <button
-              onClick={() => {
-                setCheckMode('gallery');
-                localStorage.setItem(`checkMode-${assessment.id}`, 'gallery');
-              }}
+              onClick={() => handleModeChange('gallery')}
               className={clsx(
                 'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
                 checkMode === 'gallery'
@@ -912,8 +923,18 @@ export default function AssessmentClient({
                 }}
                 onCheckUpdate={async () => {
                   // Refetch all checks to refresh violations list
+                  // In summary mode, determine the mode from the selected violation's check
                   try {
-                    const res = await fetch(`/api/assessments/${assessment.id}/checks`);
+                    let mode: 'section' | 'element' = 'section';
+                    if (selectedViolation) {
+                      // Check if this violation is from an element check
+                      const check = checks.find(c => c.id === selectedViolation.checkId);
+                      mode = check?.element_group_id ? 'element' : 'section';
+                    }
+
+                    const res = await fetch(
+                      `/api/assessments/${assessment.id}/checks?mode=${mode}`
+                    );
                     if (res.ok) {
                       const updatedChecks = await res.json();
                       setChecks(updatedChecks);
@@ -967,7 +988,9 @@ export default function AssessmentClient({
                     onChecksRefresh={async () => {
                       // Refetch all checks (used after exclusion)
                       try {
-                        const res = await fetch(`/api/assessments/${assessment.id}/checks`);
+                        const res = await fetch(
+                          `/api/assessments/${assessment.id}/checks?mode=${checkMode === 'element' ? 'element' : 'section'}`
+                        );
                         if (res.ok) {
                           const updatedChecks = (await res.json()) as CheckData[];
                           setChecks(updatedChecks);

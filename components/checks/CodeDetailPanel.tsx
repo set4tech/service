@@ -4,13 +4,11 @@ import { useEffect, useState, useCallback } from 'react';
 import { ScreenshotGallery } from '@/components/screenshots/ScreenshotGallery';
 import { SearchElevationsModal } from '@/components/screenshots/SearchElevationsModal';
 import { TableRenderer } from '@/components/ui/TableRenderer';
-import { TriageModal } from './TriageModal';
 import { AnalysisHistory } from './AnalysisHistory';
 import { DoorParametersForm } from './DoorParametersForm';
 import { useManualOverride } from '@/hooks/useManualOverride';
 import { useAssessmentPolling } from '@/hooks/useAssessmentPolling';
 import { useCheckData } from './hooks/useCheckData';
-import type { SectionResult } from '@/types/analysis';
 import type { DoorParameters } from '@/types/compliance';
 
 interface CodeDetailPanelProps {
@@ -163,10 +161,8 @@ export function CodeDetailPanel({
   const [selectedSectionKeys, setSelectedSectionKeys] = useState<Set<string>>(new Set());
 
   const [showSectionTabs, setShowSectionTabs] = useState(false);
-  const [showTriageModal, setShowTriageModal] = useState(false);
   const [showParametersForm, setShowParametersForm] = useState(false);
   const [elementParameters, setElementParameters] = useState<DoorParameters | null>(null);
-  const [triageSections, setTriageSections] = useState<SectionResult[]>([]);
   const [showScreenshots, setShowScreenshots] = useState(true);
   const [showElevationSearch, setShowElevationSearch] = useState(false);
   const [sectionContentHeight, setSectionContentHeight] = useState(40);
@@ -467,11 +463,6 @@ export function CodeDetailPanel({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const handleTriageComplete = () => {
-    setShowTriageModal(false);
-    setTriageSections([]);
   };
 
   // Simple loading indicator instead of full skeleton
@@ -1252,17 +1243,6 @@ export function CodeDetailPanel({
             </div>
           </div>
         </div>
-      )}
-
-      {showTriageModal && triageSections.length > 0 && (
-        <TriageModal
-          sections={triageSections}
-          onClose={handleTriageComplete}
-          onSave={async () => {
-            refresh();
-            if (onCheckUpdate) onCheckUpdate();
-          }}
-        />
       )}
 
       {showElevationSearch && activeCheckWithData && (

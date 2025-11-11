@@ -38,8 +38,8 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   const typedAssessment = assessment as unknown as AssessmentWithProject;
 
-  // Get ALL checks for the assessment directly (no HTTP overhead)
-  const checks = await getAssessmentChecks(id);
+  // Get section checks for initial load (matches default UI mode)
+  const checks = await getAssessmentChecks(id, { mode: 'section' });
 
   // Get violations using RPC (already filtered - for ViolationsSummary component)
   const { data: rpcViolations } = await supabase.rpc('get_assessment_report', {

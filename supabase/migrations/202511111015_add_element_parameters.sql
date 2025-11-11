@@ -7,5 +7,5 @@ ADD COLUMN IF NOT EXISTS parameters JSONB DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS idx_element_instances_parameters 
 ON element_instances USING GIN (parameters);
 
-COMMENT ON COLUMN element_instances.parameters IS 
+COMMENT ON COLUMN element_instances.parameters IS
 'JSONB field storing element-specific parameters (e.g., door width, hardware type, opening force). Structure varies by element_group_id.';
