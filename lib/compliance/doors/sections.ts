@@ -5,10 +5,23 @@
 import { CODE_TEXT } from './rules';
 
 /**
- * Get all covered section numbers from CODE_TEXT.
- * This is the single source of truth - if it's a key in CODE_TEXT, it's covered.
+ * Extract base section numbers from CODE_TEXT keys.
+ * Keys are like '11B-404.2.3_clear_width', we extract '11B-404.2.3'.
+ * This is the single source of truth - sections are derived from CODE_TEXT keys.
  */
-export const RULE_COVERED_SECTIONS = Object.keys(CODE_TEXT).sort();
+function getBaseSectionNumbers(): string[] {
+  const sections = new Set<string>();
+
+  for (const key of Object.keys(CODE_TEXT)) {
+    // Extract base section: split on underscore and take first part
+    const baseSection = key.split('_')[0];
+    sections.add(baseSection);
+  }
+
+  return Array.from(sections).sort();
+}
+
+export const RULE_COVERED_SECTIONS = getBaseSectionNumbers();
 
 /**
  * Check if a section number is covered by door compliance rules

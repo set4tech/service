@@ -13,6 +13,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   try {
     // Fetch element instance
+
     const { data: instance, error: instanceError } = await supabase
       .from('element_instances')
       .select('id, label, element_group_id, parameters, created_at, updated_at')
