@@ -151,9 +151,6 @@ export function CodeDetailPanel({
 
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
 
-  const [showNeverRelevantDialog, setShowNeverRelevantDialog] = useState(false);
-  const [markingNeverRelevant, setMarkingNeverRelevant] = useState(false);
-
   const [showExcludeDialog, setShowExcludeDialog] = useState(false);
   const [excludingSection, setExcludingSection] = useState(false);
   const [excludeReason, setExcludeReason] = useState('');
@@ -271,49 +268,6 @@ export function CodeDetailPanel({
     } catch (err: any) {
       console.error('[CodeDetailPanel] Assessment error:', err);
       setAssessmentError(err.message);
-    }
-  };
-
-  const handleMarkNeverRelevant = async () => {
-    if (!effectiveCheckId) return;
-
-    const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
-    const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    const sectionKeyToMark = isViewingChildSection ? activeChild?.sections?.key : sectionKey;
-
-    if (!sectionKeyToMark) return;
-
-    setMarkingNeverRelevant(true);
-    try {
-      const response = await fetch(`/api/sections/${sectionKeyToMark}/mark-never-relevant`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to mark as never relevant');
-      }
-
-      if (onCheckUpdate) onCheckUpdate();
-      if (onChecksRefresh) onChecksRefresh();
-
-      if (isViewingChildSection && childChecks.length > 1) {
-        const currentIndex = childChecks.findIndex(c => c.id === activeChildCheckId);
-        if (currentIndex < childChecks.length - 1) {
-          setActiveChildCheckId(childChecks[currentIndex + 1].id);
-        } else if (onMoveToNextCheck) {
-          onMoveToNextCheck();
-        }
-      } else if (onMoveToNextCheck) {
-        onMoveToNextCheck();
-      }
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setMarkingNeverRelevant(false);
-      setShowNeverRelevantDialog(false);
     }
   };
 
@@ -655,14 +609,6 @@ export function CodeDetailPanel({
                 )}
 
                 <div className="pt-2 border-t border-gray-200 space-y-2">
-                  <button
-                    onClick={() => setShowNeverRelevantDialog(true)}
-                    disabled={savingOverride || markingNeverRelevant}
-                    className="w-full px-3 py-2 text-sm text-red-700 bg-red-50 hover:bg-red-100 border border-red-300 rounded transition-colors disabled:opacity-50"
-                  >
-                    🚫 Mark Never Relevant
-                  </button>
-
                   <button
                     onClick={() => setShowExcludeDialog(true)}
                     disabled={excludingSection}
@@ -1096,45 +1042,6 @@ export function CodeDetailPanel({
       )}
 
       {/* Modals - preserving exact structure from lines 1890-2246 */}
-      {showNeverRelevantDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Mark Section as Never Relevant?
-              </h3>
-              <p className="text-sm text-gray-700 mb-4">
-                This will permanently mark section{' '}
-                <span className="font-mono font-semibold">{section?.number}</span> as never
-                relevant.
-              </p>
-              <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
-                <p className="text-sm text-red-800 font-semibold">⚠️ Warning</p>
-                <p className="text-sm text-red-700 mt-1">
-                  This section will be excluded from <strong>ALL future projects</strong>.
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowNeverRelevantDialog(false)}
-                  disabled={markingNeverRelevant}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleMarkNeverRelevant}
-                  disabled={markingNeverRelevant}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 disabled:bg-red-300"
-                >
-                  {markingNeverRelevant ? 'Marking...' : 'Yes, Mark as Never Relevant'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showExcludeDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
