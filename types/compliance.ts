@@ -122,6 +122,18 @@ export interface ValidationRule<TParams = any> {
 }
 
 /**
+ * VLM Analysis Result
+ * Result of analyzing a single parameter using vision-language models
+ */
+export interface VLMAnalysisResult {
+  parameter_name: string;
+  value?: string | number | boolean | null;
+  confidence: 'high' | 'medium' | 'low' | 'unknown';
+  reasoning: string;
+  flagged?: boolean;
+}
+
+/**
  * Compliance status
  */
 export type ComplianceStatus = 'compliant' | 'non_compliant' | 'needs_review' | 'pending';
