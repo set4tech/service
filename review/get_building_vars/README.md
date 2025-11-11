@@ -1,1 +1,0 @@
-The file `variable_checklist.yaml` is a list of all the parameters which are required to work out which code books apply to a given building.
