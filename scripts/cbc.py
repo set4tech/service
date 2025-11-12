@@ -19,9 +19,9 @@ from schema import Code, Section, Subsection, TableBlock
 from utils import extract_table_data, extract_figure_url
 
 # California section patterns
-# Matches: 7XX (Ch 7), 7XXA (Ch 7A), 8XX (Ch 8), 9XX (Ch 9), 10XX (Ch 10), XXXXА (Ch 10 with A), 11A-XXX, 11B-XXX
-SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2})(?!\.\d)"
-SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2})(?:\.\d+)+"
+# Matches: 3XX (Ch 3), 4XX (Ch 4), 5XX (Ch 5), 6XX (Ch 6), 7XX (Ch 7), 7XXA (Ch 7A), 8XX (Ch 8), 9XX (Ch 9), 10XX (Ch 10), XXXXА (Ch 10 with A), 11A-XXX, 11B-XXX
+SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?!\.\d)"
+SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?:\.\d+)+"
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 def get_chapter_files(year: int) -> dict[str, str]:
     """Get chapter file names for the specified year."""
     return {
+        "3": f"CHAPTER 3 OCCUPANCY CLASSIFICATION AND USE - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "4": f"CHAPTER 4 SPECIAL DETAILED REQUIREMENTS BASED ON OCCUPANCY AND USE - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "5": f"CHAPTER 5 GENERAL BUILDING HEIGHTS AND AREAS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "6": f"CHAPTER 6 TYPES OF CONSTRUCTION - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "7": f"CHAPTER 7 FIRE AND SMOKE PROTECTION FEATURES - {year} CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
         "7a": f"CHAPTER 7A SFM MATERIALS AND CONSTRUCTION METHODS FOR EXTERIOR WILDFIRE EXPOSURE - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "8": f"CHAPTER 8 INTERIOR FINISHES - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
@@ -55,6 +59,22 @@ def find_subsection_numbers(text: str) -> list[str]:
 def section_belongs_to_chapter(section_number: str, chapter: str) -> bool:
     """Check if a section number belongs to the specified chapter."""
     chapter = chapter.lower()
+
+    # Chapter 3: 3XX (e.g., 301, 302)
+    if chapter == "3":
+        return re.match(r"^3\d{2}$", section_number) is not None
+
+    # Chapter 4: 4XX (e.g., 401, 402)
+    if chapter == "4":
+        return re.match(r"^4\d{2}$", section_number) is not None
+
+    # Chapter 5: 5XX (e.g., 501, 502)
+    if chapter == "5":
+        return re.match(r"^5\d{2}$", section_number) is not None
+
+    # Chapter 6: 6XX (e.g., 601, 602)
+    if chapter == "6":
+        return re.match(r"^6\d{2}$", section_number) is not None
 
     # Chapter 7: 7XX (e.g., 701, 702)
     if chapter == "7":

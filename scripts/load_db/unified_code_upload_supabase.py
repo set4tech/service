@@ -210,7 +210,7 @@ def upload_items_to_supabase(
             }
 
             # Add optional fields only if they exist in the item
-            optional_fields = ["chapter"]
+            optional_fields = ["chapter", "chapter_id"]
 
             for field in optional_fields:
                 if field in item and item[field] is not None:
@@ -370,7 +370,8 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
         )
 
         chapter_num = section.get("chapter")
-        chapter_id = chapter_id_map.get(chapter_num) if chapter_num else None
+        # Normalize chapter_num to lowercase for lookup (case-insensitive)
+        chapter_id = chapter_id_map.get(chapter_num.lower()) if chapter_num else None
 
         section_item = {
             "key": section_key,
