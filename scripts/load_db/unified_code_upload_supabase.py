@@ -3,6 +3,8 @@
 """
 Unified upload script for all building code data to Supabase (PostgreSQL).
 Accepts any JSON file in the unified Code schema format.
+Uses UPSERT logic - only updates/inserts the sections present in the JSON file.
+Does not delete any existing sections.
 
 The unified schema:
 {
@@ -12,6 +14,7 @@ The unified schema:
   "source_id": "A117.1" | "CBC_Chapter11B" | "Chapter11",
   "title": "...",
   "source_url": "...",
+  "chapters_included": ["7", "10", "11a", "11b"] (optional),
   "sections": [
     {
       "key": "401",
@@ -189,22 +192,22 @@ def upload_items_to_supabase(
     code_data: Dict[str, Any],
     code_id: str,
 ):
-    """Upload sections and subsections to Supabase."""
+    """Upsert sections and subsections to Supabase."""
     total_items = len(all_items)
-    logger.info(f"Starting upload of {total_items} items")
+    logger.info(f"Starting upsert of {total_items} items")
 
     code_type = determine_code_type(code_data)
     logger.info(f"Determined code_type: {code_type}")
 
-    # Batch insert sections (fresh insert after DELETE)
+    # Batch upsert sections
     batch_size = 100
     for i in range(0, total_items, batch_size):
         batch = all_items[i : i + batch_size]
         logger.info(
-            f"Progress: {i}/{total_items} items uploaded ({(i/total_items)*100:.1f}%)"
+            f"Progress: {i}/{total_items} items upserted ({(i/total_items)*100:.1f}%)"
         )
 
-        # Prepare batch data for insert
+        # Prepare batch data for upsert
         batch_data = []
         for item in batch:
             record = {
@@ -256,19 +259,19 @@ def upload_items_to_supabase(
 
             batch_data.append(record)
 
-        # Insert batch
+        # Upsert batch (on_conflict='key' means update if exists, insert if not)
         try:
-            supabase.table("sections").insert(batch_data).execute()
+            supabase.table("sections").upsert(batch_data, on_conflict="key").execute()
         except Exception as e:
-            logger.error(f"Error inserting batch: {e}")
-            # Try individual inserts for this batch to identify problematic records
+            logger.error(f"Error upserting batch: {e}")
+            # Try individual upserts for this batch to identify problematic records
             for record in batch_data:
                 try:
-                    supabase.table("sections").insert(record).execute()
+                    supabase.table("sections").upsert(record, on_conflict="key").execute()
                 except Exception as record_error:
-                    logger.error(f"Failed to insert record {record['key']}: {record_error}")
+                    logger.error(f"Failed to upsert record {record['key']}: {record_error}")
 
-    logger.info("All items uploaded successfully")
+    logger.info("All items upserted successfully")
 
     # Create cross-references
     logger.info("Creating cross-references...")
@@ -302,22 +305,23 @@ def upload_items_to_supabase(
                             }
                         )
 
-    # Batch insert references
+    # Batch upsert references
     if references_to_insert:
         batch_size = 100
         for i in range(0, len(references_to_insert), batch_size):
             batch = references_to_insert[i : i + batch_size]
             try:
-                supabase.table("section_references").insert(batch).execute()
+                # Upsert to avoid duplicate errors on re-upload
+                supabase.table("section_references").upsert(batch).execute()
             except Exception as e:
-                logger.error(f"Error inserting reference batch: {e}")
+                logger.error(f"Error upserting reference batch: {e}")
 
-    logger.info(f"Created {len(references_to_insert)} cross-references")
+    logger.info(f"Upserted {len(references_to_insert)} cross-references")
 
 
 def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
-    """Upload unified Code data to Supabase using Option 4: DELETE + INSERT."""
-    logger.info("Starting upload to Supabase (Option 4: Transaction DELETE + INSERT)")
+    """Upload unified Code data to Supabase, only upserting the specified sections."""
+    logger.info("Starting upload to Supabase (Upsert only)")
 
     all_items: List[dict] = []
 
@@ -325,6 +329,7 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
     version = str(code_data["version"])
     jurisdiction = code_data.get("jurisdiction")
     source_id = code_data["source_id"]
+    chapters_included = code_data.get("chapters_included", [])
 
     # Create the Code ID
     code_id = f"{provider}+{source_id}+{version}"
@@ -337,35 +342,34 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
     logger.info(f"  Version: {version}")
     logger.info(f"  Jurisdiction: {jurisdiction}")
     logger.info(f"  Title: {code_data['title']}")
+    if chapters_included:
+        logger.info(f"  Chapters included: {chapters_included}")
 
-    # Delete existing code (CASCADE will delete all sections and references)
+    # Ensure Code record exists (upsert)
     try:
-        logger.info("Deleting existing code (if exists)...")
-        result = supabase.table("codes").delete().eq("id", code_id).execute()
-        if result.data:
-            logger.info(f"  ✓ Deleted existing code: {code_id}")
-        else:
-            logger.info("  ✓ No existing code found (first-time insert)")
+        logger.info("Ensuring code record exists...")
+        # Try to insert, but if it already exists, just continue
+        try:
+            supabase.table("codes").insert(
+                {
+                    "id": code_id,
+                    "provider": provider,
+                    "source_id": source_id,
+                    "version": version,
+                    "jurisdiction": jurisdiction,
+                    "title": code_data["title"],
+                    "source_url": code_data.get("source_url", ""),
+                }
+            ).execute()
+            logger.info("  ✓ Code record created successfully")
+        except Exception as e:
+            # Code already exists, that's fine
+            if "duplicate key" in str(e).lower() or "already exists" in str(e).lower():
+                logger.info("  ✓ Code record already exists")
+            else:
+                raise e
     except Exception as e:
-        logger.warning(f"Delete operation note: {e}")
-
-    # Insert Code record
-    try:
-        logger.info("Inserting code record...")
-        supabase.table("codes").insert(
-            {
-                "id": code_id,
-                "provider": provider,
-                "source_id": source_id,
-                "version": version,
-                "jurisdiction": jurisdiction,
-                "title": code_data["title"],
-                "source_url": code_data.get("source_url", ""),
-            }
-        ).execute()
-        logger.info("  ✓ Code record created successfully")
-    except Exception as e:
-        logger.error(f"Error creating Code record: {e}")
+        logger.error(f"Error ensuring Code record: {e}")
         raise
 
     sections = code_data.get("sections", [])

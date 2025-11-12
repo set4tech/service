@@ -27,7 +27,7 @@ class Section(BaseModel):
     key: str
     number: str
     title: str
-    chapter: str  # "10", "11a", or "11b"
+    chapter: Optional[str] = None  # "7", "10", "11A", "11B", etc.
     subsections: List[Subsection] = Field(default_factory=list)
     source_url: Optional[str] = None
     figures: List[str] = Field(default_factory=list)  # URLs or figure references
@@ -42,3 +42,4 @@ class Code(BaseModel):
     title: str
     source_url: str
     sections: List[Section] = Field(default_factory=list)
+    chapters_included: Optional[List[str]] = None  # Tracks which chapters are in this export

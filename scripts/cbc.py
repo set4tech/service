@@ -11,28 +11,32 @@ from bs4 import BeautifulSoup
 import argparse
 import logging
 import json
-import requests
-from urllib.parse import urljoin
 from deepdiff import DeepDiff
 from pathlib import Path
-
-from s3 import RawICCS3, BUCKET_NAME
+from utils import generate_section_url, get_icc_part_number
+from s3 import RawICCS3, BUCKET_NAME, upload_image_to_s3
 from schema import Code, Section, Subsection, TableBlock
+from utils import extract_table_data, extract_figure_url
 
 # California section patterns
-SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2})(?!\.\d)"
-SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2})(?:\.\d+)+"
+# Matches: 7XX (Ch 7), 10XX (Ch 10), XXXXА (Ch 10 with A), 11A-XXX, 11B-XXX
+SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|7\d{2})(?!\.\d)"
+SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|7\d{2})(?:\.\d+)+"
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-CHAPTER_FILES = {
-    "10": "CHAPTER 10 MEANS OF EGRESS - 2025 CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
-    "11a": "CHAPTER 11A HOUSING ACCESSIBILITY - 2025 CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
-    "11b": "Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - California Building Code Volumes 1 and 2, Title 24, Part 2.html",
-}
+
+def get_chapter_files(year: int) -> dict[str, str]:
+    """Get chapter file names for the specified year."""
+    return {
+        "7": "CHAPTER 7 FIRE AND SMOKE PROTECTION FEATURES - 2022 CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
+        "10": f"CHAPTER 10 MEANS OF EGRESS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "11a": f"CHAPTER 11A HOUSING ACCESSIBILITY - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "11b": "Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - California Building Code Volumes 1 and 2, Title 24, Part 2.html",
+    }
 
 
 def find_section_numbers(text: str) -> list[str]:
@@ -45,111 +49,13 @@ def find_subsection_numbers(text: str) -> list[str]:
     return re.findall(SUBSECTION_REGEX, text)
 
 
-def generate_section_url(section_number: str) -> str:
-    """Generate California building code URL with proper section anchors."""
-    base_url = "https://codes.iccsafe.org/content/CABC2025P1"
-    
-    if not section_number:
-        return base_url
 
-    # Chapter 10 sections (e.g., 1001, 1002)
-    if re.match(r'10\d{2}', section_number):
-        anchor = f"CABC2025P1_Ch10_Sec{section_number}"
-        return f"{base_url}/chapter-10-means-of-egress#{anchor}"
-
-    # Chapter 11A sections (e.g., 1102A, 1103A)
-    if re.match(r'\d{4}A', section_number):
-        anchor = f"CABC2025P1_Ch11A_Sec{section_number}"
-        return f"{base_url}/chapter-11a-housing-accessibility#{anchor}"
-
-    # Chapter 11B sections (e.g., 11B-104, 11B-304.3)
-    if section_number.startswith("11B-"):
-        section_part = section_number[4:]
-        main_section = section_part.split(".")[0] if "." in section_part else section_part
-
-        # Determine subchapter from section number
-        section_num = int(main_section)
-        if section_num <= 202:
-            subchapter = "SubCh01"
-        elif section_num <= 299:
-            subchapter = "SubCh02"
-        elif section_num <= 309:
-            subchapter = "SubCh03"
-        elif section_num <= 409:
-            subchapter = "SubCh04"
-        elif section_num <= 510:
-            subchapter = "SubCh05"
-        elif section_num <= 610:
-            subchapter = "SubCh06"
-        elif section_num <= 710:
-            subchapter = "SubCh07"
-        elif section_num <= 810:
-            subchapter = "SubCh08"
-        elif section_num <= 999:
-            subchapter = "SubCh09"
-        elif section_num <= 1010:
-            subchapter = "SubCh10"
-        else:
-            subchapter = "SubCh11"
-
-        anchor_section = section_number.replace("-", "_")
-        anchor = f"CABC2025P1_Ch11B_{subchapter}_Sec{anchor_section}"
-        return f"{base_url}/chapter-11b-accessibility-to-public-buildings-public-accommodations-commercial-buildings-and-public-housing#{anchor}"
-
-    return base_url
-
-
-def extract_table_data(table_element) -> str:
-    """Extract table data and convert to CSV format."""
-    rows = []
-    for row in table_element.find_all("tr"):
-        cells = []
-        for cell in row.find_all(["td", "th"]):
-            cell_text = cell.get_text().strip().replace("\n", " ").replace("\r", "")
-            cells.append(cell_text)
-        if cells:
-            rows.append(cells)
-    
-    return "\n".join([",".join([f'"{cell}"' for cell in row]) for row in rows])
-
-
-def extract_figure_url(figure_element, base_url: str) -> str:
-    """Extract image URL from a figure element."""
-    img_element = figure_element.find("img")
-    if img_element and img_element.get("src"):
-        img_src = img_element.get("src")
-        if img_src.startswith("./"):
-            img_src = img_src[2:]
-        return urljoin(base_url, img_src) if not img_src.startswith("http") else img_src
-    return ""
-
-
-def upload_image_to_s3(image_url: str, s3_key: str, s3_bucket: str = "set4-codes") -> str:
-    """Download image from URL and upload to S3. Returns S3 URL or empty string."""
-    try:
-        response = requests.get(image_url, timeout=30)
-        response.raise_for_status()
-        
-        s3 = boto3.client("s3")
-        s3.put_object(
-            Bucket=s3_bucket,
-            Key=s3_key,
-            Body=response.content,
-            ContentType="image/jpeg",
-        )
-        
-        logger.info(f"Uploaded image to S3: s3://{s3_bucket}/{s3_key}")
-        return f"https://{s3_bucket}.s3.amazonaws.com/{s3_key}"
-    except Exception as e:
-        logger.warning(f"Failed to upload image {image_url}: {e}")
-        return ""
-
-
-def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, test_mode: bool) -> tuple[list, list]:
+def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, test_mode: bool, year: int) -> tuple[list, list]:
     """Extract tables and figures from HTML."""
     tables = []
     figures = []
-    base_url = "https://codes.iccsafe.org/content/CABC2025P1/"
+    part = get_icc_part_number(year)
+    base_url = f"https://codes.iccsafe.org/content/CABC{year}{part}/"
     
     figure_elements = soup.find_all("figure")
     logger.info(f"Found {len(figure_elements)} figure elements")
@@ -190,7 +96,7 @@ def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, test_m
             if img_url:
                 s3_url = ""
                 if extract_images:
-                    s3_key = f"cleaned/ICC/CA/2025/figures/{fig_number}.jpg"
+                    s3_key = f"cleaned/ICC/CA/{year}/figures/{fig_number}.jpg"
                     s3_url = upload_image_to_s3(img_url, s3_key)
                 
                 figures.append({
@@ -221,7 +127,7 @@ def extract_title(header_text: str, number: str) -> str:
     return title
 
 
-def extract_sections(soup: BeautifulSoup, test_mode: bool) -> dict[str, Section]:
+def extract_sections(soup: BeautifulSoup, test_mode: bool, chapter: str, year: int) -> dict[str, Section]:
     """Extract all sections from the soup."""
     sections = {}
     level_sections = soup.find_all("section", class_=re.compile(r"level\d"))
@@ -268,8 +174,9 @@ def extract_sections(soup: BeautifulSoup, test_mode: bool) -> dict[str, Section]
             number=section_number,
             title=section_title,
             subsections=[],
-            source_url=generate_section_url(section_number),
+            source_url=generate_section_url(section_number, year),
             figures=[],
+            chapter=chapter.upper(),  # Add chapter metadata
         )
     
     return sections
@@ -524,28 +431,33 @@ def main(args):
     if args.dry_run:
         logger.info("DRY RUN - no S3 upload")
     
-    raw_code_s3 = RawICCS3("CA", args.version, CHAPTER_FILES)
+    chapter_files = get_chapter_files(args.version)
+    raw_code_s3 = RawICCS3("CA", args.version, chapter_files)
     
     all_sections = {}
     all_subsections = {}
     all_tables = []
     all_figures = []
     
+    # Determine which chapters to process
+    chapters_to_process = args.chapters if args.chapters else ["7", "10", "11a", "11b"]
+    logger.info(f"Processing chapters: {chapters_to_process}")
+    
     # Process each chapter
-    for chapter in ["10", "11a", "11b"]:
+    for chapter in chapters_to_process:
         logger.info(f"Processing chapter {chapter}")
         html = raw_code_s3.chapter(chapter)
         soup = BeautifulSoup(html, "html.parser")
         
         # Extract tables and figures
         chapter_tables, chapter_figures = extract_tables_and_figures(
-            soup, args.extract_images, args.test
+            soup, args.extract_images, args.test, args.version
         )
         all_tables.extend(chapter_tables)
         all_figures.extend(chapter_figures)
         
-        # Extract sections
-        chapter_sections = extract_sections(soup, args.test)
+        # Extract sections (pass chapter info and year)
+        chapter_sections = extract_sections(soup, args.test, chapter, args.version)
         all_sections.update(chapter_sections)
         
         # Extract subsections
@@ -560,14 +472,16 @@ def main(args):
     attach_figures(all_figures, all_sections)
     
     # Create Code object
+    part = get_icc_part_number(args.version)
     code = Code(
         provider="ICC",
         version=args.version,
         jurisdiction="CA",
-        source_id="CBC_Chapter10_11A_11B",
-        title="California Building Code - Chapters 10 (Means of Egress), 11A & 11B (Accessibility)",
-        source_url="https://codes.iccsafe.org/content/CABC2025P1",
+        source_id="CBC",
+        title="California Building Code",
+        source_url=f"https://codes.iccsafe.org/content/CABC{args.version}{part}",
         sections=list(all_sections.values()),
+        chapters_included=chapters_to_process,  # Track which chapters were processed
     )
     
     # Sort data for deterministic output
@@ -672,5 +586,12 @@ if __name__ == "__main__":
         help="Compare output with baseline file (defaults to cbc_VERSION.json if no file specified). "
              "Generates cbc_VERSION_new.json and shows differences. Prevents S3 upload.",
     )
+    parser.add_argument(
+        "--chapters",
+        nargs="+",
+        metavar="CHAPTER",
+        help="Specific chapters to process (e.g., --chapters 7 10). If not specified, processes all chapters (7, 10, 11a, 11b)",
+    )
+    
     args = parser.parse_args()
     main(args)
