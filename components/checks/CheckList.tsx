@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { CloneCheckModal } from './modals/CloneCheckModal';
+import { BulkActionBar } from './BulkActionBar';
+import { ComplianceOverrideStatus } from '@/types/database';
 
 // Natural sort comparator for section numbers (handles numeric parts correctly)
 function naturalCompare(a: string, b: string): number {
@@ -66,6 +68,11 @@ export function CheckList({
   const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [showUnassessedOnly, setShowUnassessedOnly] = useState(false);
+
+  // Bulk selection state
+  const [selectedCheckIds, setSelectedCheckIds] = useState<Set<string>>(new Set());
+  const [bulkOperationLoading, setBulkOperationLoading] = useState(false);
+  const [lastClickedCheckId, setLastClickedCheckId] = useState<string | null>(null);
 
   // Debounced search effect
   useEffect(() => {
@@ -334,6 +341,139 @@ export function CheckList({
     }
   };
 
+  // Bulk selection handlers
+  const toggleSelection = (checkId: string, isShiftClick: boolean = false) => {
+    setSelectedCheckIds(prev => {
+      const next = new Set(prev);
+
+      // Handle shift-click range selection
+      if (isShiftClick && lastClickedCheckId) {
+        // Get all check IDs in DISPLAY order (as they appear in the UI)
+        const allCheckIds: string[] = [];
+
+        // Build list in the same order as groupedChecks displays them
+        groupedChecks.forEach(([_mainPrefix, groupChecks]) => {
+          groupChecks.forEach(check => {
+            allCheckIds.push(check.id);
+          });
+        });
+
+        // Find indices of last clicked and current
+        const lastIndex = allCheckIds.indexOf(lastClickedCheckId);
+        const currentIndex = allCheckIds.indexOf(checkId);
+
+        if (lastIndex !== -1 && currentIndex !== -1) {
+          // Select all checks in the range
+          const start = Math.min(lastIndex, currentIndex);
+          const end = Math.max(lastIndex, currentIndex);
+
+          for (let i = start; i <= end; i++) {
+            next.add(allCheckIds[i]);
+          }
+        }
+      } else {
+        // Normal toggle
+        if (next.has(checkId)) {
+          next.delete(checkId);
+        } else {
+          next.add(checkId);
+        }
+      }
+
+      return next;
+    });
+
+    // Update last clicked (unless unchecking)
+    if (!isShiftClick || !lastClickedCheckId) {
+      setLastClickedCheckId(checkId);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedCheckIds(new Set());
+    setLastClickedCheckId(null);
+  };
+
+  const handleBulkAnalyze = async () => {
+    setBulkOperationLoading(true);
+    try {
+      const checkIdsArray = Array.from(selectedCheckIds);
+
+      // Call existing assess endpoint for each check in parallel
+      // This automatically handles rules-based door checks!
+      const promises = checkIdsArray.map(checkId =>
+        fetch(`/api/checks/${checkId}/assess`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            aiProvider: 'gemini',
+            customPrompt: undefined,
+            extraContext: undefined,
+          }),
+        })
+      );
+
+      await Promise.all(promises);
+      clearSelection();
+      await refetchChecks?.();
+    } catch (error) {
+      console.error('Bulk analyze failed:', error);
+      alert('Failed to queue analyses');
+    } finally {
+      setBulkOperationLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selectedCheckIds.size} checks? This cannot be undone.`)) {
+      return;
+    }
+
+    setBulkOperationLoading(true);
+    try {
+      const response = await fetch('/api/checks', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkIds: Array.from(selectedCheckIds) }),
+      });
+
+      if (!response.ok) throw new Error('Delete failed');
+
+      clearSelection();
+      await refetchChecks?.();
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+      alert('Failed to delete checks');
+    } finally {
+      setBulkOperationLoading(false);
+    }
+  };
+
+  const handleBulkSetStatus = async (status: ComplianceOverrideStatus) => {
+    setBulkOperationLoading(true);
+    try {
+      const response = await fetch('/api/checks/manual-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          checkIds: Array.from(selectedCheckIds),
+          manual_status: status,
+          manual_status_note: `Bulk updated to ${status}`,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Status update failed');
+
+      clearSelection();
+      await refetchChecks?.();
+    } catch (error) {
+      console.error('Bulk status update failed:', error);
+      alert('Failed to update status');
+    } finally {
+      setBulkOperationLoading(false);
+    }
+  };
+
   const isActivelyProcessing = (check: any) => {
     if (check.status === 'processing' || check.status === 'analyzing') {
       // Check if updated within last 5 minutes
@@ -575,6 +715,21 @@ export function CheckList({
                       <div key={check.id} className="border-b border-gray-100 last:border-b-0">
                         {/* Parent Check */}
                         <div className="flex items-stretch">
+                          {/* Checkbox for bulk selection */}
+                          <div className="flex items-center px-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedCheckIds.has(check.id)}
+                              onChange={e => {
+                                e.stopPropagation();
+                                const isShiftClick = (e.nativeEvent as MouseEvent).shiftKey;
+                                toggleSelection(check.id, isShiftClick);
+                              }}
+                              onClick={e => e.stopPropagation()}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                          </div>
+
                           {/* Expand/Collapse button (only if has instances) */}
                           {hasInstances && (
                             <button
@@ -980,6 +1135,18 @@ export function CheckList({
           checkName={`${cloneModalCheck.code_section_number} - ${cloneModalCheck.code_section_title}`}
           onClose={() => setCloneModalCheck(null)}
           onSuccess={handleCloneSuccess}
+        />
+      )}
+
+      {/* Bulk Action Bar */}
+      {selectedCheckIds.size > 0 && (
+        <BulkActionBar
+          selectedCount={selectedCheckIds.size}
+          onAnalyze={handleBulkAnalyze}
+          onDelete={handleBulkDelete}
+          onSetStatus={handleBulkSetStatus}
+          onClear={clearSelection}
+          loading={bulkOperationLoading}
         />
       )}
     </div>

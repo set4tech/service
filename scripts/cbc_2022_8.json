@@ -1,0 +1,849 @@
+{
+  "chapters_included": ["8"],
+  "jurisdiction": "CA",
+  "provider": "ICC",
+  "sections": [
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "800",
+      "number": "800",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [],
+      "title": ".1 Acceptance criteria for NFPA 286 ."
+    },
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "801",
+      "number": "801",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [
+        {
+          "figures": [],
+          "key": "801.1",
+          "number": "801.1",
+          "paragraphs": [
+            "The provisions of this chapter shall govern the use of materials used as interior finishes, trim and decorative materials. [BSC-CG] See California Green Building Standards Code, Chapter 5, Division 5.5 for additional finish material pollutant control requirements."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Scope"
+        }
+      ],
+      "title": "SECTION  SCOPE"
+    },
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "802",
+      "number": "802",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [
+        {
+          "figures": [],
+          "key": "802.1",
+          "number": "802.1",
+          "paragraphs": [
+            "The provisions of Section 803 shall limit the allowable fire performance and smoke development of interior wall and ceiling finish materials based on occupancy classification."
+          ],
+          "refers_to": ["803"],
+          "tables": [],
+          "title": "Interior wall and ceiling finish"
+        },
+        {
+          "figures": [],
+          "key": "802.2",
+          "number": "802.2",
+          "paragraphs": [
+            "The provisions of Section 804 shall limit the allowable fire performance of interior floor finish materials based on occupancy classification."
+          ],
+          "refers_to": ["804"],
+          "tables": [],
+          "title": "Interior floor finish"
+        },
+        {
+          "figures": [],
+          "key": "802.3",
+          "number": "802.3",
+          "paragraphs": [
+            "Decorative materials and trim shall be restricted by combustibility, fire performance or flame propagation performance criteria in accordance with Section 806."
+          ],
+          "refers_to": ["806"],
+          "tables": [],
+          "title": "Decorative materials and trim"
+        },
+        {
+          "figures": [],
+          "key": "802.4",
+          "number": "802.4",
+          "paragraphs": [
+            "For buildings in flood hazard areas as established in Section 1612.3, interior finishes, trim and decorative materials below the elevation required by Section 1612 shall be flood-damage-resistant materials."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Applicability"
+        },
+        {
+          "figures": [],
+          "key": "802.5",
+          "number": "802.5",
+          "paragraphs": [
+            "Combustible materials shall be permitted to be used as finish for walls, ceilings, floors and other interior surfaces of buildings."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Application"
+        },
+        {
+          "figures": [],
+          "key": "802.6",
+          "number": "802.6",
+          "paragraphs": [
+            "Show windows in the exterior walls of the first story above grade plane shall be permitted to be of wood or of unprotected metal framing."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Windows"
+        },
+        {
+          "figures": [],
+          "key": "802.7",
+          "number": "802.7",
+          "paragraphs": [
+            "Foam plastics shall not be used as interior finish except as provided in Section 803.4. Foam plastics shall not be used as interior trim except as provided in Section 806.5 or 2604.2. This section shall apply both to exposed foam plastics and to foam plastics used in conjunction with a textile or vinyl facing or cover."
+          ],
+          "refers_to": ["803.4", "806.5"],
+          "tables": [],
+          "title": "Foam plastics"
+        }
+      ],
+      "title": "SECTION  GENERAL"
+    },
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "803",
+      "number": "803",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [
+        {
+          "figures": [],
+          "key": "803.1",
+          "number": "803.1",
+          "paragraphs": [
+            "Interior wall and ceiling finish materials shall be classified for fire performance and smoke development in accordance with Section 803.1.1 or 803.1.2, except as shown in Sections 803.1.3 through 803.15. Materials tested in accordance with Section 803.1.1 shall not be required to be tested in accordance with Section 803.1.2."
+          ],
+          "refers_to": ["803.1.1", "803.1.1", "803.1.2", "803.1.2", "803.1.3", "803.15"],
+          "tables": [],
+          "title": "General"
+        },
+        {
+          "figures": [],
+          "key": "803.1.1",
+          "number": "803.1.1",
+          "paragraphs": [
+            "Interior wall and ceiling finish materials shall be classified in accordance with NFPA 286 and comply with Section 803.1.1.1. Materials complying with Section 803.1.1.1 shall be considered to also comply with the requirements of Class A."
+          ],
+          "refers_to": ["803.1.1.1", "803.1.1.1"],
+          "tables": [],
+          "title": "Interior wall and ceiling finish materials tested in accordance with NFPA 286"
+        },
+        {
+          "figures": [],
+          "key": "803.1.1.1",
+          "number": "803.1.1.1",
+          "paragraphs": [
+            "The interior finish shall comply with the following:",
+            "1. During the 40 kW exposure, flames shall not spread to the ceiling.",
+            "2. The flame shall not spread to the outer extremity of the sample on any wall or ceiling.",
+            "3. Flashover, as defined in NFPA 286, shall not occur.",
+            "4. The peak heat release rate throughout the test shall not exceed 800 kW.",
+            "5. The total smoke released throughout the test shall not exceed 1,000 m2."
+          ],
+          "refers_to": ["800"],
+          "tables": [],
+          "title": "Acceptance criteria for NFPA 286"
+        },
+        {
+          "figures": [],
+          "key": "803.1.2",
+          "number": "803.1.2",
+          "paragraphs": [
+            "Interior wall and ceiling finish materials shall be classified in accordance with ASTM E84 or UL 723. Such interior finish materials shall be grouped in the following classes in accordance with their flame spread and smoke-developed indices.",
+            "Exception: Materials tested in accordance with Section 803.1.1 and as indicated in Sections 803.1.3 through 803.13."
+          ],
+          "refers_to": ["723", "803.1.1", "803.1.3", "803.13"],
+          "tables": [],
+          "title": "Interior wall and ceiling finish materials tested in accordance with ASTM E84 or UL 723"
+        },
+        {
+          "figures": [],
+          "key": "803.1.3",
+          "number": "803.1.3",
+          "paragraphs": [
+            "The materials indicated in Sections 803.2 through 803.13 shall be tested as indicated in the corresponding sections."
+          ],
+          "refers_to": ["803.13", "803.2"],
+          "tables": [],
+          "title": "Interior wall and ceiling finish materials with different requirements"
+        },
+        {
+          "figures": [],
+          "key": "803.10",
+          "number": "803.10",
+          "paragraphs": [
+            "Where used as interior wall or interior ceiling finish materials, site-fabricated stretch systems containing all three components described in the definition in Chapter 2 shall be tested in the manner intended for use, and shall comply with the requirements of Section 803.1.1 or with the requirements of Class A in accordance with Section 803.1.2. If the materials are tested in accordance with ASTM E84 or UL 723, specimen preparation and mounting shall be in accordance with ASTM E2573."
+          ],
+          "refers_to": ["723", "803.1.1", "803.1.2"],
+          "tables": [],
+          "title": "Site-fabricated stretch systems"
+        },
+        {
+          "figures": [],
+          "key": "803.11",
+          "number": "803.11",
+          "paragraphs": [
+            "Laminated products factory produced with a wood substrate shall comply with one of the following:",
+            "1. The laminated product shall meet the criteria of Section 803.1.1.1 when tested in accordance with NFPA 286 using the product-mounting system, including adhesive, as described in Section 5.8 of NFPA 286.",
+            "2. The laminated product shall have a Class A, B, or C flame spread index and smoke-developed index, based on the requirements of Table 803.13, in accordance with ASTM E84 or UL 723. Test specimen preparation and mounting shall be in accordance with ASTM E2579."
+          ],
+          "refers_to": ["723", "803.1.1.1", "803.13"],
+          "tables": [],
+          "title": "Laminated products factory produced with a wood substrate"
+        },
+        {
+          "figures": [],
+          "key": "803.12",
+          "number": "803.12",
+          "paragraphs": [
+            "Facings or veneers intended to be applied on site over a wood substrate shall comply with one of the following:",
+            "1. The facing or veneer shall meet the criteria of Section 803.1.1.1 when tested in accordance with NFPA 286 using the product mounting system, including adhesive, as described in Section 5.9 of NFPA 286.",
+            "2. The facing or veneer shall have a Class A, B or C flame spread index and smoke-developed index, based on the requirements of Table 803.13, in accordance with ASTM E84 or UL 723. Test specimen preparation and mounting shall be in accordance with ASTM E2404."
+          ],
+          "refers_to": ["723", "803.1.1.1", "803.13"],
+          "tables": [],
+          "title": "Facings or wood veneers intended to be applied on site over a wood substrate"
+        },
+        {
+          "figures": [],
+          "key": "803.13",
+          "number": "803.13",
+          "paragraphs": [
+            "Interior wall and ceiling finish shall have a flame spread index not greater than that specified in Table 803.13 for the group and location designated. Interior wall and ceiling finish materials tested in accordance with NFPA 286 and meeting the acceptance criteria of Section 803.1.1.1, shall be permitted to be used where a Class A classification in accordance with ASTM E84 or UL 723 is required.",
+            "TABLE 803.13",
+            "INTERIOR WALL AND CEILING FINISH REQUIREMENTS BY OCCUPANCYk",
+            "For SI: 1 inch = 25.4 mm, 1 square foot = 0.0929 m2.",
+            "NP = Not permitted [SFM]",
+            "a. Class C interior finish materials shall be permitted for wainscotting or paneling of not more than 1,000 square feet of applied surface area in the grade lobby where applied directly to a noncombustible base or over furring strips applied to a noncombustible base and fireblocked as required by Section 803.15.1.",
+            "b. In other than Group I-3 occupancies in buildings less than three stories above grade plane, Class B interior finish for nonsprinklered buildings and Class C interior finish for sprinklered buildings shall be permitted in interior exit stairways and ramps.",
+            "c. Requirements for rooms and enclosed spaces shall be based on spaces enclosed by partitions. Where a fire-resistance rating is required for structural elements, the enclosing partitions shall extend from the floor to the ceiling. Partitions that do not comply with this shall be considered to be enclosing spaces and the rooms or spaces on both sides shall be considered to be one room or space. In determining the applicable requirements for rooms and enclosed spaces, the specific occupancy thereof shall be the governing factor regardless of the group classification of the building or structure.",
+            "d. Lobby areas in Group A-1, A-2 and A-3 occupancies shall be not less than Class B materials.",
+            "e. Class C interior finish materials shall be permitted in places of assembly with an occupant load of 300 persons or less.",
+            "f. For places of religious worship, wood used for ornamental purposes, trusses, paneling or chancel furnishing shall be permitted.",
+            "g. Class B material is required where the building exceeds two stories.",
+            "h. Class C interior finish materials shall be permitted in administrative spaces.",
+            "i. Class C interior finish materials shall be permitted in rooms with a capacity of four persons or less.",
+            "j. Class B materials shall be permitted as wainscotting extending not more than 48 inches above the finished floor in corridors and exit access stairways and ramps.",
+            "k. Finish materials as provided for in other sections of this code.",
+            "l. Applies when protected by an automatic sprinkler system installed in accordance with Section 903.3.1.1 or 903.3.1.2.",
+            "m.Corridors in ambulatory care facilities shall be provided with Class A or B materials.",
+            "n. Where Group R-3 and R-4 occupancies are permitted in Section 903.2.8 to be protected by an automatic sprinkler system installed in accordance with Section 903.3.1.3, the requirements for a non-sprinklered building shall apply.",
+            "o. Where patients are restrained in psychiatric treatment areas of Group I-2, finishes shall comply with the requirements of a Group I-3."
+          ],
+          "refers_to": [
+            "723",
+            "803.1.1.1",
+            "803.13",
+            "803.13",
+            "803.15.1",
+            "903.2.8",
+            "903.3.1.1",
+            "903.3.1.2",
+            "903.3.1.3",
+            "929"
+          ],
+          "tables": [
+            {
+              "csv": "\"\",\"GROUP\",\"SPRINKLEREDl\",\"NONSPRINKLERED\"\n\"Interior exit stairways and ramps and exit passagewaysa, b\",\"Corridors and enclosure for exit access stairways and ramps\",\"Rooms and enclosed spacesc\",\"Interior exit stairways and ramps and exit passagewaysa, b\",\"Corridors and enclosure for exit access stairways and ramps\",\"Rooms and enclosed spacesc\"\n\"\",\"A-1 & A-2\",\"B\",\"B\",\"C\",\"A\",\"Ad\",\"Be\"\n\"\",\"A-3f, A-4, A-5\",\"B\",\"B\",\"C\",\"A\",\"Ad\",\"C\"\n\"\",\"B, E, M, R-1\",\"B\",\"Cm\",\"C\",\"A\",\"B\",\"C\"\n\"\",\"R-4n\",\"B\",\"C\",\"C\",\"A\",\"B\",\"B\"\n\"\",\"F\",\"C\",\"C\",\"C\",\"B\",\"C\",\"C\"\n\"\",\"H, L\",\"B\",\"B\",\"Cg\",\"NP\",\"NP\",\"NP\"\n\">\",\"I-2n\",\"B\",\"B\",\"Bh, i\",\"A\",\"A\",\"B\"\n\"\",\"I-3\",\"A\",\"Aj\",\"B\",\"NP\",\"NP\",\"NP\"\n\"\",\"I-4\",\"B\",\"B\",\"Bh, i\",\"A\",\"A\",\"B\"\n\"\",\"R-2\",\"C\",\"C\",\"C\",\"B\",\"B\",\"C\"\n\"\",\"R-2.1\",\"B\",\"C\",\"C\",\"A\",\"B\",\"B\"\n\"\",\"R-2.2\",\"C\",\"C\",\"C\",\"B\",\"B\",\"C\"\n\"\",\"R-3n, R-3.1\",\"C\",\"C\",\"C\",\"C\",\"C\",\"C\"\n\"\",\"S\",\"C\",\"C\",\"C\",\"B\",\"B\",\"C\"\n\"\",\"U\",\"No restrictions\",\"No restrictions\"",
+              "number": "803.13",
+              "title": "TABLE 803.13INTERIOR WALL AND CEILING FINISH REQUIREMENTS BY OCCUPANCYk"
+            }
+          ],
+          "title": "Interior finish requirements based on occupancy"
+        },
+        {
+          "figures": [],
+          "key": "803.14",
+          "number": "803.14",
+          "paragraphs": [
+            "Interior finish materials regulated by this chapter shall be applied or otherwise fastened in such a manner that such materials will not readily become detached where subjected to room temperatures of 200\u00b0F (93\u00b0C) for not less than 30 minutes."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Stability"
+        },
+        {
+          "figures": [],
+          "key": "803.15",
+          "number": "803.15",
+          "paragraphs": [
+            "Where interior finish materials are applied on walls, ceilings or structural elements required to have a fire-resistance rating or to be of noncombustible construction, these finish materials shall comply with the provisions of this section."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Application of interior finish materials to fire-resistance-rated or noncombustible building elements"
+        },
+        {
+          "figures": [],
+          "key": "803.15.1",
+          "number": "803.15.1",
+          "paragraphs": [
+            "Where walls, ceilings or structural elements are required by any provision in this code to be of fire-resistance-rated or noncombustible construction, the interior finish material shall be applied directly against such construction or to furring strips not exceeding 13/4 inches (44 mm), applied directly against such surfaces."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Direct attachment and furred construction"
+        },
+        {
+          "figures": [],
+          "key": "803.15.1.1",
+          "number": "803.15.1.1",
+          "paragraphs": [
+            "If the interior finish material is applied to furring strips, the intervening spaces between such furring strips shall comply with one of the following:",
+            "1. Be filled with material that is inorganic or noncombustible.",
+            "2. Be filled with material that meets the requirements of a Class A material in accordance with Section 803.1.1 or 803.1.2.",
+            "3. Be fireblocked at not greater than 8 feet (2438 mm) in every direction in accordance with Section 718.",
+            "Exception: Compliance with Item 1, 2 or 3 is not required where the materials used to create the concealed space are noncombustible."
+          ],
+          "refers_to": ["718", "803.1.1", "803.1.2"],
+          "tables": [],
+          "title": "Furred construction"
+        },
+        {
+          "figures": [],
+          "key": "803.15.2",
+          "number": "803.15.2",
+          "paragraphs": [
+            "Where walls and ceilings are required to be of fire-resistance-rated or noncombustible construction and walls are set out or ceilings are dropped distances greater than specified in Section 803.15.1, Class A finish materials, in accordance with Section 803.1.1 or 803.1.2, shall be used.",
+            "Exceptions:",
+            "1. Where interior finish materials are protected on both sides by an automatic sprinkler system in accordance with Section 903.3.1.1 or 903.3.1.2.",
+            "2. Where interior finish materials are attached to noncombustible backing or furring strips installed as specified in Section 803.15.1.1.",
+            "3. Where the combustible void is filled with a noncombustible material."
+          ],
+          "refers_to": ["803.1.1", "803.1.2", "803.15.1", "803.15.1.1", "903.3.1.1", "903.3.1.2"],
+          "tables": [],
+          "title": "Set-out construction"
+        },
+        {
+          "figures": [],
+          "key": "803.15.2.1",
+          "number": "803.15.2.1",
+          "paragraphs": [
+            "The hangers and assembly members of such dropped ceilings that are below the horizontal fire-resistance-rated floor or roof assemblies shall be of noncombustible materials. The construction of each set-out wall and horizontal fire-resistance-rated floor or roof assembly shall be of fire-resistance-rated construction as required elsewhere in this code.",
+            "Exception: In Types III and V construction, fire-retardant- treated wood shall be permitted for use as hangers and assembly members of dropped ceilings."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Hangers and assembly members"
+        },
+        {
+          "figures": [],
+          "key": "803.15.3",
+          "number": "803.15.3",
+          "paragraphs": [
+            "Wall and ceiling finishes of all classes as permitted in this chapter that are installed directly against the wood decking or planking of heavy timber construction in Section 602.4.4.2 or 2304.11 or to wood furring strips applied directly to the wood decking or planking shall be fireblocked as specified in Section 803.15.1.1."
+          ],
+          "refers_to": ["803.15.1.1"],
+          "tables": [],
+          "title": "Heavy timber construction"
+        },
+        {
+          "figures": [],
+          "key": "803.15.4",
+          "number": "803.15.4",
+          "paragraphs": [
+            "An interior wall or ceiling finish material that is not more than 1/4 inch (6.4 mm) thick shall be applied directly onto the wall, ceiling or structural element without the use of furring strips and shall not be suspended away from the building element to which that finish material it is applied.",
+            "Exceptions:",
+            "1. Noncombustible interior finish materials.",
+            "2. Materials that meet the requirements of Class A materials in accordance with Section 803.1.1 or 803.1.2 where the qualifying tests were made with the material furred out from the noncombustible backing shall be permitted to be used with furring strips.",
+            "3. Materials that meet the requirements of Class A materials in accordance with Section 803.1.1 or 803.1.2 where the qualifying tests were made with the material suspended away from the noncombustible backing shall be permitted to be used suspended away from the building element."
+          ],
+          "refers_to": ["803.1.1", "803.1.1", "803.1.2", "803.1.2"],
+          "tables": [],
+          "title": "Materials"
+        },
+        {
+          "figures": [],
+          "key": "803.2",
+          "number": "803.2",
+          "paragraphs": [
+            "Materials having a thickness less than 0.036 inch (0.9 mm) applied directly to the surface of walls or ceilings shall not be required to be tested."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Thickness exemption"
+        },
+        {
+          "figures": [],
+          "key": "803.3",
+          "number": "803.3",
+          "paragraphs": [
+            "Exposed portions of building elements complying with the requirements for buildings of heavy timber construction in Section 602.4 or Section 2304.11 shall not be subject to interior finish requirements except in interior exit stairways, interior exit ramps, and exit passageways."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Heavy timber exemption"
+        },
+        {
+          "figures": [],
+          "key": "803.4",
+          "number": "803.4",
+          "paragraphs": [
+            "Foam plastics shall not be used as interior finish except as provided in Section 2603.9. This section shall apply both to exposed foam plastics and to foam plastics used in conjunction with a textile or vinyl facing or cover."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Foam plastics"
+        },
+        {
+          "figures": [],
+          "key": "803.5",
+          "number": "803.5",
+          "paragraphs": [
+            "Where used as interior wall finish materials, textile wall coverings, including materials having woven or nonwoven, napped, tufted, looped or similar surface and carpet and similar textile materials, shall be tested in the manner intended for use, using the product-mounting system, including adhesive, and shall comply with the requirements of one of the following: Section 803.1.1, 803.5.1 or 803.5.2."
+          ],
+          "refers_to": ["803.1.1", "803.5.1", "803.5.2"],
+          "tables": [],
+          "title": "Textile wall coverings"
+        },
+        {
+          "figures": [],
+          "key": "803.5.1",
+          "number": "803.5.1",
+          "paragraphs": [
+            "Textile wall coverings and expanded vinyl wall coverings shall meet the criteria of Section 803.5.1.1 when tested in the manner intended for use in accordance with the Method B protocol of NFPA 265 using the product-mounting system, including adhesive."
+          ],
+          "refers_to": ["803.5.1.1"],
+          "tables": [],
+          "title": "Room corner test for textile wall coverings and expanded vinyl wall coverings"
+        },
+        {
+          "figures": [],
+          "key": "803.5.1.1",
+          "number": "803.5.1.1",
+          "paragraphs": [
+            "The interior finish shall comply with the following:",
+            "1. During the 40 kW exposure, flames shall not spread to the ceiling.",
+            "2. The flame shall not spread to the outer extremities of the samples on the 8-foot by 12-foot (203 by 305 mm) walls.",
+            "3. Flashover, as defined in NFPA 265, shall not occur.",
+            "4. The total smoke release throughout the test shall not exceed 1,000 m2."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Acceptance criteria for NFPA 265"
+        },
+        {
+          "figures": [],
+          "key": "803.5.2",
+          "number": "803.5.2",
+          "paragraphs": [
+            "Textile wall and ceiling coverings and expanded vinyl wall and ceiling coverings shall have a Class A flame spread index in accordance with ASTM E84 or UL 723 and be protected by an automatic sprinkler system installed in accordance with Section 903.3.1.1 or 903.3.1.2. Test specimen preparation and mounting shall be in accordance with ASTM E2404."
+          ],
+          "refers_to": ["723", "903.3.1.1", "903.3.1.2"],
+          "tables": [],
+          "title": "Acceptance criteria for textile and expanded vinyl wall or ceiling coverings tested to ASTM E84 or UL 723"
+        },
+        {
+          "figures": [],
+          "key": "803.6",
+          "number": "803.6",
+          "paragraphs": [
+            "Where used as interior ceiling finish materials, textile ceiling coverings, including materials having woven or nonwoven, napped, tufted, looped or similar surface and carpet and similar textile materials, shall be tested in the manner intended for use, using the product-mounting system, including adhesive, and shall comply with the requirements of Section 803.1.1 or 803.5.2."
+          ],
+          "refers_to": ["803.1.1", "803.5.2"],
+          "tables": [],
+          "title": "Textile ceiling coverings"
+        },
+        {
+          "figures": [],
+          "key": "803.7",
+          "number": "803.7",
+          "paragraphs": [
+            "Where used as interior wall finish materials, expanded vinyl wall coverings shall be tested in the manner intended for use, using the product-mounting system, including adhesive, and shall comply with the requirements of one of the following: Section 803.1.1, 803.5.1 or 803.5.2."
+          ],
+          "refers_to": ["803.1.1", "803.5.1", "803.5.2"],
+          "tables": [],
+          "title": "Expanded vinyl wall coverings"
+        },
+        {
+          "figures": [],
+          "key": "803.8",
+          "number": "803.8",
+          "paragraphs": [
+            "Where used as interior ceiling finish materials, expanded vinyl ceiling coverings shall be tested in the manner intended for use, using the product mounting system, including adhesive, and shall comply with the requirements of Section 803.1.1 or 803.5.2."
+          ],
+          "refers_to": ["803.1.1", "803.5.2"],
+          "tables": [],
+          "title": "Expanded vinyl ceiling coverings"
+        },
+        {
+          "figures": [],
+          "key": "803.9",
+          "number": "803.9",
+          "paragraphs": [
+            "Where high-density polyethylene or polypropylene is used as an interior finish, it shall comply with Section 803.1.1."
+          ],
+          "refers_to": ["803.1.1"],
+          "tables": [],
+          "title": "High-density polyethylene (HDPE) and polypropylene (PP)"
+        }
+      ],
+      "title": "Materials and installation ."
+    },
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "804",
+      "number": "804",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [
+        {
+          "figures": [],
+          "key": "804.1",
+          "number": "804.1",
+          "paragraphs": [
+            "Interior floor finish and floor covering materials shall comply with Sections 804.2 through 804.4.2.",
+            "Exception: In areas except Groups I-2 with detention and I-3, floor finishes and coverings of a traditional type, such as wood, vinyl, linoleum or terrazzo, and resilient floor covering materials that are not composed of fibers."
+          ],
+          "refers_to": ["804.2", "804.4.2"],
+          "tables": [],
+          "title": "General"
+        },
+        {
+          "figures": [],
+          "key": "804.2",
+          "number": "804.2",
+          "paragraphs": [
+            "Interior floor finish and floor covering materials required by Section 804.4.2 to be of Class I or II materials shall be classified in accordance with ASTM E648 or NFPA 253. The classification referred to herein corresponds to the classifications determined by ASTM E648 or NFPA 253 as follows: Class I, 0.45 watts/cm2 or greater; Class II, 0.22 watts/cm2 or greater."
+          ],
+          "refers_to": ["804.4.2"],
+          "tables": [],
+          "title": "Classification"
+        },
+        {
+          "figures": [],
+          "key": "804.3",
+          "number": "804.3",
+          "paragraphs": [
+            "Interior floor finish and floor covering materials shall be tested by an agency in accordance with ASTM E648 or NFPA 253 and identified by a hang tag or other suitable method so as to identify the manufacturer or supplier and style, and shall indicate the interior floor finish or floor covering classification in accordance with Section 804.2. Carpet-type floor coverings shall be tested as proposed for use, including underlayment. Test reports confirming the information provided in the manufacturer\u2019s product identification shall be furnished to the building official on request."
+          ],
+          "refers_to": ["804.2"],
+          "tables": [],
+          "title": "Testing and identification"
+        },
+        {
+          "figures": [],
+          "key": "804.4",
+          "number": "804.4",
+          "paragraphs": [
+            "Interior floor covering materials shall comply with Sections 804.4.1 and 804.4.2 and interior floor finish materials shall comply with Section 804.4.3."
+          ],
+          "refers_to": ["804.4.1", "804.4.2", "804.4.3"],
+          "tables": [],
+          "title": "Interior floor finish requirements"
+        },
+        {
+          "figures": [],
+          "key": "804.4.1",
+          "number": "804.4.1",
+          "paragraphs": [
+            "In all occupancies, interior floor finish and interior floor covering materials shall comply with the requirements of the ASTM Standard E648, and having a specific optical density smoke rating not to exceed 450 per ASTM E662. For Group I-3 occupancies and Group I-2 areas where patients are restrained, see Section 804.4.3."
+          ],
+          "refers_to": ["804.4.3"],
+          "tables": [],
+          "title": "Test requirement"
+        },
+        {
+          "figures": [],
+          "key": "804.4.2",
+          "number": "804.4.2",
+          "paragraphs": [
+            "In all occupancies, interior floor finish and floor covering materials in enclosures for stairways and ramps, exit passageways, corridors and rooms or spaces not separated from corridors by partitions extending from the floor to the underside of the ceiling shall withstand a minimum critical radiant flux. The minimum critical radiant flux shall be not less than Class I in Groups I-2 and I-3 areas where restraint is not used and R-2.1 and not less than Class II in Groups A, B,  E, H, I-4, M, R-1, R-2, R-2.2 and S. For Group I-3 areas occupied by inmates or Group I-2 areas where patients are restrained, see Section 804.4.3.",
+            "Exception: Where a building is equipped throughout with an automatic sprinkler system in accordance with Section 903.3.1.1 or 903.3.1.2, Class II materials are permitted in any area where Class I materials are required, and materials complying with ASTM Standard E648, and having a specific optical density smoke rating not to exceed 450 per ASTM E662 are permitted in any area where Class II materials are required."
+          ],
+          "refers_to": ["804.4.3", "903.3.1.1", "903.3.1.2"],
+          "tables": [],
+          "title": "Minimum critical radiant flux"
+        },
+        {
+          "figures": [],
+          "key": "804.4.3",
+          "number": "804.4.3",
+          "paragraphs": [
+            "Interior floor finish and floor coverings occupied by inmates or patients whose personal liberties are restrained shall be noncombustible.",
+            "Exception: Carpet or other floor covering materials may be used in areas protected by an automatic sprinkler system installed throughout in accordance with Section 903.3.1.1. Carpet or other floor coverings shall comply with the requirements of ASTM Standard E648; the minimum critical radiant flux shall be not less than Class I and the specific optical density smoke rating shall not exceed 450 per ASTM E662. Carpeting and carpet padding shall be tested as a unit in accordance with floor covering radiant panel test meeting class 1 and has a critical radiant flux limit of not less than 0.45 watt per centimeter square. The carpeting and padding shall be identified by a hang-tag or other suitable method as to manufacturer and style and shall indicate the classification of the material based on the limits set forth above."
+          ],
+          "refers_to": ["903.3.1.1"],
+          "tables": [],
+          "title": "Group I-2 and Group I-3 Occupancy floor surfaces."
+        }
+      ],
+      "title": "SECTION  INTERIOR FLOOR FINISH"
+    },
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "805",
+      "number": "805",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [
+        {
+          "figures": [],
+          "key": "805.1",
+          "number": "805.1",
+          "paragraphs": [
+            "Combustible materials installed on or embedded in floors of buildings of Type I or II construction shall comply with Sections 805.1.1 through 805.1.3.",
+            "Exception: Stages and platforms constructed in accordance with Sections 410.2 and 410.3, respectively."
+          ],
+          "refers_to": ["805.1.1", "805.1.3"],
+          "tables": [],
+          "title": "Application"
+        },
+        {
+          "figures": [],
+          "key": "805.1.1",
+          "number": "805.1.1",
+          "paragraphs": [
+            "Floor sleepers, bucks and nailing blocks shall not be constructed of combustible materials, unless the space between the fire-resistance-rated floor assembly and the flooring is either solidly filled with noncombustible materials or fireblocked in accordance with Section 718, and provided that such open spaces shall not extend under or through permanent partitions or walls."
+          ],
+          "refers_to": ["718"],
+          "tables": [],
+          "title": "Subfloor construction"
+        },
+        {
+          "figures": [],
+          "key": "805.1.2",
+          "number": "805.1.2",
+          "paragraphs": [
+            "Wood finish flooring is permitted to be attached directly to the embedded or fire-blocked wood sleepers and shall be permitted where cemented directly to the top surface of fire-resistance-rated floor assemblies or directly to a wood subfloor attached to sleepers as provided for in Section 805.1.1."
+          ],
+          "refers_to": ["805.1.1"],
+          "tables": [],
+          "title": "Wood finish flooring"
+        },
+        {
+          "figures": [],
+          "key": "805.1.3",
+          "number": "805.1.3",
+          "paragraphs": [
+            "Combustible insulating boards not more than 1/2 inch (12.7 mm) thick and covered with finish flooring are permitted where attached directly to a noncombustible floor assembly or to wood subflooring attached to sleepers as provided for in Section 805.1.1."
+          ],
+          "refers_to": ["805.1.1"],
+          "tables": [],
+          "title": "Insulating boards"
+        }
+      ],
+      "title": "SECTION  COMBUSTIBLE MATERIALS IN TYPES I AND II CONSTRUCTION"
+    },
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "806",
+      "number": "806",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [
+        {
+          "figures": [],
+          "key": "806.1",
+          "number": "806.1",
+          "paragraphs": [
+            "The following requirements shall apply to all occupancies:",
+            "1. Furnishings or decorative materials of an explosive or highly flammable character shall not be used.",
+            "2. Fire-retardant coatings in existing buildings shall be maintained so as to retain the effectiveness of the treatment under service conditions encountered in actual use.",
+            "3. Furnishings or other objects shall not be placed to obstruct exits, access thereto, egress therefrom or visibility thereof.",
+            "4. The permissible amount of decorative vegetation and noncombustible decorative materials shall not be limited."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "General"
+        },
+        {
+          "figures": [],
+          "key": "806.2",
+          "number": "806.2",
+          "paragraphs": [
+            "In Groups A, B, E, I, M and R-1 and in dormitories in Group R-2, curtains, draperies, fabric hangings and similar combustible decorative materials suspended from walls or ceilings shall comply with Section 806.4 and shall not exceed 10 percent of the specific wall or ceiling area to which such materials are attached.",
+            "Fixed or movable walls and partitions, paneling, wall pads and crash pads applied structurally or for decoration, acoustical correction, surface insulation or other purposes shall be considered to be interior finish, shall comply with Section 803 and shall not be considered to be decorative materials or furnishings.",
+            "Exceptions:",
+            "1. In auditoriums in Group A, the permissible amount of curtains, draperies, fabric hangings and similar combustible decorative materials suspended from walls or ceilings shall not exceed 75 percent of the aggregate wall area where the building is equipped throughout with an approved automatic sprinkler system in accordance with Section 903.3.1.1, and where the material is installed in accordance with Section 803.15 of this code.",
+            "2. In Group R-2 dormitories, within sleeping units and dwelling units, the permissible amount of curtains, draperies, fabric hangings and similar decorative materials suspended from walls or ceiling shall not exceed 50 percent of the aggregate wall areas where the building is equipped throughout with an approved automatic sprinkler system installed in accordance with Section 903.3.1.",
+            "3. In Group B and M occupancies, the amount of combustible fabric partitions suspended from the ceiling and not supported by the floor shall comply with Section 806.4 and shall not be limited.",
+            "4. The 10-percent limit shall not apply to curtains, draperies, fabric hangings and similar combustible decorative materials used as window coverings."
+          ],
+          "refers_to": ["803", "803.15", "806.4", "806.4", "903.3.1", "903.3.1.1"],
+          "tables": [],
+          "title": "Combustible decorative materials"
+        },
+        {
+          "figures": [],
+          "key": "806.3",
+          "number": "806.3",
+          "paragraphs": [
+            "Occupancy-based requirements for combustible decorative materials, other than decorative vegetation, not complying with Section 806.4 shall comply with Sections 807.5.1 through 807.5.6 of the California Fire Code."
+          ],
+          "refers_to": ["806.4", "807.5.1", "807.5.6"],
+          "tables": [],
+          "title": "Occupancy-based requirements"
+        },
+        {
+          "figures": [],
+          "key": "806.4",
+          "number": "806.4",
+          "paragraphs": [
+            "Where required to exhibit improved fire performance, curtains, draperies, fabric hangings and similar combustible decorative materials suspended from walls or ceilings shall be tested by an approved agency and shall be flame resistant in accordance with the provisions set forth in CCR, Title 19, Division 1, Chapter 8. Reports of test results shall be prepared in accordance with the test method used and furnished to the building official on request."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Acceptance criteria and reports"
+        },
+        {
+          "figures": [],
+          "key": "806.5",
+          "number": "806.5",
+          "paragraphs": [
+            "Foam plastic used as trim in any occupancy shall comply with Section 2604.2."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Foam plastic"
+        },
+        {
+          "figures": [],
+          "key": "806.6",
+          "number": "806.6",
+          "paragraphs": [
+            "Imitation leather or other material consisting of or coated with a pyroxylin or similarly hazardous base shall not be used in Group A occupancies."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Pyroxylin plastic"
+        },
+        {
+          "figures": [],
+          "key": "806.7",
+          "number": "806.7",
+          "paragraphs": [
+            "Material, other than foam plastic used as interior trim, shall have a minimum Class B flame spread and 450 smoke-developed index in Group I-3 and for all other occupancies Class C flame spread and smoke-developed index when tested in accordance with ASTM E84 or UL 723, as described in Section 803.1.2. Combustible trim, excluding handrails and guardrails, shall not exceed 10 percent of the specific wall or ceiling area to which it is attached."
+          ],
+          "refers_to": ["723", "803.1.2"],
+          "tables": [],
+          "title": "Interior trim"
+        },
+        {
+          "figures": [],
+          "key": "806.8",
+          "number": "806.8",
+          "paragraphs": [
+            "Interior floor-wall base that is 6 inches (152 mm) or less in height shall be tested in accordance with Section 804.2 and shall be not less than Class II. Where a Class I floor finish is required, the floor-wall base shall be Class I.",
+            "Exception: Interior trim materials that comply with Section 806.7."
+          ],
+          "refers_to": ["804.2", "806.7"],
+          "tables": [],
+          "title": "Interior floor-wall base"
+        },
+        {
+          "figures": [],
+          "key": "806.9",
+          "number": "806.9",
+          "paragraphs": [
+            "  INSIGHTS   ",
+            "Where lockers constructed of combustible materials are used, the lockers shall be considered to be interior finish and shall comply with Section 803.",
+            "Exception: Lockers constructed entirely of wood and noncombustible materials shall be permitted to be used wherever interior finish materials are required to meet a Class C classification in accordance with Section 803.1.2."
+          ],
+          "refers_to": ["803", "803.1.2"],
+          "tables": [],
+          "title": "Combustible lockers"
+        }
+      ],
+      "title": "SECTION  DECORATIVE MATERIALS AND TRIM"
+    },
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "807",
+      "number": "807",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [
+        {
+          "figures": [],
+          "key": "807.1",
+          "number": "807.1",
+          "paragraphs": ["Thermal and acoustical insulation shall comply with Section 720."],
+          "refers_to": ["720"],
+          "tables": [],
+          "title": "Insulation"
+        }
+      ],
+      "title": "SECTION  INSULATION"
+    },
+    {
+      "chapter": "8",
+      "figures": [],
+      "key": "808",
+      "number": "808",
+      "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+      "subsections": [
+        {
+          "figures": [],
+          "key": "808.1",
+          "number": "808.1",
+          "paragraphs": [
+            "The quality, design, fabrication and erection of metal suspension systems for acoustical tile and lay-in panel ceilings in buildings or structures shall conform to generally accepted engineering practice, the provisions of this chapter and other applicable requirements of this code."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Acoustical ceiling systems"
+        },
+        {
+          "figures": [],
+          "key": "808.1.1",
+          "number": "808.1.1",
+          "paragraphs": [
+            "Acoustical materials complying with the interior finish requirements of Section 803 shall be installed in accordance with the manufacturer\u2019s recommendations and applicable provisions for applying interior finish."
+          ],
+          "refers_to": ["803"],
+          "tables": [],
+          "title": "Materials and installation"
+        },
+        {
+          "figures": [],
+          "key": "808.1.1.1",
+          "number": "808.1.1.1",
+          "paragraphs": [
+            "Suspended acoustical ceiling systems shall be installed in accordance with the provisions of ASTM C635 and ASTM C636."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Suspended acoustical ceilings"
+        },
+        {
+          "figures": [],
+          "key": "808.1.1.2",
+          "number": "808.1.1.2",
+          "paragraphs": [
+            "Acoustical ceiling systems that are part of fire-resistance-rated construction shall be installed in the same manner used in the assembly tested and shall comply with the provisions of Chapter 7."
+          ],
+          "refers_to": [],
+          "tables": [],
+          "title": "Fire-resistance-rated construction"
+        }
+      ],
+      "title": "SECTION  ACOUSTICAL CEILING SYSTEMS"
+    }
+  ],
+  "source_id": "CBC",
+  "source_url": "https://codes.iccsafe.org/content/CABC2022P4",
+  "title": "California Building Code",
+  "version": 2022
+}

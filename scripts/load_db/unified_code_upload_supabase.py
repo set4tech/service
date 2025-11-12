@@ -312,9 +312,7 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
             supabase.table("codes").insert(
                 {
                     "id": code_id,
-                    "provider": provider,
-                    "source_id": source_id,
-                    "version": version,
+                    "year": version,
                     "jurisdiction": jurisdiction,
                     "title": code_data["title"],
                     "source_url": code_data.get("source_url", ""),
@@ -331,6 +329,34 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
         logger.error(f"Error ensuring Code record: {e}")
         raise
 
+    # Ensure Chapter records exist and get chapter_id mapping
+    chapter_id_map = {}
+    if chapters_included:
+        logger.info(f"Ensuring {len(chapters_included)} chapter records exist...")
+        for chapter_num in chapters_included:
+            try:
+                # Try to get existing chapter
+                result = supabase.table("chapters").select("id").eq("code_id", code_id).eq("number", chapter_num).execute()
+                if result.data:
+                    chapter_id = result.data[0]["id"]
+                    logger.info(f"  ✓ Chapter {chapter_num} exists: {chapter_id}")
+                else:
+                    # Create chapter
+                    chapter_data = {
+                        "code_id": code_id,
+                        "number": chapter_num,
+                        "name": f"Chapter {chapter_num}",
+                        "url": f"https://codes.iccsafe.org/content/CABC{version}P4/chapter-{chapter_num}"
+                    }
+                    result = supabase.table("chapters").insert(chapter_data).execute()
+                    chapter_id = result.data[0]["id"]
+                    logger.info(f"  ✓ Chapter {chapter_num} created: {chapter_id}")
+
+                chapter_id_map[chapter_num] = chapter_id
+            except Exception as e:
+                logger.error(f"Error ensuring chapter {chapter_num}: {e}")
+                raise
+
     sections = code_data.get("sections", [])
     logger.info(f"Processing {len(sections)} sections...")
 
@@ -342,6 +368,9 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
         section_key = section_key_func(
             provider, version, jurisdiction, source_id, section_number
         )
+
+        chapter_num = section.get("chapter")
+        chapter_id = chapter_id_map.get(chapter_num) if chapter_num else None
 
         section_item = {
             "key": section_key,
@@ -360,7 +389,8 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
             "figures": section.get("figures", []),
             "source_url": section.get("source_url", ""),
             "source_page": section.get("source_page"),
-            "chapter": section.get("chapter"),
+            "chapter": chapter_num,
+            "chapter_id": chapter_id,
         }
         all_items.append(section_item)
 
@@ -413,7 +443,8 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
                 "figures": subsection.get("figures", []),
                 "source_url": subsection.get("source_url", ""),
                 "source_page": subsection.get("source_page"),
-                "chapter": subsection.get("chapter"),
+                "chapter": chapter_num,  # Inherit from parent section
+                "chapter_id": chapter_id,  # Inherit from parent section
             }
             all_items.append(subsection_item)
 

@@ -41,3 +41,22 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ check: data });
 }
+
+export async function DELETE(req: NextRequest) {
+  const { checkIds } = await req.json();
+
+  if (!checkIds || !Array.isArray(checkIds) || checkIds.length === 0) {
+    return NextResponse.json({ error: 'checkIds array required' }, { status: 400 });
+  }
+
+  const supabase = supabaseAdmin();
+
+  // Delete checks (CASCADE will handle analysis_runs, screenshot_check_assignments)
+  const { error } = await supabase.from('checks').delete().in('id', checkIds);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ deleted: checkIds.length });
+}
