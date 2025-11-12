@@ -178,13 +178,28 @@ def extract_sections(soup: BeautifulSoup, test_mode: bool, chapter: str, year: i
         if not header_elem:
             continue
 
-        header_text = header_elem.get_text()
+        # Chapter 9 has cross-references in paragraph text that get picked up,
+        # so extract from data-section-title attribute instead of full text
+        if chapter == "9":
+            section_title_attr = header_elem.get("data-section-title")
+            if section_title_attr:
+                header_text = section_title_attr
+            else:
+                header_text = header_elem.get_text()
+        else:
+            header_text = header_elem.get_text()
+
         section_numbers = find_section_numbers(header_text)
 
         if len(section_numbers) != 1:
             continue
 
         section_number = section_numbers[0].strip()
+
+        # Filter sections by chapter - only include sections that belong to this chapter
+        if not section_belongs_to_chapter(section_number, chapter):
+            logger.debug(f"Skipping section {section_number} (doesn't belong to chapter {chapter})")
+            continue
 
         # Extract title - try multiple sources in order of reliability
         section_title = None
@@ -220,7 +235,7 @@ def extract_sections(soup: BeautifulSoup, test_mode: bool, chapter: str, year: i
     return sections
 
 
-def extract_subsections(soup: BeautifulSoup, test_mode: bool) -> dict[str, Subsection]:
+def extract_subsections(soup: BeautifulSoup, test_mode: bool, chapter: str) -> dict[str, Subsection]:
     """Extract all subsections from the soup."""
     subsections = {}
     pattern = re.compile(r"level\d|level\d_title")
@@ -244,6 +259,12 @@ def extract_subsections(soup: BeautifulSoup, test_mode: bool) -> dict[str, Subse
             continue
 
         subsection_number = subsection_numbers[0].strip()
+
+        # Filter subsections by chapter - check if parent section belongs to this chapter
+        parent_section = subsection_number.split(".")[0]
+        if not section_belongs_to_chapter(parent_section, chapter):
+            logger.debug(f"Skipping subsection {subsection_number} (parent doesn't belong to chapter {chapter})")
+            continue
 
         # Extract title - use fallback if span not found
         title_elem = subsection_elem.find("span", class_=pattern)
@@ -478,7 +499,8 @@ def main(args):
     all_figures = []
     
     # Determine which chapters to process
-    chapters_to_process = args.chapters if args.chapters else ["7", "7a", "8", "9", "10", "11a", "11b"]
+    # Note: 11a doesn't exist in S3, only 11b
+    chapters_to_process = args.chapters if args.chapters else ["7", "7a", "8", "9", "10", "11b"]
     logger.info(f"Processing chapters: {chapters_to_process}")
     
     # Process each chapter
@@ -499,7 +521,7 @@ def main(args):
         all_sections.update(chapter_sections)
 
         # Extract subsections
-        chapter_subsections = extract_subsections(soup, args.test)
+        chapter_subsections = extract_subsections(soup, args.test, chapter)
         all_subsections.update(chapter_subsections)
     
     # Attach subsections to sections
