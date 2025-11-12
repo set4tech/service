@@ -26,19 +26,6 @@ The unified schema:
       "source_page": 123 (optional),
       "figures": [...] (optional),
       "tables": [...] (optional),
-      "always_include": true/false (optional),
-      "applicable_occupancies": ["A", "B", ...] (optional),
-      "requires_parking": true/false (optional),
-      "requires_elevator": true/false (optional),
-      "min_building_size": 5000 (optional),
-      "max_building_size": 50000 (optional),
-      "applicable_work_types": ["new", "alteration", ...] (optional),
-      "applicable_facility_categories": ["commercial", ...] (optional),
-      "applicability_notes": "..." (optional),
-      "drawing_assessable": true/false (optional, default: true),
-      "assessability_tags": ["doors", "ramps", ...] (optional),
-      "never_relevant": true/false (optional, default: false),
-      "floorplan_relevant": true/false (optional, default: false),
       "subsections": [
         {
           "key": "401.1",
@@ -51,20 +38,7 @@ The unified schema:
           "figures": [...] (optional),
           "source_url": "..." (optional),
           "source_page": 123 (optional),
-          "chapter": "..." (optional),
-          "always_include": true/false (optional),
-          "applicable_occupancies": [...] (optional),
-          "requires_parking": true/false (optional),
-          "requires_elevator": true/false (optional),
-          "min_building_size": 5000 (optional),
-          "max_building_size": 50000 (optional),
-          "applicable_work_types": [...] (optional),
-          "applicable_facility_categories": [...] (optional),
-          "applicability_notes": "..." (optional),
-          "drawing_assessable": true/false (optional, default: true),
-          "assessability_tags": [...] (optional),
-          "never_relevant": true/false (optional, default: false),
-          "floorplan_relevant": true/false (optional, default: false)
+          "chapter": "..." (optional)
         }
       ]
     }
@@ -236,22 +210,7 @@ def upload_items_to_supabase(
             }
 
             # Add optional fields only if they exist in the item
-            optional_fields = [
-                "chapter",
-                "always_include",
-                "applicable_occupancies",
-                "requires_parking",
-                "requires_elevator",
-                "min_building_size",
-                "max_building_size",
-                "applicable_work_types",
-                "applicable_facility_categories",
-                "applicability_notes",
-                "drawing_assessable",
-                "assessability_tags",
-                "never_relevant",
-                "floorplan_relevant",
-            ]
+            optional_fields = ["chapter"]
 
             for field in optional_fields:
                 if field in item and item[field] is not None:
@@ -402,19 +361,6 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
             "source_url": section.get("source_url", ""),
             "source_page": section.get("source_page"),
             "chapter": section.get("chapter"),
-            "always_include": section.get("always_include"),
-            "applicable_occupancies": section.get("applicable_occupancies"),
-            "requires_parking": section.get("requires_parking"),
-            "requires_elevator": section.get("requires_elevator"),
-            "min_building_size": section.get("min_building_size"),
-            "max_building_size": section.get("max_building_size"),
-            "applicable_work_types": section.get("applicable_work_types"),
-            "applicable_facility_categories": section.get("applicable_facility_categories"),
-            "applicability_notes": section.get("applicability_notes"),
-            "drawing_assessable": section.get("drawing_assessable"),
-            "assessability_tags": section.get("assessability_tags"),
-            "never_relevant": section.get("never_relevant"),
-            "floorplan_relevant": section.get("floorplan_relevant"),
         }
         all_items.append(section_item)
 
@@ -468,19 +414,6 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
                 "source_url": subsection.get("source_url", ""),
                 "source_page": subsection.get("source_page"),
                 "chapter": subsection.get("chapter"),
-                "always_include": subsection.get("always_include"),
-                "applicable_occupancies": subsection.get("applicable_occupancies"),
-                "requires_parking": subsection.get("requires_parking"),
-                "requires_elevator": subsection.get("requires_elevator"),
-                "min_building_size": subsection.get("min_building_size"),
-                "max_building_size": subsection.get("max_building_size"),
-                "applicable_work_types": subsection.get("applicable_work_types"),
-                "applicable_facility_categories": subsection.get("applicable_facility_categories"),
-                "applicability_notes": subsection.get("applicability_notes"),
-                "drawing_assessable": subsection.get("drawing_assessable"),
-                "assessability_tags": subsection.get("assessability_tags"),
-                "never_relevant": subsection.get("never_relevant"),
-                "floorplan_relevant": subsection.get("floorplan_relevant"),
             }
             all_items.append(subsection_item)
 
