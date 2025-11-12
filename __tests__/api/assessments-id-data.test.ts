@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GET } from '@/app/api/assessment-data/[id]/route';
+import { GET } from '@/app/api/assessments/[id]/route';
 import { NextRequest } from 'next/server';
 
 // Mock Supabase
@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase-server', () => ({
   supabaseAdmin: vi.fn(),
 }));
 
-describe('GET /api/assessment-data/[id]', () => {
+describe('GET /api/assessments/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -18,6 +18,8 @@ describe('GET /api/assessment-data/[id]', () => {
     const pageNumber = '1';
 
     const { supabaseAdmin } = await import('@/lib/supabase-server');
+
+    let screenshotCallCount = 0;
 
     vi.mocked(supabaseAdmin).mockReturnValue({
       from: vi.fn((table: string) => {
@@ -54,15 +56,29 @@ describe('GET /api/assessment-data/[id]', () => {
           };
         }
         if (table === 'screenshots') {
+          screenshotCallCount++;
           // First call for assigned screenshots
-          const callCount = vi.fn();
-          if (callCount.mock.calls.length === 0) {
+          if (screenshotCallCount === 1) {
             return {
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
                   order: vi.fn(() =>
                     Promise.resolve({
-                      data: [{ id: 'screenshot-1', screenshot_check_assignments: [] }],
+                      data: [
+                        {
+                          id: 'screenshot-1',
+                          screenshot_check_assignments: [
+                            {
+                              check_id: 'check-1',
+                              is_original: true,
+                              checks: {
+                                code_section_number: '1234',
+                                code_section_title: 'Test Section',
+                              },
+                            },
+                          ],
+                        },
+                      ],
                       error: null,
                     })
                   ),
@@ -104,7 +120,7 @@ describe('GET /api/assessment-data/[id]', () => {
     } as any);
 
     const request = new NextRequest(
-      `http://localhost:3000/api/assessment-data/${assessmentId}?projectId=${projectId}&pageNumber=${pageNumber}`
+      `http://localhost:3000/api/assessments/${assessmentId}?projectId=${projectId}&pageNumber=${pageNumber}`
     );
 
     const response = await GET(request, {
@@ -124,8 +140,64 @@ describe('GET /api/assessment-data/[id]', () => {
     const assessmentId = 'test-assessment-id';
     const pageNumber = '1';
 
+    const { supabaseAdmin } = await import('@/lib/supabase-server');
+
+    let screenshotCallCount = 0;
+
+    vi.mocked(supabaseAdmin).mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'screenshots') {
+          screenshotCallCount++;
+          // First call for assigned screenshots
+          if (screenshotCallCount === 1) {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  order: vi.fn(() =>
+                    Promise.resolve({
+                      data: [],
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            };
+          }
+          // Second call for all screenshots
+          return {
+            select: vi.fn(() => ({
+              like: vi.fn(() => ({
+                order: vi.fn(() =>
+                  Promise.resolve({
+                    data: [],
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        if (table === 'assessments') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { pdf_scale: 2.0 },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        return {};
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
     const request = new NextRequest(
-      `http://localhost:3000/api/assessment-data/${assessmentId}?pageNumber=${pageNumber}`
+      `http://localhost:3000/api/assessments/${assessmentId}?pageNumber=${pageNumber}`
     );
 
     const response = await GET(request, {
@@ -135,5 +207,11 @@ describe('GET /api/assessment-data/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
+    // Should not have measurements or calibration since projectId is missing
+    expect(data.data.measurements).toBeNull();
+    expect(data.data.calibration).toBeNull();
+    // Should have screenshots and pdf_scale
+    expect(data.data.screenshots).toBeDefined();
+    expect(data.data.pdf_scale).toBe(2.0);
   });
 });

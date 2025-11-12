@@ -179,7 +179,7 @@ describe('useAssessmentData', () => {
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/assessment-data/assessment-1'),
+      expect.stringContaining('/api/assessments/assessment-1'),
       expect.any(Object)
     );
     expect(global.fetch).toHaveBeenCalledWith(

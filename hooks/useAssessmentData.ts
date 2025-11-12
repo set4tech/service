@@ -88,7 +88,7 @@ export function useAssessmentData(
     if (projectId) params.append('projectId', projectId);
     params.append('pageNumber', pageNumber.toString());
 
-    return `/api/assessment-data/${assessmentId}?${params.toString()}`;
+    return `/api/assessments/${assessmentId}?${params.toString()}`;
   }, [assessmentId, projectId, pageNumber, enabled]);
 
   const { data, loading, error, refetch } = useFetch<AssessmentDataResponse>(url, {
