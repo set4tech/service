@@ -68,6 +68,7 @@ export function CheckList({
   const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [showUnassessedOnly, setShowUnassessedOnly] = useState(false);
+  const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
 
   // Bulk selection state
   const [selectedCheckIds, setSelectedCheckIds] = useState<Set<string>>(new Set());
@@ -110,6 +111,42 @@ export function CheckList({
     return () => clearTimeout(timeoutId);
   }, [query, assessmentId, checkMode]);
 
+  // Extract chapter from section number
+  // Examples: "11B-403.5" -> "11B", "803.2" -> "8", "1022.3.4" -> "10", "900" -> "9"
+  const extractChapter = (sectionNumber: string): string | null => {
+    if (!sectionNumber) return null;
+
+    // Handle hyphenated format: "11B-403.5" -> "11B" (everything before hyphen)
+    if (sectionNumber.includes('-')) {
+      return sectionNumber.split('-')[0];
+    }
+
+    // Handle non-hyphenated format: extract chapter from section number
+    // "803.2" -> "8", "1022.3.4" -> "10", "900" -> "9"
+    const sectionMatch = sectionNumber.match(/^(\d+)/);
+    if (!sectionMatch) return null;
+
+    const sectionNum = sectionMatch[1];
+
+    // Chapter is first 1 or 2 digits (depending on if >= 1000)
+    if (parseInt(sectionNum) >= 1000) {
+      return sectionNum.substring(0, 2); // "1022" -> "10"
+    } else {
+      return sectionNum.substring(0, 1); // "803" -> "8", "900" -> "9"
+    }
+  };
+
+  // Get available chapters from checks
+  const availableChapters = useMemo(() => {
+    const chapters = new Set<string>();
+    checks.forEach(check => {
+      const chapter = extractChapter(check.code_section_number);
+      if (chapter) chapters.add(chapter);
+    });
+    // Sort using natural compare (handles "7", "11A", "11B" properly)
+    return Array.from(chapters).sort((a, b) => naturalCompare(a, b));
+  }, [checks]);
+
   const filtered = useMemo(() => {
     // Use search results if available, otherwise use passed checks
     const sourceChecks = searchResults !== null ? searchResults : checks;
@@ -119,6 +156,14 @@ export function CheckList({
       if (c.manual_status === 'not_applicable') return false;
       return true;
     });
+
+    // Filter by chapter if selected (only in section mode)
+    if (selectedChapter && checkMode === 'section') {
+      result = result.filter(c => {
+        const chapter = extractChapter(c.code_section_number);
+        return chapter === selectedChapter;
+      });
+    }
 
     // Filter by unassessed status if enabled
     if (showUnassessedOnly) {
@@ -130,7 +175,7 @@ export function CheckList({
     }
 
     return result;
-  }, [searchResults, checks, checkMode, showUnassessedOnly]);
+  }, [searchResults, checks, checkMode, showUnassessedOnly, selectedChapter]);
 
   // Group checks hierarchically
   const groupedChecks = useMemo(() => {
@@ -573,6 +618,40 @@ export function CheckList({
           )}
         </div>
 
+        {/* Chapter Filter (only in section mode) */}
+        {checkMode === 'section' && availableChapters.length > 1 && (
+          <div className="mt-3">
+            <div className="text-xs font-medium text-gray-700 mb-2">Filter by Chapter</div>
+            <div className="flex flex-wrap gap-1">
+              <button
+                onClick={() => setSelectedChapter(null)}
+                className={clsx(
+                  'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                  !selectedChapter
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                )}
+              >
+                All
+              </button>
+              {availableChapters.map(chapter => (
+                <button
+                  key={chapter}
+                  onClick={() => setSelectedChapter(chapter)}
+                  className={clsx(
+                    'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                    selectedChapter === chapter
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  )}
+                >
+                  {chapter.match(/^\d+$/) ? `Chapter ${chapter}` : chapter}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Unassessed Only Filter */}
         <div className="mt-2">
           <label className="flex items-center text-sm text-gray-700 cursor-pointer hover:text-gray-900">
@@ -637,7 +716,7 @@ export function CheckList({
                     <span className="ml-auto text-xs text-gray-500">({displayChecks.length})</span>
                   </button>
 
-                  {/* Add Element Button (only in element mode) */}
+                  {/* Add Element Button */}
                   {elementGroupSlug && (
                     <button
                       onClick={async e => {
