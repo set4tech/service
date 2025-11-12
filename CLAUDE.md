@@ -358,6 +358,8 @@ checks (parent_check_id) → checks
 
 All API routes use Next.js App Router convention: `app/api/[resource]/route.ts`
 
+**📖 For complete API documentation, see [`API_REFERENCE.md`](./API_REFERENCE.md)**
+
 ### Common Patterns
 
 **Standard CRUD**:

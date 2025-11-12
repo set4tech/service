@@ -57,6 +57,8 @@ npm run start
 
 ### API Development
 
+**📖 For complete API documentation, see [`API_REFERENCE.md`](./API_REFERENCE.md)**
+
 All API routes should be created in `/app/api/` using the Next.js 15 route handler pattern:
 
 ```typescript
@@ -77,6 +79,7 @@ export async function POST(request: NextRequest) {
 ### Component Development
 
 React components should be created in `/components/` and follow these patterns:
+
 - Use TypeScript for type safety
 - Use Tailwind CSS 4 for styling
 - Components should be server components by default (Next.js 15)
@@ -85,18 +88,21 @@ React components should be created in `/components/` and follow these patterns:
 ### Database Integration
 
 The application integrates with:
+
 1. **Neo4j** - For building code data (read-only)
 2. **Supabase** - For application data (projects, assessments, etc.)
 
 ### AI Integration
 
 The platform will integrate with:
+
 - **Gemini 2.0 Flash** - For compliance analysis
 - **OpenAI GPT-4** - Alternative AI provider
 
 ### Python Scripts
 
 Supporting Python scripts for data processing:
+
 - `code_section_assembler.py` - Fetches and assembles code sections from Neo4j
 - `code_applicability_analyzer.py` - Analyzes code applicability using AI
 - `schema.py` - Data structure definitions
@@ -112,15 +118,19 @@ Supporting Python scripts for data processing:
 ## Common Tasks
 
 ### Adding a new API endpoint
+
 Create a new directory and route.ts file in `/app/api/`
 
 ### Adding a new page
+
 Create a new directory and page.tsx file in `/app/`
 
 ### Adding a new component
+
 Create a new .tsx file in `/components/`
 
 ### Working with environment variables
+
 Update `.env.local` with required variables (see `.env.example`)
 
 ## Remember
