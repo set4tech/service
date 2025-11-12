@@ -70,26 +70,48 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     // Set status to in_progress
     await supabase.from('assessments').update({ seeding_status: 'in_progress' }).eq('id', id);
 
-    // 2. Fetch all sections for the selected chapters
+    // 2. Fetch all sections for the selected chapters in batches
     // Exclude sections without body text (header-only sections like "1001")
-    const { data: sections, error: sectionsError } = await supabase
-      .from('sections')
-      .select('*')
-      .in('chapter_id', chapterIds)
-      .eq('drawing_assessable', true)
-      .eq('never_relevant', false)
-      .not('text', 'is', null)
-      .neq('text', '')
-      .order('number');
+    // Supabase has a hard limit of 1000 rows per query, so we need to paginate
+    let sections: any[] = [];
+    let hasMore = true;
+    let offset = 0;
+    const batchSize = 1000;
 
-    if (sectionsError) {
-      console.error('[Seed API] Error fetching sections:', sectionsError);
-      await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+    console.log('[Seed API] Fetching sections in batches...');
 
-      return NextResponse.json(
-        { error: 'Database error: ' + sectionsError.message },
-        { status: 500 }
-      );
+    while (hasMore) {
+      const { data: batch, error: sectionsError } = await supabase
+        .from('sections')
+        .select('*')
+        .in('chapter_id', chapterIds)
+        .eq('drawing_assessable', true)
+        .eq('never_relevant', false)
+        .not('text', 'is', null)
+        .neq('text', '')
+        .order('number')
+        .range(offset, offset + batchSize - 1);
+
+      if (sectionsError) {
+        console.error('[Seed API] Error fetching sections:', sectionsError);
+        await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+
+        return NextResponse.json(
+          { error: 'Database error: ' + sectionsError.message },
+          { status: 500 }
+        );
+      }
+
+      if (batch && batch.length > 0) {
+        sections = sections.concat(batch);
+        offset += batchSize;
+        hasMore = batch.length === batchSize;
+        console.log(
+          `[Seed API] Fetched batch: ${batch.length} sections (total so far: ${sections.length})`
+        );
+      } else {
+        hasMore = false;
+      }
     }
 
     if (!sections || sections.length === 0) {
@@ -135,31 +157,45 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         instance_label: null, // Section checks have no instance label
       }));
 
-      // Insert checks - duplicates are prevented by unique constraint
-      // If duplicates exist (from race conditions), we'll catch the error and continue
-      const { data: insertedData, error: insertError } = await supabase
-        .from('checks')
-        .insert(checkRows)
-        .select('id');
+      // Insert checks in batches to avoid Supabase limits
+      const batchSize = 1000;
+      let totalInserted = 0;
 
-      if (insertError) {
-        // Code 23505 is duplicate key violation - this is OK in race conditions
-        if (insertError.code === '23505') {
-          console.log('[Seed API] Some checks already exist (race condition), continuing...');
-          checksCreated = 0; // These checks already existed
+      for (let i = 0; i < checkRows.length; i += batchSize) {
+        const batch = checkRows.slice(i, i + batchSize);
+        console.log(
+          `[Seed API] Inserting batch ${i / batchSize + 1}/${Math.ceil(checkRows.length / batchSize)} (${batch.length} checks)`
+        );
+
+        const { data: insertedData, error: insertError } = await supabase
+          .from('checks')
+          .insert(batch)
+          .select('id');
+
+        if (insertError) {
+          // Code 23505 is duplicate key violation - this is OK in race conditions
+          if (insertError.code === '23505') {
+            console.log(
+              '[Seed API] Some checks in batch already exist (race condition), continuing...'
+            );
+          } else {
+            console.error('[Seed API] Error inserting checks batch:', insertError);
+            await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
+
+            return NextResponse.json(
+              { error: 'Failed to create checks: ' + insertError.message },
+              { status: 500 }
+            );
+          }
         } else {
-          console.error('[Seed API] Error inserting checks:', insertError);
-          await supabase.from('assessments').update({ seeding_status: 'failed' }).eq('id', id);
-
-          return NextResponse.json(
-            { error: 'Failed to create checks: ' + insertError.message },
-            { status: 500 }
-          );
+          totalInserted += insertedData?.length || 0;
         }
-      } else {
-        checksCreated = insertedData?.length || 0;
-        console.log(`[Seed API] Successfully created ${checksCreated} checks`);
       }
+
+      checksCreated = totalInserted;
+      console.log(
+        `[Seed API] Successfully created ${checksCreated} checks across ${Math.ceil(checkRows.length / batchSize)} batches`
+      );
     }
 
     // 4. Mark seeding as completed

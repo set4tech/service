@@ -37,7 +37,7 @@ export async function getAssessmentChecks(
       )
       .eq('assessment_id', assessmentId)
       .is('element_group_id', null) // Only section checks
-      .limit(20000);
+      .limit(100000);
   } else {
     // Element mode: INNER JOIN on element_instances (more efficient since we know it exists)
     query = supabase
@@ -51,7 +51,7 @@ export async function getAssessmentChecks(
       )
       .eq('assessment_id', assessmentId)
       .not('element_group_id', 'is', null) // Only element checks
-      .limit(20000);
+      .limit(100000);
 
     // Filter by specific element group if specified (only applicable in element mode)
     if (elementGroup) {
@@ -88,7 +88,7 @@ export async function getAssessmentChecks(
         .select('*, sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)')
         .eq('assessment_id', assessmentId)
         .is('element_group_id', null)
-        .limit(20000);
+        .limit(100000);
     } else {
       checksQuery = supabase
         .from('checks')
@@ -97,7 +97,7 @@ export async function getAssessmentChecks(
         )
         .eq('assessment_id', assessmentId)
         .not('element_group_id', 'is', null)
-        .limit(20000);
+        .limit(100000);
 
       // Apply element group filter to search in element mode
       if (elementGroup) {
@@ -265,10 +265,11 @@ export async function getAssessmentChecks(
   }
 
   // No search - fetch all checks in batches
+  // Note: Supabase range() has a hard limit of 1000 rows per call
   let allChecks: any[] = [];
   let hasMore = true;
   let offset = 0;
-  const batchSize = 1000;
+  const batchSize = 1000; // Supabase's hard limit per range() call
 
   while (hasMore) {
     const { data: batch, error } = await query.range(offset, offset + batchSize - 1);
@@ -277,6 +278,7 @@ export async function getAssessmentChecks(
     if (batch && batch.length > 0) {
       allChecks = allChecks.concat(batch);
       offset += batchSize;
+      // Continue if we got a full batch (indicates there might be more)
       hasMore = batch.length === batchSize;
     } else {
       hasMore = false;
