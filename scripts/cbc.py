@@ -19,9 +19,9 @@ from schema import Code, Section, Subsection, TableBlock
 from utils import extract_table_data, extract_figure_url
 
 # California section patterns
-# Matches: 7XX (Ch 7), 10XX (Ch 10), XXXXА (Ch 10 with A), 11A-XXX, 11B-XXX
-SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|7\d{2})(?!\.\d)"
-SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|7\d{2})(?:\.\d+)+"
+# Matches: 7XX (Ch 7), 7XXA (Ch 7A), 8XX (Ch 8), 9XX (Ch 9), 10XX (Ch 10), XXXXА (Ch 10 with A), 11A-XXX, 11B-XXX
+SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2})(?!\.\d)"
+SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2})(?:\.\d+)+"
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -32,10 +32,13 @@ logger = logging.getLogger(__name__)
 def get_chapter_files(year: int) -> dict[str, str]:
     """Get chapter file names for the specified year."""
     return {
-        "7": "CHAPTER 7 FIRE AND SMOKE PROTECTION FEATURES - 2022 CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
+        "7": f"CHAPTER 7 FIRE AND SMOKE PROTECTION FEATURES - {year} CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
+        "7a": f"CHAPTER 7A SFM MATERIALS AND CONSTRUCTION METHODS FOR EXTERIOR WILDFIRE EXPOSURE - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "8": f"CHAPTER 8 INTERIOR FINISHES - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "9": f"CHAPTER 9 FIRE PROTECTION AND LIFE SAFETY SYSTEMS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "10": f"CHAPTER 10 MEANS OF EGRESS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11a": f"CHAPTER 11A HOUSING ACCESSIBILITY - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
-        "11b": "Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - California Building Code Volumes 1 and 2, Title 24, Part 2.html",
+        "11b": f"Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - {year} California Building Code Volumes 1 and 2, Title 24, Part 2.html",
     }
 
 
@@ -47,6 +50,41 @@ def find_section_numbers(text: str) -> list[str]:
 def find_subsection_numbers(text: str) -> list[str]:
     """Extract subsection numbers from text."""
     return re.findall(SUBSECTION_REGEX, text)
+
+
+def section_belongs_to_chapter(section_number: str, chapter: str) -> bool:
+    """Check if a section number belongs to the specified chapter."""
+    chapter = chapter.lower()
+
+    # Chapter 7: 7XX (e.g., 701, 702)
+    if chapter == "7":
+        return re.match(r"^7\d{2}$", section_number) is not None
+
+    # Chapter 7A: 7XXA (e.g., 701A, 702A)
+    if chapter == "7a":
+        return re.match(r"^7\d{2}A$", section_number) is not None
+
+    # Chapter 8: 8XX (e.g., 801, 802)
+    if chapter == "8":
+        return re.match(r"^8\d{2}$", section_number) is not None
+
+    # Chapter 9: 9XX (e.g., 901, 902)
+    if chapter == "9":
+        return re.match(r"^9\d{2}$", section_number) is not None
+
+    # Chapter 10: 10XX or XXXXА (e.g., 1001, 1002, 1003A)
+    if chapter == "10":
+        return re.match(r"^10\d{2}$", section_number) is not None or re.match(r"^\d{4}A$", section_number) is not None
+
+    # Chapter 11A: 11A-XXX (e.g., 11A-101)
+    if chapter == "11a":
+        return section_number.startswith("11A-")
+
+    # Chapter 11B: 11B-XXX (e.g., 11B-101)
+    if chapter == "11b":
+        return section_number.startswith("11B-")
+
+    return False
 
 
 
@@ -131,23 +169,23 @@ def extract_sections(soup: BeautifulSoup, test_mode: bool, chapter: str, year: i
     """Extract all sections from the soup."""
     sections = {}
     level_sections = soup.find_all("section", class_=re.compile(r"level\d"))
-    
+
     if test_mode:
         level_sections = level_sections[:2]
-    
+
     for level_section in level_sections:
         header_elem = level_section.find("div", class_="section-action-wrapper")
         if not header_elem:
             continue
-        
+
         header_text = header_elem.get_text()
         section_numbers = find_section_numbers(header_text)
-        
+
         if len(section_numbers) != 1:
             continue
-        
+
         section_number = section_numbers[0].strip()
-        
+
         # Extract title - try multiple sources in order of reliability
         section_title = None
         
@@ -187,10 +225,10 @@ def extract_subsections(soup: BeautifulSoup, test_mode: bool) -> dict[str, Subse
     subsections = {}
     pattern = re.compile(r"level\d|level\d_title")
     subsection_elements = soup.find_all("section", class_=pattern)
-    
+
     if test_mode:
         subsection_elements = subsection_elements[:5]
-    
+
     for subsection_elem in subsection_elements:
         # Find header
         header_elem = subsection_elem.find("h1", class_=pattern)
@@ -198,15 +236,15 @@ def extract_subsections(soup: BeautifulSoup, test_mode: bool) -> dict[str, Subse
             header_elem = subsection_elem.find("span", class_=pattern)
         if not header_elem:
             continue
-        
+
         header_text = header_elem.get_text()
         subsection_numbers = find_subsection_numbers(header_text)
-        
+
         if len(subsection_numbers) != 1:
             continue
-        
+
         subsection_number = subsection_numbers[0].strip()
-        
+
         # Extract title - use fallback if span not found
         title_elem = subsection_elem.find("span", class_=pattern)
         if title_elem:
@@ -440,7 +478,7 @@ def main(args):
     all_figures = []
     
     # Determine which chapters to process
-    chapters_to_process = args.chapters if args.chapters else ["7", "10", "11a", "11b"]
+    chapters_to_process = args.chapters if args.chapters else ["7", "7a", "8", "9", "10", "11a", "11b"]
     logger.info(f"Processing chapters: {chapters_to_process}")
     
     # Process each chapter
@@ -459,7 +497,7 @@ def main(args):
         # Extract sections (pass chapter info and year)
         chapter_sections = extract_sections(soup, args.test, chapter, args.version)
         all_sections.update(chapter_sections)
-        
+
         # Extract subsections
         chapter_subsections = extract_subsections(soup, args.test)
         all_subsections.update(chapter_subsections)
@@ -487,10 +525,11 @@ def main(args):
     # Sort data for deterministic output
     logger.info("Sorting data structures for deterministic output...")
     code = sort_code_data(code)
-    
+
     # Save to JSON with sorted keys
-    output_filename = f"cbc_{args.version}.json"
-    new_output_filename = f"cbc_{args.version}_new.json" if args.compare else output_filename
+    chapters_suffix = "_".join(chapters_to_process)
+    output_filename = f"cbc_{args.version}_{chapters_suffix}.json"
+    new_output_filename = f"cbc_{args.version}_{chapters_suffix}_new.json" if args.compare else output_filename
     
     with open(new_output_filename, "w") as f:
         json.dump(code.model_dump(), f, indent=2, sort_keys=True)
@@ -590,7 +629,7 @@ if __name__ == "__main__":
         "--chapters",
         nargs="+",
         metavar="CHAPTER",
-        help="Specific chapters to process (e.g., --chapters 7 10). If not specified, processes all chapters (7, 10, 11a, 11b)",
+        help="Specific chapters to process (e.g., --chapters 7 7a 8 9 10). If not specified, processes all chapters (7, 7a, 8, 9, 10, 11a, 11b)",
     )
     
     args = parser.parse_args()
