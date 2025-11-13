@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, useReducer } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import clsx from 'clsx';
@@ -90,6 +90,64 @@ interface Props {
   codebooks: Codebook[];
 }
 
+// Detail Panel State Machine
+type DetailPanelState =
+  | {
+      mode: 'closed';
+    }
+  | {
+      mode: 'check-detail';
+      checkId: string;
+      filterToSectionKey: string | null;
+    }
+  | {
+      mode: 'violation-detail';
+      violation: ViolationMarker;
+    };
+
+type DetailPanelAction =
+  | { type: 'CLOSE_PANEL' }
+  | {
+      type: 'SELECT_CHECK';
+      checkId: string;
+      filterToSectionKey?: string | null;
+    }
+  | {
+      type: 'SELECT_VIOLATION';
+      violation: ViolationMarker;
+    };
+
+function detailPanelReducer(state: DetailPanelState, action: DetailPanelAction): DetailPanelState {
+  switch (action.type) {
+    case 'CLOSE_PANEL':
+      // Clear URL hash
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      return { mode: 'closed' };
+
+    case 'SELECT_CHECK':
+      // Update URL hash
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', `#${action.checkId}`);
+      }
+      return {
+        mode: 'check-detail',
+        checkId: action.checkId,
+        filterToSectionKey: action.filterToSectionKey ?? null,
+      };
+
+    case 'SELECT_VIOLATION':
+      return {
+        mode: 'violation-detail',
+        violation: action.violation,
+      };
+
+    default:
+      return state;
+  }
+}
+
 export default function AssessmentClient({
   assessment,
   checks: initialChecks,
@@ -99,6 +157,8 @@ export default function AssessmentClient({
   codebooks,
 }: Props) {
   const [checks, setChecks] = useState(initialChecks);
+  const [rpcViolations, setRpcViolations] = useState(_rpcViolations || []);
+  const [refreshingViolations, setRefreshingViolations] = useState(false);
 
   // Debug: Log screenshots on initial load
   useEffect(() => {
@@ -140,8 +200,11 @@ export default function AssessmentClient({
     if (typeof window !== 'undefined' && window.location.hash) {
       const hashCheckId = window.location.hash.substring(1); // Remove the '#'
       if (hashCheckId) {
-        setActiveCheckId(hashCheckId);
-        setShowDetailPanel(true);
+        dispatchDetailPanel({
+          type: 'SELECT_CHECK',
+          checkId: hashCheckId,
+          filterToSectionKey: null,
+        });
       }
     }
   }, [assessment.id]);
@@ -175,10 +238,20 @@ export default function AssessmentClient({
     return { totalChecks, completed, pct };
   }, [checks]);
   const [isSeeding, setIsSeeding] = useState(false);
-  const [activeCheckId, setActiveCheckId] = useState<string | null>(checks[0]?.id || null);
-  const [filterToSectionKey, setFilterToSectionKey] = useState<string | null>(null);
-  const [showDetailPanel, setShowDetailPanel] = useState(false);
-  const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
+
+  // Detail Panel State (replaces 4 separate useState calls)
+  const [detailPanel, dispatchDetailPanel] = useReducer(detailPanelReducer, { mode: 'closed' });
+
+  // Derived values from reducer state
+  const activeCheckId = detailPanel.mode === 'check-detail' ? detailPanel.checkId : null;
+  const showDetailPanel = detailPanel.mode !== 'closed';
+
+  // Remember last selection per mode for state preservation when switching
+  const lastSelectionPerMode = useRef<{
+    section: { checkId: string; filterToSectionKey: string | null } | null;
+    element: { checkId: string; filterToSectionKey: string | null } | null;
+  }>({ section: null, element: null });
+
   const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
   const [detailPanelWidth, setDetailPanelWidth] = useState(400);
 
@@ -195,6 +268,11 @@ export default function AssessmentClient({
     startWidth: 0,
   });
 
+  // Helper: Close detail panel and clear URL hash
+  const closeDetailPanel = () => {
+    dispatchDetailPanel({ type: 'CLOSE_PANEL' });
+  };
+
   const handleCheckSelect = (checkId: string, sectionKey?: string) => {
     console.log('[handleCheckSelect] Called with:', {
       checkId,
@@ -202,18 +280,19 @@ export default function AssessmentClient({
       checksCount: checks.length,
       checkExists: checks.some(c => c.id === checkId),
     });
-    setActiveCheckId(checkId);
-    setShowDetailPanel(true);
-    // Store sectionKey if provided (for filtering in CodeDetailPanel)
-    if (sectionKey) {
-      setFilterToSectionKey(sectionKey);
-    } else {
-      setFilterToSectionKey(null);
-    }
-    // Update URL hash to preserve selection across refreshes
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', `#${checkId}`);
-    }
+
+    // Save selection for current mode
+    const mode = checkMode === 'element' ? 'element' : 'section';
+    lastSelectionPerMode.current[mode] = {
+      checkId,
+      filterToSectionKey: sectionKey ?? null,
+    };
+
+    dispatchDetailPanel({
+      type: 'SELECT_CHECK',
+      checkId,
+      filterToSectionKey: sectionKey,
+    });
   };
 
   const handleEditCheck = (violation: ViolationMarker) => {
@@ -277,14 +356,12 @@ export default function AssessmentClient({
     // Switch mode and select check in one go
     setCheckMode(targetMode);
     localStorage.setItem(`checkMode-${assessment.id}`, targetMode);
-    setActiveCheckId(violation.checkId);
-    setShowDetailPanel(true);
-    setFilterToSectionKey(violation.codeSectionKey || null);
 
-    // Update URL hash
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', `#${violation.checkId}`);
-    }
+    dispatchDetailPanel({
+      type: 'SELECT_CHECK',
+      checkId: violation.checkId,
+      filterToSectionKey: violation.codeSectionKey || null,
+    });
   };
 
   // Natural sort comparator (matches CheckList logic)
@@ -373,11 +450,10 @@ export default function AssessmentClient({
 
   // Helper: Navigate to a check by ID
   const navigateToCheck = (checkId: string | null) => {
-    setActiveCheckId(checkId);
-    setShowDetailPanel(!!checkId);
-    if (typeof window !== 'undefined') {
-      const url = checkId ? `#${checkId}` : window.location.pathname + window.location.search;
-      window.history.replaceState(null, '', url);
+    if (checkId) {
+      dispatchDetailPanel({ type: 'SELECT_CHECK', checkId, filterToSectionKey: null });
+    } else {
+      closeDetailPanel();
     }
   };
 
@@ -487,24 +563,65 @@ export default function AssessmentClient({
     }
   };
 
+  const refetchViolations = async () => {
+    console.log('[AssessmentClient] refetchViolations called');
+    setRefreshingViolations(true);
+
+    try {
+      const res = await fetch(`/api/assessments/${assessment.id}/violations`);
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[AssessmentClient] Fetched updated violations:', {
+          count: data.count,
+          timestamp: data.timestamp,
+        });
+        setRpcViolations(data.violations || []);
+      } else {
+        console.error('[AssessmentClient] Failed to fetch violations:', res.status, res.statusText);
+      }
+    } catch (error) {
+      console.error('[AssessmentClient] Error fetching violations:', error);
+    } finally {
+      setRefreshingViolations(false);
+    }
+  };
+
   const handleModeChange = async (newMode: 'section' | 'element' | 'summary' | 'gallery') => {
     setCheckMode(newMode);
     localStorage.setItem(`checkMode-${assessment.id}`, newMode);
 
+    // Close detail panel when switching to summary or gallery
+    if (newMode === 'summary' || newMode === 'gallery') {
+      closeDetailPanel();
+      return;
+    }
+
     // Fetch data when switching between section and element modes
-    if (newMode === 'section' || newMode === 'element') {
-      try {
-        const checksRes = await fetch(`/api/assessments/${assessment.id}/checks?mode=${newMode}`);
-        if (checksRes.ok) {
-          const updatedChecks = await checksRes.json();
-          console.log('[AssessmentClient] Fetched checks for mode:', newMode, updatedChecks.length);
-          setChecks(updatedChecks);
+    try {
+      const checksRes = await fetch(`/api/assessments/${assessment.id}/checks?mode=${newMode}`);
+      if (checksRes.ok) {
+        const updatedChecks = await checksRes.json();
+        console.log('[AssessmentClient] Fetched checks for mode:', newMode, updatedChecks.length);
+        setChecks(updatedChecks);
+
+        // Try to restore last selection for this mode (better UX)
+        const lastSelection = lastSelectionPerMode.current[newMode];
+        if (lastSelection && updatedChecks.some((c: any) => c.id === lastSelection.checkId)) {
+          // Restore the previous selection
+          dispatchDetailPanel({
+            type: 'SELECT_CHECK',
+            checkId: lastSelection.checkId,
+            filterToSectionKey: lastSelection.filterToSectionKey,
+          });
         } else {
-          console.error('[AssessmentClient] Failed to fetch checks for mode:', newMode);
+          // No saved selection or it doesn't exist anymore - close panel
+          closeDetailPanel();
         }
-      } catch (error) {
-        console.error('[AssessmentClient] Error fetching checks for mode:', newMode, error);
+      } else {
+        console.error('[AssessmentClient] Failed to fetch checks for mode:', newMode);
       }
+    } catch (error) {
+      console.error('[AssessmentClient] Error fetching checks for mode:', newMode, error);
     }
   };
 
@@ -526,22 +643,19 @@ export default function AssessmentClient({
     // Clear active check if it was in the deleted instance
     if (activeCheck?.element_instance_id === elementInstanceId) {
       console.log('[AssessmentClient] Clearing active check (was in deleted instance)');
-      setActiveCheckId(null);
-      setShowDetailPanel(false);
-      // Clear URL hash
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      }
+      closeDetailPanel();
     }
   };
 
   const activeCheck = useMemo(() => {
+    if (detailPanel.mode !== 'check-detail') return null;
+
     // First try to find the check directly
-    const directMatch = checks.find(c => c.id === activeCheckId);
+    const directMatch = checks.find(c => c.id === detailPanel.checkId);
     if (directMatch) return directMatch;
 
     return null;
-  }, [checks, activeCheckId]);
+  }, [checks, detailPanel]);
 
   // Auto-seed checks if empty (only try once)
   const [hasSeedAttempted, setHasSeedAttempted] = useState(() => {
@@ -862,22 +976,36 @@ export default function AssessmentClient({
         {/* Checks List */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {checkMode === 'summary' ? (
-            <ViolationsSummary
-              checks={checks}
-              rpcViolations={_rpcViolations}
-              onCheckSelect={handleCheckSelect}
-              onViolationSelect={violation => {
-                setSelectedViolation(violation);
-                setShowDetailPanel(!!violation);
-              }}
-              onEditCheck={handleEditCheck}
-              buildingInfo={buildingInfo}
-              codebooks={codebooks}
-              pdfUrl={assessment.pdf_url ?? undefined}
-              projectName={assessment.projects?.name}
-              assessmentId={assessment.id}
-              embedded={true}
-            />
+            (() => {
+              console.log('[AssessmentClient] About to render ViolationsSummary with:', {
+                hasRefetchViolations: typeof refetchViolations === 'function',
+                refreshingViolations,
+                rpcViolationsCount: rpcViolations?.length || 0,
+              });
+              return (
+                <ViolationsSummary
+                  checks={checks}
+                  rpcViolations={rpcViolations}
+                  onCheckSelect={handleCheckSelect}
+                  onViolationSelect={violation => {
+                    if (violation) {
+                      dispatchDetailPanel({ type: 'SELECT_VIOLATION', violation });
+                    } else {
+                      closeDetailPanel();
+                    }
+                  }}
+                  onEditCheck={handleEditCheck}
+                  buildingInfo={buildingInfo}
+                  codebooks={codebooks}
+                  pdfUrl={assessment.pdf_url ?? undefined}
+                  projectName={assessment.projects?.name}
+                  assessmentId={assessment.id}
+                  embedded={true}
+                  onRefresh={refetchViolations}
+                  refreshing={refreshingViolations}
+                />
+              );
+            })()
           ) : checkMode === 'gallery' ? (
             <AssessmentScreenshotGallery assessmentId={assessment.id} />
           ) : (
@@ -914,21 +1042,18 @@ export default function AssessmentClient({
         {showDetailPanel && (
           <>
             {/* Show ViolationDetailPanel in summary mode with selected violation */}
-            {checkMode === 'summary' && selectedViolation ? (
+            {checkMode === 'summary' && detailPanel.mode === 'violation-detail' ? (
               <ViolationDetailPanel
-                violation={selectedViolation}
-                onClose={() => {
-                  setShowDetailPanel(false);
-                  setSelectedViolation(null);
-                }}
+                violation={detailPanel.violation}
+                onClose={closeDetailPanel}
                 onCheckUpdate={async () => {
                   // Refetch all checks to refresh violations list
                   // In summary mode, determine the mode from the selected violation's check
                   try {
                     let mode: 'section' | 'element' = 'section';
-                    if (selectedViolation) {
+                    if (detailPanel.mode === 'violation-detail') {
                       // Check if this violation is from an element check
-                      const check = checks.find(c => c.id === selectedViolation.checkId);
+                      const check = checks.find(c => c.id === detailPanel.violation.checkId);
                       mode = check?.element_group_id ? 'element' : 'section';
                     }
 
@@ -951,20 +1076,12 @@ export default function AssessmentClient({
                   <CodeDetailPanel
                     checkId={activeCheck?.id || null}
                     sectionKey={activeCheck?.sections?.key || null}
-                    filterToSectionKey={filterToSectionKey}
+                    filterToSectionKey={
+                      detailPanel.mode === 'check-detail' ? detailPanel.filterToSectionKey : null
+                    }
                     activeCheck={activeCheck}
                     screenshotRefreshTrigger={screenshotRefreshTriggerRef.current}
-                    onClose={() => {
-                      setShowDetailPanel(false);
-                      // Clear URL hash when panel is closed
-                      if (typeof window !== 'undefined') {
-                        window.history.replaceState(
-                          null,
-                          '',
-                          window.location.pathname + window.location.search
-                        );
-                      }
-                    }}
+                    onClose={closeDetailPanel}
                     onMoveToNextCheck={handleMoveToNextCheck}
                     onCheckUpdate={async () => {
                       if (activeCheck?.id) {
@@ -996,8 +1113,7 @@ export default function AssessmentClient({
                           setChecks(updatedChecks);
                           // Close the detail panel if the active check was deleted
                           if (!updatedChecks.find(c => c.id === activeCheck?.id)) {
-                            setShowDetailPanel(false);
-                            setActiveCheckId(null);
+                            closeDetailPanel();
                           }
                         }
                       } catch (error) {
