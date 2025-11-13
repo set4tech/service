@@ -33,6 +33,7 @@ export interface Check {
   // - If element_group_id is NULL, it's a standalone section check
   check_type?: 'section' | 'element'; // Deprecated: computed from element_group_id
   element_group_id?: string | null;
+  element_instance_id?: string | null; // FK to element_instances (normalized way to identify element instances)
 
   // Virtual fields (populated by queries, not in DB)
   element_group_slug?: string;
