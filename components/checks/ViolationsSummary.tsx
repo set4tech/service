@@ -45,6 +45,8 @@ interface Props {
   projectName?: string;
   assessmentId?: string;
   embedded?: boolean; // If true, only render sidebar (used in AssessmentClient)
+  onRefresh?: () => void; // Callback to refresh violations data
+  refreshing?: boolean; // Loading state for refresh
 }
 
 export function ViolationsSummary({
@@ -59,7 +61,17 @@ export function ViolationsSummary({
   projectName,
   assessmentId,
   embedded = false,
+  onRefresh,
+  refreshing = false,
 }: Props) {
+  // Debug: Check if props are passed correctly
+  console.log('[ViolationsSummary] Props:', {
+    hasOnRefresh: !!onRefresh,
+    refreshing,
+    embedded,
+    onRefreshType: typeof onRefresh,
+  });
+
   const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
   const [exporting, setExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -179,11 +191,58 @@ export function ViolationsSummary({
   if (!pdfUrl || embedded) {
     return (
       <div className="flex flex-col h-full">
-        {/* Compact Stats Header */}
+        {/* Compact Stats Header with Refresh Button */}
         <div className="px-4 py-3 border-b bg-white">
           <div className="flex items-center justify-between mb-2">
-            <div className="font-semibold text-sm">
+            <div className="font-semibold text-sm flex items-center gap-2">
               {violations.length} Violation{violations.length === 1 ? '' : 's'}
+              {onRefresh && (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onRefresh();
+                  }}
+                  disabled={refreshing}
+                  className="p-1 rounded hover:bg-gray-100 transition-colors disabled:opacity-50"
+                  title="Refresh violations"
+                >
+                  {refreshing ? (
+                    <svg
+                      className="animate-spin h-4 w-4 text-gray-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-4 h-4 text-gray-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                  )}
+                </button>
+              )}
             </div>
             <div className="text-xs text-gray-500">
               {stats.assessed} / {stats.totalSections} assessed
@@ -210,13 +269,36 @@ export function ViolationsSummary({
     <div className="fixed inset-0 flex overflow-hidden bg-gray-100">
       {/* Left Sidebar - Violations List */}
       <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden">
-        {/* Stats Header */}
+        {/* Stats Header - Clickable to refresh */}
         <div className="px-4 py-4 border-b bg-white space-y-3">
-          <div className={`px-4 py-3 rounded-lg border ${getSeverityColor()}`}>
+          <div
+            className={`px-4 py-3 rounded-lg border ${getSeverityColor()} ${
+              onRefresh ? 'cursor-pointer hover:shadow-md transition-shadow' : ''
+            }`}
+            onClick={onRefresh}
+            title={onRefresh ? 'Click to refresh violations' : undefined}
+          >
             <div className="flex items-center gap-3">
+              {refreshing && (
+                <svg className="animate-spin h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+              )}
               <span className="text-2xl">{getSeverityIcon()}</span>
               <div className="flex-1">
-                <div className="font-semibold text-sm">
+                <div className="font-semibold text-sm flex items-center gap-2">
                   {violations.length === 0 ? (
                     'No Violations Found'
                   ) : (
@@ -224,11 +306,73 @@ export function ViolationsSummary({
                       {violations.length} Violation{violations.length === 1 ? '' : 's'} Found
                     </>
                   )}
+                  {onRefresh && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        onRefresh();
+                      }}
+                      disabled={refreshing}
+                      className="p-1 rounded hover:bg-white hover:shadow-sm transition-all disabled:opacity-50"
+                      title="Refresh violations"
+                    >
+                      {refreshing ? (
+                        <svg
+                          className="animate-spin h-4 w-4 text-gray-600"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="w-4 h-4 text-gray-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                  )}
                 </div>
                 <div className="text-xs mt-1">
                   {stats.assessed} of {stats.totalSections} sections assessed ({stats.pct}%)
                 </div>
               </div>
+              {onRefresh && !refreshing && (
+                <svg
+                  className="w-5 h-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              )}
             </div>
           </div>
 
