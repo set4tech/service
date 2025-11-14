@@ -106,6 +106,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
         ...section,
         fullText,
         references: codeSectionData.references,
+        parent_section: codeSectionData.parent_section || null,
       };
     }
 
