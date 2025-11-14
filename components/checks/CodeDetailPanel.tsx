@@ -770,6 +770,41 @@ export function CodeDetailPanel({
               <div className="text-base text-gray-700 mt-1">{section.title}</div>
             </div>
 
+            {/* Parent Section Context */}
+            {section.parent_section && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">
+                  Parent Section Context
+                </div>
+                <div className="text-xs text-purple-800 mb-2">
+                  This section is part of a larger requirement:
+                </div>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-sm font-mono font-medium text-purple-900">
+                    {section.parent_section.number}
+                  </span>
+                  <span className="text-sm text-purple-800">{section.parent_section.title}</span>
+                </div>
+                {section.parent_section.text && (
+                  <div className="text-sm text-purple-900 leading-relaxed mt-2 pl-3 border-l-2 border-purple-300">
+                    <div className="font-medium mb-1">Summary:</div>
+                    {section.parent_section.text}
+                  </div>
+                )}
+                {section.parent_section.paragraphs &&
+                  section.parent_section.paragraphs.length > 0 && (
+                    <div className="text-sm text-purple-900 leading-relaxed mt-2 pl-3 border-l-2 border-purple-300">
+                      <div className="font-medium mb-1">Requirements:</div>
+                      {typeof section.parent_section.paragraphs === 'string'
+                        ? section.parent_section.paragraphs
+                        : Array.isArray(section.parent_section.paragraphs)
+                          ? section.parent_section.paragraphs.join('\n\n')
+                          : ''}
+                    </div>
+                  )}
+              </div>
+            )}
+
             {/* Section Text */}
             {section.text && (
               <div>
