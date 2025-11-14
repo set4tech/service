@@ -120,17 +120,9 @@ type DetailPanelAction =
 function detailPanelReducer(state: DetailPanelState, action: DetailPanelAction): DetailPanelState {
   switch (action.type) {
     case 'CLOSE_PANEL':
-      // Clear URL hash
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      }
       return { mode: 'closed' };
 
     case 'SELECT_CHECK':
-      // Update URL hash
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', `#${action.checkId}`);
-      }
       return {
         mode: 'check-detail',
         checkId: action.checkId,
@@ -245,6 +237,18 @@ export default function AssessmentClient({
   // Derived values from reducer state
   const activeCheckId = detailPanel.mode === 'check-detail' ? detailPanel.checkId : null;
   const showDetailPanel = detailPanel.mode !== 'closed';
+
+  // Sync URL hash with detail panel state (side effect in useEffect, not reducer)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (detailPanel.mode === 'check-detail') {
+      window.history.replaceState(null, '', `#${detailPanel.checkId}`);
+    } else if (detailPanel.mode === 'closed') {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    // Violation detail mode doesn't update URL
+  }, [detailPanel]);
 
   // Remember last selection per mode for state preservation when switching
   const lastSelectionPerMode = useRef<{

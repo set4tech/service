@@ -56,6 +56,8 @@ export interface CodeSection {
     key: string;
     number: string;
     title: string;
+    text?: string;
+    paragraphs?: string | string[];
   };
 }
 
