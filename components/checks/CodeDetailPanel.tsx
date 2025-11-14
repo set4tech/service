@@ -770,6 +770,18 @@ export function CodeDetailPanel({
               <div className="text-base text-gray-700 mt-1">{section.title}</div>
             </div>
 
+            {/* Section Text */}
+            {section.text && (
+              <div>
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Section Summary
+                </div>
+                <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
+                  {section.text}
+                </div>
+              </div>
+            )}
+
             {/* Parent Section Context */}
             {section.parent_section && (
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
@@ -802,18 +814,6 @@ export function CodeDetailPanel({
                           : ''}
                     </div>
                   )}
-              </div>
-            )}
-
-            {/* Section Text */}
-            {section.text && (
-              <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Section Summary
-                </div>
-                <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
-                  {section.text}
-                </div>
               </div>
             )}
 
