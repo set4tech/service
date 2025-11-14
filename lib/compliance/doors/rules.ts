@@ -5,6 +5,18 @@ import { DoorParameters, ComplianceViolation } from '@/types/compliance';
  *
  * This module checks door compliance based on California Building Code Section 11B-404.
  * It validates door parameters against accessibility requirements.
+ *
+ * ## Version Compatibility
+ *
+ * These rules work for both CBC 2022 and CBC 2025. The section numbers and requirements
+ * are identical between versions. The system automatically uses the correct section keys
+ * based on the project's selected code version:
+ *
+ * - Projects with CBC 2022 chapters → Uses `ICC:CBC:2022:CA:11B-404.x.x` section keys
+ * - Projects with CBC 2025 chapters → Uses `ICC:CBC_Chapter11A_11B:2025:CA:11B-404.x.x` section keys
+ *
+ * The element_section_mappings table contains mappings for both versions, and the
+ * get_element_sections() SQL function filters by the assessment's selected chapters.
  */
 
 // Code section text for reference
