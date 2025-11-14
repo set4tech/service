@@ -31,12 +31,13 @@ export async function getAssessmentChecks(
       .from('checks')
       .select(
         `
-        *, 
+        *,
         sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)
       `
       )
       .eq('assessment_id', assessmentId)
       .is('element_group_id', null) // Only section checks
+      .eq('is_excluded', false) // Filter out excluded checks
       .limit(100000);
   } else {
     // Element mode: INNER JOIN on element_instances (more efficient since we know it exists)
@@ -44,13 +45,14 @@ export async function getAssessmentChecks(
       .from('checks')
       .select(
         `
-        *, 
+        *,
         element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)),
         sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)
       `
       )
       .eq('assessment_id', assessmentId)
       .not('element_group_id', 'is', null) // Only element checks
+      .eq('is_excluded', false) // Filter out excluded checks
       .limit(100000);
 
     // Filter by specific element group if specified (only applicable in element mode)
@@ -88,6 +90,7 @@ export async function getAssessmentChecks(
         .select('*, sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)')
         .eq('assessment_id', assessmentId)
         .is('element_group_id', null)
+        .eq('is_excluded', false) // Filter out excluded checks
         .limit(100000);
     } else {
       checksQuery = supabase
@@ -97,6 +100,7 @@ export async function getAssessmentChecks(
         )
         .eq('assessment_id', assessmentId)
         .not('element_group_id', 'is', null)
+        .eq('is_excluded', false) // Filter out excluded checks
         .limit(100000);
 
       // Apply element group filter to search in element mode
