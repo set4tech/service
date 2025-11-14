@@ -40,6 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ...section,
       fullText,
       references: data.references,
+      parent_section: data.parent_section || null,
     });
   } catch (error) {
     console.error('Failed to fetch code section:', error);

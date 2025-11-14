@@ -100,11 +100,27 @@ export async function GET() {
 
         console.log(`[Queue] Creating ${checks.length} batch jobs for element "${instanceLabel}"`);
 
-        // Fetch all sections in parallel
+        // Fetch all sections in parallel with parent sections
         const sectionIds = checks.map(c => c.section_id);
         const { data: sections } = await supabase
           .from('sections')
-          .select('id, key, number, title, text, paragraphs')
+          .select(
+            `
+            id, 
+            key, 
+            number, 
+            title, 
+            text, 
+            paragraphs,
+            parent:sections!sections_parent_key_fkey(
+              key,
+              number,
+              title,
+              text,
+              paragraphs
+            )
+          `
+          )
           .in('id', sectionIds)
           .eq('never_relevant', false);
 
@@ -188,6 +204,23 @@ export async function GET() {
               })
               .filter(r => r !== null);
 
+            // Format parent section data if available
+            let parentSection = null;
+            if (section.parent && Array.isArray(section.parent) && section.parent.length > 0) {
+              const parent = section.parent[0];
+              const parentParagraphs = parent.paragraphs || [];
+              const parentParagraphsText = Array.isArray(parentParagraphs)
+                ? parentParagraphs.join('\n\n')
+                : '';
+              parentSection = {
+                key: parent.key,
+                number: parent.number,
+                title: parent.title,
+                text: parent.text || '',
+                paragraphs: parentParagraphsText,
+              };
+            }
+
             codeSection = {
               key: section.key,
               number: section.number || '',
@@ -195,6 +228,7 @@ export async function GET() {
               text: section.text || '',
               paragraphs: paragraphsText,
               references,
+              parent_section: parentSection,
             };
           } else {
             codeSection = {
@@ -204,6 +238,7 @@ export async function GET() {
               text: 'Section text not available',
               paragraphs: '',
               references: [],
+              parent_section: null,
             };
           }
 
@@ -293,7 +328,7 @@ export async function GET() {
           continue;
         }
 
-        // Build prompt with main sections and their references
+        // Build prompt with main sections, their parents, and references
         const sectionsText = batch
           .map((s: any) => {
             let text = `## Section ${s.number} - ${s.title}\n\n`;
@@ -306,6 +341,20 @@ export async function GET() {
             // Add section paragraphs/requirements
             if (s.paragraphs) {
               text += `### Requirements\n${s.paragraphs}\n\n`;
+            }
+
+            // Add parent section context if available
+            if (s.parent_section) {
+              text += `### Parent Section Context\n`;
+              text += `This section is part of ${s.parent_section.number} - ${s.parent_section.title}\n\n`;
+
+              if (s.parent_section.text) {
+                text += `**Parent Section Summary:**\n${s.parent_section.text}\n\n`;
+              }
+
+              if (s.parent_section.paragraphs) {
+                text += `**Parent Section Requirements:**\n${s.parent_section.paragraphs}\n\n`;
+              }
             }
 
             // Add referenced sections if any
