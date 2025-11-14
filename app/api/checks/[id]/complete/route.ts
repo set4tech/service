@@ -88,15 +88,6 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     const siblingChecks = siblingChecksResult.data || [];
     const codeSectionData = codeSectionResult.data;
 
-    // Debug logging
-    console.log('[Complete API] Section key:', sectionKey);
-    console.log('[Complete API] RPC returned:', {
-      hasData: !!codeSectionData,
-      hasSection: !!codeSectionData?.section,
-      hasParentSection: !!codeSectionData?.parent_section,
-      parentSection: codeSectionData?.parent_section,
-    });
-
     // Flatten screenshot assignment metadata
     const screenshots = (screenshotsResult.data || []).map((item: any) => ({
       ...item,
