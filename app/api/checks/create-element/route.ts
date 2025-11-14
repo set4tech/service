@@ -27,7 +27,28 @@ export async function POST(req: NextRequest) {
 
     const supabase = supabaseAdmin();
 
-    // 1. Get element group
+    // 1. Validate assessment has selected chapters
+    const { data: assessment, error: assessmentError } = await supabase
+      .from('assessments')
+      .select('selected_chapter_ids')
+      .eq('id', assessmentId)
+      .single();
+
+    if (assessmentError || !assessment) {
+      return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
+    }
+
+    if (!assessment.selected_chapter_ids || assessment.selected_chapter_ids.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            'No chapters selected for this assessment. Please select chapters before adding element instances.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2. Get element group
     const elementGroup = await getElementGroup(supabase, elementGroupSlug);
     if (!elementGroup) {
       return NextResponse.json(
@@ -36,7 +57,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Create element instance (trigger auto-generates label if not provided)
+    // 3. Create element instance (trigger auto-generates label if not provided)
     const instance = await createElementInstance(
       supabase,
       assessmentId,
@@ -44,7 +65,7 @@ export async function POST(req: NextRequest) {
       instanceLabel
     );
 
-    // 3. Seed all checks for this element instance (done entirely in SQL)
+    // 4. Seed all checks for this element instance (done entirely in SQL)
     const result = await seedElementChecks(
       supabase,
       assessmentId,

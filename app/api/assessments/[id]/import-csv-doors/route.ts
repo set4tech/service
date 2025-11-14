@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const supabase = supabaseAdmin();
     const { data: assessment, error: assessmentError } = await supabase
       .from('assessments')
-      .select('id, project_id')
+      .select('id, project_id, selected_chapter_ids')
       .eq('id', assessmentId)
       .single();
 
@@ -49,6 +49,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       console.error('[import-csv-doors] Assessment not found:', assessmentError);
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
+
+    // Validate assessment has selected chapters
+    if (!assessment.selected_chapter_ids || assessment.selected_chapter_ids.length === 0) {
+      console.error('[import-csv-doors] Assessment has no selected chapters');
+      return NextResponse.json(
+        {
+          error:
+            'No chapters selected for this assessment. Please select chapters before importing doors.',
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(
+      `[import-csv-doors] Assessment has ${assessment.selected_chapter_ids.length} selected chapters`
+    );
 
     // Get the doors element group
     const { data: elementGroup, error: elementGroupError } = await supabase
