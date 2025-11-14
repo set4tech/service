@@ -680,6 +680,7 @@ export function PDFViewer({
       onCaptureBathroom: () => capture('bathroom', 'plan'),
       onCaptureDoor: () => capture('door', 'plan'),
       onCaptureKitchen: () => capture('kitchen', 'plan'),
+      onCaptureWall: () => capture('wall', 'plan'),
     }
   );
 
@@ -845,7 +846,7 @@ export function PDFViewer({
 
   const capture = useCallback(
     async (
-      target: 'current' | 'bathroom' | 'door' | 'kitchen' = 'current',
+      target: 'current' | 'bathroom' | 'door' | 'kitchen' | 'wall' = 'current',
       screenshotType: 'plan' | 'elevation' = 'plan',
       elementGroupId?: string,
       caption?: string

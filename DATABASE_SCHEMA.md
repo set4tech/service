@@ -84,7 +84,6 @@ Hierarchical storage of all sections and subsections within building codes.
 
 | Column               | Type             | Description                                                                                   |
 | -------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
-| `drawing_assessable` | BOOLEAN          | Whether section can be assessed from drawings (default TRUE)                                  |
 | `assessability_tags` | TEXT[]           | Tags: too_short, placeholder, definitional, administrative, procedural, summary, not_physical |
 | `never_relevant`     | BOOLEAN NOT NULL | Global exclusion flag (default FALSE)                                                         |
 | `floorplan_relevant` | BOOLEAN NOT NULL | Prioritize for floorplan analysis (default FALSE)                                             |
@@ -102,7 +101,6 @@ Hierarchical storage of all sections and subsections within building codes.
 - `idx_sections_elevator` on `requires_elevator`
 - `idx_sections_min_size` on `min_building_size`
 - `idx_sections_max_size` on `max_building_size`
-- `idx_sections_drawing_assessable` on `drawing_assessable`
 - `idx_sections_assessability_tags` GIN on `assessability_tags`
 - `idx_sections_never_relevant` on `never_relevant` (partial WHERE TRUE)
 - `idx_sections_floorplan_relevant` on `floorplan_relevant` (partial WHERE TRUE)
@@ -307,15 +305,15 @@ Reusable groupings of related code sections by building element.
 
 **Schema:**
 
-| Column        | Type                 | Description                             |
-| ------------- | -------------------- | --------------------------------------- |
-| `id`          | UUID PK              | Primary key                             |
-| `name`        | TEXT NOT NULL        | Element name (e.g., "Doors", "Ramps")   |
-| `slug`        | TEXT UNIQUE NOT NULL | URL-friendly identifier (e.g., "doors") |
-| `description` | TEXT                 | Element description                     |
-| `icon`        | TEXT                 | Optional icon identifier                |
-| `sort_order`  | INTEGER              | Display order (default 0)               |
-| `created_at`  | TIMESTAMPTZ          | Creation timestamp                      |
+| Column        | Type                 | Description                                      |
+| ------------- | -------------------- | ------------------------------------------------ |
+| `id`          | UUID PK              | Primary key                                      |
+| `name`        | TEXT NOT NULL        | Element name (e.g., "Doors", "Ramps", "Walls")   |
+| `slug`        | TEXT UNIQUE NOT NULL | URL-friendly identifier (e.g., "doors", "walls") |
+| `description` | TEXT                 | Element description                              |
+| `icon`        | TEXT                 | Optional icon identifier                         |
+| `sort_order`  | INTEGER              | Display order (default 0)                        |
+| `created_at`  | TIMESTAMPTZ          | Creation timestamp                               |
 
 ---
 

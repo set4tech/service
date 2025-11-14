@@ -20,6 +20,7 @@ interface ShortcutHandlers {
   onCaptureBathroom?: () => void;
   onCaptureDoor?: () => void;
   onCaptureKitchen?: () => void;
+  onCaptureWall?: () => void;
 }
 
 interface ShortcutOptions {
@@ -36,7 +37,7 @@ interface ShortcutOptions {
  * - Navigation: Arrow keys
  * - Zoom: -/+/0
  * - Modes: S (screenshot), M (measure), L (calibration)
- * - Screenshot: C/E/B/D/K when selection exists
+ * - Screenshot: C/E/B/D/K/W when selection exists
  * - Escape: Exit modes
  * - Delete: Remove selected measurement
  * - F: Open search
@@ -151,6 +152,11 @@ export function useKeyboardShortcuts(
         if (key === 'k' && handlers.onCaptureKitchen) {
           e.preventDefault();
           handlers.onCaptureKitchen();
+          return;
+        }
+        if (key === 'w' && handlers.onCaptureWall) {
+          e.preventDefault();
+          handlers.onCaptureWall();
           return;
         }
       }

@@ -1,9 +1,10 @@
-type ElementType = 'bathroom' | 'door' | 'kitchen';
+type ElementType = 'bathroom' | 'door' | 'kitchen' | 'wall';
 
 const ELEMENT_GROUP_SLUGS: Record<ElementType, string> = {
   bathroom: 'bathrooms',
   door: 'doors',
   kitchen: 'kitchens',
+  wall: 'walls',
 };
 
 export interface ElementInstance {

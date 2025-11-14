@@ -20,6 +20,7 @@ const ELEMENT_TYPE_COLORS: Record<string, string> = {
   ramps: 'bg-green-600',
   'changes-in-level': 'bg-pink-600',
   'turning-spaces': 'bg-violet-600',
+  walls: 'bg-amber-600',
 };
 
 export function ElevationCapturePrompt({ onSave, onCancel }: ElevationCapturePromptProps) {

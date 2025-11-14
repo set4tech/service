@@ -10,7 +10,7 @@ export interface Selection {
   endY: number;
 }
 
-export type CaptureTarget = 'current' | 'bathroom' | 'door' | 'kitchen';
+export type CaptureTarget = 'current' | 'bathroom' | 'door' | 'kitchen' | 'wall';
 export type ScreenshotType = 'plan' | 'elevation';
 
 interface CaptureOptions {
