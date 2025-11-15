@@ -466,12 +466,15 @@ export function PDFViewer({
     const c = canvasRef.current;
     if (!c || !page) return;
 
+    console.log('[PDFViewer] renderPage called, cancelling previous render');
+
     // Cancel any in-flight render
     if (renderTaskRef.current) {
+      console.log('[PDFViewer] Cancelling in-flight render');
       try {
         renderTaskRef.current.cancel();
-      } catch {
-        // ignore
+      } catch (e) {
+        console.warn('[PDFViewer] Cancel failed:', e);
       }
       renderTaskRef.current = null;
     }
@@ -500,6 +503,13 @@ export function PDFViewer({
   // Kick renders when inputs change
   // Note: renderPage is not in deps because it already depends on all these values
   useEffect(() => {
+    console.log('[PDFViewer] Render trigger:', {
+      hasPage: !!page,
+      pageNum: state.pageNumber,
+      renderScale,
+      layerListLength: layerList.length,
+      layerListRef: layerList,
+    });
     if (page) renderPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, renderScale, layerList]);
