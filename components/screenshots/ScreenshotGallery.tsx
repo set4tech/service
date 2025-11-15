@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import type { Check, Screenshot } from '@/types/database';
 import Modal from '@/components/ui/Modal';
 import { AssignScreenshotModal } from './AssignScreenshotModal';
@@ -23,10 +23,12 @@ export function ScreenshotGallery({
   check,
   refreshKey,
   onScreenshotAssigned,
+  onScreenshotDeleted,
 }: {
   check: Check;
   refreshKey: number;
   onScreenshotAssigned?: () => void;
+  onScreenshotDeleted?: () => void;
 }) {
   const [shots, setShots] = useState<Screenshot[]>((check as any).screenshots || []);
   const [filter, setFilter] = useState<'all' | 'plan' | 'elevation'>('all');
@@ -36,55 +38,31 @@ export function ScreenshotGallery({
     Record<string, { screenshot: string; thumbnail: string }>
   >({});
 
-  // Track screenshots from check prop - use screenshot IDs for reliable change detection
-  // This avoids issues with array reference equality while being more efficient than deep comparison
-  const checkScreenshots = (check as any).screenshots;
-  const screenshotIds = useMemo(
-    () => (checkScreenshots ? checkScreenshots.map((s: Screenshot) => s.id).join(',') : ''),
-    [checkScreenshots]
-  );
-
-  // Update gallery whenever check screenshots change (e.g., when a new screenshot is added via 'c' key)
-  // We use screenshotIds to detect changes reliably without deep comparison
+  // Single source of truth: Fetch screenshots from API
+  // Triggers: check changes, or parent explicitly triggers refresh
   useEffect(() => {
-    if (checkScreenshots) {
-      console.log(
-        '[ScreenshotGallery] 📦 Updating from check prop:',
-        checkScreenshots.length,
-        'screenshots'
-      );
-      setShots(checkScreenshots);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [check.id, screenshotIds]);
-
-  // Refetch when refreshKey changes (e.g., when a screenshot is assigned/unassigned to this check)
-  // Note: New screenshots trigger via check.screenshots prop updates (above effect)
-  useEffect(() => {
-    if (refreshKey === 0) return; // Skip initial render
-
-    console.log(
-      '[ScreenshotGallery] 📡 Refetching screenshots due to refreshKey change:',
-      refreshKey
-    );
-    (async () => {
+    const fetchScreenshots = async () => {
       // For element instances, fetch screenshots by element_instance_id
       // For regular checks, fetch by check_id
       const queryParam = (check as any).element_instance_id
         ? `element_instance_id=${(check as any).element_instance_id}`
         : `check_id=${check.id}`;
 
-      const res = await fetch(`/api/screenshots?${queryParam}`);
-      const { screenshots } = await res.json();
-      console.log(
-        '[ScreenshotGallery] ✅ Fetched screenshots:',
-        screenshots?.length,
-        'for',
-        queryParam
-      );
-      setShots(screenshots || []);
-    })();
-  }, [refreshKey, check.id, (check as any).element_instance_id]);
+      console.log('[ScreenshotGallery] 📡 Fetching screenshots:', queryParam);
+
+      try {
+        const res = await fetch(`/api/screenshots?${queryParam}`);
+        const { screenshots } = await res.json();
+        console.log('[ScreenshotGallery] ✅ Fetched', screenshots?.length || 0, 'screenshots');
+        setShots(screenshots || []);
+      } catch (err) {
+        console.error('[ScreenshotGallery] ❌ Failed to fetch screenshots:', err);
+        setShots([]);
+      }
+    };
+
+    fetchScreenshots();
+  }, [check.id, (check as any).element_instance_id, refreshKey]);
 
   // Fetch presigned URLs for screenshots
   useEffect(() => {
@@ -112,9 +90,17 @@ export function ScreenshotGallery({
 
   const handleDelete = async (id: string) => {
     try {
+      console.log('[ScreenshotGallery] Deleting screenshot:', id);
       const res = await fetch(`/api/screenshots/${id}`, { method: 'DELETE' });
       if (res.ok) {
+        console.log('[ScreenshotGallery] Screenshot deleted successfully, updating local state');
         setShots(prev => prev.filter(s => s.id !== id));
+        // Notify parent to refresh screenshot indicators on PDF viewer
+        console.log('[ScreenshotGallery] Calling onScreenshotDeleted callback');
+        await onScreenshotDeleted?.();
+        console.log('[ScreenshotGallery] onScreenshotDeleted callback completed');
+      } else {
+        console.error('[ScreenshotGallery] Delete failed with status:', res.status);
       }
     } catch (err) {
       console.error('Failed to delete screenshot:', err);
@@ -210,7 +196,12 @@ export function ScreenshotGallery({
                   <button
                     className="text-red-600 hover:text-red-900"
                     onClick={() => {
-                      if (confirm('Delete screenshot?')) handleDelete(s.id);
+                      console.log('[ScreenshotGallery] Delete button clicked for:', s.id);
+                      const confirmed = confirm('Delete screenshot?');
+                      console.log('[ScreenshotGallery] User confirmed deletion:', confirmed);
+                      if (confirmed) {
+                        handleDelete(s.id);
+                      }
                     }}
                     title="Delete screenshot"
                   >
