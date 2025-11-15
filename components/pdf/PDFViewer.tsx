@@ -187,6 +187,12 @@ export function PDFViewer({
   // SECTION 3: UI STATE
   // ============================================================================
   const [renderScale, setRenderScale] = useState(4);
+
+  // Debug: Log every component render
+  console.log('[PDFViewer] Component render:', {
+    pageNumber: state.pageNumber,
+    renderScale,
+  });
   const [savingScale, setSavingScale] = useState(false);
   const [smoothTransition, setSmoothTransition] = useState(false);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
