@@ -475,14 +475,29 @@ export function PDFViewer({
   // Track whether we've already centered this page to avoid re-centering on zoom
   const pageCenteredRef = useRef<number | null>(null);
 
+  const pageCenterEffectCountRef = useRef(0);
   useEffect(() => {
-    if (!page || !viewportRef.current) return;
+    pageCenterEffectCountRef.current += 1;
+    console.log(`[PDFViewer] ★★★ PAGE CENTER EFFECT #${pageCenterEffectCountRef.current} ★★★`);
+
+    if (!page || !viewportRef.current) {
+      console.log('[PDFViewer] PAGE CENTER: Early return - no page or viewport');
+      return;
+    }
 
     // Only center if we haven't centered this page yet
-    if (pageCenteredRef.current === state.pageNumber) return;
+    if (pageCenteredRef.current === state.pageNumber) {
+      console.log('[PDFViewer] PAGE CENTER: Already centered this page');
+      return;
+    }
 
+    console.log('[PDFViewer] PAGE CENTER: Getting viewport...');
     const viewport = page.getViewport({ scale: 1 });
-    if (!viewport) return; // Guard against null viewport
+    console.log('[PDFViewer] PAGE CENTER: Got viewport:', viewport);
+    if (!viewport) {
+      console.log('[PDFViewer] PAGE CENTER: Viewport is null!');
+      return; // Guard against null viewport
+    }
     const container = viewportRef.current;
 
     // Calculate what the centered position should be
