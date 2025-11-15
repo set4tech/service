@@ -77,86 +77,131 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ screenshots });
   } else if (assessmentId) {
-    // Fetch assigned screenshots for an assessment via checks
-    let assignedQuery = supabase
-      .from('screenshots')
-      .select(
+    try {
+      console.log('[screenshots] Fetching screenshots for assessment:', assessmentId);
+
+      // Fetch assigned screenshots for an assessment via checks
+      let assignedQuery = supabase
+        .from('screenshots')
+        .select(
+          `
+          *,
+          screenshot_check_assignments!inner(
+            check_id,
+            is_original,
+            assigned_at,
+            checks!inner(
+              assessment_id,
+              code_section_number,
+              code_section_title
+            )
+          ),
+          element_groups(id, name, slug)
         `
-        *,
-        screenshot_check_assignments!inner(
-          check_id,
-          is_original,
-          assigned_at,
-          checks!inner(
-            assessment_id,
-            code_section_number,
-            code_section_title
-          )
-        ),
-        element_groups(id, name, slug)
-      `
-      )
-      .eq('screenshot_check_assignments.checks.assessment_id', assessmentId);
+        )
+        .eq('screenshot_check_assignments.checks.assessment_id', assessmentId);
 
-    // Filter by screenshot_type if provided
-    if (screenshotType && ['plan', 'elevation'].includes(screenshotType)) {
-      assignedQuery = assignedQuery.eq('screenshot_type', screenshotType);
+      // Filter by screenshot_type if provided
+      if (screenshotType && ['plan', 'elevation'].includes(screenshotType)) {
+        assignedQuery = assignedQuery.eq('screenshot_type', screenshotType);
+      }
+
+      const { data: assignedData, error: assignedError } = await assignedQuery.order('created_at', {
+        ascending: false,
+      });
+
+      if (assignedError) {
+        console.error('[screenshots] Error fetching assigned screenshots for assessment:', {
+          assessmentId,
+          error: assignedError,
+          message: assignedError.message,
+          details: assignedError.details,
+          hint: assignedError.hint,
+          code: assignedError.code,
+        });
+        return NextResponse.json({ error: assignedError.message }, { status: 500 });
+      }
+
+      console.log('[screenshots] Found', assignedData?.length || 0, 'assigned screenshots');
+
+      // Flatten assignment metadata into screenshot objects
+      const assignedScreenshots = (assignedData || []).map((item: any) => ({
+        ...item,
+        check_id: item.screenshot_check_assignments?.[0]?.check_id,
+        is_original: item.screenshot_check_assignments?.[0]?.is_original,
+        check_section_number: item.screenshot_check_assignments?.[0]?.checks?.code_section_number,
+        check_section_title: item.screenshot_check_assignments?.[0]?.checks?.code_section_title,
+        screenshot_check_assignments: undefined, // Remove nested structure
+      }));
+
+      // Fetch unassigned screenshots for this assessment (via screenshot_url pattern)
+      const assignedIds = assignedScreenshots.map(s => s.id);
+
+      // Fetch all screenshots for this assessment by URL pattern
+      let allScreenshotsQuery = supabase
+        .from('screenshots')
+        .select('*')
+        .like('screenshot_url', `%${assessmentId}%`);
+
+      // Apply screenshot_type filter to unassigned screenshots as well
+      if (screenshotType && ['plan', 'elevation'].includes(screenshotType)) {
+        allScreenshotsQuery = allScreenshotsQuery.eq('screenshot_type', screenshotType);
+      }
+
+      const { data: allScreenshotsData, error: allScreenshotsError } =
+        await allScreenshotsQuery.order('created_at', { ascending: false });
+
+      if (allScreenshotsError) {
+        console.error('[screenshots] Error fetching all screenshots for assessment:', {
+          assessmentId,
+          error: allScreenshotsError,
+          message: allScreenshotsError.message,
+          details: allScreenshotsError.details,
+          hint: allScreenshotsError.hint,
+          code: allScreenshotsError.code,
+        });
+        return NextResponse.json({ error: allScreenshotsError.message }, { status: 500 });
+      }
+
+      console.log(
+        '[screenshots] Found',
+        allScreenshotsData?.length || 0,
+        'total screenshots by URL pattern'
+      );
+
+      // Filter out assigned screenshots in memory
+      const unassignedData = (allScreenshotsData || []).filter(
+        (screenshot: any) => !assignedIds.includes(screenshot.id)
+      );
+
+      console.log('[screenshots] Found', unassignedData.length, 'unassigned screenshots');
+
+      // Mark unassigned screenshots
+      const unassignedScreenshots = (unassignedData || []).map((item: any) => ({
+        ...item,
+        check_id: null,
+        is_original: false,
+        check_section_number: null,
+        check_section_title: 'Unassigned',
+      }));
+
+      // Combine assigned and unassigned screenshots
+      const screenshots = [...assignedScreenshots, ...unassignedScreenshots];
+
+      console.log('[screenshots] Returning', screenshots.length, 'total screenshots');
+      return NextResponse.json({ screenshots });
+    } catch (error) {
+      console.error('[screenshots] Unexpected error in assessment screenshots endpoint:', {
+        assessmentId,
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Internal server error' },
+        { status: 500 }
+      );
     }
-
-    const { data: assignedData, error: assignedError } = await assignedQuery.order('created_at', {
-      ascending: false,
-    });
-
-    if (assignedError) return NextResponse.json({ error: assignedError.message }, { status: 500 });
-
-    // Flatten assignment metadata into screenshot objects
-    const assignedScreenshots = (assignedData || []).map((item: any) => ({
-      ...item,
-      check_id: item.screenshot_check_assignments?.[0]?.check_id,
-      is_original: item.screenshot_check_assignments?.[0]?.is_original,
-      check_section_number: item.screenshot_check_assignments?.[0]?.checks?.code_section_number,
-      check_section_title: item.screenshot_check_assignments?.[0]?.checks?.code_section_title,
-      screenshot_check_assignments: undefined, // Remove nested structure
-    }));
-
-    // Fetch unassigned screenshots for this assessment (via screenshot_url pattern)
-    const assignedIds = assignedScreenshots.map(s => s.id);
-
-    // Fetch all screenshots for this assessment by URL pattern
-    let allScreenshotsQuery = supabase
-      .from('screenshots')
-      .select('*')
-      .like('screenshot_url', `%${assessmentId}%`);
-
-    // Apply screenshot_type filter to unassigned screenshots as well
-    if (screenshotType && ['plan', 'elevation'].includes(screenshotType)) {
-      allScreenshotsQuery = allScreenshotsQuery.eq('screenshot_type', screenshotType);
-    }
-
-    const { data: allScreenshotsData, error: allScreenshotsError } =
-      await allScreenshotsQuery.order('created_at', { ascending: false });
-
-    if (allScreenshotsError)
-      return NextResponse.json({ error: allScreenshotsError.message }, { status: 500 });
-
-    // Filter out assigned screenshots in memory
-    const unassignedData = (allScreenshotsData || []).filter(
-      (screenshot: any) => !assignedIds.includes(screenshot.id)
-    );
-
-    // Mark unassigned screenshots
-    const unassignedScreenshots = (unassignedData || []).map((item: any) => ({
-      ...item,
-      check_id: null,
-      is_original: false,
-      check_section_number: null,
-      check_section_title: 'Unassigned',
-    }));
-
-    // Combine assigned and unassigned screenshots
-    const screenshots = [...assignedScreenshots, ...unassignedScreenshots];
-
-    return NextResponse.json({ screenshots });
   } else {
     // Fetch all screenshots
     const { data, error } = await supabase.from('screenshots').select('*');
