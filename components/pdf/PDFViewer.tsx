@@ -240,9 +240,13 @@ export function PDFViewer({
   // ============================================================================
   // SECTION 4: PDF DOCUMENT & LAYERS
   // ============================================================================
+  console.log('[PDFViewer] About to call hooks');
   const { url: presignedUrl, loading: loadingUrl } = usePresignedUrl(pdfUrl);
+  console.log('[PDFViewer] After usePresignedUrl');
   const pdf = usePdfDocument(presignedUrl, state.pageNumber);
+  console.log('[PDFViewer] After usePdfDocument');
   const layers = usePdfLayers(pdf.state.doc, assessmentId, disableLayers);
+  console.log('[PDFViewer] After usePdfLayers');
   const { doc: pdfDoc, page, numPages } = pdf.state;
   const { ocConfig, layers: layerList } = layers.state;
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { pdfjs } from 'react-pdf';
 import type { HookReturn } from '@/lib/hooks/types';
 
@@ -134,16 +134,28 @@ export function usePdfDocument(
     setCurrentPageNumber(null);
   }, [doc]);
 
-  return {
-    state: {
+  // Memoize state to prevent new object references triggering re-renders
+  const state = useMemo(
+    () => ({
       doc,
       page,
       numPages,
       loading,
       error,
-    },
-    actions: {
+    }),
+    [doc, page, numPages, loading, error]
+  );
+
+  // Memoize actions to prevent new object references triggering re-renders
+  const actions = useMemo(
+    () => ({
       setPage: setCurrentPageNumber,
-    },
+    }),
+    [setCurrentPageNumber]
+  );
+
+  return {
+    state,
+    actions,
   };
 }
