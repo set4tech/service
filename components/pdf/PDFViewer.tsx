@@ -637,6 +637,14 @@ export function PDFViewer({
     setShowCalibrationModal(false);
   }, []);
 
+  // Auto-focus viewport when PDF is ready so keyboard shortcuts work immediately
+  useEffect(() => {
+    if (page && viewportRef.current) {
+      // Use setTimeout to ensure focus happens after render
+      setTimeout(() => viewportRef.current?.focus(), 0);
+    }
+  }, [page]);
+
   // Keyboard shortcuts
   useKeyboardShortcuts(
     viewportRef as React.RefObject<HTMLElement>,
