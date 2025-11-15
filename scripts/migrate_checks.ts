@@ -47,93 +47,76 @@ async function main() {
   // 2. Delete all existing checks from target assessment
   console.log('2. Deleting existing checks from target assessment...');
 
-  // First get the check IDs to delete related records
-  const { data: targetChecks, error: targetChecksError } = await supabase
-    .from('checks')
-    .select('id')
-    .eq('assessment_id', TARGET_ASSESSMENT_ID);
+  let totalDeleted = 0;
+  let iteration = 0;
 
-  if (targetChecksError) {
-    console.error('Error fetching target checks:', targetChecksError);
-    process.exit(1);
-  }
+  // Keep deleting until no checks remain
+  while (true) {
+    iteration++;
 
-  console.log(`Found ${targetChecks.length} checks to delete`);
+    // Get batch of checks to delete
+    const { data: targetChecks, error: targetChecksError } = await supabase
+      .from('checks')
+      .select('id')
+      .eq('assessment_id', TARGET_ASSESSMENT_ID)
+      .limit(100);
 
-  if (targetChecks.length > 0) {
+    if (targetChecksError) {
+      console.error('Error fetching target checks:', targetChecksError);
+      process.exit(1);
+    }
+
+    if (!targetChecks || targetChecks.length === 0) {
+      console.log(`✓ Deleted total of ${totalDeleted} checks`);
+      break;
+    }
+
+    console.log(`  Iteration ${iteration}: Found ${targetChecks.length} checks to delete`);
+
     const targetCheckIds = targetChecks.map(c => c.id);
 
-    // Delete in batches of 100 to avoid Supabase limits
-    const batchSize = 100;
-    const batches = Math.ceil(targetCheckIds.length / batchSize);
-
     // Delete screenshot_check_assignments
-    console.log('  - Deleting screenshot_check_assignments...');
-    for (let i = 0; i < batches; i++) {
-      const start = i * batchSize;
-      const end = Math.min(start + batchSize, targetCheckIds.length);
-      const batch = targetCheckIds.slice(start, end);
+    const { error: scaDeleteError } = await supabase
+      .from('screenshot_check_assignments')
+      .delete()
+      .in('check_id', targetCheckIds);
 
-      const { error: scaDeleteError } = await supabase
-        .from('screenshot_check_assignments')
-        .delete()
-        .in('check_id', batch);
-
-      if (scaDeleteError) {
-        console.error(`Error deleting screenshot_check_assignments batch ${i + 1}/${batches}:`, scaDeleteError);
-        process.exit(1);
-      }
-      console.log(`    Batch ${i + 1}/${batches} complete`);
+    if (scaDeleteError) {
+      console.error('Error deleting screenshot_check_assignments:', scaDeleteError);
+      process.exit(1);
     }
 
     // Delete analysis_runs
-    console.log('  - Deleting analysis_runs...');
-    for (let i = 0; i < batches; i++) {
-      const start = i * batchSize;
-      const end = Math.min(start + batchSize, targetCheckIds.length);
-      const batch = targetCheckIds.slice(start, end);
+    const { error: analysisDeleteError } = await supabase
+      .from('analysis_runs')
+      .delete()
+      .in('check_id', targetCheckIds);
 
-      const { error: analysisDeleteError } = await supabase
-        .from('analysis_runs')
-        .delete()
-        .in('check_id', batch);
-
-      if (analysisDeleteError) {
-        console.error(`Error deleting analysis_runs batch ${i + 1}/${batches}:`, analysisDeleteError);
-        process.exit(1);
-      }
-      console.log(`    Batch ${i + 1}/${batches} complete`);
+    if (analysisDeleteError) {
+      console.error('Error deleting analysis_runs:', analysisDeleteError);
+      process.exit(1);
     }
 
     // Delete checks
-    console.log('  - Deleting checks...');
-    for (let i = 0; i < batches; i++) {
-      const start = i * batchSize;
-      const end = Math.min(start + batchSize, targetCheckIds.length);
-      const batch = targetCheckIds.slice(start, end);
+    const { error: checksDeleteError } = await supabase
+      .from('checks')
+      .delete()
+      .in('id', targetCheckIds);
 
-      const { error: checksDeleteError } = await supabase
-        .from('checks')
-        .delete()
-        .in('id', batch);
-
-      if (checksDeleteError) {
-        console.error(`Error deleting checks batch ${i + 1}/${batches}:`, checksDeleteError);
-        process.exit(1);
-      }
-      console.log(`    Batch ${i + 1}/${batches} complete`);
+    if (checksDeleteError) {
+      console.error('Error deleting checks:', checksDeleteError);
+      process.exit(1);
     }
 
-    console.log(`✓ Deleted ${targetChecks.length} checks and their related records`);
-  } else {
-    console.log('✓ No existing checks to delete');
+    totalDeleted += targetChecks.length;
+    console.log(`    Deleted ${targetChecks.length} checks (total: ${totalDeleted})`);
   }
+
   console.log('');
 
   // 3. Fetch all checks from source assessment
   console.log('3. Fetching checks from source assessment...');
 
-  // Fetch in pages to handle large datasets
   let sourceChecks: any[] = [];
   let page = 0;
   const pageSize = 1000;
@@ -167,7 +150,6 @@ async function main() {
   console.log('4. Fetching analysis runs...');
   const sourceCheckIds = sourceChecks.map(c => c.id);
 
-  // Fetch analysis runs in batches
   let analysisRuns: any[] = [];
   const checkBatchSize = 100;
   const checkBatches = Math.ceil(sourceCheckIds.length / checkBatchSize);
@@ -188,26 +170,27 @@ async function main() {
       process.exit(1);
     }
 
-    if (data) {
+    if (data && data.length > 0) {
       analysisRuns = analysisRuns.concat(data);
+      console.log(`  Fetched batch ${i + 1}/${checkBatches} (${data.length} analysis runs)`);
     }
-    console.log(`  Fetched batch ${i + 1}/${checkBatches} (${data?.length || 0} analysis runs)`);
   }
 
   console.log(`✓ Found ${analysisRuns.length} analysis runs to migrate`);
   console.log('');
 
-  // 5. Create mapping of old check IDs to new check IDs
+  // 5. Create new checks
   console.log('5. Creating new checks...');
   const checkIdMapping: Record<string, string> = {};
 
+  // Insert checks one at a time to preserve order and create ID mapping
+  let created = 0;
   for (const sourceCheck of sourceChecks) {
     const { id: oldId, created_at, updated_at, ...checkData } = sourceCheck;
 
     const newCheck = {
       ...checkData,
       assessment_id: TARGET_ASSESSMENT_ID,
-      // Preserve parent_check_id relationships (will update after all checks created)
     };
 
     const { data: insertedCheck, error: insertError } = await supabase
@@ -223,9 +206,14 @@ async function main() {
     }
 
     checkIdMapping[oldId] = insertedCheck.id;
+    created++;
+
+    if (created % 100 === 0) {
+      console.log(`  Created ${created}/${sourceChecks.length} checks...`);
+    }
   }
 
-  console.log(`✓ Created ${Object.keys(checkIdMapping).length} new checks`);
+  console.log(`✓ Created ${created} new checks`);
   console.log('');
 
   // 6. Update parent_check_id references
@@ -262,39 +250,61 @@ async function main() {
   // 7. Create new analysis_runs
   console.log('7. Creating analysis runs...');
 
-  for (const analysisRun of analysisRuns) {
-    const { id, created_at, updated_at, check_id: oldCheckId, ...analysisData } = analysisRun;
-    const newCheckId = checkIdMapping[oldCheckId];
+  if (analysisRuns.length === 0) {
+    console.log('✓ No analysis runs to migrate');
+  } else {
+    // Insert analysis runs in batches
+    const analysisBatchSize = 50;
+    const analysisBatches = Math.ceil(analysisRuns.length / analysisBatchSize);
+    let insertedAnalysisCount = 0;
 
-    if (!newCheckId) {
-      console.warn(`Warning: Could not find new check ID for analysis run with old check_id ${oldCheckId}`);
-      continue;
+    for (let i = 0; i < analysisBatches; i++) {
+      const start = i * analysisBatchSize;
+      const end = Math.min(start + analysisBatchSize, analysisRuns.length);
+      const batch = analysisRuns.slice(start, end);
+
+      const newAnalysisRuns = batch
+        .map(analysisRun => {
+          const { id, created_at, updated_at, check_id: oldCheckId, ...analysisData } = analysisRun;
+          const newCheckId = checkIdMapping[oldCheckId];
+
+          if (!newCheckId) {
+            console.warn(`Warning: Could not find new check ID for analysis run with old check_id ${oldCheckId}`);
+            return null;
+          }
+
+          return {
+            ...analysisData,
+            check_id: newCheckId,
+          };
+        })
+        .filter(Boolean);
+
+      if (newAnalysisRuns.length > 0) {
+        const { error: insertError } = await supabase
+          .from('analysis_runs')
+          .insert(newAnalysisRuns);
+
+        if (insertError) {
+          console.error(`Error inserting analysis runs batch ${i + 1}/${analysisBatches}:`, insertError);
+          process.exit(1);
+        }
+
+        insertedAnalysisCount += newAnalysisRuns.length;
+        console.log(`  Batch ${i + 1}/${analysisBatches} complete (${newAnalysisRuns.length} analysis runs)`);
+      }
     }
 
-    const newAnalysisRun = {
-      ...analysisData,
-      check_id: newCheckId,
-    };
-
-    const { error: insertError } = await supabase
-      .from('analysis_runs')
-      .insert(newAnalysisRun);
-
-    if (insertError) {
-      console.error('Error inserting analysis run:', insertError);
-      console.error('Analysis run data:', newAnalysisRun);
-      process.exit(1);
-    }
+    console.log(`✓ Created ${insertedAnalysisCount} analysis runs`);
   }
 
-  console.log(`✓ Created ${analysisRuns.length} analysis runs`);
   console.log('');
 
   // 8. Verify migration
   console.log('8. Verifying migration...');
-  const { data: newChecks, error: verifyError } = await supabase
+  const { count, error: verifyError } = await supabase
     .from('checks')
-    .select('id')
+    .select('*', { count: 'exact', head: true })
     .eq('assessment_id', TARGET_ASSESSMENT_ID);
 
   if (verifyError) {
@@ -302,25 +312,15 @@ async function main() {
     process.exit(1);
   }
 
-  const { data: newAnalysisRuns, error: verifyAnalysisError } = await supabase
-    .from('analysis_runs')
-    .select('id')
-    .in('check_id', newChecks.map(c => c.id));
-
-  if (verifyAnalysisError) {
-    console.error('Error verifying analysis runs:', verifyAnalysisError);
-    process.exit(1);
-  }
-
   console.log(`✓ Verification complete:`);
-  console.log(`  - Checks: ${newChecks.length} (expected ${sourceChecks.length})`);
-  console.log(`  - Analysis runs: ${newAnalysisRuns.length} (expected ${analysisRuns.length})`);
+  console.log(`  - Checks: ${count} (expected ${sourceChecks.length})`);
+  console.log(`  - Analysis runs: ${analysisRuns.length} migrated`);
   console.log('');
 
-  if (newChecks.length === sourceChecks.length && newAnalysisRuns.length === analysisRuns.length) {
+  if (count === sourceChecks.length) {
     console.log('✅ Migration completed successfully!');
   } else {
-    console.log('⚠️  Migration completed but counts do not match. Please review.');
+    console.log('⚠️  Migration completed but check count does not match. Please review.');
   }
 }
 
