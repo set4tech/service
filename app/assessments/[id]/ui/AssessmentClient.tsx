@@ -277,27 +277,30 @@ export default function AssessmentClient({
     dispatchDetailPanel({ type: 'CLOSE_PANEL' });
   };
 
-  const handleCheckSelect = (checkId: string, sectionKey?: string) => {
-    console.log('[handleCheckSelect] Called with:', {
-      checkId,
-      sectionKey,
-      checksCount: checks.length,
-      checkExists: checks.some(c => c.id === checkId),
-    });
+  const handleCheckSelect = useCallback(
+    (checkId: string, sectionKey?: string) => {
+      console.log('[handleCheckSelect] Called with:', {
+        checkId,
+        sectionKey,
+        checksCount: checks.length,
+        checkExists: checks.some(c => c.id === checkId),
+      });
 
-    // Save selection for current mode
-    const mode = checkMode === 'element' ? 'element' : 'section';
-    lastSelectionPerMode.current[mode] = {
-      checkId,
-      filterToSectionKey: sectionKey ?? null,
-    };
+      // Save selection for current mode
+      const mode = checkMode === 'element' ? 'element' : 'section';
+      lastSelectionPerMode.current[mode] = {
+        checkId,
+        filterToSectionKey: sectionKey ?? null,
+      };
 
-    dispatchDetailPanel({
-      type: 'SELECT_CHECK',
-      checkId,
-      filterToSectionKey: sectionKey,
-    });
-  };
+      dispatchDetailPanel({
+        type: 'SELECT_CHECK',
+        checkId,
+        filterToSectionKey: sectionKey,
+      });
+    },
+    [checks.length, checkMode]
+  );
 
   const handleEditCheck = (violation: ViolationMarker) => {
     // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
@@ -519,7 +522,7 @@ export default function AssessmentClient({
     }
   };
 
-  const handleCheckAdded = (newCheck: CheckData) => {
+  const handleCheckAdded = useCallback((newCheck: CheckData) => {
     // Add the new check to the state
     setChecks(prevChecks => {
       // Find the parent check
@@ -542,9 +545,9 @@ export default function AssessmentClient({
       // If no parent, add as new check
       return [...prevChecks, { ...newCheck, instances: [], instance_count: 0 }];
     });
-  };
+  }, []);
 
-  const refetchChecks = async () => {
+  const refetchChecks = useCallback(async () => {
     console.log('[AssessmentClient] refetchChecks called, current checks count:', checks.length);
     const checksRes = await fetch(
       `/api/assessments/${assessment.id}/checks?mode=${checkMode === 'element' ? 'element' : 'section'}`
@@ -565,7 +568,7 @@ export default function AssessmentClient({
         checksRes.statusText
       );
     }
-  };
+  }, [assessment.id, checkMode, checks.length]);
 
   const refetchViolations = async () => {
     console.log('[AssessmentClient] refetchViolations called');
@@ -720,7 +723,7 @@ export default function AssessmentClient({
   const refreshScreenshotsRef = useRef<(() => Promise<void>) | null>(null);
 
   // Refetch screenshots for a specific check
-  const refetchCheckScreenshots = async (checkId: string) => {
+  const refetchCheckScreenshots = useCallback(async (checkId: string) => {
     try {
       const res = await fetch(`/api/checks/${checkId}/screenshots`);
       if (res.ok) {
@@ -754,7 +757,7 @@ export default function AssessmentClient({
     } catch (error) {
       console.error('[refetchCheckScreenshots] Error:', error);
     }
-  };
+  }, []);
 
   // Memoized callback to prevent infinite render loop in PDFViewer
   const handleRefreshScreenshotsReady = useCallback((refresh: () => Promise<void>) => {

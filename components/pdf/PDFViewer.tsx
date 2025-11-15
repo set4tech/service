@@ -188,10 +188,14 @@ export function PDFViewer({
   // ============================================================================
   const [renderScale, setRenderScale] = useState(4);
 
-  // Debug: Log every component render
-  console.log('[PDFViewer] Component render:', {
+  // Debug: Log every component render - track what's changing
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  console.log(`[PDFViewer] Component render #${renderCountRef.current}:`, {
     pageNumber: state.pageNumber,
     renderScale,
+    numPages: state.numPages,
+    mode: state.mode.type,
   });
   const [savingScale, setSavingScale] = useState(false);
   const [smoothTransition, setSmoothTransition] = useState(false);
