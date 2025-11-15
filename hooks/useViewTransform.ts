@@ -1,4 +1,4 @@
-import { useCallback, RefObject } from 'react';
+import { useCallback, useMemo, RefObject } from 'react';
 import type { Transform } from '@/hooks/usePdfPersistence';
 
 const MIN_SCALE = 0.1;
@@ -142,12 +142,16 @@ export function useViewTransform(
     };
   }, [containerRef, transform, setTransform]);
 
-  return {
-    zoom,
-    reset,
-    centerOn,
-    attachWheelZoom,
-  };
+  // Memoize return value to prevent new object references triggering re-renders
+  return useMemo(
+    () => ({
+      zoom,
+      reset,
+      centerOn,
+      attachWheelZoom,
+    }),
+    [zoom, reset, centerOn, attachWheelZoom]
+  );
 }
 
 /**

@@ -545,8 +545,10 @@ export function PDFViewer({
 
   // Kick renders when inputs change
   // Note: renderPage is not in deps because it already depends on all these values
+  const renderEffectCountRef = useRef(0);
   useEffect(() => {
-    console.log('[PDFViewer] Render trigger:', {
+    renderEffectCountRef.current += 1;
+    console.log(`[PDFViewer] ★★★ RENDER EFFECT #${renderEffectCountRef.current} ★★★`, {
       hasPage: !!page,
       pageNum: state.pageNumber,
       renderScale,
@@ -558,7 +560,10 @@ export function PDFViewer({
   }, [page, renderScale, layerList]);
 
   // Attach wheel zoom handler
+  const wheelEffectCountRef = useRef(0);
   useEffect(() => {
+    wheelEffectCountRef.current += 1;
+    console.log(`[PDFViewer] ★★★ WHEEL EFFECT #${wheelEffectCountRef.current} ★★★`);
     if (!viewportRef.current) return;
     return viewTransform.attachWheelZoom();
   }, [viewTransform]);
