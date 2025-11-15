@@ -356,7 +356,7 @@ export function PDFViewer({
     if (screenshot.pageNumber !== state.pageNumber) return;
 
     const bounds = screenshot.bounds;
-    const hasValidBounds = bounds.width > 0 && bounds.height > 0;
+    const hasValidBounds = bounds && bounds.width > 0 && bounds.height > 0;
     if (!hasValidBounds) return;
 
     const timeoutId = setTimeout(() => {
@@ -384,7 +384,7 @@ export function PDFViewer({
     if (currentMatch.pageNumber !== state.pageNumber) return;
 
     const bounds = currentMatch.bounds;
-    const hasValidBounds = bounds.width > 0 && bounds.height > 0;
+    const hasValidBounds = bounds && bounds.width > 0 && bounds.height > 0;
     if (!hasValidBounds) return;
 
     const timeoutId = setTimeout(() => {

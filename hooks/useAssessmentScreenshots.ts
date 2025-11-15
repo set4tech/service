@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useFetch } from '@/lib/hooks/useFetch';
 
 interface CropCoordinates {
@@ -50,6 +50,13 @@ export function useAssessmentScreenshots(
     [allScreenshots, currentPage]
   );
 
+  // Memoize refresh to prevent infinite render loops
+  const refresh = useCallback(async () => {
+    console.log('[useAssessmentScreenshots] refresh called');
+    await refetch();
+    console.log('[useAssessmentScreenshots] refresh completed');
+  }, [refetch]);
+
   return {
     state: {
       screenshots,
@@ -57,11 +64,7 @@ export function useAssessmentScreenshots(
       loading,
     },
     actions: {
-      refresh: async () => {
-        console.log('[useAssessmentScreenshots] refresh called');
-        await refetch();
-        console.log('[useAssessmentScreenshots] refresh completed');
-      },
+      refresh,
     },
   };
 }

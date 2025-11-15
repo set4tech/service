@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef, useReducer } from 'react';
+import { useEffect, useMemo, useState, useRef, useReducer, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import clsx from 'clsx';
@@ -756,6 +756,12 @@ export default function AssessmentClient({
     }
   };
 
+  // Memoized callback to prevent infinite render loop in PDFViewer
+  const handleRefreshScreenshotsReady = useCallback((refresh: () => Promise<void>) => {
+    console.log('[AssessmentClient] PDFViewer refreshScreenshots function received');
+    refreshScreenshotsRef.current = refresh;
+  }, []);
+
   // Resize handlers for checks sidebar
   const handleChecksResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1184,10 +1190,7 @@ export default function AssessmentClient({
             onCheckAdded={handleCheckAdded}
             onCheckSelect={handleCheckSelect}
             refetchChecks={refetchChecks}
-            onRefreshScreenshotsReady={refresh => {
-              console.log('[AssessmentClient] PDFViewer refreshScreenshots function received');
-              refreshScreenshotsRef.current = refresh;
-            }}
+            onRefreshScreenshotsReady={handleRefreshScreenshotsReady}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">
