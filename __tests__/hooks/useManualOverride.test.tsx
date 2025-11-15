@@ -290,6 +290,137 @@ describe('useManualOverride', () => {
     });
   });
 
+  describe('Check navigation', () => {
+    it('should reset state when navigating to a different check', () => {
+      const { result, rerender } = renderHook(
+        ({ checkId, initialOverride, initialNote }) =>
+          useManualOverride({
+            checkId,
+            initialOverride,
+            initialNote,
+          }),
+        {
+          initialProps: {
+            checkId: 'check-1',
+            initialOverride: null,
+            initialNote: '',
+          },
+        }
+      );
+
+      // Set manual override for first check
+      act(() => {
+        result.current.actions.setOverride('compliant');
+        result.current.actions.setNote('This is compliant');
+        result.current.actions.setShowNoteInput(true);
+      });
+
+      expect(result.current.state.override).toBe('compliant');
+      expect(result.current.state.note).toBe('This is compliant');
+      expect(result.current.state.showNoteInput).toBe(true);
+
+      // Navigate to a different check with no override
+      rerender({
+        checkId: 'check-2',
+        initialOverride: null,
+        initialNote: '',
+      });
+
+      // State should reset to new check's values
+      expect(result.current.state.override).toBeNull();
+      expect(result.current.state.note).toBe('');
+      expect(result.current.state.showNoteInput).toBe(false);
+    });
+
+    it('should reset state when navigating to a check with existing override', () => {
+      const { result, rerender } = renderHook(
+        ({ checkId, initialOverride, initialNote }) =>
+          useManualOverride({
+            checkId,
+            initialOverride,
+            initialNote,
+          }),
+        {
+          initialProps: {
+            checkId: 'check-1',
+            initialOverride: 'compliant',
+            initialNote: 'Check 1 note',
+          },
+        }
+      );
+
+      // Verify initial state
+      expect(result.current.state.override).toBe('compliant');
+      expect(result.current.state.note).toBe('Check 1 note');
+
+      // User changes the override locally (before saving)
+      act(() => {
+        result.current.actions.setOverride('non_compliant');
+        result.current.actions.setNote('Changed my mind');
+      });
+
+      expect(result.current.state.override).toBe('non_compliant');
+      expect(result.current.state.note).toBe('Changed my mind');
+
+      // Navigate to another check with different saved override
+      rerender({
+        checkId: 'check-2',
+        initialOverride: 'not_applicable',
+        initialNote: 'Check 2 note',
+      });
+
+      // State should reset to the new check's saved values
+      expect(result.current.state.override).toBe('not_applicable');
+      expect(result.current.state.note).toBe('Check 2 note');
+    });
+
+    it('should clear error when navigating to a different check', async () => {
+      const { result, rerender } = renderHook(
+        ({ checkId, initialOverride }) =>
+          useManualOverride({
+            checkId,
+            initialOverride,
+          }),
+        {
+          initialProps: {
+            checkId: 'check-1',
+            initialOverride: null,
+          },
+        }
+      );
+
+      // Trigger an error on first check
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'Save failed' }),
+      });
+
+      act(() => {
+        result.current.actions.setOverride('compliant');
+      });
+
+      await act(async () => {
+        try {
+          await result.current.actions.saveOverride('check-1');
+        } catch (err) {
+          // Expected error
+        }
+      });
+
+      expect(result.current.state.error).toBe('Save failed');
+
+      // Navigate to different check
+      rerender({
+        checkId: 'check-2',
+        initialOverride: null,
+      });
+
+      // Error should be cleared
+      expect(result.current.state.error).toBeNull();
+    });
+  });
+
   describe('Edge cases', () => {
     it('should handle null override', async () => {
       const { result } = renderHook(() => useManualOverride());

@@ -65,12 +65,12 @@ export function CodeDetailPanel({
     refresh,
   } = useCheckData(checkId, activeChildCheckId, filterToSectionKey || null, screenshotsRefreshKey);
 
-  // Initialize activeChildCheckId when check loads
+  // Reset activeChildCheckId when checkId changes (for section navigation)
   useEffect(() => {
-    if (checkId && !activeChildCheckId) {
+    if (checkId) {
       setActiveChildCheckId(checkId);
     }
-  }, [checkId, activeChildCheckId]);
+  }, [checkId]);
 
   // Use the check from the hook (has element_instances data) or fall back to the prop
   const activeCheckWithData = activeCheckFromHook || activeCheck;
@@ -88,12 +88,6 @@ export function CodeDetailPanel({
   // });
 
   // Manual override hook
-  // console.log('[CodeDetailPanel] 🎯 Passing to useManualOverride:', {
-  //   initialManualOverride,
-  //   initialManualOverrideNote,
-  //   activeChildCheckId,
-  // });
-
   const manualOverrideHook = useManualOverride({
     checkId: effectiveCheckId,
     initialOverride: initialManualOverride,
