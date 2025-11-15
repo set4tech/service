@@ -250,6 +250,20 @@ export function PDFViewer({
   const { doc: pdfDoc, page, numPages } = pdf.state;
   const { ocConfig, layers: layerList } = layers.state;
 
+  // Memoize viewport to prevent crashes during render
+  const baseViewport = useMemo(() => {
+    if (!page) return null;
+    try {
+      const vp = page.getViewport({ scale: 1 });
+      // Guard against odd states during page switches
+      if (!vp || !Number.isFinite(vp.width) || !Number.isFinite(vp.height)) return null;
+      return vp;
+    } catch (e) {
+      console.error('[PDFViewer] getViewport failed', e);
+      return null;
+    }
+  }, [page]);
+
   // ============================================================================
   // SECTION 5: FEATURE HOOKS
   // ============================================================================
@@ -291,6 +305,20 @@ export function PDFViewer({
   const calculateRealDistance = calibrationHook.computed?.calculateRealDistance ?? (() => null);
   const screenshotIndicators = screenshotsHook.state.screenshots;
   const refreshScreenshots = screenshotsHook.actions.refresh;
+
+  // Debug: Check what screenshots are available
+  console.log('[PDFViewer] Screenshot data:', {
+    currentPage: state.pageNumber,
+    showIndicators: showScreenshotIndicators,
+    screenshotsOnThisPage: screenshotIndicators.length,
+    screenshots: screenshotIndicators.map(s => ({
+      id: s.id,
+      page: s.page_number,
+      bounds: s.crop_coordinates,
+      type: s.screenshot_type,
+    })),
+    allScreenshots: screenshotsHook.state.allScreenshots.map(s => ({ page: s.page_number, type: s.screenshot_type })),
+  });
 
   // Expose refreshScreenshots function to parent component
   useEffect(() => {
@@ -476,33 +504,25 @@ export function PDFViewer({
   const pageCenteredRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!page || !viewportRef.current) return;
-
-    // Only center if we haven't centered this page yet
+    const container = viewportRef.current;
+    if (!page || !container || !baseViewport) return;
     if (pageCenteredRef.current === state.pageNumber) return;
 
-    const viewport = page.getViewport({ scale: 1 });
-    const container = viewportRef.current;
+    const centeredTx = Math.round((container.clientWidth - baseViewport.width) / 2);
+    const centeredTy = Math.round((container.clientHeight - baseViewport.height) / 2);
 
-    // Calculate what the centered position should be
-    const centeredTx = (container.clientWidth - viewport.width) / 2;
-    const centeredTy = (container.clientHeight - viewport.height) / 2;
-
-    // Check if current transform would put the page off-screen or is initial load
     const isOffScreen =
-      transform.tx < -viewport.width ||
+      transform.tx < -baseViewport.width ||
       transform.tx > container.clientWidth ||
-      transform.ty < -viewport.height ||
+      transform.ty < -baseViewport.height ||
       transform.ty > container.clientHeight;
 
     const isInitialLoad = transform.tx === 0 && transform.ty === 0 && transform.scale === 1;
-
     if (isInitialLoad || isOffScreen) {
       setTransform({ tx: centeredTx, ty: centeredTy, scale: 1 });
-      // Mark this page as centered
-      pageCenteredRef.current = state.pageNumber;
     }
-  }, [page, state.pageNumber]);
+    pageCenteredRef.current = state.pageNumber; // mark regardless, so we don't loop
+  }, [page, state.pageNumber, baseViewport, transform, setTransform]);
 
   // Core render function
   const renderPage = useCallback(async () => {
@@ -1182,7 +1202,10 @@ export function PDFViewer({
               aria-label="Toggle captured area indicators"
               title="Show/hide previously captured areas"
               className={`btn-icon shadow-md ${showScreenshotIndicators ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => setShowScreenshotIndicators(!showScreenshotIndicators)}
+              onClick={() => {
+                console.log('[PDFViewer] 📦 Button clicked! Current state:', showScreenshotIndicators, '→ New state:', !showScreenshotIndicators);
+                setShowScreenshotIndicators(!showScreenshotIndicators);
+              }}
             >
               📦
             </button>
@@ -1539,7 +1562,7 @@ export function PDFViewer({
         <ElevationCapturePrompt onSave={handleElevationSave} onCancel={handleElevationCancel} />
       )}
 
-      {showCalibrationModal && page && (
+      {showCalibrationModal && page && baseViewport && (
         <CalibrationModal
           currentScale={calibration?.scale_notation}
           currentPrintSize={
@@ -1550,14 +1573,10 @@ export function PDFViewer({
                 }
               : undefined
           }
-          pdfDimensions={
-            page
-              ? {
-                  width: page.getViewport({ scale: 1 }).width,
-                  height: page.getViewport({ scale: 1 }).height,
-                }
-              : undefined
-          }
+          pdfDimensions={{
+            width: baseViewport.width,
+            height: baseViewport.height,
+          }}
           projectId={projectId}
           onSave={saveCalibration}
           onSaveKnownLength={saveCalibrationKnownLength}

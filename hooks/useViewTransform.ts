@@ -1,4 +1,4 @@
-import { useCallback, RefObject } from 'react';
+import { useCallback, useMemo, RefObject } from 'react';
 import type { Transform } from '@/hooks/usePdfPersistence';
 
 const MIN_SCALE = 0.1;
@@ -79,20 +79,16 @@ export function useViewTransform(
   }, [setTransform]);
 
   const centerOn = useCallback(
-    (bounds: { x: number; y: number; width: number; height: number }) => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const centerX = bounds.x + bounds.width / 2;
-      const centerY = bounds.y + bounds.height / 2;
-
-      const viewportCenterX = container.clientWidth / 2;
-      const viewportCenterY = container.clientHeight / 2;
-
+    (bounds: { x: number; y: number; width: number; height: number } | null | undefined) => {
+      const el = containerRef.current;
+      if (!el || !bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height))
+        return;
+      const cx = bounds.x + bounds.width / 2;
+      const cy = bounds.y + bounds.height / 2;
       setTransform({
         ...transform,
-        tx: viewportCenterX - centerX * transform.scale,
-        ty: viewportCenterY - centerY * transform.scale,
+        tx: el.clientWidth / 2 - cx * transform.scale,
+        ty: el.clientHeight / 2 - cy * transform.scale,
       });
     },
     [containerRef, transform, setTransform]
@@ -142,12 +138,10 @@ export function useViewTransform(
     };
   }, [containerRef, transform, setTransform]);
 
-  return {
-    zoom,
-    reset,
-    centerOn,
-    attachWheelZoom,
-  };
+  return useMemo(
+    () => ({ zoom, reset, centerOn, attachWheelZoom }),
+    [zoom, reset, centerOn, attachWheelZoom]
+  );
 }
 
 /**

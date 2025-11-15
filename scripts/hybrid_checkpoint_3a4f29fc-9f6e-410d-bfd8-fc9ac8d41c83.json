@@ -1,0 +1,113 @@
+[
+  {
+    "check_id": "37455668-1c2c-4ce5-872f-a82323ccc660",
+    "section_number": "1001.1",
+    "result": {
+      "compliance_status": "unclear",
+      "confidence": "low",
+      "reasoning": "The provided drawings consist of general notes, a CalGreen checklist, and material specifications. There are no floor plans or egress diagrams to analyze the means of egress system. Therefore, it is impossible to determine compliance with Section 1001.1.",
+      "violations": [],
+      "compliant_aspects": [],
+      "recommendations": [
+        "Provide floor plans and egress diagrams to assess compliance with Section 1001.1."
+      ]
+    },
+    "used_vision": true,
+    "pages_analyzed": [
+      31,
+      32,
+      2
+    ],
+    "execution_time_ms": 25664
+  },
+  {
+    "check_id": "808fd2ca-e949-4ffe-996d-16095bf7612c",
+    "section_number": "1001.2",
+    "result": {
+      "compliance_status": "not-applicable",
+      "confidence": "high",
+      "reasoning": "The provided documents are related to the California Green Building Standards Code (CALGreen) and general notes. They do not contain information about the number of exits, the width of exits, or the capacity of the means of egress. Therefore, Section 1001.2 is not applicable to the provided documents.",
+      "violations": [],
+      "compliant_aspects": [],
+      "recommendations": []
+    },
+    "used_vision": true,
+    "pages_analyzed": [
+      4,
+      31,
+      2
+    ],
+    "execution_time_ms": 25148
+  },
+  {
+    "check_id": "72c19ecc-c1d5-4936-815f-b322cc51142a",
+    "section_number": "1002.1",
+    "result": {
+      "compliance_status": "not-applicable",
+      "confidence": "high",
+      "reasoning": "The provided document is a CalGreen checklist, which focuses on green building standards related to energy efficiency, water conservation, material conservation, and indoor environmental quality. Section 1002.1 of the building code pertains to the maintenance of the means of egress, which is a life safety issue covered under the California Fire Code. The CalGreen checklist does not address the maintenance of egress components.",
+      "violations": [],
+      "compliant_aspects": [],
+      "recommendations": []
+    },
+    "used_vision": true,
+    "pages_analyzed": [
+      4,
+      5,
+      3
+    ],
+    "execution_time_ms": 10841
+  },
+  {
+    "check_id": "d93e46a2-ba67-4711-a445-fd134f1623a0",
+    "section_number": "1002.2",
+    "result": {
+      "compliance_status": "unclear",
+      "confidence": "low",
+      "reasoning": "The provided drawings do not contain a fire safety and evacuation plan. The code section requires these plans for all occupancies and buildings where required by the California Fire Code. It is unclear whether the California Fire Code requires it for this specific project. Without a fire safety and evacuation plan, compliance cannot be determined.",
+      "violations": [
+        {
+          "severity": "major",
+          "description": "Missing fire safety and evacuation plan as required by Section 1002.2 and the California Fire Code.",
+          "location": "Entire project",
+          "recommendation": "Provide a fire safety and evacuation plan that complies with Sections 401.2 and 404 of the California Fire Code."
+        }
+      ],
+      "compliant_aspects": [],
+      "recommendations": [
+        "Consult the California Fire Code to determine if a fire safety and evacuation plan is required for this specific occupancy and building type.",
+        "If required, develop a fire safety and evacuation plan that complies with Sections 401.2 and 404 of the California Fire Code and include it in the architectural drawings."
+      ]
+    },
+    "used_vision": true,
+    "pages_analyzed": [
+      1,
+      31,
+      4
+    ],
+    "execution_time_ms": 26770
+  },
+  {
+    "check_id": "88fbe19b-2ad5-4bbb-ac67-d3a472992ca0",
+    "section_number": "1003.1",
+    "result": {
+      "compliance_status": "unclear",
+      "confidence": "low",
+      "reasoning": "Based on the provided drawings, it's difficult to definitively determine compliance with Section 1003.1. The drawings show floor plans and general notes, but lack specific details about the means of egress system (exit access, exit, and exit discharge) and accessibility features. Without detailed information on these aspects, it's impossible to assess whether the project meets the general requirements of Sections 1003 through 1015, especially regarding accessibility as required by DSA-AC & HCD 1-AC for applications listed in Section 1.8.2.",
+      "violations": [],
+      "compliant_aspects": [],
+      "recommendations": [
+        "Provide detailed drawings and specifications for the means of egress system, including exit access, exits, and exit discharges.",
+        "Include information on accessibility features to ensure compliance with DSA-AC & HCD 1-AC requirements.",
+        "Verify that the project complies with Section 1.8.2 regarding accessibility requirements for specific applications."
+      ]
+    },
+    "used_vision": true,
+    "pages_analyzed": [
+      8,
+      4,
+      1
+    ],
+    "execution_time_ms": 16358
+  }
+]
