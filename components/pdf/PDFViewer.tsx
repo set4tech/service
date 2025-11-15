@@ -187,45 +187,6 @@ export function PDFViewer({
   // SECTION 3: UI STATE
   // ============================================================================
   const [renderScale, setRenderScale] = useState(4);
-
-  // Debug: Log every component render - track what's changing
-  const renderCountRef = useRef(0);
-  const prevPropsRef = useRef({
-    activeCheck,
-    refetchChecks,
-    onScreenshotSaved,
-    onCheckAdded,
-    onCheckSelect,
-    onRefreshScreenshotsReady,
-  });
-  renderCountRef.current += 1;
-
-  const changedProps = [];
-  if (prevPropsRef.current.activeCheck !== activeCheck) changedProps.push('activeCheck');
-  if (prevPropsRef.current.refetchChecks !== refetchChecks) changedProps.push('refetchChecks');
-  if (prevPropsRef.current.onScreenshotSaved !== onScreenshotSaved)
-    changedProps.push('onScreenshotSaved');
-  if (prevPropsRef.current.onCheckAdded !== onCheckAdded) changedProps.push('onCheckAdded');
-  if (prevPropsRef.current.onCheckSelect !== onCheckSelect) changedProps.push('onCheckSelect');
-  if (prevPropsRef.current.onRefreshScreenshotsReady !== onRefreshScreenshotsReady)
-    changedProps.push('onRefreshScreenshotsReady');
-
-  console.log(`[PDFViewer] Component render #${renderCountRef.current}:`, {
-    pageNumber: state.pageNumber,
-    renderScale,
-    numPages: state.numPages,
-    mode: state.mode.type,
-    changedProps,
-  });
-
-  prevPropsRef.current = {
-    activeCheck,
-    refetchChecks,
-    onScreenshotSaved,
-    onCheckAdded,
-    onCheckSelect,
-    onRefreshScreenshotsReady,
-  };
   const [savingScale, setSavingScale] = useState(false);
   const [smoothTransition, setSmoothTransition] = useState(false);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
@@ -240,13 +201,9 @@ export function PDFViewer({
   // ============================================================================
   // SECTION 4: PDF DOCUMENT & LAYERS
   // ============================================================================
-  console.log('[PDFViewer] About to call hooks');
   const { url: presignedUrl, loading: loadingUrl } = usePresignedUrl(pdfUrl);
-  console.log('[PDFViewer] After usePresignedUrl');
   const pdf = usePdfDocument(presignedUrl, state.pageNumber);
-  console.log('[PDFViewer] After usePdfDocument');
   const layers = usePdfLayers(pdf.state.doc, assessmentId, disableLayers);
-  console.log('[PDFViewer] After usePdfLayers');
   const { doc: pdfDoc, page, numPages } = pdf.state;
   const { ocConfig, layers: layerList } = layers.state;
 
@@ -494,7 +451,6 @@ export function PDFViewer({
     if (!page || !container || !baseViewport) return;
     if (pageCenteredRef.current === state.pageNumber) return;
 
-    console.log('[PDFViewer] Page centering - baseViewport:', baseViewport, 'type:', typeof baseViewport, 'width:', baseViewport?.width);
     const centeredTx = Math.round((container.clientWidth - baseViewport.width) / 2);
     const centeredTy = Math.round((container.clientHeight - baseViewport.height) / 2);
 
