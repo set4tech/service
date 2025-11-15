@@ -64,7 +64,9 @@ export function usePdfLayers(
 
   // Load layers from document
   useEffect(() => {
+    console.log('[usePdfLayers] Effect triggered:', { hasDoc: !!doc, disabled });
     if (!doc || disabled) {
+      console.log('[usePdfLayers] Clearing layers (no doc or disabled)');
       setOcConfig(null);
       setLayers([]);
       return;
