@@ -21,6 +21,7 @@ interface CodeDetailPanelProps {
   onChecksRefresh?: () => void;
   activeCheck?: any;
   onScreenshotAssigned?: () => void;
+  onScreenshotDeleted?: () => void;
   screenshotRefreshTrigger?: number;
 }
 
@@ -34,6 +35,7 @@ export function CodeDetailPanel({
   onChecksRefresh,
   activeCheck,
   onScreenshotAssigned,
+  onScreenshotDeleted,
   screenshotRefreshTrigger,
 }: CodeDetailPanelProps) {
   // Local state to track screenshot changes for ScreenshotGallery
@@ -970,6 +972,7 @@ export function CodeDetailPanel({
                         setScreenshotsRefreshKey(prev => prev + 1);
                         onScreenshotAssigned?.();
                       }}
+                      onScreenshotDeleted={onScreenshotDeleted}
                     />
                   </div>
                 )}

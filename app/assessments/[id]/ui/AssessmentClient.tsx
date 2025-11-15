@@ -716,6 +716,9 @@ export default function AssessmentClient({
   // Track screenshot refresh trigger to notify CodeDetailPanel
   const screenshotRefreshTriggerRef = useRef(0);
 
+  // Store the refreshScreenshots function from PDFViewer
+  const refreshScreenshotsRef = useRef<(() => Promise<void>) | null>(null);
+
   // Refetch screenshots for a specific check
   const refetchCheckScreenshots = async (checkId: string) => {
     try {
@@ -744,6 +747,9 @@ export default function AssessmentClient({
 
         // Increment trigger to notify CodeDetailPanel immediately
         screenshotRefreshTriggerRef.current += 1;
+
+        // Also refresh PDF viewer screenshot indicators
+        await refreshScreenshotsRef.current?.();
       }
     } catch (error) {
       console.error('[refetchCheckScreenshots] Error:', error);
@@ -1130,6 +1136,25 @@ export default function AssessmentClient({
                         refetchCheckScreenshots(activeCheck.id);
                       }
                     }}
+                    onScreenshotDeleted={async () => {
+                      console.log('[AssessmentClient] onScreenshotDeleted called');
+                      // Refresh PDF viewer screenshot indicators
+                      if (refreshScreenshotsRef.current) {
+                        console.log('[AssessmentClient] Calling refreshScreenshotsRef.current');
+                        await refreshScreenshotsRef.current();
+                        console.log('[AssessmentClient] refreshScreenshotsRef.current completed');
+                      } else {
+                        console.warn('[AssessmentClient] refreshScreenshotsRef.current is null!');
+                      }
+                      // Also refetch screenshots for the active check
+                      if (activeCheck?.id) {
+                        console.log(
+                          '[AssessmentClient] Refetching check screenshots for:',
+                          activeCheck.id
+                        );
+                        await refetchCheckScreenshots(activeCheck.id);
+                      }
+                    }}
                   />
                 );
               })()
@@ -1159,6 +1184,10 @@ export default function AssessmentClient({
             onCheckAdded={handleCheckAdded}
             onCheckSelect={handleCheckSelect}
             refetchChecks={refetchChecks}
+            onRefreshScreenshotsReady={refresh => {
+              console.log('[AssessmentClient] PDFViewer refreshScreenshots function received');
+              refreshScreenshotsRef.current = refresh;
+            }}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">

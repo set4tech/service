@@ -33,13 +33,14 @@ export function useAssessmentScreenshots(
   currentPage: number,
   initialData?: Screenshot[]
 ) {
-  // Skip fetch if initialData is provided
-  const shouldFetch = !initialData && assessmentId;
+  // Always provide URL so refetch works, but skip initial fetch if we have initialData
+  const url = assessmentId ? `/api/screenshots?assessment_id=${assessmentId}` : null;
+  const shouldSkipInitialFetch = !!initialData;
 
   // Use the shared fetch hook
-  const { data, loading, refetch } = useFetch<{ screenshots: Screenshot[] }>(
-    shouldFetch ? `/api/screenshots?assessment_id=${assessmentId}` : null
-  );
+  const { data, loading, refetch } = useFetch<{ screenshots: Screenshot[] }>(url, {
+    enabled: !shouldSkipInitialFetch, // Skip initial fetch if we have initialData
+  });
 
   const allScreenshots = initialData || data?.screenshots || [];
 
@@ -56,7 +57,11 @@ export function useAssessmentScreenshots(
       loading,
     },
     actions: {
-      refresh: refetch,
+      refresh: async () => {
+        console.log('[useAssessmentScreenshots] refresh called');
+        await refetch();
+        console.log('[useAssessmentScreenshots] refresh completed');
+      },
     },
   };
 }

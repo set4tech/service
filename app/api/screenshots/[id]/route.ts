@@ -32,8 +32,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  console.log('[DELETE Screenshot] Deleting screenshot:', id);
   const supabase = supabaseAdmin();
   const { error } = await supabase.from('screenshots').delete().eq('id', id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    console.error('[DELETE Screenshot] Error:', error.message);
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  console.log('[DELETE Screenshot] Successfully deleted screenshot:', id);
   return NextResponse.json({ ok: true });
 }

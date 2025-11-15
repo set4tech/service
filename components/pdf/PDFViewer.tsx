@@ -118,6 +118,7 @@ export function PDFViewer({
   disableLayers = false,
   screenshotNavigation,
   refetchChecks,
+  onRefreshScreenshotsReady,
 }: {
   pdfUrl: string;
   projectId?: string;
@@ -142,6 +143,7 @@ export function PDFViewer({
     canGoPrev: boolean;
   };
   refetchChecks?: () => Promise<void>;
+  onRefreshScreenshotsReady?: (refresh: () => Promise<void>) => void;
 }) {
   const assessmentId = useMemo(
     () => propAssessmentId || activeCheck?.assessment_id,
@@ -246,6 +248,14 @@ export function PDFViewer({
   const calculateRealDistance = calibrationHook.computed?.calculateRealDistance ?? (() => null);
   const screenshotIndicators = screenshotsHook.state.screenshots;
   const refreshScreenshots = screenshotsHook.actions.refresh;
+
+  // Expose refreshScreenshots function to parent component
+  useEffect(() => {
+    if (onRefreshScreenshotsReady) {
+      console.log('[PDFViewer] Exposing refreshScreenshots to parent');
+      onRefreshScreenshotsReady(refreshScreenshots);
+    }
+  }, [refreshScreenshots, onRefreshScreenshotsReady]);
 
   // Text search hook
   const handleSearchPageChange = useCallback((page: number) => {
