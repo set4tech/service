@@ -204,7 +204,7 @@ When assessment is created, AI filters ~800 code sections to determine applicabi
 
 **Process**:
 
-1. Fetch all `drawing_assessable=true, never_relevant=false` sections
+1. Fetch all `never_relevant=false` sections
 2. Filter by selected code chapters (11A, 11B, or both)
 3. Exclude sections already mapped to elements (unless assessment-specific)
 4. Batch sections into groups of 50
@@ -309,7 +309,6 @@ customers (1) → (many) projects (1) → (many) assessments (1) → (many) chec
 
 - `codes` - Building code documents (e.g., CBC Chapter 11A/11B)
 - `sections` - Hierarchical code sections with full text content
-  - `drawing_assessable` - Can be assessed from drawings
   - `never_relevant` - Never applicable (excluded from seeding)
   - `number` - Section number (e.g., "11B-404.2.6")
   - `key` - Unique identifier
