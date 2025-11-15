@@ -38,8 +38,15 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
   const typedAssessment = assessment as unknown as AssessmentWithProject;
 
-  // Get section checks for initial load (matches default UI mode)
-  const checks = await getAssessmentChecks(id, { mode: 'section' });
+  // Get ALL checks for initial load (both section and element checks)
+  // The client will filter them based on the selected mode
+  const [sectionChecks, elementChecks] = await Promise.all([
+    getAssessmentChecks(id, { mode: 'section' }),
+    getAssessmentChecks(id, { mode: 'element' }),
+  ]);
+  
+  // Combine both types of checks
+  const checks = [...(sectionChecks || []), ...(elementChecks || [])];
 
   // Get violations using RPC (already filtered - for ViolationsSummary component)
   const { data: rpcViolations } = await supabase.rpc('get_assessment_report', {

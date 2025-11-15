@@ -306,20 +306,6 @@ export function PDFViewer({
   const screenshotIndicators = screenshotsHook.state.screenshots;
   const refreshScreenshots = screenshotsHook.actions.refresh;
 
-  // Debug: Check what screenshots are available
-  console.log('[PDFViewer] Screenshot data:', {
-    currentPage: state.pageNumber,
-    showIndicators: showScreenshotIndicators,
-    screenshotsOnThisPage: screenshotIndicators.length,
-    screenshots: screenshotIndicators.map(s => ({
-      id: s.id,
-      page: s.page_number,
-      bounds: s.crop_coordinates,
-      type: s.screenshot_type,
-    })),
-    allScreenshots: screenshotsHook.state.allScreenshots.map(s => ({ page: s.page_number, type: s.screenshot_type })),
-  });
-
   // Expose refreshScreenshots function to parent component
   useEffect(() => {
     if (onRefreshScreenshotsReady) {
@@ -508,6 +494,7 @@ export function PDFViewer({
     if (!page || !container || !baseViewport) return;
     if (pageCenteredRef.current === state.pageNumber) return;
 
+    console.log('[PDFViewer] Page centering - baseViewport:', baseViewport, 'type:', typeof baseViewport, 'width:', baseViewport?.width);
     const centeredTx = Math.round((container.clientWidth - baseViewport.width) / 2);
     const centeredTy = Math.round((container.clientHeight - baseViewport.height) / 2);
 
@@ -1202,10 +1189,7 @@ export function PDFViewer({
               aria-label="Toggle captured area indicators"
               title="Show/hide previously captured areas"
               className={`btn-icon shadow-md ${showScreenshotIndicators ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => {
-                console.log('[PDFViewer] 📦 Button clicked! Current state:', showScreenshotIndicators, '→ New state:', !showScreenshotIndicators);
-                setShowScreenshotIndicators(!showScreenshotIndicators);
-              }}
+              onClick={() => setShowScreenshotIndicators(!showScreenshotIndicators)}
             >
               📦
             </button>
@@ -1349,12 +1333,18 @@ export function PDFViewer({
             {/* Screenshot area indicators (show previously captured areas) */}
             {!readOnly &&
               showScreenshotIndicators &&
-              screenshotIndicators.map(screenshot => (
-                <ScreenshotIndicatorOverlay
-                  key={screenshot.id}
-                  bounds={screenshot.crop_coordinates}
-                />
-              ))}
+              screenshotIndicators.map(screenshot => {
+                // Guard: Skip screenshots without valid crop coordinates (legacy screenshots)
+                if (!screenshot.crop_coordinates?.width || !screenshot.crop_coordinates?.height) {
+                  return null;
+                }
+                return (
+                  <ScreenshotIndicatorOverlay
+                    key={screenshot.id}
+                    bounds={screenshot.crop_coordinates}
+                  />
+                );
+              })}
 
             {/* Violation markers for report view */}
             {readOnly &&
