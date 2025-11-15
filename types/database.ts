@@ -110,7 +110,6 @@ export interface CodeSection {
   hash: string;
 
   // Assessability classification
-  drawing_assessable?: boolean;
   assessability_tags?: string[];
 
   created_at?: string;

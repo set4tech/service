@@ -138,7 +138,7 @@ Delete an assessment.
 
 ### `POST /api/assessments/[id]/seed`
 
-Seed assessment with checks from selected code chapters. Creates checks for all `drawing_assessable=true` sections. Excludes header-only sections (no body text).
+Seed assessment with checks from selected code chapters. Creates checks for all sections (excluding `never_relevant=true` sections and header-only sections with no body text).
 
 **Response**: `{ status, checks_created, message }`
 

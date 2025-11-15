@@ -47,7 +47,6 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       .from('sections')
       .select('*', { count: 'exact', head: true })
       .in('chapter_id', chapterIds)
-      .eq('drawing_assessable', true)
       .eq('never_relevant', false);
 
     console.log(`[Seed API] Total sections (before text filter): ${totalSections}`);
@@ -85,7 +84,6 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         .from('sections')
         .select('*')
         .in('chapter_id', chapterIds)
-        .eq('drawing_assessable', true)
         .eq('never_relevant', false)
         .not('text', 'is', null)
         .neq('text', '')

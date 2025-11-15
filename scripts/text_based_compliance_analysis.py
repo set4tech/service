@@ -60,7 +60,7 @@ SUPABASE_CONFIGS = {
     },
     'prod': {
         'url': 'https://grosxzvvmhakkxybeuwu.supabase.co',
-        'service_role_key': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdyb3N4enZ2bWhhamt4eWJldXd1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyMzQ4OTgzOCwiZXhwIjoyMDM5MDY1ODM4fQ.wNF9kbDv3RNDRlH0OOD8u1aCNQGywNvdgdCPD_WdP6M'
+        'service_role_key': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdyb3N4enZ2bWhha2t4eWJldXd1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTE1MTM4NiwiZXhwIjoyMDc0NzI3Mzg2fQ.tP_KLIRVNdAXAFQvaj-jA_woz4jwUU8hRfy521JFOdY'
     }
 }
 

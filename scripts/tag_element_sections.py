@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-High-recall, multi-label tagging of CBC 11A/11B clauses as {doors, bathrooms, kitchens}.
+High-recall, multi-label tagging of CBC 11A/11B clauses as {doors, bathrooms, kitchens, walls}.
 
 - Unit: lowest numbered clause (e.g., 1126A.3.2.1, 11B-404.2.9)
 - Includes notes/exceptions/captions present in the clause text.
@@ -48,6 +48,14 @@ ANCHORS = {
         r'^11B[-–]?804(\.|$)',
         # 11A dwelling-unit kitchen rules vary by cycle; rely on keywords + ancestor titles there.
     ],
+    'walls': [
+        # 11B Protruding Objects (wall-mounted)
+        r'^11B[-–]?307(\.|$)',
+        # 11B Handrails (wall-mounted)
+        r'^11B[-–]?505(\.|$)',
+        # 11B Signs (wall-mounted)
+        r'^11B[-–]?703(\.|$)',
+    ],
 }
 
 # Negative filters for definitional/scoping content.
@@ -84,6 +92,15 @@ KEYWORDS = {
         r'\boven(s)?\b', r'\brange(s)?\b', r'\bdishwasher(s)?\b',
         r'\b(refrigerator|fridge)s?\b', r'\bcabinet(s)?\b'
     ],
+    'walls': [
+        r'\bwall(?:s)?\b', r'\binterior\s+wall\b', r'\bexterior\s+wall\b',
+        r'\bpartition(?:s)?\b', r'\bwall[-\s]?mount(?:ed)?\b',
+        r'\bprotruding\s+object(?:s)?\b', r'\bwall[-\s]?protection\b',
+        r'\bguardrail(?:s)?\b', r'\bhandrail(?:s)?\b',
+        r'\bwall[-\s]?finish(?:es)?\b', r'\bwall[-\s]?surface(?:s)?\b',
+        r'\bpost-mount(?:ed)?\b', r'\bmount(?:ed|ing)\s+height\b',
+        r'\bprotective\s+surface(?:s)?\b', r'\bsign(?:age|s)?\b',
+    ],
 }
 
 # Minimum keyword hits to consider topical, after ancestor boosting.
@@ -114,7 +131,7 @@ def fetch_sections(supabase: Client):
     offset = 0
 
     while True:
-        response = supabase.table('sections').select('key, number, title, text, paragraphs').eq('drawing_assessable', True).order('number').range(offset, offset + page_size - 1).execute()
+        response = supabase.table('sections').select('key, number, title, text, paragraphs').eq('never_relevant', False).order('number').range(offset, offset + page_size - 1).execute()
 
         if not response.data:
             break
@@ -267,8 +284,9 @@ def llm_classify_batch(sections_with_ancestors):
         url = "https://api.openai.com/v1/chat/completions"
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         sys_prompt = (
-            "You label building code clauses with any of these tags: doors, bathrooms, kitchens. "
+            "You label building code clauses with any of these tags: doors, bathrooms, kitchens, walls. "
             "Tag ONLY if the clause itself contains prescriptive content for that element type. "
+            "For 'walls': tag sections about wall-mounted objects, protruding objects, handrails mounted on walls, wall-mounted signage, and wall surfaces. "
             "Do NOT tag definitions, scoping, or clauses that merely point elsewhere. "
             "Multi-label is allowed. You will receive multiple sections at once. "
             "Return a JSON object with 'results' array containing one entry per section in order, "
