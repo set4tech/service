@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePersisted } from '@/lib/hooks/usePersisted';
 import type { HookReturn } from '@/lib/hooks/types';
 
@@ -191,15 +191,27 @@ export function usePdfLayers(
     [ocConfig, setPersistedVisibility]
   );
 
-  return {
-    state: {
+  // Memoize state to prevent new object references triggering re-renders
+  const state = useMemo(
+    () => ({
       layers,
       ocConfig,
       loading,
-    },
-    actions: {
+    }),
+    [layers, ocConfig, loading]
+  );
+
+  // Memoize actions to prevent new object references triggering re-renders
+  const actions = useMemo(
+    () => ({
       toggleLayer,
       setAllVisible,
-    },
+    }),
+    [toggleLayer, setAllVisible]
+  );
+
+  return {
+    state,
+    actions,
   };
 }
