@@ -190,13 +190,42 @@ export function PDFViewer({
 
   // Debug: Log every component render - track what's changing
   const renderCountRef = useRef(0);
+  const prevPropsRef = useRef({
+    activeCheck,
+    refetchChecks,
+    onScreenshotSaved,
+    onCheckAdded,
+    onCheckSelect,
+    onRefreshScreenshotsReady,
+  });
   renderCountRef.current += 1;
+
+  const changedProps = [];
+  if (prevPropsRef.current.activeCheck !== activeCheck) changedProps.push('activeCheck');
+  if (prevPropsRef.current.refetchChecks !== refetchChecks) changedProps.push('refetchChecks');
+  if (prevPropsRef.current.onScreenshotSaved !== onScreenshotSaved)
+    changedProps.push('onScreenshotSaved');
+  if (prevPropsRef.current.onCheckAdded !== onCheckAdded) changedProps.push('onCheckAdded');
+  if (prevPropsRef.current.onCheckSelect !== onCheckSelect) changedProps.push('onCheckSelect');
+  if (prevPropsRef.current.onRefreshScreenshotsReady !== onRefreshScreenshotsReady)
+    changedProps.push('onRefreshScreenshotsReady');
+
   console.log(`[PDFViewer] Component render #${renderCountRef.current}:`, {
     pageNumber: state.pageNumber,
     renderScale,
     numPages: state.numPages,
     mode: state.mode.type,
+    changedProps,
   });
+
+  prevPropsRef.current = {
+    activeCheck,
+    refetchChecks,
+    onScreenshotSaved,
+    onCheckAdded,
+    onCheckSelect,
+    onRefreshScreenshotsReady,
+  };
   const [savingScale, setSavingScale] = useState(false);
   const [smoothTransition, setSmoothTransition] = useState(false);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
