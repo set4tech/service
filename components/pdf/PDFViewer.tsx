@@ -482,6 +482,7 @@ export function PDFViewer({
     if (pageCenteredRef.current === state.pageNumber) return;
 
     const viewport = page.getViewport({ scale: 1 });
+    if (!viewport) return; // Guard against null viewport
     const container = viewportRef.current;
 
     // Calculate what the centered position should be
