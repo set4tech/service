@@ -46,10 +46,32 @@ export function AssignScreenshotModal({
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch all checks for this assessment (includes instances nested)
-        const checksRes = await fetch(`/api/assessments/${assessmentId}/checks`);
-        const checksData = await checksRes.json();
-        setAllChecks(checksData);
+        console.log('[AssignModal] 📡 Fetching checks for assessment:', assessmentId);
+
+        // Fetch both section and element checks, then combine them
+        const [sectionRes, elementRes] = await Promise.all([
+          fetch(`/api/assessments/${assessmentId}/checks?mode=section`),
+          fetch(`/api/assessments/${assessmentId}/checks?mode=element`),
+        ]);
+
+        if (!sectionRes.ok || !elementRes.ok) {
+          throw new Error('Failed to fetch checks');
+        }
+
+        const [sectionChecks, elementChecks] = await Promise.all([
+          sectionRes.json(),
+          elementRes.json(),
+        ]);
+
+        // Combine both types of checks
+        const allChecksData = [...sectionChecks, ...elementChecks];
+        console.log('[AssignModal] ✅ Fetched checks:', {
+          sections: sectionChecks.length,
+          elements: elementChecks.length,
+          total: allChecksData.length,
+        });
+
+        setAllChecks(allChecksData);
 
         // Fetch existing assignments for this screenshot
         const assignmentsRes = await fetch(`/api/screenshots/${screenshotId}/assignments`);
