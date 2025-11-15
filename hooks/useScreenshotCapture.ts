@@ -146,11 +146,20 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
         );
 
         // Step 4: Upload to S3
+        console.log('[useScreenshotCapture] Uploading screenshot:', {
+          type,
+          projectId: activeCheck?.project_id,
+          checkId: targetCheckId,
+          assessmentId,
+        });
+
         const { screenshotUrl, thumbnailUrl } = await uploadScreenshot(
           full,
           thumbnail,
-          activeCheck?.project_id || assessmentId,
-          targetCheckId
+          activeCheck?.project_id, // projectId (for plan screenshots)
+          targetCheckId, // checkId (for plan screenshots)
+          assessmentId, // assessmentId (for elevation screenshots)
+          type // screenshotType
         );
 
         // Step 5: Extract text for elevations (if needed)

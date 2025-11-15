@@ -42,6 +42,15 @@ export function s3KeyForThumb(projectId: string, checkId: string, screenshotId: 
   return `projects/${projectId}/screenshots/${checkId}/${screenshotId}_thumb.png`;
 }
 
+export function s3KeyForElevationScreenshot(assessmentId: string, screenshotId: string) {
+  // Elevations use assessmentId as the middle segment instead of checkId
+  return `projects/${assessmentId}/screenshots/${assessmentId}/${screenshotId}.png`;
+}
+
+export function s3KeyForElevationThumb(assessmentId: string, screenshotId: string) {
+  return `projects/${assessmentId}/screenshots/${assessmentId}/${screenshotId}_thumb.png`;
+}
+
 export function s3KeyForPdf(projectId: string, filename: string) {
   return `projects/${projectId}/pdfs/${filename}`;
 }
