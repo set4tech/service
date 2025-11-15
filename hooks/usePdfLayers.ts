@@ -129,7 +129,8 @@ export function usePdfLayers(
     return () => {
       cancelled = true;
     };
-  }, [doc, disabled, persistedVisibility]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, disabled]); // Don't include persistedVisibility - it causes infinite loops
 
   const toggleLayer = useCallback(
     (layerId: string) => {
