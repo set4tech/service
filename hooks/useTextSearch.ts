@@ -160,6 +160,16 @@ export function useTextSearch({ projectId, pdfDoc, onPageChange }: UseTextSearch
           return;
         }
 
+        // Check if response is OK before parsing
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('[useTextSearch] API error:', errorData);
+          setMatches([]);
+          setCurrentIndex(0);
+          setSearchMethod(null);
+          return;
+        }
+
         const data: {
           matches: SearchResult[];
           method: 'fulltext' | 'fuzzy';
