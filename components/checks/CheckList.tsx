@@ -972,7 +972,7 @@ export function CheckList({
                             </div>
                           </button>
 
-                          {/* Clone Button - only show in section mode */}
+                          {/* Clone Button - show for all checks in section mode */}
                           {checkMode === 'section' && (
                             <button
                               onClick={e => {

@@ -26,19 +26,25 @@ export async function getAssessmentChecks(
   let query;
 
   if (mode === 'section') {
-    // Section mode: No element joins needed, fetch only non-element checks
+    // Section mode: Include section checks AND custom element instances (cloned section checks)
+    // We need to LEFT JOIN element_instances to get the custom group info
     query = supabase
       .from('checks')
       .select(
         `
         *,
+        element_instances(id, label, element_group_id, element_groups(id, name, slug)),
         sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)
       `
       )
       .eq('assessment_id', assessmentId)
-      .is('element_group_id', null) // Only section checks
       .eq('is_excluded', false) // Filter out excluded checks
       .limit(100000);
+
+    // Filter to only include:
+    // 1. Section checks (element_group_id IS NULL)
+    // 2. Custom element instances (element_group.slug = 'custom')
+    // We'll do this filtering after fetch since Supabase doesn't support OR with nested fields easily
   } else {
     // Element mode: INNER JOIN on element_instances (more efficient since we know it exists)
     query = supabase
@@ -87,9 +93,10 @@ export async function getAssessmentChecks(
     if (mode === 'section') {
       checksQuery = supabase
         .from('checks')
-        .select('*, sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)')
+        .select(
+          '*, element_instances(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant)'
+        )
         .eq('assessment_id', assessmentId)
-        .is('element_group_id', null)
         .eq('is_excluded', false) // Filter out excluded checks
         .limit(100000);
     } else {
@@ -122,9 +129,31 @@ export async function getAssessmentChecks(
     if (checksError) throw checksError;
 
     // Filter out checks for sections marked as never_relevant
-    const filteredChecksData = (allChecksData || []).filter((check: any) => {
+    let filteredChecksData = (allChecksData || []).filter((check: any) => {
       return check.sections?.never_relevant !== true;
     });
+
+    // Filter based on mode
+    if (mode === 'section') {
+      // Section mode: only pure section checks OR ad-hoc element instances
+      filteredChecksData = filteredChecksData.filter((check: any) => {
+        // Include if no element_instance_id (pure section check)
+        if (!check.element_instance_id) return true;
+
+        // Include if element_instance has NULL element_group_id (ad-hoc cloned section checks)
+        const elementInstance = check.element_instances;
+        if (elementInstance && !elementInstance.element_group_id) return true;
+
+        // Exclude real element checks
+        return false;
+      });
+    } else {
+      // Element mode: only checks with real element groups
+      filteredChecksData = filteredChecksData.filter((check: any) => {
+        const elementInstance = check.element_instances;
+        return elementInstance && elementInstance.element_group_id;
+      });
+    }
 
     // Fetch latest analysis runs and screenshots in parallel
     const [{ data: allAnalysisRuns }, { data: allScreenshots }] = await Promise.all([
@@ -292,6 +321,33 @@ export async function getAssessmentChecks(
   console.log(
     `[getAssessmentChecks] Fetched ${allChecks.length} checks in ${Math.ceil(allChecks.length / batchSize)} batches`
   );
+
+  // Filter checks based on mode
+  if (mode === 'section') {
+    // Section mode: only pure section checks OR ad-hoc element instances (element_instances with NULL element_group_id)
+    allChecks = allChecks.filter((check: any) => {
+      // Include if no element_instance_id (pure section check)
+      if (!check.element_instance_id) return true;
+
+      // Include if element_instance has NULL element_group_id (ad-hoc cloned section checks)
+      const elementInstance = check.element_instances;
+      if (elementInstance && !elementInstance.element_group_id) return true;
+
+      // Exclude real element checks (those with an element_group)
+      return false;
+    });
+
+    console.log(`[getAssessmentChecks] After section mode filter: ${allChecks.length} checks`);
+  } else {
+    // Element mode: only checks with real element groups (exclude ad-hoc instances)
+    allChecks = allChecks.filter((check: any) => {
+      const elementInstance = check.element_instances;
+      // Must have element_instance with a real element_group_id
+      return elementInstance && elementInstance.element_group_id;
+    });
+
+    console.log(`[getAssessmentChecks] After element mode filter: ${allChecks.length} checks`);
+  }
 
   // Fetch screenshots and analysis runs in parallel
   const [{ data: allScreenshots }, { data: allAnalysisRuns }] = await Promise.all([

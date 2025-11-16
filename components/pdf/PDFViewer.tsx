@@ -119,6 +119,7 @@ export function PDFViewer({
   screenshotNavigation,
   refetchChecks,
   onRefreshScreenshotsReady,
+  onSearchStateChange,
 }: {
   pdfUrl: string;
   projectId?: string;
@@ -144,6 +145,7 @@ export function PDFViewer({
   };
   refetchChecks?: () => Promise<void>;
   onRefreshScreenshotsReady?: (refresh: () => Promise<void>) => void;
+  onSearchStateChange?: (isSearchOpen: boolean) => void;
 }) {
   const assessmentId = useMemo(
     () => propAssessmentId || activeCheck?.assessment_id,
@@ -281,6 +283,11 @@ export function PDFViewer({
     pdfDoc,
     onPageChange: handleSearchPageChange,
   });
+
+  // Notify parent when search state changes
+  useEffect(() => {
+    onSearchStateChange?.(textSearch.isOpen);
+  }, [textSearch.isOpen, onSearchStateChange]);
 
   // Screenshot capture hook
   const screenshotCapture = useScreenshotCapture({

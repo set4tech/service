@@ -151,6 +151,7 @@ export default function AssessmentClient({
   const [checks, setChecks] = useState(initialChecks);
   const [rpcViolations, setRpcViolations] = useState(_rpcViolations || []);
   const [refreshingViolations, setRefreshingViolations] = useState(false);
+  const [isPdfSearchOpen, setIsPdfSearchOpen] = useState(false);
 
   // Debug: Log screenshots on initial load
   useEffect(() => {
@@ -815,8 +816,8 @@ export default function AssessmentClient({
         }
       }
 
-      // Enter: Mark as compliant and advance
-      if (e.key === 'Enter' && activeCheckId) {
+      // Enter: Mark as compliant and advance (but not when PDF search is open)
+      if (e.key === 'Enter' && activeCheckId && !isPdfSearchOpen) {
         e.preventDefault();
         console.log(`[Keyboard] Marking check as compliant: ${activeCheckId}`);
         markCheckCompliant(activeCheckId, true);
@@ -825,7 +826,7 @@ export default function AssessmentClient({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeCheckId, displayedChecks, checkMode]);
+  }, [activeCheckId, displayedChecks, checkMode, isPdfSearchOpen]);
 
   return (
     <div className="fixed inset-0 flex overflow-hidden">
@@ -1161,6 +1162,7 @@ export default function AssessmentClient({
             onCheckSelect={handleCheckSelect}
             refetchChecks={refetchChecks}
             onRefreshScreenshotsReady={handleRefreshScreenshotsReady}
+            onSearchStateChange={setIsPdfSearchOpen}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">
