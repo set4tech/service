@@ -23,7 +23,6 @@ export interface Check {
   manual_status_note?: string | null;
   manual_status_at?: string | null;
   manual_status_by?: string | null;
-  project_id?: string;
   created_at?: string;
   updated_at?: string;
 

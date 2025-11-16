@@ -1,5 +1,4 @@
 import { test, expect } from '../fixtures/setup';
-import { loginAsUser } from '../fixtures/auth-helpers';
 import { createTestAssessment, deleteTestAssessment, seedTestChecks } from '../fixtures/test-data';
 
 /**
@@ -8,10 +7,7 @@ import { createTestAssessment, deleteTestAssessment, seedTestChecks } from '../f
  * Tests the full user journey from creating an assessment to completing checks
  */
 test.describe('Complete Assessment Creation Workflow', () => {
-  test.beforeEach(async ({ page }) => {
-    // Ensure we're logged in before each test
-    await loginAsUser(page);
-  });
+  // No auth required - app is open access (reports use their own password protection)
 
   test('should create assessment from scratch and complete first check', async ({ page }) => {
     // Create a new assessment (customer, project, upload PDF, seed checks)

@@ -28,6 +28,7 @@ interface ScreenshotCaptureParams {
   canvas: HTMLCanvasElement | null;
   ocConfig: any;
   renderScale: number;
+  projectId?: string;
   assessmentId?: string;
   activeCheck?: any;
   onCheckAdded?: (check: any) => void;
@@ -77,6 +78,7 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
     canvas,
     ocConfig,
     renderScale,
+    projectId,
     assessmentId,
     activeCheck,
     onCheckAdded,
@@ -148,7 +150,7 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
         // Step 4: Upload to S3
         console.log('[useScreenshotCapture] Uploading screenshot:', {
           type,
-          projectId: activeCheck?.project_id,
+          projectId,
           checkId: targetCheckId,
           assessmentId,
         });
@@ -156,7 +158,7 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
         const { screenshotUrl, thumbnailUrl } = await uploadScreenshot(
           full,
           thumbnail,
-          activeCheck?.project_id, // projectId (for plan screenshots)
+          projectId, // projectId (for plan screenshots)
           targetCheckId, // checkId (for plan screenshots)
           assessmentId, // assessmentId (for elevation screenshots)
           type // screenshotType
@@ -209,12 +211,14 @@ export function useScreenshotCapture(params: ScreenshotCaptureParams) {
       canvas,
       ocConfig,
       renderScale,
+      projectId,
       assessmentId,
       activeCheck,
       onCheckAdded,
       onCheckSelect,
       onScreenshotSaved,
       refreshScreenshots,
+      refetchChecks,
     ]
   );
 
