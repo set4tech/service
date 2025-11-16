@@ -11,6 +11,9 @@ interface Check {
   parent_check_id?: string;
   instances?: Check[];
   instance_count?: number;
+  element_instance_id?: string;
+  element_instance_label?: string;
+  element_group_slug?: string;
 }
 
 type AssignMode = 'specific' | 'instances';
@@ -63,11 +66,41 @@ export function AssignScreenshotModal({
           elementRes.json(),
         ]);
 
-        // Combine both types of checks
-        const allChecksData = [...sectionChecks, ...elementChecks];
-        console.log('[AssignModal] ✅ Fetched checks:', {
+        // Group element checks by instance
+        const elementInstanceMap = new Map<string, Check[]>();
+        elementChecks.forEach((check: Check) => {
+          if (check.element_instance_id) {
+            const instanceId = check.element_instance_id;
+            if (!elementInstanceMap.has(instanceId)) {
+              elementInstanceMap.set(instanceId, []);
+            }
+            elementInstanceMap.get(instanceId)!.push(check);
+          }
+        });
+
+        // Create parent checks for each instance group
+        const elementParentChecks: Check[] = [];
+        elementInstanceMap.forEach((instanceChecks, instanceId) => {
+          if (instanceChecks.length > 0) {
+            const firstCheck = instanceChecks[0];
+            // Create a virtual parent check for this instance
+            elementParentChecks.push({
+              id: instanceId, // Use instance ID as the parent check ID
+              code_section_number: firstCheck.element_group_slug || '',
+              check_name: firstCheck.element_instance_label || 'Unknown Instance',
+              instance_label: firstCheck.element_instance_label,
+              instances: instanceChecks,
+              instance_count: instanceChecks.length,
+            });
+          }
+        });
+
+        // Combine section checks with element parent checks
+        const allChecksData = [...sectionChecks, ...elementParentChecks];
+        console.log('[AssignModal] ✅ Fetched and grouped checks:', {
           sections: sectionChecks.length,
-          elements: elementChecks.length,
+          elementInstances: elementParentChecks.length,
+          elementChecks: elementChecks.length,
           total: allChecksData.length,
         });
 
