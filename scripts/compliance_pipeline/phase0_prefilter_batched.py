@@ -45,11 +45,11 @@ def build_batched_prefilter_prompt(
         section = check.get('section', {})
         section_number = check['code_section_number']
         section_title = check['code_section_title']
-        section_text = section.get('text', '')[:800]  # Truncate to save tokens
+        section_text = section.get('text', '')[:1500]  # Increased limit for better context
 
         sections_text.append(f"""
 {i}. SECTION {section_number}: {section_title}
-{section_text}{"..." if len(section.get('text', '')) > 800 else ""}
+{section_text}{"..." if len(section.get('text', '')) > 1500 else ""}
 """)
 
     prompt = f"""You are a building code expert doing INITIAL FILTERING.
@@ -61,26 +61,42 @@ PROJECT CONTEXT:
 - Size: {project_context.get('size', 'Unknown')}
 - Description: {project_context.get('description', '')}
 
-TASK: For each code section below, determine if it is DEFINITELY NOT relevant to this project.
+CRITICAL INSTRUCTIONS:
+This is a CONSERVATIVE pre-filter. We are only eliminating sections that are OBVIOUSLY and UNQUESTIONABLY not applicable.
 
-Only mark as irrelevant if you are HIGHLY CONFIDENT the section does not apply.
-When in doubt, mark as relevant (we'll analyze it in detail later).
+NEVER FILTER THESE CATEGORIES (always mark is_relevant=true):
+- ANY accessibility section (Chapter 11B) unless explicitly residential-only (e.g., "dwelling unit bedrooms")
+- ANY fire safety section (901.x, 9xx.x)
+- ANY egress/exit section (10xx.x)
+- ANY structural section
+- ANY section mentioning "parking" if the project has parking
+- ANY section mentioning "sprinkler" or "fire alarm"
+- ANY section about toilets, restrooms, or plumbing fixtures
+- ANY section about doors, stairs, ramps, or elevators
+- ANY section about employee work areas
+- ANY "General" or "Scope" sections
+- ANY section about occupancy separation or fire barriers
+- ANY section you're uncertain about
 
-Examples of DEFINITELY IRRELEVANT (for a warehouse):
-- Residential sleeping room requirements
-- Assembly seating requirements
-- School classroom requirements
-- Hospital/care facility requirements
-- Multi-family dwelling requirements
-- Hotel guest room requirements
+ONLY FILTER (mark is_relevant=false) if the section is:
+- Explicitly for a DIFFERENT occupancy type that clearly doesn't apply
+  Examples for S-1 warehouse:
+  * "Residential sleeping rooms" (Group R only)
+  * "Assembly seating" (Group A only)
+  * "Classroom size requirements" (Group E only)
+  * "Hospital patient rooms" (Group I-2 only)
+  * "Hotel guest rooms" (Group R-1 only)
+  * "Kitchen ranges in dwelling units" (Group R only)
 
-Examples of RELEVANT or UNCERTAIN (analyze later):
-- General accessibility requirements (might apply)
-- Egress/exit requirements (apply to all buildings)
-- Fire safety (apply to all buildings)
-- Structural requirements (apply to all buildings)
-- Specific warehouse/storage requirements
-- Unclear if it applies
+REMEMBER: All buildings have:
+- Parking (potentially)
+- Exits/egress
+- Fire safety systems
+- Accessibility requirements
+- Toilets/restrooms
+- Doors, potentially stairs/ramps
+- Employee areas
+- Structural requirements
 
 CODE SECTIONS TO EVALUATE:
 {''.join(sections_text)}
@@ -94,7 +110,7 @@ Respond with JSON array, one object per section in order:
   ]
 }}
 
-Remember: When uncertain, mark is_relevant=true. We only filter out OBVIOUS non-applicable sections."""
+DEFAULT TO RELEVANT. Only filter out sections that are UNDENIABLY for a completely different building type."""
 
     return prompt
 
@@ -152,7 +168,7 @@ def extract_project_context(assessment: Dict) -> Dict:
     assessment_id = assessment.get('id', '')
 
     # HARDCODED: Bombardier warehouse project
-    if assessment_id == '3a4f29fc-9f6e-410d-bfd8-fc9ac8d41c83':
+    if assessment_id == 'cb4120e1-2833-4fd8-88af-9615c2c107d0':
         print("[CONTEXT] Using hardcoded Bombardier warehouse context")
         return {
             'name': 'Bombardier Court Building 2',

@@ -3,24 +3,30 @@
  *
  * @param fullImage - Full-size screenshot blob
  * @param thumbnail - Thumbnail blob
- * @param projectId - Project ID
- * @param checkId - Check ID
+ * @param projectId - Project ID (for plan screenshots)
+ * @param checkId - Check ID (for plan screenshots)
+ * @param assessmentId - Assessment ID (for elevation screenshots)
+ * @param screenshotType - Type of screenshot ('plan' or 'elevation')
  * @returns S3 URLs for both images
  */
 export async function uploadScreenshot(
   fullImage: Blob,
   thumbnail: Blob,
   projectId?: string,
-  checkId?: string
+  checkId?: string,
+  assessmentId?: string,
+  screenshotType?: 'plan' | 'elevation'
 ): Promise<{
   screenshotUrl: string;
   thumbnailUrl: string;
 }> {
+  console.log('[uploadScreenshot] Params:', { projectId, checkId, assessmentId, screenshotType });
+
   // Get presigned URLs
   const presignResponse = await fetch('/api/screenshots/presign', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, checkId }),
+    body: JSON.stringify({ projectId, checkId, assessmentId, screenshotType }),
   });
 
   if (!presignResponse.ok) {

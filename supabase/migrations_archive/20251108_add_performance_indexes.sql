@@ -1,4 +1,4 @@
--- Performance indexes for assessment page optimization
+w-- Performance indexes for assessment page optimization
 -- These indexes improve query performance for frequently accessed relationships
 
 -- Checks by assessment (used in /api/assessments/[id]/checks)

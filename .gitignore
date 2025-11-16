@@ -148,3 +148,9 @@ backups/*
 cbc_*_new.json
 cbc_*_normalized.json
 diff_report.json
+
+*json
+*.pdf
+*.png
+test-results/
+playwright-report/

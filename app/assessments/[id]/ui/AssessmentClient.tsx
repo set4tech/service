@@ -279,13 +279,6 @@ export default function AssessmentClient({
 
   const handleCheckSelect = useCallback(
     (checkId: string, sectionKey?: string) => {
-      console.log('[handleCheckSelect] Called with:', {
-        checkId,
-        sectionKey,
-        checksCount: checks.length,
-        checkExists: checks.some(c => c.id === checkId),
-      });
-
       // Save selection for current mode
       const mode = checkMode === 'element' ? 'element' : 'section';
       lastSelectionPerMode.current[mode] = {
@@ -299,7 +292,7 @@ export default function AssessmentClient({
         filterToSectionKey: sectionKey,
       });
     },
-    [checks.length, checkMode]
+    [checkMode]
   );
 
   const handleEditCheck = (violation: ViolationMarker) => {
@@ -548,50 +541,34 @@ export default function AssessmentClient({
   }, []);
 
   const refetchChecks = useCallback(async () => {
-    console.log('[AssessmentClient] refetchChecks called, current checks count:', checks.length);
     const checksRes = await fetch(
       `/api/assessments/${assessment.id}/checks?mode=${checkMode === 'element' ? 'element' : 'section'}`
     );
     if (checksRes.ok) {
       const updatedChecks = await checksRes.json();
-      console.log('[AssessmentClient] Fetched updated checks:', {
-        previousCount: checks.length,
-        newCount: updatedChecks.length,
-        diff: updatedChecks.length - checks.length,
-      });
       setChecks(updatedChecks);
-      console.log('[AssessmentClient] Checks state updated');
     } else {
-      console.error(
-        '[AssessmentClient] Failed to fetch checks:',
-        checksRes.status,
-        checksRes.statusText
-      );
+      console.error('[AssessmentClient] Failed to refetch checks:', checksRes.status);
     }
-  }, [assessment.id, checkMode, checks.length]);
+  }, [assessment.id, checkMode]);
 
-  const refetchViolations = async () => {
-    console.log('[AssessmentClient] refetchViolations called');
+  const refetchViolations = useCallback(async () => {
     setRefreshingViolations(true);
 
     try {
       const res = await fetch(`/api/assessments/${assessment.id}/violations`);
       if (res.ok) {
         const data = await res.json();
-        console.log('[AssessmentClient] Fetched updated violations:', {
-          count: data.count,
-          timestamp: data.timestamp,
-        });
         setRpcViolations(data.violations || []);
       } else {
-        console.error('[AssessmentClient] Failed to fetch violations:', res.status, res.statusText);
+        console.error('[AssessmentClient] Failed to refetch violations:', res.status);
       }
     } catch (error) {
       console.error('[AssessmentClient] Error fetching violations:', error);
     } finally {
       setRefreshingViolations(false);
     }
-  };
+  }, [assessment.id]);
 
   const handleModeChange = async (newMode: 'section' | 'element' | 'summary' | 'gallery') => {
     setCheckMode(newMode);
@@ -608,7 +585,6 @@ export default function AssessmentClient({
       const checksRes = await fetch(`/api/assessments/${assessment.id}/checks?mode=${newMode}`);
       if (checksRes.ok) {
         const updatedChecks = await checksRes.json();
-        console.log('[AssessmentClient] Fetched checks for mode:', newMode, updatedChecks.length);
         setChecks(updatedChecks);
 
         // Try to restore last selection for this mode (better UX)
@@ -628,29 +604,7 @@ export default function AssessmentClient({
         console.error('[AssessmentClient] Failed to fetch checks for mode:', newMode);
       }
     } catch (error) {
-      console.error('[AssessmentClient] Error fetching checks for mode:', newMode, error);
-    }
-  };
-
-  const handleInstanceDeleted = (elementInstanceId: string) => {
-    console.log('[AssessmentClient] handleInstanceDeleted called:', { elementInstanceId });
-
-    // Remove all checks for this element instance
-    setChecks(prevChecks => {
-      const filtered = prevChecks.filter(c => c.element_instance_id !== elementInstanceId);
-      console.log('[AssessmentClient] Removed checks for instance:', {
-        elementInstanceId,
-        before: prevChecks.length,
-        after: filtered.length,
-        removed: prevChecks.length - filtered.length,
-      });
-      return filtered;
-    });
-
-    // Clear active check if it was in the deleted instance
-    if (activeCheck?.element_instance_id === elementInstanceId) {
-      console.log('[AssessmentClient] Clearing active check (was in deleted instance)');
-      closeDetailPanel();
+      console.error('[AssessmentClient] Error fetching checks:', error);
     }
   };
 
@@ -663,6 +617,19 @@ export default function AssessmentClient({
 
     return null;
   }, [checks, detailPanel]);
+
+  const handleInstanceDeleted = useCallback(
+    (elementInstanceId: string) => {
+      // Remove all checks for this element instance
+      setChecks(prevChecks => prevChecks.filter(c => c.element_instance_id !== elementInstanceId));
+
+      // Clear active check if it was in the deleted instance
+      if (activeCheck?.element_instance_id === elementInstanceId) {
+        closeDetailPanel();
+      }
+    },
+    [activeCheck?.element_instance_id]
+  );
 
   // Auto-seed checks if empty (only try once)
   const [hasSeedAttempted, setHasSeedAttempted] = useState(() => {
