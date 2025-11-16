@@ -1,5 +1,4 @@
 import { Page, expect } from '@playwright/test';
-import { loginAsUser } from './auth-helpers';
 
 /**
  * Test data creation and cleanup helpers
@@ -37,11 +36,6 @@ export async function createTestAssessment(
     pdfPath = './e2e/fixtures/test-plans.pdf',
     waitForSeeding = true,
   } = options;
-
-  // Ensure logged in
-  if (!(await isLoggedIn(page))) {
-    await loginAsUser(page);
-  }
 
   // Navigate to projects
   await page.goto('/projects');
@@ -197,27 +191,6 @@ export async function seedTestChecks(
     await page.getByRole('button', { name: /save|confirm/i }).click();
     await page.waitForTimeout(500);
     index++;
-  }
-}
-
-/**
- * Helper to check if user is logged in
- */
-async function isLoggedIn(page: Page): Promise<boolean> {
-  try {
-    const url = page.url();
-    if (url.includes('/login')) {
-      return false;
-    }
-
-    // Check for user menu or profile indicator
-    const userIndicator = page
-      .getByRole('button', { name: /user menu|profile/i })
-      .or(page.getByText(/@/)); // Email address
-
-    return (await userIndicator.count()) > 0;
-  } catch {
-    return false;
   }
 }
 
