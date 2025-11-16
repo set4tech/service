@@ -288,6 +288,7 @@ export function PDFViewer({
     canvas: canvasRef.current,
     ocConfig,
     renderScale,
+    projectId,
     assessmentId,
     activeCheck,
     onCheckAdded,
