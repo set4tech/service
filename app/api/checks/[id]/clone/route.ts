@@ -66,7 +66,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       assessment_id: section.assessment_id,
       section_id: section.section_id,
       code_section_number: section.code_section_number,
-      code_section_title: section.code_section_title,
+      code_section_title: section.code_section_title?.replace(
+        originalElementInstance.label,
+        newInstance.label
+      ),
       check_name: section.check_name?.replace(originalElementInstance.label, newInstance.label),
       check_location: section.check_location,
       element_instance_id: newInstance.id,
@@ -149,7 +152,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     assessment_id: original.assessment_id,
     section_id: original.section_id,
     code_section_number: original.code_section_number,
-    code_section_title: original.code_section_title,
+    code_section_title: `${original.code_section_title} (${newInstance.label})`,
     check_name: `${original.check_name} - ${newInstance.label}`,
     check_location: original.check_location,
     element_instance_id: newInstance.id,
