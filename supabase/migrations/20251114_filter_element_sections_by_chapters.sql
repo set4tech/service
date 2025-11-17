@@ -60,3 +60,4 @@ COMMENT ON FUNCTION get_element_sections IS
   'Checks assessment-specific mappings first, then falls back to global defaults. '
   'Returns empty if assessment has no selected chapters.';
 
+

@@ -1,6 +1,8 @@
+import { redirect } from 'next/navigation';
 import { getProjectViolations } from '@/lib/reports/get-violations';
 import { CustomerReportViewer } from '@/components/reports/CustomerReportViewer';
-import { PasswordGate } from '@/components/reports/PasswordGate';
+import { isAuthenticatedForReport } from '@/lib/auth';
+import { supabaseAdmin } from '@/lib/supabase-server';
 
 // Force dynamic rendering - don't use static cache
 export const dynamic = 'force-dynamic';
@@ -22,9 +24,22 @@ export default async function ProjectReportPage({ params }: { params: Promise<{ 
     );
   }
 
-  return (
-    <PasswordGate>
-      <CustomerReportViewer data={data} />
-    </PasswordGate>
-  );
+  // Check if project has a password set
+  const supabase = supabaseAdmin();
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id, report_password')
+    .eq('id', data.projectId)
+    .single();
+
+  // If project has a password, check authentication
+  if (project?.report_password) {
+    const isAuthenticated = await isAuthenticatedForReport(data.projectId);
+    if (!isAuthenticated) {
+      redirect(`/projects/${data.projectId}/report/login`);
+    }
+  }
+
+  // If no password or authenticated, show the report
+  return <CustomerReportViewer data={data} />;
 }

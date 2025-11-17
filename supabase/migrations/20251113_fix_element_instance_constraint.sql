@@ -11,3 +11,4 @@ CREATE UNIQUE INDEX idx_checks_unique_element_based
 ON checks (assessment_id, section_id, element_instance_id)
 WHERE element_instance_id IS NOT NULL;
 
+
