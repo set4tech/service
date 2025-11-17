@@ -199,6 +199,3 @@ See full documentation:
 
 - `README.md` - Full pipeline documentation
 - `PHASE0_SUMMARY.md` - Technical details about Phase 0
-
-
-

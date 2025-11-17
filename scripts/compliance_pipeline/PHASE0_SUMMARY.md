@@ -247,6 +247,3 @@ Phase 0 uses a **fail-safe approach**:
 - If section classification is unclear → mark as relevant
 
 This ensures we never accidentally filter out a section that should be analyzed.
-
-
-
