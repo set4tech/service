@@ -6,6 +6,7 @@ import { ProjectViolationsData, ViolationMarker } from '@/lib/reports/get-violat
 import { ViolationListSidebar } from './ViolationListSidebar';
 import { ViolationDetailModal } from './ViolationDetailModal';
 import { BlueprintLoader } from './BlueprintLoader';
+import { CalculationTablesBrowser } from './CalculationTablesBrowser';
 
 // Load PDF viewer only on client side
 const PDFViewer = dynamic(
@@ -26,12 +27,12 @@ export function CustomerReportViewer({ data }: Props) {
   const [modalViolation, setModalViolation] = useState<ViolationMarker | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [exporting, setExporting] = useState(false);
-  const [sidebarView, setSidebarView] = useState<'violations' | 'building-info' | 'code-info'>(
-    'violations'
-  );
+  const [sidebarView, setSidebarView] = useState<
+    'violations' | 'building-info' | 'code-info' | 'tables'
+  >('violations');
   const [isNavHovered, setIsNavHovered] = useState(false);
 
-  const handleNavClick = (view: 'violations' | 'building-info' | 'code-info') => {
+  const handleNavClick = (view: 'violations' | 'building-info' | 'code-info' | 'tables') => {
     setSidebarView(view);
   };
 
@@ -373,6 +374,28 @@ export function CustomerReportViewer({ data }: Props) {
             />
           </svg>
         </button>
+
+        <button
+          onClick={() => handleNavClick('tables')}
+          className={`p-3 rounded-lg transition-all ${
+            sidebarView === 'tables'
+              ? 'bg-purple-600 text-white shadow-lg'
+              : 'text-emerald-100 hover:text-white hover:bg-emerald-800'
+          }`}
+          style={{
+            opacity: isNavHovered ? 1 : 0.7,
+          }}
+          title="See calculation tables"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+            />
+          </svg>
+        </button>
       </div>
 
       {/* White Content Sidebar - Slides right on nav hover */}
@@ -497,7 +520,7 @@ export function CustomerReportViewer({ data }: Props) {
               <p className="text-sm text-ink-500">No building parameters available</p>
             )}
           </div>
-        ) : (
+        ) : sidebarView === 'code-info' ? (
           <div className="flex-1 overflow-y-auto px-6 py-5">
             <h2 className="text-lg font-semibold text-ink-900 mb-4">Code Information</h2>
             {data.codeInfo ? (
@@ -548,6 +571,10 @@ export function CustomerReportViewer({ data }: Props) {
             ) : (
               <p className="text-sm text-ink-500">No code information available</p>
             )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            <CalculationTablesBrowser assessmentId={data.assessmentId} />
           </div>
         )}
       </div>

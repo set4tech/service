@@ -4,31 +4,57 @@ Utility functions for CBC scraper - comparison, sorting, and debugging.
 
 import json
 import logging
+import re
 from deepdiff import DeepDiff
 from schema import Code
 
 logger = logging.getLogger(__name__)
 
 
+def natural_sort_key(section_number: str) -> list[int]:
+    """
+    Convert section number to list of integers for natural sorting.
+
+    Extracts all numeric parts and returns them as integers for proper numeric comparison.
+    This ensures that "1507.10" comes after "1507.9" instead of after "1507.1".
+
+    Examples:
+        "1507.2" → [1507, 2]
+        "1507.10" → [1507, 10]
+        "1507.3.10" → [1507, 3, 10]
+        "11B-203.1.5" → [11, 203, 1, 5]
+        "11A-213" → [11, 213]
+
+    Args:
+        section_number: Section or subsection number string
+
+    Returns:
+        List of integers extracted from the section number
+    """
+    # Extract all numeric parts (ignores letters like 'A', 'B', and punctuation)
+    parts = re.findall(r'\d+', section_number)
+    return [int(part) for part in parts]
+
+
 def sort_code_data(code: Code) -> Code:
     """Sort all data structures in the Code object for deterministic output."""
-    # Sort sections by number
-    code.sections.sort(key=lambda s: s.number)
-    
+    # Sort sections by number using natural sort
+    code.sections.sort(key=lambda s: natural_sort_key(s.number))
+
     for section in code.sections:
-        # Sort subsections by number
-        section.subsections.sort(key=lambda ss: ss.number)
-        
+        # Sort subsections by number using natural sort
+        section.subsections.sort(key=lambda ss: natural_sort_key(ss.number))
+
         # Sort section-level lists
         section.figures.sort()
-        
+
         for subsection in section.subsections:
             # Sort subsection-level lists
             subsection.refers_to.sort()
             subsection.figures.sort()
-            # Sort tables by number
-            subsection.tables.sort(key=lambda t: t.number)
-    
+            # Sort tables by number using natural sort
+            subsection.tables.sort(key=lambda t: natural_sort_key(t.number))
+
     return code
 
 

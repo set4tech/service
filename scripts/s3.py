@@ -34,58 +34,21 @@ class RawICCS3:
 
         Returns:
             HTML content as string
+
+        Raises:
+            ValueError: If chapter_name is not in chapter_to_key mapping
+            botocore.exceptions.ClientError: If S3 key does not exist
         """
         key = self.chapter_to_key.get(chapter_name)
         if not key:
             raise ValueError(f"Unknown chapter: {chapter_name}")
 
-        # Construct S3 key path
         s3_key = f"raw/{self.state}/{self.version}/{key}"
+        logger.info(f"Fetching S3 key: {s3_key}")
 
-        # Try to fetch from S3, with fallback to alternative capitalization
-        try:
-            response = self.s3_client.get_object(Bucket=BUCKET_NAME, Key=s3_key)
-            html_content = response["Body"].read().decode("utf-8")
-            return html_content
-        except self.s3_client.exceptions.NoSuchKey:
-            # Try alternative capitalizations
-            alternatives = []
-
-            # Try all uppercase version (but keep extension lowercase)
-            filename, ext = key.rsplit(".", 1) if "." in key else (key, "")
-            alt_upper = filename.upper()
-            # Also fix spacing issues like "Commercial Buildings" -> "COMMERCIALBUILDINGS"
-            alt_upper = alt_upper.replace("COMMERCIAL BUILDINGS", "COMMERCIALBUILDINGS")
-            if ext:
-                alt_upper = f"{alt_upper}.{ext}"
-            alternatives.append(alt_upper)
-
-            # Try title case version
-            alt_title = key.replace("CHAPTER", "Chapter").replace("CALIFORNIA", "California").replace("BUILDING", "Building").replace("CODE", "Code").replace("VOLUMES", "Volumes").replace("TITLE", "Title").replace("PART", "Part").replace(" AND ", " and ")
-            # Fix spacing
-            alt_title = alt_title.replace("COMMERCIALBUILDINGS", "Commercial Buildings")
-            alternatives.append(alt_title)
-
-            # Try each alternative
-            for alt_key in alternatives:
-                if alt_key == key:  # Skip if same as original
-                    continue
-                try:
-                    alt_s3_key = f"raw/{self.state}/{self.version}/{alt_key}"
-                    logger.info(f"Trying alternative S3 key: {alt_s3_key}")
-                    response = self.s3_client.get_object(Bucket=BUCKET_NAME, Key=alt_s3_key)
-                    html_content = response["Body"].read().decode("utf-8")
-                    logger.info(f"Successfully fetched using alternative key: {alt_key}")
-                    return html_content
-                except self.s3_client.exceptions.NoSuchKey:
-                    continue
-
-            # If all attempts failed, raise the original error
-            logger.error(f"Could not find chapter {chapter_name} in S3. Tried:")
-            logger.error(f"  - {s3_key}")
-            for alt_key in alternatives:
-                logger.error(f"  - raw/{self.state}/{self.version}/{alt_key}")
-            raise ValueError(f"Chapter file not found in S3: {chapter_name}")
+        response = self.s3_client.get_object(Bucket=BUCKET_NAME, Key=s3_key)
+        html_content = response["Body"].read().decode("utf-8")
+        return html_content
 
 
 def upload_image_to_s3(image_url: str, s3_key: str, s3_bucket: str = "set4-codes") -> str:

@@ -54,6 +54,8 @@ export interface CheckWithAnalysis {
     | Array<{ name: string }>;
 }
 
+import type { CalculationTable } from './get-violations';
+
 export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
   /* Get the list of violations from the RPC to show in the summary panels.
   This is only the highl evel stats, dont care about the details. */
@@ -127,6 +129,19 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
           },
         }));
 
+      // Parse calculation table if present
+      let calculationTable: CalculationTable | undefined;
+      if (check.calculation_table) {
+        try {
+          calculationTable = check.calculation_table;
+        } catch (err) {
+          console.warn(
+            `[processRpcRowsToViolations] Failed to parse calculation_table for check ${check.check_id}:`,
+            err
+          );
+        }
+      }
+
       if (screenshot.crop_coordinates && screenshot.page_number && allScreenshots.length > 0) {
         violations.push({
           checkId: check.check_id,
@@ -160,6 +175,7 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
           instanceLabel: check.instance_label,
           sourceUrl: check.source_url || check.parent_source_url || '',
           sourceLabel: check.section_number ? `CBC ${check.section_number}` : '',
+          calculationTable, // Include calculation table
         });
       } else {
         // Screenshots exist but don't have valid crop_coordinates - treat as no-screenshot
@@ -189,11 +205,26 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
           instanceLabel: check.instance_label,
           sourceUrl: check.source_url || check.parent_source_url || '',
           sourceLabel: check.section_number ? `CBC ${check.section_number}` : '',
+          calculationTable, // Include calculation table
         });
       }
     } else {
       // No screenshots - create violation without screenshot data
       // Use 'no-screenshot' as screenshotId to ensure unique keys
+
+      // Parse calculation table if present
+      let calculationTable: CalculationTable | undefined;
+      if (check.calculation_table) {
+        try {
+          calculationTable = check.calculation_table;
+        } catch (err) {
+          console.warn(
+            `[processRpcRowsToViolations] Failed to parse calculation_table for check ${check.check_id}:`,
+            err
+          );
+        }
+      }
+
       violations.push({
         checkId: check.check_id,
         checkName: check.check_name || check.code_section_title || '',
@@ -217,6 +248,7 @@ export function processRpcRowsToViolations(rows: any[]): ViolationMarker[] {
         instanceLabel: check.instance_label,
         sourceUrl: check.source_url || check.parent_source_url || '',
         sourceLabel: check.section_number ? `CBC ${check.section_number}` : '',
+        calculationTable, // Include calculation table
       });
     }
   }
