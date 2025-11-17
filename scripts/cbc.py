@@ -11,15 +11,15 @@ from bs4 import BeautifulSoup
 import argparse
 import logging
 import json
-from deepdiff import DeepDiff
 from pathlib import Path
 from utils import generate_section_url, get_icc_part_number
 from s3 import RawICCS3, BUCKET_NAME, upload_image_to_s3
 from schema import Code, Section, Subsection, TableBlock
 from utils import extract_table_data, extract_figure_url
+from cbc_utils import sort_code_data, compare_json_files, print_comparison_summary
 
 # California section patterns
-# Matches: 3XX (Ch 3), 4XX (Ch 4), 5XX (Ch 5), 6XX (Ch 6), 7XX (Ch 7), 7XXA (Ch 7A), 8XX (Ch 8), 9XX (Ch 9), 10XX (Ch 10), XXXXА (Ch 10 with A), 11A-XXX, 11B-XXX
+# Matches: 3XX (Ch 3), 4XX (Ch 4), 5XX (Ch 5), 6XX (Ch 6), 7XX (Ch 7), 7XXA (Ch 7A), 8XX (Ch 8), 9XX (Ch 9), 10XX (Ch 10), XXXXА (Ch 10/11A with A suffix), 11B-XXX
 SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?!\.\d)"
 SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?:\.\d+)+"
 
@@ -27,11 +27,13 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
+CBC_CHAPTERS = ["3", "4", "5", "6", "7", "7a", "8", "9", "10", "11a", "11b", "14", "15", "16"]
 
 
 def get_chapter_files(year: int) -> dict[str, str]:
     """Get chapter file names for the specified year."""
-    return {
+
+    out =  {
         "3": f"CHAPTER 3 OCCUPANCY CLASSIFICATION AND USE - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "4": f"CHAPTER 4 SPECIAL DETAILED REQUIREMENTS BASED ON OCCUPANCY AND USE - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "5": f"CHAPTER 5 GENERAL BUILDING HEIGHTS AND AREAS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
@@ -43,8 +45,13 @@ def get_chapter_files(year: int) -> dict[str, str]:
         "10": f"CHAPTER 10 MEANS OF EGRESS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11a": f"CHAPTER 11A HOUSING ACCESSIBILITY - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11b": f"Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - {year} California Building Code Volumes 1 and 2, Title 24, Part 2.html",
+        "14": f"CHAPTER 14 EXTERIOR WALLS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "15": f"CHAPTER 15 ROOF ASSEMBLIES AND ROOFTOP STRUCTURES - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "16": f"CHAPTER 16 STRUCTURAL DESIGN  - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         
     }
+    assert sorted(list(out.keys())) == sorted(CBC_CHAPTERS), "mismatch between cbc chapters bro"
+    return out
 
 
 def find_section_numbers(text: str) -> list[str]:
@@ -69,7 +76,7 @@ def section_belongs_to_chapter(section_number: str, chapter: str) -> bool:
     patterns = {
         "7a": r"^7\d{2}A$",          # Chapter 7A: 7XXA (e.g., 701A, 702A)
         "10": r"^10\d{2}$|^\d{4}A$", # Chapter 10: 10XX or XXXXА (e.g., 1001, 1003A)
-        "11a": r"^11A-",             # Chapter 11A: 11A-XXX (e.g., 11A-101)
+        "11a": r"^11\d{2}A$",        # Chapter 11A: 11XXA (e.g., 1102A, 1103A, 1105A)
         "11b": r"^11B-",             # Chapter 11B: 11B-XXX (e.g., 11B-101)
     }
     
@@ -374,98 +381,6 @@ def attach_figures(figures: list[dict], sections: dict[str, Section]):
             logger.warning(f"Could not attach {fig_type} {fig_number}")
 
 
-def sort_code_data(code: Code) -> Code:
-    """Sort all data structures in the Code object for deterministic output."""
-    # Sort sections by number
-    code.sections.sort(key=lambda s: s.number)
-    
-    for section in code.sections:
-        # Sort subsections by number
-        section.subsections.sort(key=lambda ss: ss.number)
-        
-        # Sort section-level lists
-        section.figures.sort()
-        
-        for subsection in section.subsections:
-            # Sort subsection-level lists
-            subsection.refers_to.sort()
-            subsection.figures.sort()
-            # Sort tables by number
-            subsection.tables.sort(key=lambda t: t.number)
-    
-    return code
-
-
-def compare_json_files(file1: str, file2: str) -> dict:
-    """Compare two JSON files and return differences."""
-    with open(file1, "r") as f1, open(file2, "r") as f2:
-        data1 = json.load(f1)
-        data2 = json.load(f2)
-    
-    diff = DeepDiff(data1, data2, ignore_order=False, verbose_level=2)
-    return diff
-
-
-def print_comparison_summary(diff: dict, baseline_file: str, new_file: str):
-    """Print a human-readable summary of JSON differences."""
-    if not diff:
-        logger.info("✅ No differences found! Output matches baseline.")
-        return
-    
-    logger.warning(f"⚠️  Differences detected between {baseline_file} and {new_file}")
-    
-    # Count changes
-    counts = {
-        "values_changed": 0,
-        "dictionary_item_added": 0,
-        "dictionary_item_removed": 0,
-        "iterable_item_added": 0,
-        "iterable_item_removed": 0,
-    }
-    
-    for key in counts.keys():
-        if key in diff:
-            counts[key] = len(diff[key])
-    
-    # Print summary
-    logger.info("\n" + "="*80)
-    logger.info("COMPARISON SUMMARY")
-    logger.info("="*80)
-    
-    if counts["values_changed"] > 0:
-        logger.info(f"\n📝 Values Changed: {counts['values_changed']}")
-        for path, change in list(diff.get("values_changed", {}).items())[:10]:
-            logger.info(f"  {path}")
-            logger.info(f"    OLD: {str(change['old_value'])[:100]}")
-            logger.info(f"    NEW: {str(change['new_value'])[:100]}")
-        if counts["values_changed"] > 10:
-            logger.info(f"  ... and {counts['values_changed'] - 10} more")
-    
-    if counts["dictionary_item_added"] > 0:
-        logger.info(f"\n➕ Items Added: {counts['dictionary_item_added']}")
-        for path, value in list(diff.get("dictionary_item_added", {}).items())[:5]:
-            logger.info(f"  {path}: {str(value)[:100]}")
-        if counts["dictionary_item_added"] > 5:
-            logger.info(f"  ... and {counts['dictionary_item_added'] - 5} more")
-    
-    if counts["dictionary_item_removed"] > 0:
-        logger.info(f"\n➖ Items Removed: {counts['dictionary_item_removed']}")
-        for path in list(diff.get("dictionary_item_removed", {}).keys())[:5]:
-            logger.info(f"  {path}")
-        if counts["dictionary_item_removed"] > 5:
-            logger.info(f"  ... and {counts['dictionary_item_removed'] - 5} more")
-    
-    if counts["iterable_item_added"] > 0:
-        logger.info(f"\n➕ Array Items Added: {counts['iterable_item_added']}")
-    
-    if counts["iterable_item_removed"] > 0:
-        logger.info(f"\n➖ Array Items Removed: {counts['iterable_item_removed']}")
-    
-    logger.info("\n" + "="*80)
-    logger.info("💡 Full diff saved to: diff_report.json")
-    logger.info("="*80 + "\n")
-
-
 def main(args):
     logger.info(f"Starting CBC scraper for version {args.version}")
     if args.dry_run:
@@ -480,8 +395,7 @@ def main(args):
     all_figures = []
     
     # Determine which chapters to process
-    # Note: 11a doesn't exist in S3, only 11b
-    chapters_to_process = args.chapters if args.chapters else ["7", "7a", "8", "9", "10", "11b"]
+    chapters_to_process = args.chapters if args.chapters else CBC_CHAPTERS
     logger.info(f"Processing chapters: {chapters_to_process}")
     
     # Process each chapter

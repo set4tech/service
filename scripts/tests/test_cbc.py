@@ -96,15 +96,17 @@ class TestSectionBelongsToChapter:
         assert not section_belongs_to_chapter("12345A", "10")  # 5 digits
 
     def test_chapter_11a_valid_sections(self):
-        """Chapter 11A should match 11A-XXX format."""
-        assert section_belongs_to_chapter("11A-101", "11a")
-        assert section_belongs_to_chapter("11A-999", "11a")
-        assert section_belongs_to_chapter("11A-1234", "11a")
+        """Chapter 11A should match 11XXA format (e.g., 1102A, 1103A)."""
+        assert section_belongs_to_chapter("1102A", "11a")
+        assert section_belongs_to_chapter("1103A", "11a")
+        assert section_belongs_to_chapter("1105A", "11a")
 
     def test_chapter_11a_invalid_sections(self):
-        """Chapter 11A should not match 11B sections."""
+        """Chapter 11A should not match 11B sections or other formats."""
         assert not section_belongs_to_chapter("11B-101", "11a")
         assert not section_belongs_to_chapter("11B-999", "11a")
+        assert not section_belongs_to_chapter("1102", "11a")  # Missing A suffix
+        assert not section_belongs_to_chapter("1002A", "11a")  # Wrong prefix (10, not 11)
 
     def test_chapter_11b_valid_sections(self):
         """Chapter 11B should match 11B-XXX format."""
@@ -115,8 +117,8 @@ class TestSectionBelongsToChapter:
 
     def test_chapter_11b_invalid_sections(self):
         """Chapter 11B should not match 11A sections."""
-        assert not section_belongs_to_chapter("11A-101", "11b")
-        assert not section_belongs_to_chapter("11A-999", "11b")
+        assert not section_belongs_to_chapter("1102A", "11b")
+        assert not section_belongs_to_chapter("1103A", "11b")
 
     def test_case_insensitive_chapter(self):
         """Chapter parameter should be case insensitive."""
@@ -139,6 +141,7 @@ class TestSectionBelongsToChapter:
         assert section_belongs_to_chapter("11B-213", "11b")  # Parent of 11B-213.3
         assert section_belongs_to_chapter("11B-213", "11b")  # Parent of 11B-213.3.1
         assert section_belongs_to_chapter("1003A", "10")     # Parent of 1003A.2
+        assert section_belongs_to_chapter("1102A", "11a")    # Parent of 1102A.2
         assert section_belongs_to_chapter("701A", "7a")      # Parent of 701A.5
 
     def test_cross_chapter_validation(self):
@@ -153,7 +156,7 @@ class TestSectionBelongsToChapter:
         assert not section_belongs_to_chapter("701A", "7")
         
         # Chapter 11A vs 11B distinction
-        assert not section_belongs_to_chapter("11A-101", "11b")
+        assert not section_belongs_to_chapter("1102A", "11b")
         assert not section_belongs_to_chapter("11B-101", "11a")
 
 
