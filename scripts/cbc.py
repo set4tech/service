@@ -43,6 +43,7 @@ def get_chapter_files(year: int) -> dict[str, str]:
         "10": f"CHAPTER 10 MEANS OF EGRESS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11a": f"CHAPTER 11A HOUSING ACCESSIBILITY - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11b": f"Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - {year} California Building Code Volumes 1 and 2, Title 24, Part 2.html",
+        
     }
 
 
@@ -59,56 +60,27 @@ def find_subsection_numbers(text: str) -> list[str]:
 def section_belongs_to_chapter(section_number: str, chapter: str) -> bool:
     """Check if a section number belongs to the specified chapter."""
     chapter = chapter.lower()
-
-    # Chapter 3: 3XX (e.g., 301, 302)
-    if chapter == "3":
-        return re.match(r"^3\d{2}$", section_number) is not None
-
-    # Chapter 4: 4XX (e.g., 401, 402)
-    if chapter == "4":
-        return re.match(r"^4\d{2}$", section_number) is not None
-
-    # Chapter 5: 5XX (e.g., 501, 502)
-    if chapter == "5":
-        return re.match(r"^5\d{2}$", section_number) is not None
-
-    # Chapter 6: 6XX (e.g., 601, 602)
-    if chapter == "6":
-        return re.match(r"^6\d{2}$", section_number) is not None
-
-    # Chapter 7: 7XX (e.g., 701, 702)
-    if chapter == "7":
-        return re.match(r"^7\d{2}$", section_number) is not None
-
-    # Chapter 7A: 7XXA (e.g., 701A, 702A)
-    if chapter == "7a":
-        return re.match(r"^7\d{2}A$", section_number) is not None
-
-    # Chapter 8: 8XX (e.g., 801, 802)
-    if chapter == "8":
-        return re.match(r"^8\d{2}$", section_number) is not None
-
-    # Chapter 9: 9XX (e.g., 901, 902)
-    if chapter == "9":
-        return re.match(r"^9\d{2}$", section_number) is not None
-
-    # Chapter 10: 10XX or XXXXА (e.g., 1001, 1002, 1003A)
-    if chapter == "10":
-        return re.match(r"^10\d{2}$", section_number) is not None or re.match(r"^\d{4}A$", section_number) is not None
-
-    # Chapter 11A: 11A-XXX (e.g., 11A-101)
-    if chapter == "11a":
-        return section_number.startswith("11A-")
-
-    # Chapter 11B: 11B-XXX (e.g., 11B-101)
-    if chapter == "11b":
-        return section_number.startswith("11B-")
-
+    
+    # Chapters 3-9 follow the pattern: Xdd (e.g., 301, 402, 502)
+    if chapter in ["3", "4", "5", "6", "7", "8", "9"]:
+        return re.match(rf"^{chapter}\d{{2}}$", section_number) is not None
+    
+    # Special cases with unique patterns
+    patterns = {
+        "7a": r"^7\d{2}A$",          # Chapter 7A: 7XXA (e.g., 701A, 702A)
+        "10": r"^10\d{2}$|^\d{4}A$", # Chapter 10: 10XX or XXXXА (e.g., 1001, 1003A)
+        "11a": r"^11A-",             # Chapter 11A: 11A-XXX (e.g., 11A-101)
+        "11b": r"^11B-",             # Chapter 11B: 11B-XXX (e.g., 11B-101)
+    }
+    
+    if chapter in patterns:
+        return re.match(patterns[chapter], section_number) is not None
+    
     return False
 
 
 
-def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, test_mode: bool, year: int) -> tuple[list, list]:
+def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, year: int) -> tuple[list, list]:
     """Extract tables and figures from HTML."""
     tables = []
     figures = []
@@ -117,9 +89,6 @@ def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, test_m
     
     figure_elements = soup.find_all("figure")
     logger.info(f"Found {len(figure_elements)} figure elements")
-    
-    if test_mode:
-        figure_elements = figure_elements[:3]
     
     for fig_elem in figure_elements:
         fig_class = fig_elem.get("class", [])
@@ -185,13 +154,10 @@ def extract_title(header_text: str, number: str) -> str:
     return title
 
 
-def extract_sections(soup: BeautifulSoup, test_mode: bool, chapter: str, year: int) -> dict[str, Section]:
+def extract_sections(soup: BeautifulSoup, chapter: str, year: int) -> dict[str, Section]:
     """Extract all sections from the soup."""
     sections = {}
     level_sections = soup.find_all("section", class_=re.compile(r"level\d"))
-
-    if test_mode:
-        level_sections = level_sections[:2]
 
     for level_section in level_sections:
         header_elem = level_section.find("div", class_="section-action-wrapper")
@@ -255,14 +221,11 @@ def extract_sections(soup: BeautifulSoup, test_mode: bool, chapter: str, year: i
     return sections
 
 
-def extract_subsections(soup: BeautifulSoup, test_mode: bool, chapter: str) -> dict[str, Subsection]:
+def extract_subsections(soup: BeautifulSoup, chapter: str) -> dict[str, Subsection]:
     """Extract all subsections from the soup."""
     subsections = {}
     pattern = re.compile(r"level\d|level\d_title")
     subsection_elements = soup.find_all("section", class_=pattern)
-
-    if test_mode:
-        subsection_elements = subsection_elements[:5]
 
     for subsection_elem in subsection_elements:
         # Find header
@@ -505,8 +468,6 @@ def print_comparison_summary(diff: dict, baseline_file: str, new_file: str):
 
 def main(args):
     logger.info(f"Starting CBC scraper for version {args.version}")
-    if args.test:
-        logger.info("TEST MODE - processing limited elements")
     if args.dry_run:
         logger.info("DRY RUN - no S3 upload")
     
@@ -531,17 +492,17 @@ def main(args):
         
         # Extract tables and figures
         chapter_tables, chapter_figures = extract_tables_and_figures(
-            soup, args.extract_images, args.test, args.version
+            soup, args.extract_images, args.version
         )
         all_tables.extend(chapter_tables)
         all_figures.extend(chapter_figures)
         
         # Extract sections (pass chapter info and year)
-        chapter_sections = extract_sections(soup, args.test, chapter, args.version)
+        chapter_sections = extract_sections(soup, chapter, args.version)
         all_sections.update(chapter_sections)
 
         # Extract subsections
-        chapter_subsections = extract_subsections(soup, args.test, chapter)
+        chapter_subsections = extract_subsections(soup, chapter)
         all_subsections.update(chapter_subsections)
     
     # Attach subsections to sections
@@ -648,11 +609,6 @@ if __name__ == "__main__":
         action="store_true",
         default=True,
         help="Extract and upload figure images to S3",
-    )
-    parser.add_argument(
-        "--test",
-        action="store_true",
-        help="Test mode - process only first few elements",
     )
     parser.add_argument(
         "--dry-run",
