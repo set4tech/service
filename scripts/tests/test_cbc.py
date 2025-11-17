@@ -9,7 +9,7 @@ import pytest
 # Add parent directory to path to import cbc module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cbc import section_belongs_to_chapter, find_section_references, find_subsection_references
+from cbc import section_belongs_to_chapter, find_section_references, find_subsection_references, extract_subsection_number_from_id
 
 
 class TestSectionBelongsToChapter:
@@ -266,6 +266,36 @@ class TestFindSubsectionNumbers:
         assert find_subsection_references("The 609.1 requirement is important") == []
         assert find_subsection_references("11B-213.3.1 applies here") == []
         assert find_subsection_references("Per 1401.2.3, the requirements apply") == []
+
+
+class TestExtractSubsectionNumberFromId:
+    """Test extracting subsection numbers from HTML element IDs."""
+
+    def test_standard_subsection_id(self):
+        """Should extract subsection number from standard ID format."""
+        assert extract_subsection_number_from_id("CABC2025P1_Ch16_Sec1617.5.1") == "1617.5.1"
+        assert extract_subsection_number_from_id("CABC2025P1_Ch15_Sec1507.2.3") == "1507.2.3"
+        assert extract_subsection_number_from_id("CABC2025P1_Ch11_Sec11B-213.3.1") == "11B-213.3.1"
+
+    def test_nested_subsection_id(self):
+        """Should extract deeply nested subsection numbers."""
+        assert extract_subsection_number_from_id("CABC2025P1_Ch16_Sec1617.5.1.1") == "1617.5.1.1"
+        assert extract_subsection_number_from_id("CABC2025P1_Ch16_Sec1617.5.1.2") == "1617.5.1.2"
+
+    def test_chapter_11a_format(self):
+        """Should handle 11XXA format."""
+        assert extract_subsection_number_from_id("CABC2025P1_Ch11_Sec1102A.1") == "1102A.1"
+        assert extract_subsection_number_from_id("CABC2025P1_Ch11_Sec1105A.2.1") == "1105A.2.1"
+
+    def test_invalid_id_format(self):
+        """Should return None for invalid ID formats."""
+        assert extract_subsection_number_from_id("invalid_id") is None
+        assert extract_subsection_number_from_id("") is None
+        assert extract_subsection_number_from_id("CABC2025P1_Ch16") is None
+
+    def test_none_input(self):
+        """Should handle None input gracefully."""
+        assert extract_subsection_number_from_id(None) is None
 
 
 if __name__ == "__main__":

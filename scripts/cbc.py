@@ -54,10 +54,10 @@ def get_chapter_files(year: int) -> dict[str, str]:
         "9": f"CHAPTER 9 FIRE PROTECTION AND LIFE SAFETY SYSTEMS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "10": f"CHAPTER 10 MEANS OF EGRESS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11a": f"CHAPTER 11A HOUSING ACCESSIBILITY - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
-        "11b": f"Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - {year} California Building Code Volumes 1 and 2, Title 24, Part 2.html",
+        "11b": f"CHAPTER 11B ACCESSIBILITY TO PUBLIC BUILDINGS PUBLIC ACCOMMODATIONS COMMERCIALBUILDINGS AND PUBLIC HOUSING - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "14": f"CHAPTER 14 EXTERIOR WALLS - {year} CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
-        "15": f"CHAPTER 15 ROOF ASSEMBLIES AND ROOFTOP STRUCTURES - {year} CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
-        "16": f"CHAPTER 16 STRUCTURAL DESIGN  - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "15": f"CHAPTER 15 ROOF ASSEMBLIES AND ROOFTOP STRUCTURES - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "16": f"CHAPTER 16 STRUCTURAL DESIGN - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         
     }
     assert sorted(list(out.keys())) == sorted(CBC_CHAPTERS), "mismatch between cbc chapters bro"
@@ -74,14 +74,103 @@ def find_subsection_numbers(text: str) -> list[str]:
     return re.findall(SUBSECTION_REGEX, text)
 
 
+def extract_subsection_number_from_id(element_id: str | None) -> str | None:
+    """
+    Extract subsection number from HTML element ID.
+
+    Examples:
+        "CABC2025P1_Ch16_Sec1617.5.1" -> "1617.5.1"
+        "CABC2025P1_Ch11_Sec11B-213.3.1" -> "11B-213.3.1"
+        "invalid_id" -> None
+
+    Args:
+        element_id: HTML element ID attribute value
+
+    Returns:
+        Subsection number string, or None if not found
+    """
+    if not element_id:
+        return None
+
+    # Pattern: CABC{year}P{part}_Ch{chapter}_Sec{section_number}
+    # Extract everything after "Sec"
+    match = re.search(r'_Sec(.+)$', element_id)
+    if match:
+        return match.group(1)
+
+    return None
+
+
 def find_section_references(text: str) -> list[str]:
-    """Find section references in paragraph text. Requires 'Section'/'Sections'/'§' context."""
-    return re.findall(SECTION_REFERENCE_REGEX, text)
+    """
+    Find section references in paragraph text using context-aware extraction.
+
+    Finds 'Section/Sections/§' keywords and extracts all section numbers within
+    the same clause, handling patterns like "Section X or Y" and "Sections X and Y".
+
+    Returns:
+        List of section numbers (e.g., ["1611", "1403"])
+    """
+    matches = []
+
+    # Find all positions where "Section" keyword appears
+    section_keyword_pattern = r'\b(?:Section|Sections|§)\b'
+
+    for keyword_match in re.finditer(section_keyword_pattern, text, re.IGNORECASE):
+        start_pos = keyword_match.end()
+
+        # Extract the clause following "Section" (up to period, semicolon, or end)
+        # Look ahead up to 200 chars or until major punctuation
+        remaining = text[start_pos:start_pos + 200]
+
+        # Stop at sentence boundary (period followed by space/capital) or semicolon
+        clause_match = re.match(r'([^.;]*?)(?:\.\s+[A-Z]|;|$)', remaining)
+        if clause_match:
+            clause = clause_match.group(1)
+        else:
+            clause = remaining
+
+        # Within this clause, find all section numbers (base sections without dots)
+        section_matches = re.findall(SECTION_PATTERN, clause)
+        matches.extend(section_matches)
+
+    return list(set(matches))  # Deduplicate
 
 
 def find_subsection_references(text: str) -> list[str]:
-    """Find subsection references in paragraph text. Requires 'Section'/'Sections'/'§' context."""
-    return re.findall(SUBSECTION_REFERENCE_REGEX, text)
+    """
+    Find subsection references in paragraph text using context-aware extraction.
+
+    Finds 'Section/Sections/§' keywords and extracts all subsection numbers within
+    the same clause, handling patterns like "Section X or Y" and "Sections X, Y or Z".
+
+    Returns:
+        List of subsection numbers (e.g., ["1403.12.1", "1403.12.2"])
+    """
+    matches = []
+
+    # Find all positions where "Section" keyword appears
+    section_keyword_pattern = r'\b(?:Section|Sections|§)\b'
+
+    for keyword_match in re.finditer(section_keyword_pattern, text, re.IGNORECASE):
+        start_pos = keyword_match.end()
+
+        # Extract the clause following "Section" (up to period, semicolon, or end)
+        # Look ahead up to 200 chars or until major punctuation
+        remaining = text[start_pos:start_pos + 200]
+
+        # Stop at sentence boundary (period followed by space/capital) or semicolon
+        clause_match = re.match(r'([^.;]*?)(?:\.\s+[A-Z]|;|$)', remaining)
+        if clause_match:
+            clause = clause_match.group(1)
+        else:
+            clause = remaining
+
+        # Within this clause, find all subsection numbers (sections with dots)
+        subsection_matches = re.findall(SUBSECTION_PATTERN, clause)
+        matches.extend(subsection_matches)
+
+    return list(set(matches))  # Deduplicate
 
 
 def section_belongs_to_chapter(section_number: str, chapter: str) -> bool:
@@ -191,14 +280,11 @@ def extract_sections(soup: BeautifulSoup, chapter: str, year: int) -> dict[str, 
         if not header_elem:
             continue
 
-        # Chapter 9 has cross-references in paragraph text that get picked up,
-        # so extract from data-section-title attribute instead of full text
-        if chapter == "9":
-            section_title_attr = header_elem.get("data-section-title")
-            if section_title_attr:
-                header_text = section_title_attr
-            else:
-                header_text = header_elem.get_text()
+        # Use data-section-title attribute when available to avoid matching
+        # measurements (e.g., "1524 mm") or cross-references in paragraph text
+        section_title_attr = header_elem.get("data-section-title")
+        if section_title_attr:
+            header_text = section_title_attr
         else:
             header_text = header_elem.get_text()
 
@@ -255,20 +341,33 @@ def extract_subsections(soup: BeautifulSoup, chapter: str) -> dict[str, Subsecti
     subsection_elements = soup.find_all("section", class_=pattern)
 
     for subsection_elem in subsection_elements:
-        # Find header
+        # Extract subsection number from element ID (most reliable)
+        element_id = subsection_elem.get("id")
+        subsection_number = extract_subsection_number_from_id(element_id)
+
+        # Fallback to regex parsing if ID not available
+        if not subsection_number:
+            header_elem = subsection_elem.find("h1", class_=pattern)
+            if not header_elem:
+                header_elem = subsection_elem.find("span", class_=pattern)
+            if not header_elem:
+                continue
+
+            header_text = header_elem.get_text()
+            subsection_numbers = find_subsection_numbers(header_text)
+
+            if len(subsection_numbers) != 1:
+                continue
+
+            subsection_number = subsection_numbers[0].strip()
+
+        # Still need header_text for title extraction
         header_elem = subsection_elem.find("h1", class_=pattern)
         if not header_elem:
             header_elem = subsection_elem.find("span", class_=pattern)
         if not header_elem:
             continue
-
         header_text = header_elem.get_text()
-        subsection_numbers = find_subsection_numbers(header_text)
-
-        if len(subsection_numbers) != 1:
-            continue
-
-        subsection_number = subsection_numbers[0].strip()
 
         # Filter subsections by chapter - check if parent section belongs to this chapter
         parent_section = subsection_number.split(".")[0]
