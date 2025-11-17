@@ -7,3 +7,4 @@ DROP INDEX IF EXISTS idx_sections_drawing_assessable;
 -- Drop the column
 ALTER TABLE sections DROP COLUMN IF EXISTS drawing_assessable;
 
+
