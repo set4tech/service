@@ -19,9 +19,19 @@ from utils import extract_table_data, extract_figure_url
 from cbc_utils import sort_code_data, compare_json_files, print_comparison_summary
 
 # California section patterns
-# Matches: 3XX (Ch 3), 4XX (Ch 4), 5XX (Ch 5), 6XX (Ch 6), 7XX (Ch 7), 7XXA (Ch 7A), 8XX (Ch 8), 9XX (Ch 9), 10XX (Ch 10), XXXXА (Ch 10/11A with A suffix), 11B-XXX
-SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?!\.\d)"
-SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?:\.\d+)+"
+# Formats ordered by specificity (longer/more specific patterns first):
+#   11B-XXX, 11XXA, 7XXA, 16XX, 15XX, 14XX, 10XX, 9XX, 8XX, 7XX, 6XX, 5XX, 4XX, 3XX, XXXXА
+SECTION_PATTERN = r"(?:11[AB]-\d{3,4}|11\d{2}A|7\d{2}A|\d{4}A|16\d{2}|15\d{2}|14\d{2}|10\d{2}|9\d{2}|8\d{2}|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})"
+SUBSECTION_PATTERN = r"(?:11[AB]-\d{3,4}|11\d{2}A|7\d{2}A|\d{4}A|16\d{2}|15\d{2}|14\d{2}|10\d{2}|9\d{2}|8\d{2}|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?:\.\d+)+"
+
+# Simple regex for extracting from headers (no context required)
+SECTION_REGEX = rf"(?<!\d)({SECTION_PATTERN})(?![A.\d-])"
+SUBSECTION_REGEX = rf"(?<!\d)({SUBSECTION_PATTERN})(?!\d)"
+
+# Context-aware regex for finding references in paragraph text
+# Must be preceded by "Section", "Sections", or "§" to avoid false positives (measurements, dates, etc.)
+SECTION_REFERENCE_REGEX = rf"(?:Section|Sections|§)\s*({SECTION_PATTERN})(?![A.\d-])"
+SUBSECTION_REFERENCE_REGEX = rf"(?:Section|Sections|§)\s*({SUBSECTION_PATTERN})(?!\d)"
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -45,8 +55,8 @@ def get_chapter_files(year: int) -> dict[str, str]:
         "10": f"CHAPTER 10 MEANS OF EGRESS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11a": f"CHAPTER 11A HOUSING ACCESSIBILITY - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11b": f"Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - {year} California Building Code Volumes 1 and 2, Title 24, Part 2.html",
-        "14": f"CHAPTER 14 EXTERIOR WALLS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
-        "15": f"CHAPTER 15 ROOF ASSEMBLIES AND ROOFTOP STRUCTURES - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "14": f"CHAPTER 14 EXTERIOR WALLS - {year} CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
+        "15": f"CHAPTER 15 ROOF ASSEMBLIES AND ROOFTOP STRUCTURES - {year} CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
         "16": f"CHAPTER 16 STRUCTURAL DESIGN  - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         
     }
@@ -55,23 +65,33 @@ def get_chapter_files(year: int) -> dict[str, str]:
 
 
 def find_section_numbers(text: str) -> list[str]:
-    """Extract section numbers from text."""
+    """Extract section numbers from text (e.g., from headers). No context required."""
     return re.findall(SECTION_REGEX, text)
 
 
 def find_subsection_numbers(text: str) -> list[str]:
-    """Extract subsection numbers from text."""
+    """Extract subsection numbers from text (e.g., from headers). No context required."""
     return re.findall(SUBSECTION_REGEX, text)
+
+
+def find_section_references(text: str) -> list[str]:
+    """Find section references in paragraph text. Requires 'Section'/'Sections'/'§' context."""
+    return re.findall(SECTION_REFERENCE_REGEX, text)
+
+
+def find_subsection_references(text: str) -> list[str]:
+    """Find subsection references in paragraph text. Requires 'Section'/'Sections'/'§' context."""
+    return re.findall(SUBSECTION_REFERENCE_REGEX, text)
 
 
 def section_belongs_to_chapter(section_number: str, chapter: str) -> bool:
     """Check if a section number belongs to the specified chapter."""
     chapter = chapter.lower()
-    
-    # Chapters 3-9 follow the pattern: Xdd (e.g., 301, 402, 502)
-    if chapter in ["3", "4", "5", "6", "7", "8", "9"]:
+
+    # Chapters 3-9, 14-16 follow the pattern: Xdd or XXdd (e.g., 301, 402, 1401, 1502)
+    if chapter in ["3", "4", "5", "6", "7", "8", "9", "14", "15", "16"]:
         return re.match(rf"^{chapter}\d{{2}}$", section_number) is not None
-    
+
     # Special cases with unique patterns
     patterns = {
         "7a": r"^7\d{2}A$",          # Chapter 7A: 7XXA (e.g., 701A, 702A)
@@ -79,10 +99,10 @@ def section_belongs_to_chapter(section_number: str, chapter: str) -> bool:
         "11a": r"^11\d{2}A$",        # Chapter 11A: 11XXA (e.g., 1102A, 1103A, 1105A)
         "11b": r"^11B-",             # Chapter 11B: 11B-XXX (e.g., 11B-101)
     }
-    
+
     if chapter in patterns:
         return re.match(patterns[chapter], section_number) is not None
-    
+
     return False
 
 
@@ -274,11 +294,12 @@ def extract_subsections(soup: BeautifulSoup, chapter: str) -> dict[str, Subsecti
             # Skip if paragraph is inside a nested section
             if any(nested_section in para.parents for nested_section in nested_sections):
                 continue
-            
+
             para_text = para.get_text()
             paragraphs.append(para_text)
-            links.extend(find_subsection_numbers(para_text))
-            links.extend(find_section_numbers(para_text))
+            # Use reference functions to find cross-references (requires context)
+            links.extend(find_subsection_references(para_text))
+            links.extend(find_section_references(para_text))
         
         logger.info(f"Subsection: {subsection_number} - {subsection_title}")
         

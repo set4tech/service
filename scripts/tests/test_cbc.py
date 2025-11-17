@@ -9,7 +9,7 @@ import pytest
 # Add parent directory to path to import cbc module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cbc import section_belongs_to_chapter
+from cbc import section_belongs_to_chapter, find_section_references, find_subsection_references
 
 
 class TestSectionBelongsToChapter:
@@ -158,6 +158,114 @@ class TestSectionBelongsToChapter:
         # Chapter 11A vs 11B distinction
         assert not section_belongs_to_chapter("1102A", "11b")
         assert not section_belongs_to_chapter("11B-101", "11a")
+
+
+class TestFindSectionNumbers:
+    """Test the find_section_numbers regex function."""
+
+    def test_chapter_7a_11a_format_positive(self):
+        """Should extract Chapter 7A/11A format sections with proper context."""
+        # "Section 709A.4" is a subsection, so find_section_numbers should NOT match it
+        assert find_section_references("This material must comply with Section 709A.4") == []
+        # These are pure section references (no dots)
+        assert find_section_references("This applies to all Group R occupancies per Section 1101A") == ["1101A"]
+        assert find_section_references("Refer to the accessibility requirements in Section 1102A") == ["1102A"]
+        assert find_section_references("Grab bar reinforcement is detailed in Section 1134A") == ["1134A"]
+        # Multiple sections each with "Section" keyword
+        assert find_section_references("See Section 709A and Section 710A for criteria") == ["709A", "710A"]
+
+    def test_chapter_11b_format_positive(self):
+        """Should extract Chapter 11B format sections with proper context."""
+        assert find_section_references("Parking spaces must comply with Section 11B-208") == ["11B-208"]
+        assert find_section_references("The requirements are in Section 11B-101") == ["11B-101"]
+        assert find_section_references("This is also referenced in §11B-302") == ["11B-302"]
+        # Multiple sections each with keyword
+        assert find_section_references("See Section 11B-201 and Section 11B-250") == ["11B-201", "11B-250"]
+
+    def test_standard_chapters_positive(self):
+        """Should extract standard chapter sections (3-10, 14-16) with proper context."""
+        assert find_section_references("See Section 609 for requirements") == ["609"]
+        assert find_section_references("According to Section 1401") == ["1401"]
+        assert find_section_references("Refer to §1502 for details") == ["1502"]
+        # Multiple sections each with keyword
+        assert find_section_references("Section 701 and Section 801 apply") == ["701", "801"]
+
+    def test_measurements_negative(self):
+        """Should NOT extract measurements or embedded numbers."""
+        assert find_section_references("20 feet (6096 mm) in height") == []
+        assert find_section_references("5/8 inch (16 mm) in thickness") == []
+        assert find_section_references("rate of less than or equal to 25 kW/ft²") == []
+        assert find_section_references("at the conclusion of the 40-min test") == []
+        assert find_section_references("The clearance must be 36 inches minimum") == []
+
+    def test_standards_negative(self):
+        """Should NOT extract other standards or test methods."""
+        assert find_section_references("when tested in accordance with ASTM E2726") == []
+        assert find_section_references("complies with SFM Standard 12-7A-4A") == []
+        assert find_section_references("or UL 723") == []
+        assert find_section_references("with a Class B flame spread") == []
+
+    def test_dates_and_generic_negative(self):
+        """Should NOT extract dates, years, or generic references."""
+        assert find_section_references("The project was approved on 11-17-2025") == []
+        assert find_section_references("This is covered in the 2022 edition of the code") == []
+        assert find_section_references("See Chapter 1 for general information") == []
+        assert find_section_references("This applies to items 1 and 2 below") == []
+        assert find_section_references("conducted on a minimum of three test specimens") == []
+
+    def test_bare_numbers_without_context_negative(self):
+        """Should NOT extract bare section numbers without 'Section' or '§' prefix."""
+        assert find_section_references("The 609 requirement is important") == []
+        assert find_section_references("11B-213 is the relevant section") == []
+        assert find_section_references("Per 1401, the requirements apply") == []
+
+    def test_mixed_content(self):
+        """Should extract only valid sections from mixed content."""
+        text = "Units which exceed 5/8 inch (16 mm) in thickness shall be applied as for anchored veneer where used over exit ways or more than 20 feet (6096 mm) in height. See Section 609 for details."
+        assert find_section_references(text) == ["609"]
+
+
+class TestFindSubsectionNumbers:
+    """Test the find_subsection_numbers regex function."""
+
+    def test_chapter_7a_11a_subsections_positive(self):
+        """Should extract Chapter 7A/11A format subsections with proper context."""
+        assert find_subsection_references("The test must be conducted per Section 709A.4.1") == ["709A.4.1"]
+        assert find_subsection_references("Refer to Section 1102A.3.1 for requirements") == ["1102A.3.1"]
+        assert find_subsection_references("Grab bar reinforcement is detailed in Section 1134A.7") == ["1134A.7"]
+        # Multiple subsections each with keyword
+        assert find_subsection_references("See Section 709A.4.1 and Section 709A.4.2 for criteria") == ["709A.4.1", "709A.4.2"]
+
+    def test_chapter_11b_subsections_positive(self):
+        """Should extract Chapter 11B format subsections with proper context."""
+        assert find_subsection_references("The requirements are in Section 11B-101.1") == ["11B-101.1"]
+        assert find_subsection_references("See Section 11B-809.8.1 for door threshold details") == ["11B-809.8.1"]
+        assert find_subsection_references("This is also referenced in §11B-302.1") == ["11B-302.1"]
+        assert find_subsection_references("Water closet clearance is in Section 11B-604.3.1") == ["11B-604.3.1"]
+
+    def test_standard_chapters_subsections_positive(self):
+        """Should extract standard chapter subsections with proper context."""
+        assert find_subsection_references("See Section 609.1 for requirements") == ["609.1"]
+        assert find_subsection_references("According to Section 1401.2.3") == ["1401.2.3"]
+        assert find_subsection_references("Refer to §702.5.2.1") == ["702.5.2.1"]
+
+    def test_should_not_match_sections_without_dots(self):
+        """Should NOT match section numbers without subsection dots."""
+        assert find_subsection_references("See Section 609") == []
+        assert find_subsection_references("Section 1401 applies") == []
+
+    def test_should_not_match_decimal_measurements(self):
+        """Should NOT match decimal numbers like measurements."""
+        assert find_subsection_references("3.14159 is pi") == []
+        assert find_subsection_references("The ratio is 2.5 to 1") == []
+        assert find_subsection_references("Thickness: 0.625 inches") == []
+        assert find_subsection_references("6096.78 mm total") == []
+
+    def test_bare_subsections_without_context_negative(self):
+        """Should NOT extract bare subsection numbers without 'Section' or '§' prefix."""
+        assert find_subsection_references("The 609.1 requirement is important") == []
+        assert find_subsection_references("11B-213.3.1 applies here") == []
+        assert find_subsection_references("Per 1401.2.3, the requirements apply") == []
 
 
 if __name__ == "__main__":
