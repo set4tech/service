@@ -4,142 +4,211 @@
 
 This database stores building code documents (e.g., California Building Code, ICC A117.1) and their hierarchical section structure in PostgreSQL/Supabase. It also manages compliance assessments, AI analysis runs, and screenshot evidence.
 
+_This file is auto-generated from the database schema. Do not edit manually._
+
+_Source: **Production** database_
+
+_Last generated: Run `python scripts/generate_schema_docs.py` to regenerate._
+
 ## Core Tables
 
 ### `codes`
 
-Master building code documents table. Each row represents one version of a building code.
-
 **Schema:**
 
-| Column         | Type          | Description                                                        |
-| -------------- | ------------- | ------------------------------------------------------------------ |
-| `id`           | TEXT PK       | Composite key: `{provider}+{source_id}+{version}[+{jurisdiction}]` |
-| `provider`     | TEXT NOT NULL | Provider (e.g., "ICC", "NYSBC")                                    |
-| `source_id`    | TEXT NOT NULL | Source ID (e.g., "A117.1", "CBC_Chapter11A_11B")                   |
-| `version`      | TEXT NOT NULL | Version year (e.g., "2025", "2017")                                |
-| `jurisdiction` | TEXT          | State code (e.g., "CA", "NY") or NULL for national                 |
-| `title`        | TEXT NOT NULL | Full code title                                                    |
-| `source_url`   | TEXT          | URL to official code document                                      |
-| `created_at`   | TIMESTAMPTZ   | Creation timestamp                                                 |
-| `updated_at`   | TIMESTAMPTZ   | Last update timestamp                                              |
+| Column         | Type             | Description                |
+| -------------- | ---------------- | -------------------------- |
+| `id`           | TEXT NOT NULL PK |                            |
+| `year`         | TEXT NOT NULL    |                            |
+| `jurisdiction` | TEXT             |                            |
+| `title`        | TEXT NOT NULL    |                            |
+| `source_url`   | TEXT             |                            |
+| `created_at`   | TIMESTAMPTZ      | Default: Current timestamp |
+| `updated_at`   | TIMESTAMPTZ      | Default: Current timestamp |
 
 **Indexes:**
 
-- `idx_codes_provider` on `provider`
-- `idx_codes_source_id` on `source_id`
-- `idx_codes_version` on `version`
-- `idx_codes_jurisdiction` on `jurisdiction`
-- `unique_code_version` UNIQUE on `(provider, source_id, version, jurisdiction)`
-
-**Example:**
-
-- `ICC+CBC_Chapter11A_11B+2025+CA` - California Building Code Chapter 11 (2025)
-- `ICC+A117.1+2017` - ICC A117.1 (2017 edition, national)
+- `idx_codes_jurisdiction` on `(jurisdiction)`
+- `idx_codes_version` on `(year)`
 
 ---
 
 ### `sections`
 
-Hierarchical storage of all sections and subsections within building codes.
-
 **Schema:**
 
-| Column        | Type                   | Description                                                              |
-| ------------- | ---------------------- | ------------------------------------------------------------------------ |
-| `id`          | SERIAL PK              | Auto-incrementing integer primary key                                    |
-| `key`         | TEXT UNIQUE NOT NULL   | Unique key: `{provider}:{source_id}:{version}[:{jurisdiction}]:{number}` |
-| `code_id`     | TEXT FK → codes.id     | Parent code document                                                     |
-| `parent_key`  | TEXT FK → sections.key | Parent section (NULL for top-level)                                      |
-| `number`      | TEXT NOT NULL          | Section number (e.g., "11B-401.1")                                       |
-| `title`       | TEXT NOT NULL          | Section title                                                            |
-| `text`        | TEXT                   | Full section text content                                                |
-| `item_type`   | TEXT NOT NULL          | "section" or "subsection"                                                |
-| `code_type`   | TEXT NOT NULL          | "accessibility", "building", "fire", "plumbing", "mechanical", "energy"  |
-| `paragraphs`  | JSONB                  | Array of paragraph strings (default `[]`)                                |
-| `source_url`  | TEXT                   | URL to this specific section                                             |
-| `source_page` | INTEGER                | Page number in source document                                           |
-| `hash`        | TEXT NOT NULL          | Content hash for change detection                                        |
-| `tables`      | JSONB                  | Array of table objects with number, title, CSV data (default `[]`)       |
-| `figures`     | JSONB                  | Array of figure URLs (default `[]`)                                      |
-| `chapter`     | TEXT                   | Chapter identifier (e.g., "11A", "11B") - denormalized from number       |
-| `created_at`  | TIMESTAMPTZ            | Creation timestamp                                                       |
-| `updated_at`  | TIMESTAMPTZ            | Last update timestamp                                                    |
-
-**Applicability Metadata:**
-
-| Column                           | Type    | Description                                                          |
-| -------------------------------- | ------- | -------------------------------------------------------------------- |
-| `always_include`                 | BOOLEAN | TRUE for scoping/definitions/administrative sections (default FALSE) |
-| `applicable_occupancies`         | TEXT[]  | Occupancy letters [A,B,E,...]; NULL means no restriction             |
-| `requires_parking`               | BOOLEAN | TRUE if section only applies when site has parking                   |
-| `requires_elevator`              | BOOLEAN | TRUE if section only applies when elevator required                  |
-| `min_building_size`              | INTEGER | Minimum per-story gross floor area (sq ft) threshold                 |
-| `max_building_size`              | INTEGER | Maximum per-story gross floor area (sq ft) threshold                 |
-| `applicable_work_types`          | TEXT[]  | Work type strings matching project variables                         |
-| `applicable_facility_categories` | TEXT[]  | Facility category strings                                            |
-| `applicability_notes`            | TEXT    | Maintainer notes about applicability logic                           |
-
-**Assessability Metadata:**
-
-| Column               | Type             | Description                                                                                   |
-| -------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
-| `assessability_tags` | TEXT[]           | Tags: too_short, placeholder, definitional, administrative, procedural, summary, not_physical |
-| `never_relevant`     | BOOLEAN NOT NULL | Global exclusion flag (default FALSE)                                                         |
-| `floorplan_relevant` | BOOLEAN NOT NULL | Prioritize for floorplan analysis (default FALSE)                                             |
+| Column                           | Type                                         | Description                                                                                                                                        |
+| -------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`                            | TEXT NOT NULL                                |                                                                                                                                                    |
+| `code_id`                        | TEXT NOT NULL FK → codes.id (CASCADE delete) |                                                                                                                                                    |
+| `parent_key`                     | TEXT FK → sections.key (CASCADE delete)      |                                                                                                                                                    |
+| `number`                         | TEXT NOT NULL                                |                                                                                                                                                    |
+| `title`                          | TEXT NOT NULL                                |                                                                                                                                                    |
+| `text`                           | TEXT                                         |                                                                                                                                                    |
+| `item_type`                      | TEXT NOT NULL                                |                                                                                                                                                    |
+| `code_type`                      | TEXT NOT NULL                                |                                                                                                                                                    |
+| `paragraphs`                     | JSONB                                        | Default: '[]'::jsonb                                                                                                                               |
+| `source_url`                     | TEXT                                         |                                                                                                                                                    |
+| `source_page`                    | INTEGER                                      |                                                                                                                                                    |
+| `hash`                           | TEXT NOT NULL                                |                                                                                                                                                    |
+| `created_at`                     | TIMESTAMPTZ                                  | Default: Current timestamp                                                                                                                         |
+| `updated_at`                     | TIMESTAMPTZ                                  | Default: Current timestamp                                                                                                                         |
+| `chapter`                        | TEXT                                         | 11A or 11B for CBC sections; denormalized from number                                                                                              |
+| `always_include`                 | BOOLEAN                                      | TRUE for scoping/definitions/administrative sections; Default: false                                                                               |
+| `applicable_occupancies`         | ARRAY                                        | Occupancy letters [A,B,E,...]; NULL means no restriction                                                                                           |
+| `requires_parking`               | BOOLEAN                                      | TRUE if section only applies when site has parking                                                                                                 |
+| `requires_elevator`              | BOOLEAN                                      | TRUE if section only applies when elevator required                                                                                                |
+| `min_building_size`              | INTEGER                                      | Minimum per-story gross floor area (sf) threshold                                                                                                  |
+| `max_building_size`              | INTEGER                                      | Maximum per-story gross floor area (sf) threshold                                                                                                  |
+| `applicable_work_types`          | ARRAY                                        | Work type strings matching project variables                                                                                                       |
+| `applicable_facility_categories` | ARRAY                                        | Facility category strings                                                                                                                          |
+| `applicability_notes`            | TEXT                                         | Maintainer notes about applicability logic                                                                                                         |
+| `drawing_assessable`             | BOOLEAN                                      | Whether this section can be assessed from architectural drawings; Default: true                                                                    |
+| `assessability_tags`             | ARRAY                                        | Tags explaining why section may not be assessable: too_short, placeholder, definitional, administrative, procedural, summary, not_physical         |
+| `tables`                         | JSONB                                        | Array of table objects with number, title, and CSV data; Default: '[]'::jsonb                                                                      |
+| `figures`                        | JSONB                                        | Array of figure URLs (prefixed with "figure:" or "table:" type); Default: '[]'::jsonb                                                              |
+| `never_relevant`                 | BOOLEAN NOT NULL                             | Global flag to exclude this section from all future assessments. Cannot be easily reversed.; Default: false                                        |
+| `floorplan_relevant`             | BOOLEAN NOT NULL                             | Flag to mark sections as specifically relevant to floorplan analysis. These sections are prioritized when returning code sections.; Default: false |
+| `chapter_id`                     | UUID NOT NULL FK → chapters.id               |                                                                                                                                                    |
+| `id`                             | UUID NOT NULL PK                             | Default: gen_random_uuid()                                                                                                                         |
+| `id_new`                         | UUID                                         | Default: gen_random_uuid()                                                                                                                         |
 
 **Indexes:**
 
-- `idx_sections_code_id` on `code_id`
-- `idx_sections_key` on `key`
-- `idx_sections_number` on `number`
-- `idx_sections_chapter` on `chapter`
-- `idx_sections_app_occ` GIN on `applicable_occupancies`
-- `idx_sections_app_work` GIN on `applicable_work_types`
-- `idx_sections_app_fac` GIN on `applicable_facility_categories`
-- `idx_sections_parking` on `requires_parking`
-- `idx_sections_elevator` on `requires_elevator`
-- `idx_sections_min_size` on `min_building_size`
-- `idx_sections_max_size` on `max_building_size`
-- `idx_sections_assessability_tags` GIN on `assessability_tags`
-- `idx_sections_never_relevant` on `never_relevant` (partial WHERE TRUE)
-- `idx_sections_floorplan_relevant` on `floorplan_relevant` (partial WHERE TRUE)
-- `idx_sections_tables` GIN on `tables`
-- `idx_sections_figures` GIN on `figures`
+- `idx_sections_app_fac` on `(applicable_facility_categories)`
+- `idx_sections_app_occ` on `(applicable_occupancies)`
+- `idx_sections_app_work` on `(applicable_work_types)`
+- `idx_sections_assessability_tags` on `(assessability_tags)`
+- `idx_sections_chapter` on `(chapter)`
+- `idx_sections_code_id` on `(code_id)`
+- `idx_sections_drawing_assessable` on `(drawing_assessable)`
+- `idx_sections_elevator` on `(requires_elevator)`
+- `idx_sections_figures` on `(figures)`
+- `idx_sections_floorplan_relevant` on `(floorplan_relevant)` WHERE (floorplan_relevant = true)
+- `idx_sections_key` on `(key)`
+- `idx_sections_max_size` on `(max_building_size)`
+- `idx_sections_min_size` on `(min_building_size)`
+- `idx_sections_never_relevant` on `(never_relevant)` WHERE (never_relevant = true)
+- `idx_sections_number` on `(number)`
+- `idx_sections_parking` on `(requires_parking)`
+- `idx_sections_tables` on `(tables)`
+- `sections_key_key` UNIQUE on `(key)`
 - `unique_section_number_per_code` UNIQUE on `(code_id, number)`
 
 **Constraints:**
 
-- `sections_code_type_check`: code_type must be one of allowed values
-- `sections_item_type_check`: item_type must be "section" or "subsection"
-- `chk_sections_work_types_values`: validates work types against allowed values
+- `chk_sections_work_types_values`: CHECK (validate_work_types(applicable_work_types))
+- `sections_code_type_check`: CHECK ((code_type = ANY (ARRAY['accessibility'::text, 'building'::text, 'fire'::text, 'plumbing'::text, 'mechanical'::text, 'energy'::text])))
+- `sections_item_type_check`: CHECK ((item_type = ANY (ARRAY['section'::text, 'subsection'::text])))
 
 ---
 
 ### `section_references`
 
-Cross-references between sections (e.g., "See Section 401.1" citations).
-
 **Schema:**
 
-| Column               | Type                   | Description                                                    |
-| -------------------- | ---------------------- | -------------------------------------------------------------- |
-| `id`                 | SERIAL PK              | Auto-incrementing integer primary key                          |
-| `source_section_key` | TEXT FK → sections.key | Section containing the reference                               |
-| `target_section_key` | TEXT FK → sections.key | Section being referenced                                       |
-| `explicit`           | BOOLEAN                | TRUE for explicit citations, FALSE for inferred (default TRUE) |
-| `citation_text`      | TEXT                   | Original citation text from the code                           |
-| `created_at`         | TIMESTAMPTZ            | Creation timestamp                                             |
+| Column               | Type                                             | Description                |
+| -------------------- | ------------------------------------------------ | -------------------------- |
+| `id`                 | INTEGER NOT NULL PK                              | Default: Auto-incrementing |
+| `source_section_key` | TEXT NOT NULL FK → sections.key (CASCADE delete) |                            |
+| `target_section_key` | TEXT NOT NULL FK → sections.key (CASCADE delete) |                            |
+| `explicit`           | BOOLEAN                                          | Default: true              |
+| `citation_text`      | TEXT                                             |                            |
+| `created_at`         | TIMESTAMPTZ                                      | Default: Current timestamp |
+| `source_section_id`  | UUID NOT NULL FK → sections.id (CASCADE delete)  |                            |
+| `target_section_id`  | UUID NOT NULL FK → sections.id (CASCADE delete)  |                            |
 
 **Indexes:**
 
-- `idx_section_refs_source` on `source_section_key`
-- `idx_section_refs_target` on `target_section_key`
+- `idx_section_refs_source` on `(source_section_key)`
+- `idx_section_refs_source_id` on `(source_section_id)`
+- `idx_section_refs_target` on `(target_section_key)`
+- `idx_section_refs_target_id` on `(target_section_id)`
+- `section_references_unique_id` UNIQUE on `(source_section_id, target_section_id)`
 - `unique_section_reference` UNIQUE on `(source_section_key, target_section_key)`
 
 **Constraints:**
 
-- `no_self_reference`: Prevents a section from referencing itself
+- `no_self_reference`: CHECK ((source_section_key <> target_section_key))
+
+---
+
+## Element Tables
+
+### `element_groups`
+
+Element categories including: doors, bathrooms, kitchens, exit-signage, assisted-listening, elevators, elevator-signage, parking-signage, ramps, changes-in-level, turning-spaces, walls
+
+**Schema:**
+
+| Column        | Type             | Description                |
+| ------------- | ---------------- | -------------------------- |
+| `id`          | UUID NOT NULL PK | Default: gen_random_uuid() |
+| `name`        | TEXT NOT NULL    |                            |
+| `slug`        | TEXT NOT NULL    |                            |
+| `description` | TEXT             |                            |
+| `icon`        | TEXT             |                            |
+| `sort_order`  | INTEGER          | Default: 0                 |
+| `created_at`  | TIMESTAMPTZ      | Default: Current timestamp |
+
+**Indexes:**
+
+- `element_groups_slug_key` UNIQUE on `(slug)`
+
+---
+
+### `element_instances`
+
+Physical element instances (e.g., "Door 1", "Bathroom 2") that group related section checks
+
+**Schema:**
+
+| Column             | Type                                                  | Description                                                                                                                                                                                                                                    |
+| ------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | UUID NOT NULL PK                                      | Default: gen_random_uuid()                                                                                                                                                                                                                     |
+| `assessment_id`    | UUID NOT NULL FK → assessments.id (CASCADE delete)    |                                                                                                                                                                                                                                                |
+| `element_group_id` | UUID NOT NULL FK → element_groups.id (CASCADE delete) |                                                                                                                                                                                                                                                |
+| `label`            | VARCHAR NOT NULL                                      | User-facing label, auto-generated if not provided (e.g., "Door 1")                                                                                                                                                                             |
+| `created_at`       | TIMESTAMPTZ                                           | Default: Current timestamp                                                                                                                                                                                                                     |
+| `updated_at`       | TIMESTAMPTZ                                           | Default: Current timestamp                                                                                                                                                                                                                     |
+| `parameters`       | JSONB                                                 | JSONB field storing element-specific parameters (e.g., door measurements: clear_width_inches, pull_side_perpendicular_clearance_inches). Structure varies by element_group_id and maps to DoorParameters type for doors.; Default: '{}'::jsonb |
+| `bounding_box`     | JSONB                                                 | JSONB field storing PDF bounding box coordinates in points: {x: number, y: number, width: number, height: number}. Used for highlighting element location on PDF.                                                                              |
+| `page_number`      | INTEGER                                               | PDF page number (1-indexed) where this element instance is located.                                                                                                                                                                            |
+
+**Indexes:**
+
+- `element_instances_assessment_id_element_group_id_label_key` UNIQUE on `(assessment_id, element_group_id, label)`
+- `idx_element_instances_assessment_group` on `(assessment_id, element_group_id)`
+- `idx_element_instances_page_number` on `(page_number)`
+- `idx_element_instances_parameters` on `(parameters)`
+
+---
+
+### `element_section_mappings`
+
+Maps which code sections apply to each element group (e.g., Doors -> [11B-404.2.6, 11B-404.2.7])
+
+**Schema:**
+
+| Column             | Type                                                     | Description                                                          |
+| ------------------ | -------------------------------------------------------- | -------------------------------------------------------------------- |
+| `id`               | UUID NOT NULL PK                                         | Default: gen_random_uuid()                                           |
+| `element_group_id` | UUID NOT NULL FK → element_groups.id (CASCADE delete)    |                                                                      |
+| `section_key`      | VARCHAR(255) NOT NULL FK → sections.key (CASCADE delete) |                                                                      |
+| `created_at`       | TIMESTAMPTZ                                              | Default: Current timestamp                                           |
+| `assessment_id`    | UUID FK → assessments.id (CASCADE delete)                | NULL for global defaults, non-NULL for assessment-specific overrides |
+| `section_id`       | UUID NOT NULL FK → sections.id (CASCADE delete)          |                                                                      |
+
+**Indexes:**
+
+- `element_section_mappings_assessment_unique` UNIQUE on `(element_group_id, section_key, assessment_id)` WHERE (assessment_id IS NOT NULL)
+- `element_section_mappings_assessment_unique_id` UNIQUE on `(element_group_id, section_id, assessment_id)` WHERE (assessment_id IS NOT NULL)
+- `element_section_mappings_global_unique` UNIQUE on `(element_group_id, section_key)` WHERE (assessment_id IS NULL)
+- `element_section_mappings_global_unique_id` UNIQUE on `(element_group_id, section_id)` WHERE (assessment_id IS NULL)
+- `idx_element_mappings_assessment` on `(assessment_id)`
+- `idx_element_section_mappings_element` on `(element_group_id)`
+- `idx_element_section_mappings_section` on `(section_key)`
+- `idx_element_section_mappings_section_id` on `(section_id)`
 
 ---
 
@@ -147,417 +216,263 @@ Cross-references between sections (e.g., "See Section 401.1" citations).
 
 ### `customers`
 
-Customer/client organizations.
-
 **Schema:**
 
-| Column          | Type                  | Description           |
-| --------------- | --------------------- | --------------------- |
-| `id`            | UUID PK               | Primary key           |
-| `name`          | VARCHAR(255) NOT NULL | Customer name         |
-| `contact_email` | VARCHAR(255)          | Primary contact email |
-| `contact_phone` | VARCHAR(50)           | Contact phone number  |
-| `address`       | TEXT                  | Physical address      |
-| `created_at`    | TIMESTAMPTZ           | Creation timestamp    |
-| `updated_at`    | TIMESTAMPTZ           | Last update timestamp |
+| Column          | Type                  | Description                |
+| --------------- | --------------------- | -------------------------- |
+| `id`            | UUID NOT NULL PK      | Default: gen_random_uuid() |
+| `name`          | VARCHAR(255) NOT NULL |                            |
+| `contact_email` | VARCHAR(255)          |                            |
+| `contact_phone` | VARCHAR(50)           |                            |
+| `address`       | TEXT                  |                            |
+| `created_at`    | TIMESTAMPTZ           | Default: Current timestamp |
+| `updated_at`    | TIMESTAMPTZ           | Default: Current timestamp |
 
 ---
 
 ### `projects`
 
-Individual building projects for customers.
-
 **Schema:**
 
-| Column                    | Type                   | Description                                                        |
-| ------------------------- | ---------------------- | ------------------------------------------------------------------ |
-| `id`                      | UUID PK                | Primary key                                                        |
-| `customer_id`             | UUID FK → customers.id | Customer reference (CASCADE delete)                                |
-| `name`                    | VARCHAR(255) NOT NULL  | Project name                                                       |
-| `description`             | TEXT                   | Project description                                                |
-| `building_address`        | TEXT                   | Building location                                                  |
-| `building_type`           | VARCHAR(100)           | Type of building                                                   |
-| `code_assembly_id`        | VARCHAR(255)           | Legacy code assembly identifier                                    |
-| `pdf_url`                 | TEXT                   | S3 URL to architectural drawings PDF                               |
-| `unannotated_drawing_url` | TEXT                   | S3 URL to original drawings PDF without markups or annotations     |
-| `selected_code_ids`       | TEXT[]                 | Array of code IDs to assess against                                |
-| `status`                  | VARCHAR(50)            | Project status (default 'in_progress')                             |
-| `extracted_variables`     | JSONB                  | Building metadata extracted from drawings                          |
-| `extraction_status`       | VARCHAR(50)            | Status: pending, processing, completed, failed (default 'pending') |
-| `extraction_progress`     | JSONB                  | Progress: {current: number, total: number, category: string}       |
-| `extraction_started_at`   | TIMESTAMPTZ            | When extraction started                                            |
-| `extraction_completed_at` | TIMESTAMPTZ            | When extraction completed                                          |
-| `extraction_error`        | TEXT                   | Error message if extraction failed                                 |
-| `chunking_status`         | VARCHAR(50)            | PDF text chunking status (default 'pending')                       |
-| `chunking_started_at`     | TIMESTAMPTZ            | When PDF text extraction started                                   |
-| `chunking_completed_at`   | TIMESTAMPTZ            | When PDF text extraction completed                                 |
-| `chunking_error`          | TEXT                   | Error message if chunking failed                                   |
-| `report_password`         | TEXT                   | Password for accessing compliance reports (optional)               |
-| `created_at`              | TIMESTAMPTZ            | Creation timestamp                                                 |
-| `updated_at`              | TIMESTAMPTZ            | Last update timestamp                                              |
+| Column              | Type                                    | Description                               |
+| ------------------- | --------------------------------------- | ----------------------------------------- |
+| `id`                | UUID NOT NULL PK                        | Default: gen_random_uuid()                |
+| `customer_id`       | UUID FK → customers.id (CASCADE delete) |                                           |
+| `name`              | VARCHAR(255) NOT NULL                   |                                           |
+| `description`       | TEXT                                    |                                           |
+| `building_address`  | TEXT                                    |                                           |
+| `building_type`     | VARCHAR(100)                            |                                           |
+| `code_assembly_id`  | VARCHAR(255)                            |                                           |
+| `pdf_url`           | TEXT                                    |                                           |
+| `status`            | VARCHAR(50)                             | Default: 'in_progress'::character varying |
+| `created_at`        | TIMESTAMPTZ                             | Default: Current timestamp                |
+| `updated_at`        | TIMESTAMPTZ                             | Default: Current timestamp                |
+| `selected_code_ids` | ARRAY                                   | Array                                     |
+
+of Neo4j Code node IDs that are
+relevant to this project |
+| `extracted_variables` | JSONB | JSON
+object containing extracted building
+variables from PDF |
+| `extraction_status` | VARCHAR(50) | Status: pending, processing,
+completed, failed; Default: 'pending'::character varying |
+| `extraction_progress` | JSONB | Progress tracking: {current: number,
+total: number, category: string} |
+| `extraction_started_at` | TIMESTAMPTZ | |
+| `extraction_completed_at` | TIMESTAMPTZ | |
+| `extraction_error` | TEXT | |
+| `unannotated_drawing_url` | TEXT | S3 URL to the original architectural drawings PDF without markups or annotations |
+| `report_password` | TEXT | Bcrypt-hashed password for customer report access (publicly accessible) |
+| `chunking_status` | VARCHAR(50) | Default: 'pending'::character varying |
+| `chunking_started_at` | TIMESTAMPTZ | |
+| `chunking_completed_at` | TIMESTAMPTZ | |
+| `chunking_error` | TEXT | |
+| `pdf_width_points` | NUMERIC | PDF page width in points (includes UserUnit scaling) |
+| `pdf_height_points` | NUMERIC | PDF page height in points (includes UserUnit scaling) |
+| `pdf_width_inches` | NUMERIC | PDF page width in inches (points / 72) |
+| `pdf_height_inches` | NUMERIC | PDF page height in inches (points / 72) |
 
 **Indexes:**
 
-- `idx_projects_extraction_status` on `extraction_status`
-- `idx_projects_chunking_status` on `chunking_status`
+- `idx_projects_chunking_status` on `(chunking_status)`
+- `idx_projects_extraction_status` on `(extraction_status)`
 
 ---
 
 ### `assessments`
 
-Code compliance assessment instances for a project.
-
 **Schema:**
 
-| Column               | Type                  | Description                                          |
-| -------------------- | --------------------- | ---------------------------------------------------- |
-| `id`                 | UUID PK               | Primary key                                          |
-| `project_id`         | UUID FK → projects.id | Project reference (CASCADE delete)                   |
-| `started_at`         | TIMESTAMPTZ           | Assessment start time (default now())                |
-| `completed_at`       | TIMESTAMPTZ           | When assessment was completed                        |
-| `total_sections`     | INTEGER               | Total checks created                                 |
-| `assessed_sections`  | INTEGER               | Number of checks completed (default 0)               |
-| `status`             | VARCHAR(50)           | Overall status (default 'in_progress')               |
-| `seeding_status`     | TEXT                  | Check seeding status (default 'not_started')         |
-| `sections_processed` | INTEGER               | Sections processed during seeding (default 0)        |
-| `sections_total`     | INTEGER               | Total sections to process during seeding (default 0) |
-| `pdf_scale`          | NUMERIC(3,1)          | PDF rendering scale multiplier 1.0-6.0 (default 2.0) |
+| Column                 | Type                                   | Description                                                                         |
+| ---------------------- | -------------------------------------- | ----------------------------------------------------------------------------------- |
+| `id`                   | UUID NOT NULL PK                       | Default: gen_random_uuid()                                                          |
+| `project_id`           | UUID FK → projects.id (CASCADE delete) |                                                                                     |
+| `started_at`           | TIMESTAMPTZ                            | Default: Current timestamp                                                          |
+| `completed_at`         | TIMESTAMPTZ                            |                                                                                     |
+| `total_sections`       | INTEGER                                |                                                                                     |
+| `assessed_sections`    | INTEGER                                | Default: 0                                                                          |
+| `status`               | VARCHAR(50)                            | Default: 'in_progress'::character varying                                           |
+| `seeding_status`       | TEXT                                   | Default: 'not_started'::text                                                        |
+| `sections_processed`   | INTEGER                                | Default: 0                                                                          |
+| `sections_total`       | INTEGER                                | Default: 0                                                                          |
+| `pdf_scale`            | NUMERIC                                | PDF rendering scale multiplier (1.0-6.0) for floorplan detail viewing; Default: 2.0 |
+| `selected_chapter_ids` | ARRAY                                  |                                                                                     |
 
 **Indexes:**
 
-- `idx_assessments_seeding_status` on `seeding_status`
-
-**Description:**
-The `pdf_scale` column stores the user's preferred rendering scale for viewing floorplan details. Higher values provide more detail but use more memory.
+- `idx_assessments_seeding_status` on `(seeding_status)`
+- `idx_assessments_selected_chapters` on `(selected_chapter_ids)`
 
 ---
 
 ### `checks`
 
-Individual compliance checks for code sections within an assessment. All checks are flat section checks (no parent/child hierarchy).
-
 **Schema:**
 
-| Column                 | Type                           | Description                                                                                  |
-| ---------------------- | ------------------------------ | -------------------------------------------------------------------------------------------- |
-| `id`                   | UUID PK                        | Primary key                                                                                  |
-| `assessment_id`        | UUID FK → assessments.id       | Assessment reference (CASCADE delete)                                                        |
-| `code_section_key`     | VARCHAR(255) FK → sections.key | Code section reference (RESTRICT delete)                                                     |
-| `code_section_number`  | VARCHAR(100)                   | Section number (e.g., "11B-401.1")                                                           |
-| `code_section_title`   | TEXT                           | Section title                                                                                |
-| `check_name`           | VARCHAR(255)                   | Custom check name                                                                            |
-| `check_location`       | VARCHAR(255)                   | Location identifier                                                                          |
-| `element_instance_id`  | UUID FK → element_instances.id | Element instance reference (CASCADE delete); NULL for standalone section checks              |
-| `instance_label`       | TEXT                           | **DEPRECATED**: Groups element checks (e.g., "Door 1"); use element_instance_id instead      |
-| `check_type`           | TEXT                           | **DEPRECATED**: 'section' or 'element' (default 'section'); use element_instance_id instead  |
-| `element_group_id`     | UUID FK → element_groups.id    | **DEPRECATED**: Element group reference; use element_instance_id instead                     |
-| `human_readable_title` | TEXT                           | Optional human-readable title for the check                                                  |
-| `prompt_template_id`   | UUID FK → prompt_templates.id  | Prompt template reference                                                                    |
-| `actual_prompt_used`   | TEXT                           | Final prompt sent to AI (with substitutions)                                                 |
-| `status`               | VARCHAR(50)                    | Current status (default 'pending')                                                           |
-| `requires_review`      | BOOLEAN                        | Requires human review (default FALSE)                                                        |
-| `manual_status`        | TEXT                           | Manual judgment: compliant, non_compliant, not_applicable, insufficient_information, or NULL |
-| `manual_status_note`   | TEXT                           | Explanation for manual status                                                                |
-| `manual_status_at`     | TIMESTAMPTZ                    | When manual status was set                                                                   |
-| `manual_status_by`     | TEXT                           | User who set the manual status                                                               |
-| `is_excluded`          | BOOLEAN NOT NULL               | Whether check is excluded from assessment (default FALSE)                                    |
-| `excluded_reason`      | TEXT                           | Reason for exclusion                                                                         |
-| `created_at`           | TIMESTAMPTZ                    | Creation timestamp                                                                           |
-| `updated_at`           | TIMESTAMPTZ                    | Last update timestamp (auto-updated by trigger)                                              |
-
-**Architecture Notes:**
-
-- **New Normalized Design** (v2):
-  - Element checks are linked via `element_instance_id` → `element_instances` table
-  - Standalone section checks have `element_instance_id = NULL`
-  - Example: "Door 1" has one row in `element_instances`, with multiple rows in `checks` (one per section)
-- **Legacy Denormalized Design** (deprecated):
-  - Old element checks used `element_group_id` + `instance_label` to group sections
-  - These columns will be removed in a future migration after all code is updated
-- **Exclusion System**: `is_excluded` flag allows checks to be removed from assessment without deletion
-- **Migration**: Existing data automatically migrated to `element_instances` during schema update
+| Column                 | Type                                            | Description                                                                                                      |
+| ---------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `id`                   | UUID NOT NULL PK                                | Default: gen_random_uuid()                                                                                       |
+| `assessment_id`        | UUID FK → assessments.id (CASCADE delete)       |                                                                                                                  |
+| `code_section_number`  | VARCHAR(100)                                    | Denormalized section number for display and sorting. Populated from sections.number via section_id FK.           |
+| `code_section_title`   | TEXT                                            | Denormalized section title for display. Populated from sections.title via section_id FK.                         |
+| `check_name`           | VARCHAR(255)                                    |                                                                                                                  |
+| `check_location`       | VARCHAR(255)                                    |                                                                                                                  |
+| `prompt_template_id`   | UUID FK → prompt_templates.id                   |                                                                                                                  |
+| `status`               | VARCHAR(50)                                     | Default: 'pending'::character varying                                                                            |
+| `created_at`           | TIMESTAMPTZ                                     | Default: Current timestamp                                                                                       |
+| `updated_at`           | TIMESTAMPTZ                                     | Default: Current timestamp                                                                                       |
+| `requires_review`      | BOOLEAN                                         | Default: false                                                                                                   |
+| `instance_label`       | TEXT                                            | DEPRECATED: Use element_instance_id FK instead. Kept for backwards compatibility with old checks.                |
+| `manual_status`        | TEXT                                            | Human override status: compliant, non_compliant, not_applicable, or insufficient_information                     |
+| `manual_status_note`   | TEXT                                            | Optional explanation for the manual override decision                                                            |
+| `manual_status_at`     | TIMESTAMPTZ                                     | Timestamp when manual override was set                                                                           |
+| `manual_status_by`     | TEXT                                            | User who set the manual override                                                                                 |
+| `element_group_id`     | UUID FK → element_groups.id (SET NULL delete)   | DEPRECATED: Use element_instance_id FK to get element group. Kept for backwards compatibility.                   |
+| `human_readable_title` | TEXT                                            | AI-generated natural language title for violations (e.g., "Bathroom door too narrow"). Generated by GPT-4o-mini. |
+| `is_excluded`          | BOOLEAN NOT NULL                                | Whether this check is excluded from the assessment; Default: false                                               |
+| `excluded_reason`      | TEXT                                            | Reason why this check was excluded                                                                               |
+| `section_id`           | UUID NOT NULL FK → sections.id (CASCADE delete) |                                                                                                                  |
+| `element_instance_id`  | UUID FK → element_instances.id (CASCADE delete) | Links section checks to their parent element instance                                                            |
 
 **Indexes:**
 
-- `idx_assessment_section` on `(assessment_id, code_section_key)`
-- `idx_checks_code_section_key` on `code_section_key`
-- `idx_checks_type` on `check_type`
-- `idx_checks_element_group` on `element_group_id`
-- `idx_checks_manual_status` on `manual_status` (partial WHERE NOT NULL)
-- `unique_check_per_section` UNIQUE on `(assessment_id, code_section_number, instance_label)` WHERE `check_type='section' AND instance_label IS NOT NULL`
-- `unique_element_check` UNIQUE on `(assessment_id, code_section_key, instance_label)` WHERE `instance_label IS NOT NULL`
-- `unique_section_check` UNIQUE on `(assessment_id, code_section_key)` WHERE `instance_label IS NULL`
+- `idx_checks_assessment_excluded_manual` on `(assessment_id, is_excluded, manual_status)` WHERE (is_excluded IS FALSE)
+- `idx_checks_assessment_id` on `(assessment_id)`
+- `idx_checks_assessment_manual_status` on `(assessment_id, manual_status)`
+- `idx_checks_assessment_section_id` on `(assessment_id, section_id)`
+- `idx_checks_assessment_status` on `(assessment_id, status)`
+- `idx_checks_element_group` on `(element_group_id)`
+- `idx_checks_element_instance` on `(element_instance_id)`
+- `idx_checks_manual_status` on `(manual_status)` WHERE (manual_status IS NOT NULL)
+- `idx_checks_section_id` on `(section_id)`
+- `idx_checks_unique_element_based` UNIQUE on `(assessment_id, section_id, element_instance_id)` WHERE (element_instance_id IS NOT NULL)
+- `idx_checks_unique_section_based` UNIQUE on `(assessment_id, section_id)` WHERE (element_group_id IS NULL)
 
 **Constraints:**
 
-- `checks_check_type_check`: check_type must be 'section' or 'element'
-- `checks_manual_status_check`: manual_status must be 'compliant', 'non_compliant', 'not_applicable', or 'insufficient_information'
-
-**Trigger:**
-
-- `update_checks_updated_at`: Auto-updates `updated_at` on modification
-
----
-
-### `element_groups`
-
-Reusable groupings of related code sections by building element.
-
-**Schema:**
-
-| Column        | Type                 | Description                                      |
-| ------------- | -------------------- | ------------------------------------------------ |
-| `id`          | UUID PK              | Primary key                                      |
-| `name`        | TEXT NOT NULL        | Element name (e.g., "Doors", "Ramps", "Walls")   |
-| `slug`        | TEXT UNIQUE NOT NULL | URL-friendly identifier (e.g., "doors", "walls") |
-| `description` | TEXT                 | Element description                              |
-| `icon`        | TEXT                 | Optional icon identifier                         |
-| `sort_order`  | INTEGER              | Display order (default 0)                        |
-| `created_at`  | TIMESTAMPTZ          | Creation timestamp                               |
-
----
-
-### `element_instances`
-
-Physical instances of building elements (e.g., "Door 1", "Bathroom 2"). Each instance represents a single physical element that needs to be checked against multiple code sections.
-
-**Schema:**
-
-| Column             | Type                        | Description                                   |
-| ------------------ | --------------------------- | --------------------------------------------- |
-| `id`               | UUID PK                     | Primary key                                   |
-| `assessment_id`    | UUID FK → assessments.id    | Assessment reference (CASCADE delete)         |
-| `element_group_id` | UUID FK → element_groups.id | Element group reference (CASCADE delete)      |
-| `label`            | VARCHAR NOT NULL            | Instance label (e.g., "Door 1", "Bathroom 2") |
-| `created_at`       | TIMESTAMPTZ                 | Creation timestamp                            |
-| `updated_at`       | TIMESTAMPTZ                 | Last update timestamp                         |
-
-**Indexes:**
-
-- `idx_element_instances_assessment_group` on `(assessment_id, element_group_id)`
-- `unique_element_instance_label` UNIQUE on `(assessment_id, element_group_id, label)`
-
-**Architecture Notes:**
-
-- **Auto-generated labels**: If label is not provided on insert, a trigger automatically generates it as `{element_group.name} {max_number + 1}`
-- **One-to-Many with checks**: Each element_instance can have multiple checks (one per applicable code section)
-- **Normalized design**: Replaces the denormalized `element_group_id` + `instance_label` pattern in the checks table
-- **Example workflow**:
-  1. Create instance: `INSERT INTO element_instances (assessment_id, element_group_id, label) VALUES (...)` → returns "Door 1"
-  2. Create checks: `INSERT INTO checks (element_instance_id, section_id, ...) VALUES (...)`
-
-**Trigger & Function:**
-
-- **Function**: `generate_element_instance_label()` - PL/pgSQL function that auto-generates labels
-  - Extracts the element group name (e.g., "Doors")
-  - Finds the highest number used for that element group in the assessment
-  - Generates next sequential label: `{element_group_name} {max_number + 1}`
-  - Example: If "Door 1" and "Door 2" exist, creates "Door 3"
-- **Trigger**: `trigger_generate_element_instance_label` (BEFORE INSERT)
-  - Calls `generate_element_instance_label()` when label is NULL or empty
-  - Runs before each INSERT on `element_instances` table
-
----
-
-### `element_section_mappings`
-
-Maps element groups to applicable code sections. Supports both global mappings and assessment-specific overrides.
-
-**Schema:**
-
-| Column             | Type                           | Description                                                     |
-| ------------------ | ------------------------------ | --------------------------------------------------------------- |
-| `id`               | UUID PK                        | Primary key                                                     |
-| `element_group_id` | UUID FK → element_groups.id    | Element group reference (CASCADE delete)                        |
-| `section_key`      | VARCHAR(255) FK → sections.key | Section reference (CASCADE delete)                              |
-| `assessment_id`    | UUID FK → assessments.id       | Assessment reference (CASCADE delete); NULL for global mappings |
-| `created_at`       | TIMESTAMPTZ                    | Creation timestamp                                              |
-
-**Indexes:**
-
-- `idx_element_section_mappings_element` on `element_group_id`
-- `idx_element_section_mappings_section` on `section_key`
-- `idx_element_mappings_assessment` on `assessment_id`
-- `element_section_mappings_global_unique` UNIQUE on `(element_group_id, section_key)` WHERE `assessment_id IS NULL`
-- `element_section_mappings_assessment_unique` UNIQUE on `(element_group_id, section_key, assessment_id)` WHERE `assessment_id IS NOT NULL`
-
-**Available Element Groups:**
-
-- Doors (doors)
-- Bathrooms (bathrooms)
-- Kitchens (kitchens)
-- Exit Signage (exit-signage)
-- Assisted Listening (assisted-listening)
-- Elevators (elevators)
-- Elevator Signage (elevator-signage)
-- Parking Signage (parking-signage)
-- Ramps (ramps)
-- Changes in Level (changes-in-level)
-- Turning Spaces (turning-spaces)
-
-**Mapping Strategy:**
-
-- **Global mappings** (`assessment_id IS NULL`): Default section mappings for each element group
-- **Assessment-specific mappings** (`assessment_id` set): Override or extend global mappings for specific assessments
-- Query order: Check assessment-specific first, fall back to global
-
-**Example:**
-Element "Doors" globally maps to sections like 11B-404.2.6, 11B-404.2.7, etc. Individual assessments can add or override these mappings.
+- `checks_manual_status_check`: CHECK ((manual_status = ANY (ARRAY['compliant'::text, 'non_compliant'::text, 'not_applicable'::text, 'insufficient_information'::text])))
 
 ---
 
 ### `analysis_runs`
 
-Historical record of AI assessments for each check.
-
 **Schema:**
 
-| Column                       | Type                | Description                                                |
-| ---------------------------- | ------------------- | ---------------------------------------------------------- |
-| `id`                         | UUID PK             | Primary key                                                |
-| `check_id`                   | UUID FK → checks.id | Check reference (CASCADE delete)                           |
-| `run_number`                 | INTEGER NOT NULL    | Sequential run number (default 1)                          |
-| `compliance_status`          | VARCHAR(50)         | AI status: compliant, non_compliant, needs_review, unclear |
-| `confidence`                 | VARCHAR(50)         | Confidence: high, medium, low                              |
-| `ai_provider`                | VARCHAR(50)         | AI service: gemini, openai, anthropic                      |
-| `ai_model`                   | VARCHAR(100)        | Model name (e.g., 'gemini-2.5-pro')                        |
-| `ai_reasoning`               | TEXT                | AI explanation                                             |
-| `violations`                 | JSONB               | Array of identified violations                             |
-| `compliant_aspects`          | JSONB               | Array of compliant aspects                                 |
-| `recommendations`            | JSONB               | Array of suggested fixes                                   |
-| `additional_evidence_needed` | JSONB               | Array of additional info needed                            |
-| `raw_ai_response`            | TEXT                | Full raw AI response                                       |
-| `section_results`            | JSONB               | For element checks: per-section results                    |
-| `batch_group_id`             | UUID                | Links batched analyses together                            |
-| `batch_number`               | INTEGER             | Batch number (1-indexed)                                   |
-| `total_batches`              | INTEGER             | Total batches in group                                     |
-| `section_keys_in_batch`      | TEXT[]              | Section keys assessed in this batch                        |
-| `executed_at`                | TIMESTAMPTZ         | When analysis was run (default now())                      |
-| `execution_time_ms`          | INTEGER             | Analysis duration in milliseconds                          |
+| Column                       | Type                                 | Description                                                                            |
+| ---------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------- |
+| `id`                         | UUID NOT NULL PK                     | Default: gen_random_uuid()                                                             |
+| `check_id`                   | UUID FK → checks.id (CASCADE delete) |                                                                                        |
+| `run_number`                 | INTEGER NOT NULL                     | Default: 1                                                                             |
+| `compliance_status`          | VARCHAR(50)                          |                                                                                        |
+| `confidence`                 | VARCHAR(50)                          |                                                                                        |
+| `ai_provider`                | VARCHAR(50)                          |                                                                                        |
+| `ai_model`                   | VARCHAR(100)                         |                                                                                        |
+| `ai_reasoning`               | TEXT                                 |                                                                                        |
+| `violations`                 | JSONB                                |                                                                                        |
+| `compliant_aspects`          | JSONB                                |                                                                                        |
+| `recommendations`            | JSONB                                |                                                                                        |
+| `additional_evidence_needed` | JSONB                                |                                                                                        |
+| `raw_ai_response`            | TEXT                                 |                                                                                        |
+| `executed_at`                | TIMESTAMPTZ                          | Default: Current timestamp                                                             |
+| `execution_time_ms`          | INTEGER                              |                                                                                        |
+| `section_results`            | JSONB                                | For element checks: array of per-section compliance results. For section checks: null. |
+| `batch_group_id`             | UUID                                 | Links multiple batched assessment runs together                                        |
+| `batch_number`               | INTEGER                              | Which batch this is (1-indexed)                                                        |
+| `total_batches`              | INTEGER                              | Total number of batches in this group                                                  |
+| `section_keys_in_batch`      | ARRAY                                | Array of code section keys assessed in this batch                                      |
 
 **Indexes:**
 
-- `idx_analysis_runs_batch_group_id` on `batch_group_id`
-- `idx_analysis_runs_section_results` GIN on `section_results`
 - `analysis_runs_check_id_run_number_key` UNIQUE on `(check_id, run_number)`
+- `idx_analysis_runs_batch_group_id` on `(batch_group_id)`
+- `idx_analysis_runs_check_id_run_number` on `(check_id, run_number)`
+- `idx_analysis_runs_check_run` on `(check_id, run_number)`
+- `idx_analysis_runs_section_results` on `(section_results)`
 
 ---
 
 ### `screenshots`
 
-Screenshots captured from PDF drawings for compliance evidence.
-
 **Schema:**
 
-| Column             | Type                        | Description                                                            |
-| ------------------ | --------------------------- | ---------------------------------------------------------------------- |
-| `id`               | UUID PK                     | Primary key                                                            |
-| `analysis_run_id`  | UUID FK → analysis_runs.id  | Analysis run reference (SET NULL delete)                               |
-| `page_number`      | INTEGER NOT NULL            | PDF page number                                                        |
-| `crop_coordinates` | JSONB                       | {x, y, width, height, zoom_level}                                      |
-| `screenshot_url`   | TEXT NOT NULL               | S3 URL to full screenshot                                              |
-| `thumbnail_url`    | TEXT                        | S3 URL to thumbnail                                                    |
-| `caption`          | TEXT                        | User caption/description                                               |
-| `screenshot_type`  | TEXT NOT NULL               | Screenshot type: 'plan' or 'elevation' (default 'plan')                |
-| `element_group_id` | UUID FK → element_groups.id | Element group reference for elevation categorization (SET NULL delete) |
-| `extracted_text`   | TEXT                        | Text extracted from PDF region for searchability                       |
-| `created_at`       | TIMESTAMPTZ                 | Creation timestamp                                                     |
-| `created_by`       | UUID                        | User who captured it                                                   |
+| Column             | Type                                          | Description                |
+| ------------------ | --------------------------------------------- | -------------------------- |
+| `id`               | UUID NOT NULL PK                              | Default: gen_random_uuid() |
+| `analysis_run_id`  | UUID FK → analysis_runs.id (SET NULL delete)  |                            |
+| `page_number`      | INTEGER NOT NULL                              |                            |
+| `crop_coordinates` | JSONB                                         |                            |
+| `screenshot_url`   | TEXT NOT NULL                                 |                            |
+| `thumbnail_url`    | TEXT                                          |                            |
+| `caption`          | TEXT                                          |                            |
+| `created_at`       | TIMESTAMPTZ                                   | Default: Current timestamp |
+| `created_by`       | UUID                                          |                            |
+| `screenshot_type`  | TEXT NOT NULL                                 | Default: 'plan'::text      |
+| `element_group_id` | UUID FK → element_groups.id (SET NULL delete) |                            |
+| `extracted_text`   | TEXT                                          |                            |
 
 **Indexes:**
 
-- `idx_screenshots_text_search` GIN on `to_tsvector('english', COALESCE(caption, '') || ' ' || COALESCE(extracted_text, ''))`
-- `idx_screenshots_type` on `screenshot_type`
-- `idx_screenshots_element_group` on `element_group_id` (partial WHERE NOT NULL)
+- `idx_screenshots_element_group` on `(element_group_id)` WHERE (element_group_id IS NOT NULL)
+- `idx_screenshots_text_search` on `(to_tsvector('english'::regconfig, (COALESCE(caption, ''::text) || ' '::text) || COALESCE(extracted_text, ''::text)))`
+- `idx_screenshots_type` on `(screenshot_type)`
 
 **Constraints:**
 
-- `screenshot_type` CHECK: Must be 'plan' or 'elevation'
-
-**Usage:**
-
-- **Plan screenshots**: Captured from floor plans during normal assessment workflow
-- **Elevation screenshots**: Captured in bulk mode for reuse across multiple element instances
-- **Text searchability**: `extracted_text` contains text from PDF source for full-text search
-- **Element tagging**: `element_group_id` allows filtering elevations by building element type
-
-**Note:** Screenshots are linked to checks via the `screenshot_check_assignments` junction table (many-to-many relationship).
+- `screenshots_screenshot_type_check`: CHECK ((screenshot_type = ANY (ARRAY['plan'::text, 'elevation'::text])))
 
 ---
 
 ### `screenshot_check_assignments`
 
-Junction table linking screenshots to checks (many-to-many).
-
 **Schema:**
 
-| Column          | Type                     | Description                                                               |
-| --------------- | ------------------------ | ------------------------------------------------------------------------- |
-| `id`            | UUID PK                  | Primary key                                                               |
-| `screenshot_id` | UUID FK → screenshots.id | Screenshot reference (CASCADE delete)                                     |
-| `check_id`      | UUID FK → checks.id      | Check reference (CASCADE delete)                                          |
-| `is_original`   | BOOLEAN                  | TRUE if screenshot was originally captured for this check (default FALSE) |
-| `assigned_at`   | TIMESTAMPTZ              | When assignment was made (default now())                                  |
-| `assigned_by`   | UUID                     | User who made the assignment                                              |
+| Column          | Type                                               | Description                |
+| --------------- | -------------------------------------------------- | -------------------------- |
+| `id`            | UUID NOT NULL PK                                   | Default: gen_random_uuid() |
+| `screenshot_id` | UUID NOT NULL FK → screenshots.id (CASCADE delete) |                            |
+| `check_id`      | UUID NOT NULL FK → checks.id (CASCADE delete)      |                            |
+| `is_original`   | BOOLEAN                                            | Default: false             |
+| `assigned_at`   | TIMESTAMPTZ                                        | Default: Current timestamp |
+| `assigned_by`   | UUID                                               |                            |
 
 **Indexes:**
 
-- `idx_screenshot_assignments_screenshot` on `screenshot_id`
-- `idx_screenshot_assignments_check` on `check_id`
-- `idx_screenshot_assignments_original` on `is_original` (partial WHERE TRUE)
+- `idx_screenshot_assignments_check` on `(check_id)`
+- `idx_screenshot_assignments_original` on `(is_original)` WHERE (is_original = true)
+- `idx_screenshot_assignments_screenshot` on `(screenshot_id)`
 - `screenshot_check_assignments_screenshot_id_check_id_key` UNIQUE on `(screenshot_id, check_id)`
-
-**Purpose:**
-Allows screenshots to be reused across multiple checks (e.g., one door photo used for multiple door-related code sections).
 
 ---
 
-### `section_applicability_log`
+## Other Tables
 
-Logs AI filtering decisions during assessment seeding.
+### `chapters`
 
 **Schema:**
 
-| Column                 | Type                     | Description                                                 |
-| ---------------------- | ------------------------ | ----------------------------------------------------------- |
-| `id`                   | UUID PK                  | Primary key                                                 |
-| `assessment_id`        | UUID FK → assessments.id | Assessment reference (CASCADE delete)                       |
-| `section_key`          | TEXT FK → sections.key   | Section reference (CASCADE delete)                          |
-| `decision`             | BOOLEAN NOT NULL         | TRUE=included, FALSE=excluded                               |
-| `decision_source`      | TEXT NOT NULL            | 'rule' (deterministic) or 'ai' (LLM-based) (default 'rule') |
-| `decision_confidence`  | TEXT                     | Confidence level                                            |
-| `reasons`              | TEXT[] NOT NULL          | Human-readable explanation bullets                          |
-| `details`              | JSONB                    | Structured dimension-by-dimension evaluation                |
-| `building_params_hash` | TEXT NOT NULL            | SHA256 of normalized variables                              |
-| `variables_snapshot`   | JSONB NOT NULL           | Full normalized variables used                              |
-| `created_at`           | TIMESTAMPTZ NOT NULL     | Creation timestamp (default now())                          |
+| Column    | Type                        | Description                |
+| --------- | --------------------------- | -------------------------- |
+| `id`      | UUID NOT NULL PK            | Default: gen_random_uuid() |
+| `code_id` | TEXT NOT NULL FK → codes.id |                            |
+| `name`    | TEXT NOT NULL               |                            |
+| `number`  | TEXT NOT NULL               |                            |
+| `url`     | TEXT NOT NULL               |                            |
 
 **Indexes:**
 
-- `idx_applicability_log_assessment` on `assessment_id`
-- `idx_applicability_log_section` on `section_key`
-- `idx_applicability_log_decision` on `decision`
-- `section_applicability_log_assessment_id_section_key_decisio_key` UNIQUE on `(assessment_id, section_key, decision_source, building_params_hash)`
-
-**Purpose:**
-
-- Audit trail of AI filtering decisions
-- Debugging applicability filtering logic
-- Cache filtering results per building parameter combination
+- `chapters_code_id_number_key` UNIQUE on `(code_id, number)`
 
 ---
 
 ### `check_tags`
 
-Tags applied to checks for categorization.
-
 **Schema:**
 
-| Column     | Type                  | Description                      |
-| ---------- | --------------------- | -------------------------------- |
-| `id`       | UUID PK               | Primary key                      |
-| `check_id` | UUID FK → checks.id   | Check reference (CASCADE delete) |
-| `tag`      | VARCHAR(100) NOT NULL | Tag value                        |
+| Column     | Type                                 | Description                |
+| ---------- | ------------------------------------ | -------------------------- |
+| `id`       | UUID NOT NULL PK                     | Default: gen_random_uuid() |
+| `check_id` | UUID FK → checks.id (CASCADE delete) |                            |
+| `tag`      | VARCHAR(100) NOT NULL                |                            |
 
 **Indexes:**
 
@@ -565,465 +480,228 @@ Tags applied to checks for categorization.
 
 ---
 
-### `prompt_templates`
-
-Reusable prompt templates for AI analysis.
-
-**Schema:**
-
-| Column                 | Type                  | Description                               |
-| ---------------------- | --------------------- | ----------------------------------------- |
-| `id`                   | UUID PK               | Primary key                               |
-| `name`                 | VARCHAR(255) NOT NULL | Template name                             |
-| `version`              | INTEGER NOT NULL      | Version number                            |
-| `system_prompt`        | TEXT                  | System-level instructions                 |
-| `user_prompt_template` | TEXT                  | User message template                     |
-| `instruction_template` | TEXT                  | Additional instructions template          |
-| `is_active`            | BOOLEAN               | Whether template is active (default TRUE) |
-| `created_at`           | TIMESTAMPTZ           | Creation timestamp                        |
-| `created_by`           | UUID                  | User who created it                       |
-
-**Indexes:**
-
-- `prompt_templates_name_version_key` UNIQUE on `(name, version)`
-
-**Usage:**
-Templates contain variables like `{{code_section}}`, `{{building_type}}` that are substituted at analysis time.
-
----
-
 ### `compliance_sessions`
 
-Alternative compliance workflow sessions (client-facing compliance viewer).
-
 **Schema:**
 
-| Column       | Type                  | Description                            |
-| ------------ | --------------------- | -------------------------------------- |
-| `id`         | UUID PK               | Primary key                            |
-| `project_id` | UUID FK → projects.id | Project reference (CASCADE delete)     |
-| `code_id`    | TEXT                  | Building code identifier               |
-| `status`     | TEXT                  | Session status (default 'in_progress') |
-| `created_at` | TIMESTAMPTZ           | Creation timestamp                     |
-| `updated_at` | TIMESTAMPTZ           | Last update timestamp                  |
+| Column       | Type                                   | Description                               |
+| ------------ | -------------------------------------- | ----------------------------------------- |
+| `id`         | UUID NOT NULL PK                       | Default: gen_random_uuid()                |
+| `project_id` | UUID FK → projects.id (CASCADE delete) |                                           |
+| `code_id`    | VARCHAR(255) NOT NULL                  |                                           |
+| `status`     | VARCHAR(50)                            | Default: 'in_progress'::character varying |
+| `created_at` | TIMESTAMPTZ                            | Default: Current timestamp                |
+| `updated_at` | TIMESTAMPTZ                            | Default: Current timestamp                |
 
 **Indexes:**
 
-- `idx_compliance_sessions_project_id` on `project_id`
+- `idx_compliance_sessions_project_id` on `(project_id)`
 
-**Purpose:**
-Used by the client-facing compliance viewer (`/compliance/[projectId]`) as an alternative to the full assessment workflow.
+**Constraints:**
 
----
-
-### `section_checks`
-
-Section-level checks within compliance sessions.
-
-**Schema:**
-
-| Column            | Type                             | Description                                               |
-| ----------------- | -------------------------------- | --------------------------------------------------------- |
-| `id`              | UUID PK                          | Primary key                                               |
-| `session_id`      | UUID FK → compliance_sessions.id | Compliance session reference (CASCADE delete)             |
-| `section_key`     | TEXT NOT NULL                    | Section reference                                         |
-| `section_number`  | TEXT NOT NULL                    | Section number (e.g., "11B-404.2.6")                      |
-| `section_title`   | TEXT NOT NULL                    | Section title                                             |
-| `status`          | TEXT NOT NULL                    | Status (default 'pending')                                |
-| `is_cloneable`    | BOOLEAN                          | Whether section allows multiple instances (default FALSE) |
-| `screenshots`     | TEXT[]                           | Array of screenshot URLs (default '{}')                   |
-| `analysis_result` | JSONB                            | AI analysis results                                       |
-| `instances`       | JSONB                            | Multiple instances data (for cloneable sections)          |
-| `created_at`      | TIMESTAMPTZ                      | Creation timestamp                                        |
-| `updated_at`      | TIMESTAMPTZ                      | Last update timestamp                                     |
-
-**Indexes:**
-
-- `idx_section_checks_session_id` on `session_id`
-- `idx_section_checks_section_key` on `section_key`
-
-**Purpose:**
-Simplified check structure for the compliance viewer workflow, separate from the main `checks` table.
-
----
-
-### `section_screenshots`
-
-Screenshots associated with section checks in the compliance viewer workflow.
-
-**Schema:**
-
-| Column             | Type                        | Description                                  |
-| ------------------ | --------------------------- | -------------------------------------------- |
-| `id`               | UUID PK                     | Primary key                                  |
-| `section_check_id` | UUID FK → section_checks.id | Section check reference (CASCADE delete)     |
-| `url`              | TEXT NOT NULL               | S3 URL to screenshot                         |
-| `instance_id`      | UUID                        | Instance identifier (for cloneable sections) |
-| `instance_name`    | VARCHAR(255)                | Instance name (e.g., "Door 1")               |
-| `analysis_result`  | JSONB                       | AI analysis results for this screenshot      |
-| `created_at`       | TIMESTAMPTZ                 | Creation timestamp (default now())           |
-
-**Indexes:**
-
-- `idx_section_screenshots_check_id` on `section_check_id`
-
-**Purpose:**
-Stores screenshots for the compliance viewer workflow, supporting multiple instances of the same section check (e.g., multiple doors).
+- `compliance_sessions_status_check`: CHECK (((status)::text = ANY ((ARRAY['in_progress'::character varying, 'completed'::character varying, 'paused'::character varying])::text[])))
 
 ---
 
 ### `pdf_chunks`
 
-Searchable text chunks extracted from PDF pages for full-text search.
-
 **Schema:**
 
-| Column         | Type                  | Description                                           |
-| -------------- | --------------------- | ----------------------------------------------------- |
-| `id`           | UUID PK               | Primary key                                           |
-| `project_id`   | UUID FK → projects.id | Project reference (CASCADE delete)                    |
-| `page_number`  | INTEGER NOT NULL      | PDF page number                                       |
-| `chunk_number` | INTEGER NOT NULL      | Chunk number within page (for large pages)            |
-| `content`      | TEXT NOT NULL         | Raw text content extracted from PDF                   |
-| `tsv`          | TSVECTOR              | Generated column for full-text search (auto-computed) |
-| `created_at`   | TIMESTAMPTZ           | Creation timestamp                                    |
+| Column         | Type                                            | Description                |
+| -------------- | ----------------------------------------------- | -------------------------- |
+| `id`           | UUID NOT NULL PK                                | Default: gen_random_uuid() |
+| `project_id`   | UUID NOT NULL FK → projects.id (CASCADE delete) |                            |
+| `page_number`  | INTEGER NOT NULL                                |                            |
+| `chunk_number` | INTEGER NOT NULL                                |                            |
+| `content`      | TEXT NOT NULL                                   |                            |
+| `tsv`          | TSVECTOR                                        |                            |
+| `created_at`   | TIMESTAMPTZ                                     | Default: Current timestamp |
 
 **Indexes:**
 
-- `pdf_chunks_tsv_gin` GIN on `tsv` (full-text search index)
-- `pdf_chunks_trgm_gin` GIN on `content gin_trgm_ops` (fuzzy search for OCR errors)
-- `pdf_chunks_project_id` on `project_id`
+- `pdf_chunks_project_id` on `(project_id)`
+- `pdf_chunks_trgm_gin` on `(content)`
+- `pdf_chunks_tsv_gin` on `(tsv)`
 - `unique_project_page_chunk` UNIQUE on `(project_id, page_number, chunk_number)`
-
-**Purpose:**
-
-Enables fast full-text search across PDF drawings using PostgreSQL's built-in search capabilities:
-
-- **Full-text search** (tsvector): Fast keyword matching with stemming and ranking
-- **Fuzzy search** (pg_trgm): Tolerant of OCR errors and typos using trigram similarity
-- **Apostrophe normalization**: Search functions normalize apostrophes so "womens" matches "women's"
-- **Page-level results**: Returns matching pages, then client-side code finds exact positions
-
-**Search Functions:**
-
-Two stored procedures provide search capabilities:
-
-1. **`search_pdf_fulltext(project_id, query, limit)`**: Fast exact word matching using tsvector
-   - Returns: `page_number`, `chunk_number`, `rank`
-   - Uses websearch syntax (supports "quoted phrases", -exclusions, OR)
-
-2. **`search_pdf_fuzzy(project_id, query, threshold, limit)`**: Fuzzy matching for OCR tolerance
-   - Returns: `page_number`, `chunk_number`, `similarity`
-   - Uses trigram similarity (threshold default 0.3)
-   - Falls back when full-text search returns no results
-
-**Workflow:**
-
-1. Upload PDF → Background job extracts text page-by-page
-2. Text chunked into `pdf_chunks` records with auto-generated `tsv`
-3. User searches → API tries full-text first, falls back to fuzzy
-4. API returns matching page numbers
-5. Client loads those pages and highlights exact text positions using PDF.js
 
 ---
 
-## Entity Relationship Diagram
+### `pdf_measurements`
 
-```
-┌─────────────┐
-│  customers  │
-└──────┬──────┘
-       │ 1:N
-       ▼
-┌─────────────┐       ┌──────────────┐
-│  projects   │──────▶│    codes     │
-└──────┬──────┘  N:M  └──────┬───────┘
-       │ (via          │ 1:N
-       │  selected_    ▼
-       │  code_ids)   ┌──────────────────────┐
-       │              │      sections        │
-       │ 1:N          └──────┬───────────────┘
-       ├──────▶              │ (self-join parent-child)
-       │                     │
-       │ 1:N                 │ M:N (references)
-       │                     │      ▼
-       │              ┌──────────────────────┐
-       │              │ section_references   │
-       │              └──────────────────────┘
-       ▼
-┌──────────────┐
-│ assessments  │
-└──────┬───────┘
-       │ 1:N
-       ▼
-┌──────────────┐
-│   checks     │◀──── references section via code_section_key
-└──────┬───────┘
-       │    ┌─────────────────┐
-       │    │ checks (child)  │
-       │    └─────────────────┘
-       │
-       ├─────────┐ N:1
-       │         ▼
-       │    ┌──────────────────┐       ┌──────────────────────────────────┐
-       │    │ element_groups   │──────▶│ element_group_section_mappings   │
-       │    └──────────────────┘  1:N  └──────────────────────────────────┘
-       │                                        │
-       │                                        │ N:1
-       │                                        ▼
-       │                                  ┌──────────┐
-       │                                  │ sections │
-       │                                  └──────────┘
-       │ 1:N
-       ▼
-┌──────────────┐
-│analysis_runs │
-└──────┬───────┘
-       │ 1:N (via analysis_run_id)
-       ▼
-┌──────────────┐       ┌────────────────────────────┐
-│ screenshots  │◀─────▶│screenshot_check_assignments│
-└──────────────┘  N:M  └────────────────────────────┘
-                              │
-                              │ N:1
-                              ▼
-                        ┌──────────┐
-                        │  checks  │
-                        └──────────┘
+Manual distance measurements drawn on floor plan PDFs
 
-┌──────────────┐       ┌──────────────────────────┐
-│ assessments  │──────▶│section_applicability_log │
-└──────────────┘  1:N  └──────────────────────────┘
-                              │
-                              │ N:1
-                              ▼
-                        ┌──────────┐
-                        │ sections │
-                        └──────────┘
+**Schema:**
 
-┌─────────────┐
-│  projects   │
-└──────┬──────┘
-       │ 1:N (pdf_chunks)
-       ├──────────────────────────┐
-       │                          │
-       │ 1:N                      ▼
-       │                   ┌──────────────┐
-       │                   │  pdf_chunks  │ (searchable text)
-       │                   └──────────────┘
-       │
-       │ 1:N
-       ▼
-┌─────────────────────┐
-│ compliance_sessions │
-└──────┬──────────────┘
-       │ 1:N
-       ▼
-┌──────────────────┐       ┌──────────────────────┐
-│ section_checks   │──────▶│ section_screenshots  │
-└──────────────────┘  1:N  └──────────────────────┘
-```
+| Column                 | Type                                            | Description                                                                        |
+| ---------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `id`                   | UUID NOT NULL PK                                | Default: gen_random_uuid()                                                         |
+| `project_id`           | UUID NOT NULL FK → projects.id (CASCADE delete) |                                                                                    |
+| `page_number`          | INTEGER NOT NULL                                |                                                                                    |
+| `start_point`          | JSONB NOT NULL                                  |                                                                                    |
+| `end_point`            | JSONB NOT NULL                                  |                                                                                    |
+| `pixels_distance`      | NUMERIC NOT NULL                                |                                                                                    |
+| `real_distance_inches` | NUMERIC                                         | Calculated distance in inches using page calibration (NULL if page not calibrated) |
+| `label`                | TEXT                                            |                                                                                    |
+| `color`                | TEXT                                            | Default: '#3B82F6'::text                                                           |
+| `created_at`           | TIMESTAMPTZ NOT NULL                            | Default: Current timestamp                                                         |
+| `created_by`           | UUID                                            |                                                                                    |
 
-## Key Patterns
+**Indexes:**
 
-### Check Instance Pattern
+- `idx_pdf_measurements_project` on `(project_id)`
+- `idx_pdf_measurements_project_page` on `(project_id, page_number)`
 
-- **Section checks**: `check_type='section'`, single code section per check
-- **Element checks**: `check_type='element'`, multiple sections assessed together
-- **Instance labeling**: Use `instance_label` to group multiple instances (e.g., "Door 1", "Door 2")
-- **Exclusion**: Use `is_excluded=true` to remove checks from assessment without deletion
+---
 
-### Manual Status System
+### `pdf_scale_calibrations`
 
-The `checks.manual_status` field allows human reviewers to override AI:
+Scale calibration data for converting PDF pixels to real-world measurements
 
-- Takes precedence over any `analysis_runs` results
-- Values: 'compliant', 'non_compliant', 'not_applicable', 'insufficient_information', or NULL
-- Includes timestamp (`manual_status_at`) and user tracking (`manual_status_by`)
-- Setting to NULL reverts to AI assessment
+**Schema:**
 
-### Screenshot Assignment
+| Column                   | Type                                            | Description                                                                   |
+| ------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| `id`                     | UUID NOT NULL PK                                | Default: gen_random_uuid()                                                    |
+| `project_id`             | UUID NOT NULL FK → projects.id (CASCADE delete) |                                                                               |
+| `page_number`            | INTEGER NOT NULL                                |                                                                               |
+| `pixels_per_inch`        | NUMERIC NOT NULL                                | Number of PDF pixels per real-world inch (calculated from calibration line)   |
+| `calibration_line_start` | JSONB                                           |                                                                               |
+| `calibration_line_end`   | JSONB                                           |                                                                               |
+| `known_distance_inches`  | NUMERIC                                         |                                                                               |
+| `created_at`             | TIMESTAMPTZ NOT NULL                            | Default: Current timestamp                                                    |
+| `created_by`             | UUID                                            |                                                                               |
+| `print_width_inches`     | NUMERIC                                         | Intended print width in inches (e.g., 24 for 24x36 sheet)                     |
+| `print_height_inches`    | NUMERIC                                         | Intended print height in inches (e.g., 36 for 24x36 sheet)                    |
+| `scale_notation`         | TEXT                                            | Architectural scale notation (e.g., "1/8\"=1'-0\"") for automatic calculation |
+| `pdf_width_points`       | NUMERIC                                         | PDF page width in points (72 points = 1 inch)                                 |
+| `pdf_height_points`      | NUMERIC                                         | PDF page height in points (72 points = 1 inch)                                |
 
-Screenshots have a many-to-many relationship with checks:
+**Indexes:**
 
-1. Screenshot captured and uploaded to S3
-2. Record created in `screenshots` table
-3. Assignment created in `screenshot_check_assignments` linking to check(s)
-4. `is_original = TRUE` for the check it was originally captured for
-5. Same screenshot can be reused for multiple checks
+- `idx_pdf_calibrations_project_page` on `(project_id, page_number)`
+- `unique_calibration_per_page` UNIQUE on `(project_id, page_number)`
 
-### Progress Calculation
+---
 
-Assessment progress = `assessed_sections / total_sections`
+### `prompt_templates`
 
-A check is considered "assessed" if:
+**Schema:**
 
-- It has a `manual_status` value (excluding 'not_applicable'), OR
-- It has at least one `analysis_run` with a `compliance_status`
+| Column                 | Type                  | Description                |
+| ---------------------- | --------------------- | -------------------------- |
+| `id`                   | UUID NOT NULL PK      | Default: gen_random_uuid() |
+| `name`                 | VARCHAR(255) NOT NULL |                            |
+| `version`              | INTEGER NOT NULL      |                            |
+| `system_prompt`        | TEXT                  |                            |
+| `user_prompt_template` | TEXT                  |                            |
+| `instruction_template` | TEXT                  |                            |
+| `is_active`            | BOOLEAN               | Default: true              |
+| `created_at`           | TIMESTAMPTZ           | Default: Current timestamp |
+| `created_by`           | UUID                  |                            |
 
-Checks with `is_excluded=true` or marked as `not_applicable` are excluded from the total count.
+**Indexes:**
 
-## Common Queries
+- `prompt_templates_name_version_key` UNIQUE on `(name, version)`
 
-### Get assessment with progress
+---
 
-```sql
-SELECT
-  a.*,
-  COUNT(c.id) FILTER (WHERE c.is_excluded = false AND (c.manual_status != 'not_applicable' OR c.manual_status IS NULL)) as total_checks,
-  COUNT(c.id) FILTER (
-    WHERE c.is_excluded = false AND (ar.compliance_status IS NOT NULL OR
-           (c.manual_status IS NOT NULL AND c.manual_status != 'not_applicable'))
-  ) as completed_checks
-FROM assessments a
-LEFT JOIN checks c ON c.assessment_id = a.id
-LEFT JOIN LATERAL (
-  SELECT compliance_status
-  FROM analysis_runs
-  WHERE check_id = c.id
-  ORDER BY run_number DESC
-  LIMIT 1
-) ar ON true
-WHERE a.id = $1
-GROUP BY a.id;
-```
+### `screenshot_element_instance_assignments`
 
-### Get check with latest AI analysis
+**Schema:**
 
-```sql
-SELECT
-  c.*,
-  ar.compliance_status as latest_status,
-  ar.confidence as latest_confidence,
-  ar.ai_reasoning
-FROM checks c
-LEFT JOIN LATERAL (
-  SELECT *
-  FROM analysis_runs
-  WHERE check_id = c.id
-  ORDER BY run_number DESC
-  LIMIT 1
-) ar ON true
-WHERE c.id = $1;
-```
+| Column                | Type                                                     | Description                |
+| --------------------- | -------------------------------------------------------- | -------------------------- |
+| `id`                  | UUID NOT NULL PK                                         | Default: gen_random_uuid() |
+| `screenshot_id`       | UUID NOT NULL FK → screenshots.id (CASCADE delete)       |                            |
+| `element_instance_id` | UUID NOT NULL FK → element_instances.id (CASCADE delete) |                            |
+| `is_original`         | BOOLEAN                                                  | Default: false             |
+| `assigned_at`         | TIMESTAMPTZ                                              | Default: Current timestamp |
+| `assigned_by`         | UUID                                                     |                            |
 
-### Get screenshots for a check
+**Indexes:**
 
-```sql
-SELECT s.*
-FROM screenshots s
-INNER JOIN screenshot_check_assignments sca ON sca.screenshot_id = s.id
-WHERE sca.check_id = $1
-ORDER BY s.created_at;
-```
+- `idx_screenshot_element_instance_element` on `(element_instance_id)`
+- `idx_screenshot_element_instance_original` on `(is_original)` WHERE (is_original = true)
+- `idx_screenshot_element_instance_screenshot` on `(screenshot_id)`
+- `screenshot_element_instance_assignments_screenshot_id_element_i` UNIQUE on `(screenshot_id, element_instance_id)`
 
-### Get element sections for element check
+---
 
-```sql
-SELECT s.*
-FROM sections s
-JOIN element_section_mappings esm ON s.key = esm.section_key
-JOIN checks c ON c.element_group_id = esm.element_group_id
-WHERE c.id = $1
-  AND (esm.assessment_id = c.assessment_id OR esm.assessment_id IS NULL)
-ORDER BY s.number;
-```
+### `section_applicability_log`
 
-### Search PDF text (full-text)
+Audit trail of all applicability decisions (included and excluded)
 
-```sql
-SELECT * FROM search_pdf_fulltext(
-  'project-uuid-here'::uuid,
-  'womens restroom',
-  50
-) ORDER BY rank DESC;
-```
+**Schema:**
 
-### Search PDF text (fuzzy, for OCR errors)
+| Column                 | Type                                               | Description                                             |
+| ---------------------- | -------------------------------------------------- | ------------------------------------------------------- |
+| `id`                   | UUID NOT NULL PK                                   | Default: gen_random_uuid()                              |
+| `assessment_id`        | UUID NOT NULL FK → assessments.id (CASCADE delete) |                                                         |
+| `section_key`          | TEXT NOT NULL FK → sections.key (CASCADE delete)   |                                                         |
+| `decision`             | BOOLEAN NOT NULL                                   | TRUE=included, FALSE=excluded                           |
+| `decision_source`      | TEXT NOT NULL                                      | rule=deterministic, ai=llm-based; Default: 'rule'::text |
+| `decision_confidence`  | TEXT                                               |                                                         |
+| `reasons`              | ARRAY NOT NULL                                     | Human-readable explanation bullets                      |
+| `details`              | JSONB                                              | Structured dimension-by-dimension evaluation            |
+| `building_params_hash` | TEXT NOT NULL                                      | SHA256 of normalized variables                          |
+| `variables_snapshot`   | JSONB NOT NULL                                     | Full normalized variables used                          |
+| `created_at`           | TIMESTAMPTZ NOT NULL                               | Default: Current timestamp                              |
 
-```sql
-SELECT * FROM search_pdf_fuzzy(
-  'project-uuid-here'::uuid,
-  'restrrom',  -- typo/OCR error
-  0.3,
-  50
-) ORDER BY similarity DESC;
-```
+**Indexes:**
 
-### Check PDF chunking status
+- `idx_applicability_log_assessment` on `(assessment_id)`
+- `idx_applicability_log_decision` on `(decision)`
+- `idx_applicability_log_section` on `(section_key)`
+- `idx_section_applicability_log_manual` on `(assessment_id, section_key, decision)` WHERE (decision_source = 'manual'::text)
+- `section_applicability_log_assessment_id_section_key_decisio_key` UNIQUE on `(assessment_id, section_key, decision_source, building_params_hash)`
 
-```sql
-SELECT
-  id,
-  name,
-  chunking_status,
-  chunking_started_at,
-  chunking_completed_at,
-  chunking_error,
-  (SELECT COUNT(*) FROM pdf_chunks WHERE project_id = projects.id) as chunk_count
-FROM projects
-WHERE id = $1;
-```
+---
 
-## Database Access
+### `section_checks`
 
-### Supabase CLI (Recommended)
+**Schema:**
 
-The **Supabase CLI** is the preferred way to interact with the database:
+| Column            | Type                                              | Description                           |
+| ----------------- | ------------------------------------------------- | ------------------------------------- |
+| `id`              | UUID NOT NULL PK                                  | Default: gen_random_uuid()            |
+| `session_id`      | UUID FK → compliance_sessions.id (CASCADE delete) |                                       |
+| `section_key`     | VARCHAR(500) NOT NULL                             |                                       |
+| `section_number`  | VARCHAR(100) NOT NULL                             |                                       |
+| `section_title`   | TEXT                                              |                                       |
+| `status`          | VARCHAR(50)                                       | Default: 'pending'::character varying |
+| `is_cloneable`    | BOOLEAN                                           | Default: false                        |
+| `analysis_result` | JSONB                                             |                                       |
+| `created_at`      | TIMESTAMPTZ                                       | Default: Current timestamp            |
+| `updated_at`      | TIMESTAMPTZ                                       | Default: Current timestamp            |
 
-**Setup:**
+**Indexes:**
 
-```bash
-# Login (opens browser for authentication)
-supabase login
+- `idx_section_checks_session_id` on `(session_id)`
+- `idx_section_checks_status` on `(status)`
+- `section_checks_session_id_section_key_key` UNIQUE on `(session_id, section_key)`
 
-# Link to development project
-supabase link --project-ref prafecmdqiwgnsumlmqn --password crumblyboys33
-```
+**Constraints:**
 
-**IMPORTANT:** Remove conflicting environment variables from `.envrc`:
+- `section_checks_status_check`: CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'screenshots_captured'::character varying, 'analyzing'::character varying, 'complete'::character varying, 'skipped'::character varying, 'not_applicable'::character varying])::text[])))
 
-- Comment out `SUPABASE_PORT`, `SUPABASE_DB`, `SUPABASE_URL`, `SUPABASE_USER`
-- These env vars conflict with the CLI's internal configuration
+---
 
-**Common Commands:**
+### `section_screenshots`
 
-```bash
-# Run SQL queries
-supabase db query --linked "SELECT * FROM codes LIMIT 10"
+**Schema:**
 
-# List migrations
-supabase migration list --linked
+| Column             | Type                                         | Description                |
+| ------------------ | -------------------------------------------- | -------------------------- |
+| `id`               | UUID NOT NULL PK                             | Default: gen_random_uuid() |
+| `section_check_id` | UUID FK → section_checks.id (CASCADE delete) |                            |
+| `url`              | TEXT NOT NULL                                |                            |
+| `instance_id`      | UUID                                         |                            |
+| `instance_name`    | VARCHAR(255)                                 |                            |
+| `analysis_result`  | JSONB                                        |                            |
+| `created_at`       | TIMESTAMPTZ                                  | Default: Current timestamp |
 
-# Apply migrations to remote
-supabase db push
+**Indexes:**
 
-# Pull schema from remote
-supabase db pull
+- `idx_section_screenshots_check_id` on `(section_check_id)`
 
-# Generate TypeScript types
-supabase gen types typescript --linked > lib/database.types.ts
-```
-
-### Direct psql (Alternative)
-
-If you need to use `psql` directly:
-
-```bash
-# Use pooler connection (IPv4 compatible)
-PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
-```
-
-## Data Loading
-
-Use the upload script to load code data:
-
-```bash
-python scripts/load_db/unified_code_upload_supabase.py --file path/to/code.json
-```
-
-For element-section mappings:
-
-```bash
-python scripts/tag_element_sections.py
-```
+---
