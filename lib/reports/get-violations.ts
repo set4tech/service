@@ -9,6 +9,12 @@ export interface ViolationScreenshot {
   bounds: { x: number; y: number; width: number; height: number; zoom_level: number };
 }
 
+export interface CalculationTable {
+  title: string;
+  headers: string[];
+  rows: string[][];
+}
+
 export interface ViolationMarker {
   checkId: string;
   checkName: string;
@@ -32,6 +38,7 @@ export interface ViolationMarker {
   checkType?: 'section' | 'element'; // Type of check
   elementGroupName?: string; // Element group name (e.g., "Doors", "Ramps")
   instanceLabel?: string; // Instance label (e.g., "Door 1", "Ramp 2")
+  calculationTable?: CalculationTable; // Optional calculation table for this check
 }
 
 export interface CodeInfo {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { ViolationMarker } from '@/lib/reports/get-violations';
 import { CodeSection } from '@/types/analysis';
 import { SectionContentDisplay } from '@/components/checks/panels/SectionContentDisplay';
+import { CalculationTableDisplay } from './CalculationTableDisplay';
 import clsx from 'clsx';
 
 interface Props {
@@ -315,6 +316,11 @@ export function ViolationDetailModal({
                   sections={section ? [section] : []}
                   check={null}
                 />
+
+                {/* Calculation Table */}
+                {violation.calculationTable && (
+                  <CalculationTableDisplay table={violation.calculationTable} />
+                )}
               </div>
 
               {/* Screenshot */}

@@ -93,6 +93,12 @@ export interface ScreenshotWithAssignment extends Screenshot {
   is_original?: boolean; // Flattened from assignment for convenience
 }
 
+export interface TableBlock {
+  number: string;
+  title: string;
+  csv: string;
+}
+
 export interface CodeSection {
   id: number;
   key: string;
@@ -104,6 +110,8 @@ export interface CodeSection {
   item_type: 'section' | 'subsection';
   code_type: 'accessibility' | 'building' | 'fire' | 'plumbing' | 'mechanical' | 'energy';
   paragraphs?: string[];
+  tables?: TableBlock[];
+  figures?: string[];
   source_url?: string;
   source_page?: number;
   hash: string;

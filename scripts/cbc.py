@@ -11,27 +11,39 @@ from bs4 import BeautifulSoup
 import argparse
 import logging
 import json
-from deepdiff import DeepDiff
 from pathlib import Path
 from utils import generate_section_url, get_icc_part_number
 from s3 import RawICCS3, BUCKET_NAME, upload_image_to_s3
 from schema import Code, Section, Subsection, TableBlock
 from utils import extract_table_data, extract_figure_url
+from cbc_utils import sort_code_data, compare_json_files, print_comparison_summary
 
 # California section patterns
-# Matches: 3XX (Ch 3), 4XX (Ch 4), 5XX (Ch 5), 6XX (Ch 6), 7XX (Ch 7), 7XXA (Ch 7A), 8XX (Ch 8), 9XX (Ch 9), 10XX (Ch 10), XXXXА (Ch 10 with A), 11A-XXX, 11B-XXX
-SECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?!\.\d)"
-SUBSECTION_REGEX = r"(?:11[AB]-\d{3,4}|\d{4}A|10\d{2}|9\d{2}|8\d{2}|7\d{2}A|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?:\.\d+)+"
+# Formats ordered by specificity (longer/more specific patterns first):
+#   11B-XXX, 11XXA, 7XXA, 16XX, 15XX, 14XX, 10XX, 9XX, 8XX, 7XX, 6XX, 5XX, 4XX, 3XX, XXXXА
+SECTION_PATTERN = r"(?:11[AB]-\d{3,4}|11\d{2}A|7\d{2}A|\d{4}A|16\d{2}|15\d{2}|14\d{2}|10\d{2}|9\d{2}|8\d{2}|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})"
+SUBSECTION_PATTERN = r"(?:11[AB]-\d{3,4}|11\d{2}A|7\d{2}A|\d{4}A|16\d{2}|15\d{2}|14\d{2}|10\d{2}|9\d{2}|8\d{2}|7\d{2}|6\d{2}|5\d{2}|4\d{2}|3\d{2})(?:\.\d+)+"
+
+# Simple regex for extracting from headers (no context required)
+SECTION_REGEX = rf"(?<!\d)({SECTION_PATTERN})(?![A.\d-])"
+SUBSECTION_REGEX = rf"(?<!\d)({SUBSECTION_PATTERN})(?!\d)"
+
+# Context-aware regex for finding references in paragraph text
+# Must be preceded by "Section", "Sections", or "§" to avoid false positives (measurements, dates, etc.)
+SECTION_REFERENCE_REGEX = rf"(?:Section|Sections|§)\s*({SECTION_PATTERN})(?![A.\d-])"
+SUBSECTION_REFERENCE_REGEX = rf"(?:Section|Sections|§)\s*({SUBSECTION_PATTERN})(?!\d)"
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
+CBC_CHAPTERS = ["3", "4", "5", "6", "7", "7a", "8", "9", "10", "11a", "11b", "14", "15", "16"]
 
 
 def get_chapter_files(year: int) -> dict[str, str]:
     """Get chapter file names for the specified year."""
-    return {
+
+    out =  {
         "3": f"CHAPTER 3 OCCUPANCY CLASSIFICATION AND USE - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "4": f"CHAPTER 4 SPECIAL DETAILED REQUIREMENTS BASED ON OCCUPANCY AND USE - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "5": f"CHAPTER 5 GENERAL BUILDING HEIGHTS AND AREAS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
@@ -42,73 +54,149 @@ def get_chapter_files(year: int) -> dict[str, str]:
         "9": f"CHAPTER 9 FIRE PROTECTION AND LIFE SAFETY SYSTEMS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "10": f"CHAPTER 10 MEANS OF EGRESS - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
         "11a": f"CHAPTER 11A HOUSING ACCESSIBILITY - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
-        "11b": f"Chapter 11b Accessibility To Public Buildings Public Accommodations Commercial Buildings And Public Housing - {year} California Building Code Volumes 1 and 2, Title 24, Part 2.html",
+        "11b": f"CHAPTER 11B ACCESSIBILITY TO PUBLIC BUILDINGS PUBLIC ACCOMMODATIONS COMMERCIALBUILDINGS AND PUBLIC HOUSING - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "14": f"CHAPTER 14 EXTERIOR WALLS - {year} CALIFORNIA BUILDING CODE, TITLE 24, PART 2 (VOLUMES 1 & 2) WITH JULY 2022 SUPPLE.html",
+        "15": f"CHAPTER 15 ROOF ASSEMBLIES AND ROOFTOP STRUCTURES - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        "16": f"CHAPTER 16 STRUCTURAL DESIGN - {year} CALIFORNIA BUILDING CODE VOLUMES 1 AND 2, TITLE 24, PART 2.html",
+        
     }
+    assert sorted(list(out.keys())) == sorted(CBC_CHAPTERS), "mismatch between cbc chapters bro"
+    return out
 
 
 def find_section_numbers(text: str) -> list[str]:
-    """Extract section numbers from text."""
+    """Extract section numbers from text (e.g., from headers). No context required."""
     return re.findall(SECTION_REGEX, text)
 
 
 def find_subsection_numbers(text: str) -> list[str]:
-    """Extract subsection numbers from text."""
+    """Extract subsection numbers from text (e.g., from headers). No context required."""
     return re.findall(SUBSECTION_REGEX, text)
+
+
+def extract_subsection_number_from_id(element_id: str | None) -> str | None:
+    """
+    Extract subsection number from HTML element ID.
+
+    Examples:
+        "CABC2025P1_Ch16_Sec1617.5.1" -> "1617.5.1"
+        "CABC2025P1_Ch11_Sec11B-213.3.1" -> "11B-213.3.1"
+        "invalid_id" -> None
+
+    Args:
+        element_id: HTML element ID attribute value
+
+    Returns:
+        Subsection number string, or None if not found
+    """
+    if not element_id:
+        return None
+
+    # Pattern: CABC{year}P{part}_Ch{chapter}_Sec{section_number}
+    # Extract everything after "Sec"
+    match = re.search(r'_Sec(.+)$', element_id)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def find_section_references(text: str) -> list[str]:
+    """
+    Find section references in paragraph text using context-aware extraction.
+
+    Finds 'Section/Sections/§' keywords and extracts all section numbers within
+    the same clause, handling patterns like "Section X or Y" and "Sections X and Y".
+
+    Returns:
+        List of section numbers (e.g., ["1611", "1403"])
+    """
+    matches = []
+
+    # Find all positions where "Section" keyword appears
+    section_keyword_pattern = r'\b(?:Section|Sections|§)\b'
+
+    for keyword_match in re.finditer(section_keyword_pattern, text, re.IGNORECASE):
+        start_pos = keyword_match.end()
+
+        # Extract the clause following "Section" (up to period, semicolon, or end)
+        # Look ahead up to 200 chars or until major punctuation
+        remaining = text[start_pos:start_pos + 200]
+
+        # Stop at sentence boundary (period followed by space/capital) or semicolon
+        clause_match = re.match(r'([^.;]*?)(?:\.\s+[A-Z]|;|$)', remaining)
+        if clause_match:
+            clause = clause_match.group(1)
+        else:
+            clause = remaining
+
+        # Within this clause, find all section numbers (base sections without dots)
+        section_matches = re.findall(SECTION_PATTERN, clause)
+        matches.extend(section_matches)
+
+    return list(set(matches))  # Deduplicate
+
+
+def find_subsection_references(text: str) -> list[str]:
+    """
+    Find subsection references in paragraph text using context-aware extraction.
+
+    Finds 'Section/Sections/§' keywords and extracts all subsection numbers within
+    the same clause, handling patterns like "Section X or Y" and "Sections X, Y or Z".
+
+    Returns:
+        List of subsection numbers (e.g., ["1403.12.1", "1403.12.2"])
+    """
+    matches = []
+
+    # Find all positions where "Section" keyword appears
+    section_keyword_pattern = r'\b(?:Section|Sections|§)\b'
+
+    for keyword_match in re.finditer(section_keyword_pattern, text, re.IGNORECASE):
+        start_pos = keyword_match.end()
+
+        # Extract the clause following "Section" (up to period, semicolon, or end)
+        # Look ahead up to 200 chars or until major punctuation
+        remaining = text[start_pos:start_pos + 200]
+
+        # Stop at sentence boundary (period followed by space/capital) or semicolon
+        clause_match = re.match(r'([^.;]*?)(?:\.\s+[A-Z]|;|$)', remaining)
+        if clause_match:
+            clause = clause_match.group(1)
+        else:
+            clause = remaining
+
+        # Within this clause, find all subsection numbers (sections with dots)
+        subsection_matches = re.findall(SUBSECTION_PATTERN, clause)
+        matches.extend(subsection_matches)
+
+    return list(set(matches))  # Deduplicate
 
 
 def section_belongs_to_chapter(section_number: str, chapter: str) -> bool:
     """Check if a section number belongs to the specified chapter."""
     chapter = chapter.lower()
 
-    # Chapter 3: 3XX (e.g., 301, 302)
-    if chapter == "3":
-        return re.match(r"^3\d{2}$", section_number) is not None
+    # Chapters 3-9, 14-16 follow the pattern: Xdd or XXdd (e.g., 301, 402, 1401, 1502)
+    if chapter in ["3", "4", "5", "6", "7", "8", "9", "14", "15", "16"]:
+        return re.match(rf"^{chapter}\d{{2}}$", section_number) is not None
 
-    # Chapter 4: 4XX (e.g., 401, 402)
-    if chapter == "4":
-        return re.match(r"^4\d{2}$", section_number) is not None
+    # Special cases with unique patterns
+    patterns = {
+        "7a": r"^7\d{2}A$",          # Chapter 7A: 7XXA (e.g., 701A, 702A)
+        "10": r"^10\d{2}$|^\d{4}A$", # Chapter 10: 10XX or XXXXА (e.g., 1001, 1003A)
+        "11a": r"^11\d{2}A$",        # Chapter 11A: 11XXA (e.g., 1102A, 1103A, 1105A)
+        "11b": r"^11B-",             # Chapter 11B: 11B-XXX (e.g., 11B-101)
+    }
 
-    # Chapter 5: 5XX (e.g., 501, 502)
-    if chapter == "5":
-        return re.match(r"^5\d{2}$", section_number) is not None
-
-    # Chapter 6: 6XX (e.g., 601, 602)
-    if chapter == "6":
-        return re.match(r"^6\d{2}$", section_number) is not None
-
-    # Chapter 7: 7XX (e.g., 701, 702)
-    if chapter == "7":
-        return re.match(r"^7\d{2}$", section_number) is not None
-
-    # Chapter 7A: 7XXA (e.g., 701A, 702A)
-    if chapter == "7a":
-        return re.match(r"^7\d{2}A$", section_number) is not None
-
-    # Chapter 8: 8XX (e.g., 801, 802)
-    if chapter == "8":
-        return re.match(r"^8\d{2}$", section_number) is not None
-
-    # Chapter 9: 9XX (e.g., 901, 902)
-    if chapter == "9":
-        return re.match(r"^9\d{2}$", section_number) is not None
-
-    # Chapter 10: 10XX or XXXXА (e.g., 1001, 1002, 1003A)
-    if chapter == "10":
-        return re.match(r"^10\d{2}$", section_number) is not None or re.match(r"^\d{4}A$", section_number) is not None
-
-    # Chapter 11A: 11A-XXX (e.g., 11A-101)
-    if chapter == "11a":
-        return section_number.startswith("11A-")
-
-    # Chapter 11B: 11B-XXX (e.g., 11B-101)
-    if chapter == "11b":
-        return section_number.startswith("11B-")
+    if chapter in patterns:
+        return re.match(patterns[chapter], section_number) is not None
 
     return False
 
 
 
-def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, test_mode: bool, year: int) -> tuple[list, list]:
+def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, year: int) -> tuple[list, list]:
     """Extract tables and figures from HTML."""
     tables = []
     figures = []
@@ -117,9 +205,6 @@ def extract_tables_and_figures(soup: BeautifulSoup, extract_images: bool, test_m
     
     figure_elements = soup.find_all("figure")
     logger.info(f"Found {len(figure_elements)} figure elements")
-    
-    if test_mode:
-        figure_elements = figure_elements[:3]
     
     for fig_elem in figure_elements:
         fig_class = fig_elem.get("class", [])
@@ -185,27 +270,21 @@ def extract_title(header_text: str, number: str) -> str:
     return title
 
 
-def extract_sections(soup: BeautifulSoup, test_mode: bool, chapter: str, year: int) -> dict[str, Section]:
+def extract_sections(soup: BeautifulSoup, chapter: str, year: int) -> dict[str, Section]:
     """Extract all sections from the soup."""
     sections = {}
     level_sections = soup.find_all("section", class_=re.compile(r"level\d"))
-
-    if test_mode:
-        level_sections = level_sections[:2]
 
     for level_section in level_sections:
         header_elem = level_section.find("div", class_="section-action-wrapper")
         if not header_elem:
             continue
 
-        # Chapter 9 has cross-references in paragraph text that get picked up,
-        # so extract from data-section-title attribute instead of full text
-        if chapter == "9":
-            section_title_attr = header_elem.get("data-section-title")
-            if section_title_attr:
-                header_text = section_title_attr
-            else:
-                header_text = header_elem.get_text()
+        # Use data-section-title attribute when available to avoid matching
+        # measurements (e.g., "1524 mm") or cross-references in paragraph text
+        section_title_attr = header_elem.get("data-section-title")
+        if section_title_attr:
+            header_text = section_title_attr
         else:
             header_text = header_elem.get_text()
 
@@ -255,30 +334,40 @@ def extract_sections(soup: BeautifulSoup, test_mode: bool, chapter: str, year: i
     return sections
 
 
-def extract_subsections(soup: BeautifulSoup, test_mode: bool, chapter: str) -> dict[str, Subsection]:
+def extract_subsections(soup: BeautifulSoup, chapter: str) -> dict[str, Subsection]:
     """Extract all subsections from the soup."""
     subsections = {}
     pattern = re.compile(r"level\d|level\d_title")
     subsection_elements = soup.find_all("section", class_=pattern)
 
-    if test_mode:
-        subsection_elements = subsection_elements[:5]
-
     for subsection_elem in subsection_elements:
-        # Find header
+        # Extract subsection number from element ID (most reliable)
+        element_id = subsection_elem.get("id")
+        subsection_number = extract_subsection_number_from_id(element_id)
+
+        # Fallback to regex parsing if ID not available
+        if not subsection_number:
+            header_elem = subsection_elem.find("h1", class_=pattern)
+            if not header_elem:
+                header_elem = subsection_elem.find("span", class_=pattern)
+            if not header_elem:
+                continue
+
+            header_text = header_elem.get_text()
+            subsection_numbers = find_subsection_numbers(header_text)
+
+            if len(subsection_numbers) != 1:
+                continue
+
+            subsection_number = subsection_numbers[0].strip()
+
+        # Still need header_text for title extraction
         header_elem = subsection_elem.find("h1", class_=pattern)
         if not header_elem:
             header_elem = subsection_elem.find("span", class_=pattern)
         if not header_elem:
             continue
-
         header_text = header_elem.get_text()
-        subsection_numbers = find_subsection_numbers(header_text)
-
-        if len(subsection_numbers) != 1:
-            continue
-
-        subsection_number = subsection_numbers[0].strip()
 
         # Filter subsections by chapter - check if parent section belongs to this chapter
         parent_section = subsection_number.split(".")[0]
@@ -304,11 +393,12 @@ def extract_subsections(soup: BeautifulSoup, test_mode: bool, chapter: str) -> d
             # Skip if paragraph is inside a nested section
             if any(nested_section in para.parents for nested_section in nested_sections):
                 continue
-            
+
             para_text = para.get_text()
             paragraphs.append(para_text)
-            links.extend(find_subsection_numbers(para_text))
-            links.extend(find_section_numbers(para_text))
+            # Use reference functions to find cross-references (requires context)
+            links.extend(find_subsection_references(para_text))
+            links.extend(find_section_references(para_text))
         
         logger.info(f"Subsection: {subsection_number} - {subsection_title}")
         
@@ -411,102 +501,8 @@ def attach_figures(figures: list[dict], sections: dict[str, Section]):
             logger.warning(f"Could not attach {fig_type} {fig_number}")
 
 
-def sort_code_data(code: Code) -> Code:
-    """Sort all data structures in the Code object for deterministic output."""
-    # Sort sections by number
-    code.sections.sort(key=lambda s: s.number)
-    
-    for section in code.sections:
-        # Sort subsections by number
-        section.subsections.sort(key=lambda ss: ss.number)
-        
-        # Sort section-level lists
-        section.figures.sort()
-        
-        for subsection in section.subsections:
-            # Sort subsection-level lists
-            subsection.refers_to.sort()
-            subsection.figures.sort()
-            # Sort tables by number
-            subsection.tables.sort(key=lambda t: t.number)
-    
-    return code
-
-
-def compare_json_files(file1: str, file2: str) -> dict:
-    """Compare two JSON files and return differences."""
-    with open(file1, "r") as f1, open(file2, "r") as f2:
-        data1 = json.load(f1)
-        data2 = json.load(f2)
-    
-    diff = DeepDiff(data1, data2, ignore_order=False, verbose_level=2)
-    return diff
-
-
-def print_comparison_summary(diff: dict, baseline_file: str, new_file: str):
-    """Print a human-readable summary of JSON differences."""
-    if not diff:
-        logger.info("✅ No differences found! Output matches baseline.")
-        return
-    
-    logger.warning(f"⚠️  Differences detected between {baseline_file} and {new_file}")
-    
-    # Count changes
-    counts = {
-        "values_changed": 0,
-        "dictionary_item_added": 0,
-        "dictionary_item_removed": 0,
-        "iterable_item_added": 0,
-        "iterable_item_removed": 0,
-    }
-    
-    for key in counts.keys():
-        if key in diff:
-            counts[key] = len(diff[key])
-    
-    # Print summary
-    logger.info("\n" + "="*80)
-    logger.info("COMPARISON SUMMARY")
-    logger.info("="*80)
-    
-    if counts["values_changed"] > 0:
-        logger.info(f"\n📝 Values Changed: {counts['values_changed']}")
-        for path, change in list(diff.get("values_changed", {}).items())[:10]:
-            logger.info(f"  {path}")
-            logger.info(f"    OLD: {str(change['old_value'])[:100]}")
-            logger.info(f"    NEW: {str(change['new_value'])[:100]}")
-        if counts["values_changed"] > 10:
-            logger.info(f"  ... and {counts['values_changed'] - 10} more")
-    
-    if counts["dictionary_item_added"] > 0:
-        logger.info(f"\n➕ Items Added: {counts['dictionary_item_added']}")
-        for path, value in list(diff.get("dictionary_item_added", {}).items())[:5]:
-            logger.info(f"  {path}: {str(value)[:100]}")
-        if counts["dictionary_item_added"] > 5:
-            logger.info(f"  ... and {counts['dictionary_item_added'] - 5} more")
-    
-    if counts["dictionary_item_removed"] > 0:
-        logger.info(f"\n➖ Items Removed: {counts['dictionary_item_removed']}")
-        for path in list(diff.get("dictionary_item_removed", {}).keys())[:5]:
-            logger.info(f"  {path}")
-        if counts["dictionary_item_removed"] > 5:
-            logger.info(f"  ... and {counts['dictionary_item_removed'] - 5} more")
-    
-    if counts["iterable_item_added"] > 0:
-        logger.info(f"\n➕ Array Items Added: {counts['iterable_item_added']}")
-    
-    if counts["iterable_item_removed"] > 0:
-        logger.info(f"\n➖ Array Items Removed: {counts['iterable_item_removed']}")
-    
-    logger.info("\n" + "="*80)
-    logger.info("💡 Full diff saved to: diff_report.json")
-    logger.info("="*80 + "\n")
-
-
 def main(args):
     logger.info(f"Starting CBC scraper for version {args.version}")
-    if args.test:
-        logger.info("TEST MODE - processing limited elements")
     if args.dry_run:
         logger.info("DRY RUN - no S3 upload")
     
@@ -519,8 +515,7 @@ def main(args):
     all_figures = []
     
     # Determine which chapters to process
-    # Note: 11a doesn't exist in S3, only 11b
-    chapters_to_process = args.chapters if args.chapters else ["7", "7a", "8", "9", "10", "11b"]
+    chapters_to_process = args.chapters if args.chapters else CBC_CHAPTERS
     logger.info(f"Processing chapters: {chapters_to_process}")
     
     # Process each chapter
@@ -531,17 +526,17 @@ def main(args):
         
         # Extract tables and figures
         chapter_tables, chapter_figures = extract_tables_and_figures(
-            soup, args.extract_images, args.test, args.version
+            soup, args.extract_images, args.version
         )
         all_tables.extend(chapter_tables)
         all_figures.extend(chapter_figures)
         
         # Extract sections (pass chapter info and year)
-        chapter_sections = extract_sections(soup, args.test, chapter, args.version)
+        chapter_sections = extract_sections(soup, chapter, args.version)
         all_sections.update(chapter_sections)
 
         # Extract subsections
-        chapter_subsections = extract_subsections(soup, args.test, chapter)
+        chapter_subsections = extract_subsections(soup, chapter)
         all_subsections.update(chapter_subsections)
     
     # Attach subsections to sections
@@ -648,11 +643,6 @@ if __name__ == "__main__":
         action="store_true",
         default=True,
         help="Extract and upload figure images to S3",
-    )
-    parser.add_argument(
-        "--test",
-        action="store_true",
-        help="Test mode - process only first few elements",
     )
     parser.add_argument(
         "--dry-run",

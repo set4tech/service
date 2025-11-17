@@ -261,38 +261,47 @@ supabase gen types typescript --linked > lib/database.types.ts
 
 ### Direct psql Connection (Alternative)
 
-If you need to use `psql` directly, always use the **pooler** connection (IPv4 compatible):
+If you need to use `psql` directly, always use the **pooler** connection (IPv4 compatible).
+
+**Connection Strings:**
 
 ```bash
+# DEV/STAGING (port 5432)
 PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "YOUR_QUERY"
+
+# PRODUCTION (port 6543)
+PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "YOUR_QUERY"
 ```
 
 **Why pooler?**
 
-- Direct connection (`db.prafecmdqiwgnsumlmqn.supabase.co`) is IPv6-only
+- Direct connection (`db.{project-ref}.supabase.co`) is IPv6-only
 - Pooler (`aws-1-us-east-1.pooler.supabase.com`) supports IPv4
-- Use port `5432` for pooler
-- Username: `postgres.prafecmdqiwgnsumlmqn` (project-scoped)
-- Password must be URL-encoded: `!` → `%21`
+- Username format: `postgres.{project-ref}` (project-scoped)
+- Password must be URL-encoded: `!` → `%21`, `&` → `%26`
+- Note: Production uses port `6543`, dev uses `5432`
 
 ### Common Queries
 
 ```bash
-# Using Supabase CLI (recommended)
+# Using Supabase CLI (recommended - works on linked project)
 supabase db diff --linked
 
-# Using psql directly
-# List tables
-PGSSLMODE=require psql "..." -c "\dt"
+# Using psql directly - replace with appropriate connection string below
+# DEV:  postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+# PROD: postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres
 
-# Describe schema
-PGSSLMODE=require psql "..." -c "\d table_name"
+# List tables
+PGSSLMODE=require psql "CONNECTION_STRING" -c "\dt"
+
+# Describe table schema
+PGSSLMODE=require psql "CONNECTION_STRING" -c "\d table_name"
 
 # Check assessment progress
-PGSSLMODE=require psql "..." -c "SELECT id, seeding_status, sections_processed, sections_total FROM assessments WHERE id = 'assessment-id'"
+PGSSLMODE=require psql "CONNECTION_STRING" -c "SELECT id, seeding_status, sections_processed, sections_total FROM assessments WHERE id = 'assessment-id'"
 
 # View element mappings
-PGSSLMODE=require psql "..." -c "SELECT eg.name, COUNT(*) FROM element_groups eg JOIN element_section_mappings esm ON eg.id = esm.element_group_id GROUP BY eg.id"
+PGSSLMODE=require psql "CONNECTION_STRING" -c "SELECT eg.name, COUNT(*) FROM element_groups eg JOIN element_section_mappings esm ON eg.id = esm.element_group_id GROUP BY eg.id"
 ```
 
 ## Database Schema (Key Concepts)
@@ -557,16 +566,21 @@ Required in `.env.local` (see `.envrc` for reference):
 
 ## Common Debugging Tasks
 
+**Note:** Replace `CONNECTION_STRING` with the appropriate database connection:
+
+- DEV: `postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres`
+- PROD: `postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres`
+
 **Check seeding status**:
 
 ```bash
-PGSSLMODE=require psql "..." -c "SELECT seeding_status, sections_processed, sections_total FROM assessments WHERE id = 'assessment-id'"
+PGSSLMODE=require psql "CONNECTION_STRING" -c "SELECT seeding_status, sections_processed, sections_total FROM assessments WHERE id = 'assessment-id'"
 ```
 
 **View element sections**:
 
 ```bash
-PGSSLMODE=require psql "..." -c "
+PGSSLMODE=require psql "CONNECTION_STRING" -c "
 SELECT eg.name, s.number, s.title
 FROM element_section_mappings esm
 JOIN element_groups eg ON esm.element_group_id = eg.id
@@ -578,7 +592,7 @@ ORDER BY s.number"
 **Find checks without screenshots**:
 
 ```bash
-PGSSLMODE=require psql "..." -c "
+PGSSLMODE=require psql "CONNECTION_STRING" -c "
 SELECT c.id, c.code_section_title, COUNT(sca.screenshot_id) as screenshot_count
 FROM checks c
 LEFT JOIN screenshot_check_assignments sca ON c.id = sca.check_id
@@ -590,7 +604,7 @@ HAVING COUNT(sca.screenshot_id) = 0"
 **Check AI analysis results**:
 
 ```bash
-PGSSLMODE=require psql "..." -c "
+PGSSLMODE=require psql "CONNECTION_STRING" -c "
 SELECT compliance_status, confidence, reasoning
 FROM analysis_runs
 WHERE check_id = 'check-id'
