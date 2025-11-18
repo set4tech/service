@@ -15,6 +15,12 @@ interface AmendedSection {
   sourceUrl: string | null;
 }
 
+interface Subsection {
+  number: string;
+  title: string;
+  paragraphs: string[];
+}
+
 interface Amendment {
   id: number;
   key: string;
@@ -23,6 +29,7 @@ interface Amendment {
   text: string;
   sourceUrl: string | null;
   codeId: string;
+  subsections: Subsection[];
   amendsSection: AmendedSection | null;
 }
 
@@ -230,33 +237,24 @@ export function CodeInformation({ assessmentId, codeInfo }: Props) {
                       <div className="text-xs text-ink-500 font-medium uppercase tracking-wide mb-2">
                         Amendment Text
                       </div>
-                      <div className="text-sm text-ink-900 whitespace-pre-wrap leading-relaxed">
-                        {amendment.text}
-                      </div>
+                      <div className="text-sm text-ink-700 mb-2">{amendment.text}</div>
 
-                      {amendment.sourceUrl && (
-                        <a
-                          href={amendment.sourceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 mt-2.5 text-xs text-accent-600 hover:text-accent-700 underline"
-                        >
-                          View full amendment
-                          <svg
-                            className="w-3 h-3"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                            />
-                          </svg>
-                        </a>
-                      )}
+                      {amendment.subsections.map((subsection, idx) => (
+                        <div key={idx} className="mb-3">
+                          {subsection.title && (
+                            <div className="text-sm font-medium text-ink-900 mb-1">
+                              {subsection.title}
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            {subsection.paragraphs.map((paragraph, pIdx) => (
+                              <div key={pIdx} className="text-sm text-ink-900 leading-relaxed">
+                                {paragraph}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
