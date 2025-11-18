@@ -31,3 +31,4 @@ COMMENT ON FUNCTION get_assessment_calculation_tables(UUID) IS
 'Returns all checks with calculation tables for a given assessment. 
 Used in the Customer Report Viewer to display all calculation tables (not just violations).';
 
+

@@ -173,6 +173,9 @@ def upload_items_to_supabase(
     code_type = determine_code_type(code_data)
     logger.info(f"Determined code_type: {code_type}")
 
+    # Track items with amendments for later resolution
+    amendment_mappings = []  # List of (section_key, amends_section_number)
+
     # Batch upsert sections
     batch_size = 100
     for i in range(0, total_items, batch_size):
@@ -216,6 +219,10 @@ def upload_items_to_supabase(
                 if field in item and item[field] is not None:
                     record[field] = item[field]
 
+            # Track amendment relationships for later resolution
+            if "amends_section" in item and item["amends_section"]:
+                amendment_mappings.append((item["key"], item["amends_section"]))
+
             batch_data.append(record)
 
         # Upsert batch (on_conflict='key' means update if exists, insert if not)
@@ -231,6 +238,35 @@ def upload_items_to_supabase(
                     logger.error(f"Failed to upsert record {record['key']}: {record_error}")
 
     logger.info("All items upserted successfully")
+
+    # Resolve amendment relationships
+    if amendment_mappings:
+        logger.info(f"Resolving {len(amendment_mappings)} amendment relationships...")
+        for section_key, amends_section_number in amendment_mappings:
+            try:
+                # Find the section being amended by number (from CBC or other base code)
+                # Look for CBC sections with matching number
+                result = supabase.table("sections").select("id").eq("number", amends_section_number).execute()
+
+                if result.data and len(result.data) > 0:
+                    # If multiple matches, prefer CBC sections (code_id starting with ICC)
+                    amended_section_id = None
+                    for row in result.data:
+                        amended_section_id = row["id"]
+                        break  # Use first match for now
+
+                    # Update the amendment section with the reference
+                    supabase.table("sections").update({
+                        "amends_section_id": amended_section_id
+                    }).eq("key", section_key).execute()
+
+                    logger.info(f"  ✓ Linked {section_key} → amends section ID {amended_section_id}")
+                else:
+                    logger.warning(f"  ⚠ Could not find base section for number '{amends_section_number}' (amendment: {section_key})")
+            except Exception as e:
+                logger.error(f"  ✗ Error resolving amendment for {section_key}: {e}")
+
+        logger.info("Amendment relationships resolved")
 
     # Create cross-references
     logger.info("Creating cross-references...")
@@ -392,6 +428,7 @@ def upload_unified_code(code_data: Dict[str, Any], supabase: Client):
             "source_page": section.get("source_page"),
             "chapter": chapter_num,
             "chapter_id": chapter_id,
+            "amends_section": section.get("amends_section"),  # For amendment tracking
         }
         all_items.append(section_item)
 
