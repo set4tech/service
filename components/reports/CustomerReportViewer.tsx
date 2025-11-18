@@ -7,6 +7,7 @@ import { ViolationListSidebar } from './ViolationListSidebar';
 import { ViolationDetailModal } from './ViolationDetailModal';
 import { BlueprintLoader } from './BlueprintLoader';
 import { CalculationTablesBrowser } from './CalculationTablesBrowser';
+import { CodeInformation } from './CodeInformation';
 
 // Load PDF viewer only on client side
 const PDFViewer = dynamic(
@@ -521,57 +522,7 @@ export function CustomerReportViewer({ data }: Props) {
             )}
           </div>
         ) : sidebarView === 'code-info' ? (
-          <div className="flex-1 overflow-y-auto px-6 py-5">
-            <h2 className="text-lg font-semibold text-ink-900 mb-4">Code Information</h2>
-            {data.codeInfo ? (
-              <div className="space-y-4">
-                <div className="border-b border-line pb-4">
-                  <div className="text-xs text-ink-500 font-medium uppercase tracking-wide mb-1">
-                    Code Name
-                  </div>
-                  <div className="text-sm text-ink-900 font-medium">{data.codeInfo.title}</div>
-                </div>
-
-                <div className="border-b border-line pb-4">
-                  <div className="text-xs text-ink-500 font-medium uppercase tracking-wide mb-1">
-                    Version
-                  </div>
-                  <div className="text-sm text-ink-900">{data.codeInfo.version}</div>
-                </div>
-
-                {data.codeInfo.sourceUrl && (
-                  <div className="border-b border-line pb-4">
-                    <div className="text-xs text-ink-500 font-medium uppercase tracking-wide mb-1">
-                      Code Website
-                    </div>
-                    <a
-                      href={data.codeInfo.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-accent-600 hover:text-accent-700 underline flex items-center gap-1"
-                    >
-                      View Code Source
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                    </a>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-ink-500">No code information available</p>
-            )}
-          </div>
+          <CodeInformation assessmentId={data.assessmentId} codeInfo={data.codeInfo ?? null} />
         ) : (
           <div className="flex-1 overflow-y-auto">
             <CalculationTablesBrowser assessmentId={data.assessmentId} />
