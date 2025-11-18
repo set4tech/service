@@ -83,34 +83,48 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     console.log('[Amendments API] Found amendment sections:', sections?.length || 0);
 
-    // Transform the data for easier consumption
-    const amendments = sections.map(section => {
-      // Supabase returns foreign key relations as arrays even for single relations
-      const amendedSection = Array.isArray(section.amended_section)
-        ? section.amended_section[0]
-        : section.amended_section;
+    // Fetch subsections for each amendment to get the detailed content
+    const amendmentsWithContent = await Promise.all(
+      sections.map(async section => {
+        // Supabase returns foreign key relations as arrays even for single relations
+        const amendedSection = Array.isArray(section.amended_section)
+          ? section.amended_section[0]
+          : section.amended_section;
 
-      return {
-        id: section.id,
-        key: section.key,
-        number: section.number,
-        title: section.title,
-        text: section.text,
-        sourceUrl: section.source_url,
-        codeId: section.code_id,
-        amendsSection: amendedSection
-          ? {
-              id: amendedSection.id,
-              number: amendedSection.number,
-              title: amendedSection.title,
-              sourceUrl: amendedSection.source_url,
-            }
-          : null,
-      };
+        // Fetch subsections for this amendment
+        const { data: subsections } = await supabase
+          .from('sections')
+          .select('number, title, paragraphs')
+          .eq('parent_key', section.key)
+          .eq('item_type', 'subsection')
+          .order('number');
+
+        return {
+          id: section.id,
+          key: section.key,
+          number: section.number,
+          title: section.title,
+          text: section.text,
+          sourceUrl: section.source_url,
+          codeId: section.code_id,
+          subsections: subsections || [],
+          amendsSection: amendedSection
+            ? {
+                id: amendedSection.id,
+                number: amendedSection.number,
+                title: amendedSection.title,
+                sourceUrl: amendedSection.source_url,
+              }
+            : null,
+        };
+      })
+    );
+
+    console.log('[Amendments API] Returning amendments:', amendmentsWithContent.length);
+    return NextResponse.json({
+      amendments: amendmentsWithContent,
+      jurisdiction: assessment.jurisdiction,
     });
-
-    console.log('[Amendments API] Returning amendments:', amendments.length);
-    return NextResponse.json({ amendments, jurisdiction: assessment.jurisdiction });
   } catch (error) {
     console.error('[Amendments API] Unexpected error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
