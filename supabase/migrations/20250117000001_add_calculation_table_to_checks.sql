@@ -21,8 +21,7 @@ Example: {
   ]
 }';
 
--- Step 2: Update get_assessment_report RPC to include calculation_table
-
+-- Step 2: Update get_assessment_report RPC to include calculation_table`
 DROP FUNCTION IF EXISTS get_assessment_report(uuid);
 
 CREATE OR REPLACE FUNCTION get_assessment_report(assessment_uuid UUID)
