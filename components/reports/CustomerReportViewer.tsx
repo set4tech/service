@@ -2,9 +2,15 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import { ProjectViolationsData, ViolationMarker } from '@/lib/reports/get-violations';
+import {
+  ProjectViolationsData,
+  ViolationMarker,
+  CommentMarker,
+} from '@/lib/reports/get-violations';
 import { ViolationListSidebar } from './ViolationListSidebar';
 import { ViolationDetailModal } from './ViolationDetailModal';
+import { CommentListSidebar } from './CommentListSidebar';
+import { CommentDetailModal } from '@/components/comments/CommentDetailModal';
 import { BlueprintLoader } from './BlueprintLoader';
 import { CalculationTablesBrowser } from './CalculationTablesBrowser';
 import { CodeInformation } from './CodeInformation';
@@ -24,16 +30,20 @@ interface Props {
 
 export function CustomerReportViewer({ data }: Props) {
   const [selectedViolation, setSelectedViolation] = useState<ViolationMarker | null>(null);
+  const [selectedComment, setSelectedComment] = useState<CommentMarker | null>(null);
   const [currentScreenshotIndex, setCurrentScreenshotIndex] = useState(0);
   const [modalViolation, setModalViolation] = useState<ViolationMarker | null>(null);
+  const [modalComment, setModalComment] = useState<CommentMarker | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [exporting, setExporting] = useState(false);
   const [sidebarView, setSidebarView] = useState<
-    'violations' | 'building-info' | 'code-info' | 'tables'
+    'violations' | 'comments' | 'building-info' | 'code-info' | 'tables'
   >('violations');
   const [isNavHovered, setIsNavHovered] = useState(false);
 
-  const handleNavClick = (view: 'violations' | 'building-info' | 'code-info' | 'tables') => {
+  const handleNavClick = (
+    view: 'violations' | 'comments' | 'building-info' | 'code-info' | 'tables'
+  ) => {
     setSidebarView(view);
   };
 
@@ -94,6 +104,33 @@ export function CustomerReportViewer({ data }: Props) {
     // Open the modal with full details
     setModalViolation(violation);
     setCurrentPage(violation.pageNumber);
+  }, []);
+
+  // Comment handlers
+  const handleCommentClick = useCallback((comment: CommentMarker) => {
+    console.log('[CustomerReportViewer] handleCommentClick called', {
+      commentId: comment.commentId,
+      screenshots: comment.screenshots,
+      screenshotCount: comment.screenshots.length,
+    });
+
+    // Navigate to the comment and center it
+    setCurrentScreenshotIndex(0);
+    const firstScreenshot = comment.screenshots[0];
+
+    if (firstScreenshot) {
+      setCurrentPage(firstScreenshot.pageNumber || comment.pageNumber);
+    } else {
+      setCurrentPage(comment.pageNumber);
+    }
+    setSelectedComment(comment);
+    setSelectedViolation(null); // Clear violation selection
+  }, []);
+
+  const handleCommentDetailsClick = useCallback((comment: CommentMarker) => {
+    // Open the modal with full details
+    setModalComment(comment);
+    setCurrentPage(comment.pageNumber);
   }, []);
 
   // Compute highlighted violation ID for centering in PDF viewer
@@ -333,6 +370,28 @@ export function CustomerReportViewer({ data }: Props) {
         </button>
 
         <button
+          onClick={() => handleNavClick('comments')}
+          className={`p-3 rounded-lg transition-all ${
+            sidebarView === 'comments'
+              ? 'bg-blue-600 text-white shadow-lg'
+              : 'text-emerald-100 hover:text-white hover:bg-emerald-800'
+          }`}
+          style={{
+            opacity: isNavHovered ? 1 : 0.7,
+          }}
+          title="View Comments"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+            />
+          </svg>
+        </button>
+
+        <button
           onClick={() => handleNavClick('building-info')}
           className={`p-3 rounded-lg transition-all ${
             sidebarView === 'building-info'
@@ -503,6 +562,14 @@ export function CustomerReportViewer({ data }: Props) {
             onViolationDetailsClick={handleViolationDetailsClick}
             currentPage={currentPage}
           />
+        ) : sidebarView === 'comments' ? (
+          <CommentListSidebar
+            comments={data.comments || []}
+            selectedComment={selectedComment}
+            onCommentClick={handleCommentClick}
+            onCommentDetailsClick={handleCommentDetailsClick}
+            currentPage={currentPage}
+          />
         ) : sidebarView === 'building-info' ? (
           <div className="flex-1 overflow-y-auto px-6 py-5">
             <h2 className="text-lg font-semibold text-ink-900 mb-4">Building Information</h2>
@@ -568,6 +635,26 @@ export function CustomerReportViewer({ data }: Props) {
           onPrev={handlePrevViolation}
           totalViolations={data.violations.length}
           currentIndex={data.violations.findIndex(v => v.checkId === modalViolation.checkId) + 1}
+        />
+      )}
+
+      {/* Comment Detail Modal */}
+      {modalComment && (
+        <CommentDetailModal
+          comment={modalComment}
+          assessmentId={data.assessmentId}
+          onClose={() => setModalComment(null)}
+          onUpdate={updatedComment => {
+            console.log('[CustomerReportViewer] Comment updated:', updatedComment);
+            setModalComment(null);
+            // Note: In read-only report view, we probably don't want to allow updates
+            // This modal is just for viewing details
+          }}
+          onDelete={() => {
+            console.log('[CustomerReportViewer] Comment deleted');
+            setModalComment(null);
+            // Note: In read-only report view, we probably don't want to allow deletion
+          }}
         />
       )}
     </div>
