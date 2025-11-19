@@ -34,7 +34,7 @@ export async function getAssessmentChecks(
         `
         *,
         element_instances(id, label, element_group_id, element_groups(id, name, slug)),
-        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, code_id, chapters(codes(title)))
+        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, chapters(codes(title)))
       `
       )
       .eq('assessment_id', assessmentId)
@@ -53,7 +53,7 @@ export async function getAssessmentChecks(
         `
         *,
         element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)),
-        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, code_id, chapters(codes(title)))
+        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, chapters(codes(title)))
       `
       )
       .eq('assessment_id', assessmentId)
@@ -94,7 +94,7 @@ export async function getAssessmentChecks(
       checksQuery = supabase
         .from('checks')
         .select(
-          '*, element_instances(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, code_id, chapters(codes(title)))'
+          '*, element_instances(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, chapters(codes(title)))'
         )
         .eq('assessment_id', assessmentId)
         .eq('is_excluded', false) // Filter out excluded checks
@@ -103,7 +103,7 @@ export async function getAssessmentChecks(
       checksQuery = supabase
         .from('checks')
         .select(
-          '*, element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, code_id, chapters(codes(title)))'
+          '*, element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, chapters(codes(title)))'
         )
         .eq('assessment_id', assessmentId)
         .not('element_group_id', 'is', null)
