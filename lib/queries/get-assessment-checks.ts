@@ -34,7 +34,7 @@ export async function getAssessmentChecks(
         `
         *,
         element_instances(id, label, element_group_id, element_groups(id, name, slug)),
-        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, codes(title))
+        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, code_id, chapters(codes(title)))
       `
       )
       .eq('assessment_id', assessmentId)
@@ -53,7 +53,7 @@ export async function getAssessmentChecks(
         `
         *,
         element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)),
-        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, codes(title))
+        sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, code_id, chapters(codes(title)))
       `
       )
       .eq('assessment_id', assessmentId)
@@ -94,7 +94,7 @@ export async function getAssessmentChecks(
       checksQuery = supabase
         .from('checks')
         .select(
-          '*, element_instances(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, codes(title))'
+          '*, element_instances(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, code_id, chapters(codes(title)))'
         )
         .eq('assessment_id', assessmentId)
         .eq('is_excluded', false) // Filter out excluded checks
@@ -103,7 +103,7 @@ export async function getAssessmentChecks(
       checksQuery = supabase
         .from('checks')
         .select(
-          '*, element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, codes(title))'
+          '*, element_instances!inner(id, label, element_group_id, element_groups(id, name, slug)), sections!checks_section_id_fkey(key, floorplan_relevant, never_relevant, code_id, chapters(codes(title)))'
         )
         .eq('assessment_id', assessmentId)
         .not('element_group_id', 'is', null)
@@ -230,7 +230,7 @@ export async function getAssessmentChecks(
         element_group_slug: elementGroup?.slug || null,
         element_instances: undefined,
         // Flatten code data
-        code_title: check.sections?.codes?.title || null,
+        code_title: check.sections?.chapters?.codes?.title || null,
         // Analysis data
         latest_status: analysis?.compliance_status || null,
         latest_confidence: analysis?.confidence || null,
@@ -438,7 +438,7 @@ export async function getAssessmentChecks(
       // Remove nested element_instances, keep sections with key
       element_instances: undefined,
       // Flatten code data
-      code_title: check.sections?.codes?.title || null,
+      code_title: check.sections?.chapters?.codes?.title || null,
       // Analysis data
       latest_status: analysis?.compliance_status || null,
       latest_confidence: analysis?.confidence || null,

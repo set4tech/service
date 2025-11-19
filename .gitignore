@@ -142,6 +142,9 @@ next-env.d.ts
 
 cbc_CA_2025.json
 
+# CPC source markdown files (raw text, do not commit)
+cpc/
+
 backups/*
 
 # CBC scraper comparison files (temporary)
