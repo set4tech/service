@@ -300,18 +300,71 @@ def upload_items_to_supabase(
                             }
                         )
 
-    # Batch upsert references
+    # Batch lookup section IDs and upsert references
     if references_to_insert:
+        logger.info(f"Looking up section IDs for {len(references_to_insert)} references...")
+
+        # Collect all unique section keys that need ID lookups
+        all_ref_keys = set()
+        for ref in references_to_insert:
+            all_ref_keys.add(ref["source_section_key"])
+            all_ref_keys.add(ref["target_section_key"])
+
+        # Batch lookup section IDs from keys
+        key_to_id_map = {}
+        lookup_batch_size = 500
+        ref_keys_list = list(all_ref_keys)
+
+        for i in range(0, len(ref_keys_list), lookup_batch_size):
+            batch_keys = ref_keys_list[i : i + lookup_batch_size]
+            try:
+                result = supabase.table("sections").select("key,id").in_("key", batch_keys).execute()
+                for row in result.data:
+                    key_to_id_map[row["key"]] = row["id"]
+                logger.info(f"  Looked up {len(result.data)} section IDs ({i + len(batch_keys)}/{len(ref_keys_list)})")
+            except Exception as e:
+                logger.error(f"Error looking up section IDs: {e}")
+
+        # Add section IDs to reference records
+        references_with_ids = []
+        missing_keys = []
+        for ref in references_to_insert:
+            src_key = ref["source_section_key"]
+            target_key = ref["target_section_key"]
+            src_id = key_to_id_map.get(src_key)
+            target_id = key_to_id_map.get(target_key)
+
+            if src_id and target_id:
+                references_with_ids.append({
+                    "source_section_key": src_key,
+                    "target_section_key": target_key,
+                    "source_section_id": src_id,
+                    "target_section_id": target_id,
+                    "explicit": True,
+                    "citation_text": "",
+                })
+            else:
+                if not src_id:
+                    missing_keys.append(src_key)
+                if not target_id:
+                    missing_keys.append(target_key)
+
+        if missing_keys:
+            logger.warning(f"Could not find IDs for {len(set(missing_keys))} section keys")
+            logger.debug(f"Missing keys: {list(set(missing_keys))[:10]}...")
+
+        # Batch upsert references with IDs
+        logger.info(f"Upserting {len(references_with_ids)} cross-references with section IDs...")
         batch_size = 100
-        for i in range(0, len(references_to_insert), batch_size):
-            batch = references_to_insert[i : i + batch_size]
+        for i in range(0, len(references_with_ids), batch_size):
+            batch = references_with_ids[i : i + batch_size]
             try:
                 # Upsert to avoid duplicate errors on re-upload
                 supabase.table("section_references").upsert(batch).execute()
             except Exception as e:
                 logger.error(f"Error upserting reference batch: {e}")
 
-    logger.info(f"Upserted {len(references_to_insert)} cross-references")
+    logger.info(f"Upserted {len(references_with_ids) if references_to_insert else 0} cross-references")
 
 
 def upload_unified_code(code_data: Dict[str, Any], supabase: Client):

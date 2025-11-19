@@ -9,27 +9,40 @@ def get_icc_part_number(year: int) -> str:
     }
     return part_mapping.get(year, "P1")  # Default to P1
 
-def generate_section_url(section_number: str, year: int = 2025) -> str:
-    """Generate California building code URL with proper section anchors."""
+def generate_section_url(section_number: str, year: int = 2025, state: str = "CA") -> str:
+    """Generate building code URL with proper section anchors for any state."""
     part = get_icc_part_number(year)
-    base_url = f"https://codes.iccsafe.org/content/CABC{year}{part}"
-    
+    code_prefix = f"{state}BC"
+    base_url = f"https://codes.iccsafe.org/content/{code_prefix}{year}{part}"
+
     if not section_number:
         return base_url
 
+    # State-specific URL generation
+    if state == "CA":
+        return _generate_ca_section_url(section_number, year, part, code_prefix, base_url)
+    elif state == "NC":
+        # TODO: Implement NC-specific URL generation once we understand their structure
+        return base_url
+    else:
+        return base_url
+
+
+def _generate_ca_section_url(section_number: str, year: int, part: str, code_prefix: str, base_url: str) -> str:
+    """Generate California-specific section URLs."""
     # Chapter 7 sections (e.g., 705, 706, 707)
     if re.match(r'7\d{2}', section_number):
-        anchor = f"CABC{year}{part}_Ch07_Sec{section_number}"
+        anchor = f"{code_prefix}{year}{part}_Ch07_Sec{section_number}"
         return f"{base_url}/chapter-7-fire-and-smoke-protection-features#{anchor}"
 
     # Chapter 10 sections (e.g., 1001, 1002)
     if re.match(r'10\d{2}', section_number):
-        anchor = f"CABC{year}{part}_Ch10_Sec{section_number}"
+        anchor = f"{code_prefix}{year}{part}_Ch10_Sec{section_number}"
         return f"{base_url}/chapter-10-means-of-egress#{anchor}"
 
     # Chapter 11A sections (e.g., 1102A, 1103A)
     if re.match(r'\d{4}A', section_number):
-        anchor = f"CABC{year}{part}_Ch11A_Sec{section_number}"
+        anchor = f"{code_prefix}{year}{part}_Ch11A_Sec{section_number}"
         return f"{base_url}/chapter-11a-housing-accessibility#{anchor}"
 
     # Chapter 11B sections (e.g., 11B-104, 11B-304.3)
@@ -63,7 +76,7 @@ def generate_section_url(section_number: str, year: int = 2025) -> str:
             subchapter = "SubCh11"
 
         anchor_section = section_number.replace("-", "_")
-        anchor = f"CABC{year}{part}_Ch11B_{subchapter}_Sec{anchor_section}"
+        anchor = f"{code_prefix}{year}{part}_Ch11B_{subchapter}_Sec{anchor_section}"
         return f"{base_url}/chapter-11b-accessibility-to-public-buildings-public-accommodations-commercial-buildings-and-public-housing#{anchor}"
 
     return base_url
