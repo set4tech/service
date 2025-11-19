@@ -41,6 +41,37 @@ export interface ViolationMarker {
   calculationTable?: CalculationTable; // Optional calculation table for this check
 }
 
+/**
+ * Comment screenshot - reuses same structure as ViolationScreenshot
+ */
+export type CommentScreenshot = ViolationScreenshot;
+
+/**
+ * Comment marker - coordination/QC/constructability issues NOT tied to code sections
+ */
+export interface CommentMarker {
+  commentId: string;
+  assessmentId: string;
+  title: string;
+  description: string;
+  commentType: 'coordination' | 'qc' | 'constructability' | 'general';
+  severity: 'info' | 'minor' | 'moderate' | 'major';
+  status: 'open' | 'resolved' | 'acknowledged';
+  pageNumber: number;
+  bounds?: { x: number; y: number; width: number; height: number; zoom_level: number };
+  screenshots: CommentScreenshot[];
+  primaryScreenshot: CommentScreenshot | null;
+  sheetName?: string;
+  discipline?: string;
+  tags?: string[];
+  resolvedNote?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  createdAt: string;
+  createdBy?: string;
+  updatedAt?: string;
+}
+
 export interface CodeInfo {
   id: string;
   title: string;

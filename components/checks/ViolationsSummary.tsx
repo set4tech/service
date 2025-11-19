@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { ViolationListSidebar } from '@/components/reports/ViolationListSidebar';
-import { ViolationMarker } from '@/lib/reports/get-violations';
+import { ViolationMarker, CommentMarker } from '@/lib/reports/get-violations';
 import { processRpcRowsToViolations } from '@/lib/reports/process-violations';
+import { CommentDetailModal } from '@/components/comments/CommentDetailModal';
 
 // Dynamically load PDF viewer (client-side only)
 const PDFViewer = dynamic(
@@ -79,6 +80,75 @@ export function ViolationsSummary({
     new Set(['major', 'moderate', 'minor', 'needs_more_info'])
   );
   const [highlightedViolationId, setHighlightedViolationId] = useState<string | null>(null);
+
+  // NEW: View mode toggle (violations vs comments)
+  const [viewMode, setViewMode] = useState<'violations' | 'comments'>('violations');
+  const [comments, setComments] = useState<CommentMarker[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [selectedComment, setSelectedComment] = useState<CommentMarker | null>(null);
+
+  // Fetch comments when assessment ID is available
+  const fetchComments = async () => {
+    if (!assessmentId) return;
+
+    setLoadingComments(true);
+    try {
+      const response = await fetch(`/api/assessments/${assessmentId}/comments`);
+      if (!response.ok) throw new Error('Failed to fetch comments');
+      const data = await response.json();
+      console.log('[ViolationsSummary] Fetched comments:', data.comments);
+      setComments(data.comments || []);
+    } catch (error) {
+      console.error('[ViolationsSummary] Error fetching comments:', error);
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchComments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assessmentId]);
+
+  // Handle comment click
+  const handleCommentClick = (comment: CommentMarker) => {
+    setSelectedComment(comment);
+    setCurrentPage(comment.pageNumber);
+  };
+
+  // Handle comment navigation in modal
+  const currentCommentIndex = selectedComment
+    ? comments.findIndex(c => c.commentId === selectedComment.commentId)
+    : -1;
+
+  const handleNextComment = () => {
+    if (currentCommentIndex < comments.length - 1) {
+      setSelectedComment(comments[currentCommentIndex + 1]);
+    }
+  };
+
+  const handlePrevComment = () => {
+    if (currentCommentIndex > 0) {
+      setSelectedComment(comments[currentCommentIndex - 1]);
+    }
+  };
+
+  const handleCommentUpdate = (updatedComment: CommentMarker) => {
+    setComments(prev =>
+      prev.map(c => (c.commentId === updatedComment.commentId ? updatedComment : c))
+    );
+    setSelectedComment(updatedComment);
+  };
+
+  const handleCommentDelete = () => {
+    if (selectedComment) {
+      setComments(prev => prev.filter(c => c.commentId !== selectedComment.commentId));
+      setSelectedComment(null);
+      // Refresh from server
+      fetchComments();
+    }
+  };
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -191,11 +261,38 @@ export function ViolationsSummary({
   if (!pdfUrl || embedded) {
     return (
       <div className="flex flex-col h-full">
-        {/* Compact Stats Header with Refresh Button */}
-        <div className="px-4 py-3 border-b bg-white">
-          <div className="flex items-center justify-between mb-2">
+        {/* Compact Stats Header with View Toggle and Refresh Button */}
+        <div className="px-4 py-3 border-b bg-white space-y-2">
+          {/* View Mode Toggle */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('violations')}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'violations'
+                  ? 'bg-red-100 text-red-700 border border-red-200'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              🚨 Violations ({violations.length})
+            </button>
+            <button
+              onClick={() => setViewMode('comments')}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'comments'
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              💬 Comments ({loadingComments ? '...' : comments.length})
+            </button>
+          </div>
+
+          {/* Stats Row */}
+          <div className="flex items-center justify-between">
             <div className="font-semibold text-sm flex items-center gap-2">
-              {violations.length} Violation{violations.length === 1 ? '' : 's'}
+              {viewMode === 'violations'
+                ? `${violations.length} Violation${violations.length === 1 ? '' : 's'}`
+                : `${comments.length} Comment${comments.length === 1 ? '' : 's'}`}
               {onRefresh && (
                 <button
                   onClick={e => {
@@ -244,22 +341,101 @@ export function ViolationsSummary({
                 </button>
               )}
             </div>
-            <div className="text-xs text-gray-500">
-              {stats.assessed} / {stats.totalSections} assessed
-            </div>
+            {viewMode === 'violations' && (
+              <div className="text-xs text-gray-500">
+                {stats.assessed} / {stats.totalSections} assessed
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Violations List */}
-        <ViolationListSidebar
-          violations={violations}
-          selectedViolation={selectedViolation}
-          onViolationClick={handleViolationClick}
-          onEditCheck={onEditCheck}
-          currentPage={1}
-          assessmentId={assessmentId}
-          onSeverityFilterChange={setSeverityFilter}
-        />
+        {/* Violations or Comments List */}
+        {viewMode === 'violations' ? (
+          <ViolationListSidebar
+            violations={violations}
+            selectedViolation={selectedViolation}
+            onViolationClick={handleViolationClick}
+            onEditCheck={onEditCheck}
+            currentPage={1}
+            assessmentId={assessmentId}
+            onSeverityFilterChange={setSeverityFilter}
+          />
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4">
+            {loadingComments ? (
+              <div className="text-center text-gray-500 py-8">Loading comments...</div>
+            ) : comments.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                No comments yet. Add coordination or QC comments as needed.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {comments.map(comment => (
+                  <div
+                    key={comment.commentId}
+                    className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => handleCommentClick(comment)}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <h4 className="font-semibold text-sm">{comment.title}</h4>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          comment.severity === 'major'
+                            ? 'bg-red-100 text-red-700'
+                            : comment.severity === 'moderate'
+                              ? 'bg-orange-100 text-orange-700'
+                              : comment.severity === 'minor'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {comment.severity}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 mb-2 line-clamp-2">{comment.description}</p>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center gap-3">
+                        <span>📄 Page {comment.pageNumber}</span>
+                        {comment.sheetName && <span>📋 {comment.sheetName}</span>}
+                        {comment.discipline && (
+                          <span className="px-2 py-0.5 bg-gray-100 rounded">
+                            {comment.discipline}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded ${
+                          comment.status === 'open'
+                            ? 'bg-green-100 text-green-700'
+                            : comment.status === 'resolved'
+                              ? 'bg-gray-100 text-gray-600'
+                              : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {comment.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Comment Detail Modal (embedded view) */}
+        {selectedComment && assessmentId && (
+          <CommentDetailModal
+            comment={selectedComment}
+            onClose={() => setSelectedComment(null)}
+            onNext={currentCommentIndex < comments.length - 1 ? handleNextComment : undefined}
+            onPrev={currentCommentIndex > 0 ? handlePrevComment : undefined}
+            onUpdate={handleCommentUpdate}
+            onDelete={handleCommentDelete}
+            totalComments={comments.length}
+            currentIndex={currentCommentIndex}
+            assessmentId={assessmentId}
+          />
+        )}
       </div>
     );
   }
@@ -268,9 +444,35 @@ export function ViolationsSummary({
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-gray-100">
       {/* Left Sidebar - Violations List */}
-      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden">
+      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden relative z-10">
+        {/* View Mode Toggle */}
+        <div className="px-4 pt-4 pb-2 bg-white">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('violations')}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'violations'
+                  ? 'bg-red-100 text-red-700 border border-red-200'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              🚨 Violations ({violations.length})
+            </button>
+            <button
+              onClick={() => setViewMode('comments')}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'comments'
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              💬 Comments ({loadingComments ? '...' : comments.length})
+            </button>
+          </div>
+        </div>
+
         {/* Stats Header - Clickable to refresh */}
-        <div className="px-4 py-4 border-b bg-white space-y-3">
+        <div className="px-4 py-3 border-b bg-white space-y-3">
           <div
             className={`px-4 py-3 rounded-lg border ${getSeverityColor()} ${
               onRefresh ? 'cursor-pointer hover:shadow-md transition-shadow' : ''
@@ -419,16 +621,78 @@ export function ViolationsSummary({
           )}
         </div>
 
-        {/* Violations List */}
-        <ViolationListSidebar
-          violations={violations}
-          selectedViolation={selectedViolation}
-          onViolationClick={handleViolationClick}
-          onEditCheck={onEditCheck}
-          currentPage={currentPage}
-          assessmentId={assessmentId}
-          onSeverityFilterChange={setSeverityFilter}
-        />
+        {/* Violations or Comments List */}
+        {viewMode === 'violations' ? (
+          <ViolationListSidebar
+            violations={violations}
+            selectedViolation={selectedViolation}
+            onViolationClick={handleViolationClick}
+            onEditCheck={onEditCheck}
+            currentPage={currentPage}
+            assessmentId={assessmentId}
+            onSeverityFilterChange={setSeverityFilter}
+          />
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4">
+            {loadingComments ? (
+              <div className="text-center text-gray-500 py-8">Loading comments...</div>
+            ) : comments.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                No comments yet. Add coordination or QC comments as needed.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {comments.map(comment => (
+                  <div
+                    key={comment.commentId}
+                    className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => handleCommentClick(comment)}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <h4 className="font-semibold text-sm">{comment.title}</h4>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded flex-shrink-0 ${
+                          comment.severity === 'major'
+                            ? 'bg-red-100 text-red-700'
+                            : comment.severity === 'moderate'
+                              ? 'bg-orange-100 text-orange-700'
+                              : comment.severity === 'minor'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {comment.severity}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 mb-2 line-clamp-2">{comment.description}</p>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>📄 Page {comment.pageNumber}</span>
+                        {comment.sheetName && <span>📋 {comment.sheetName}</span>}
+                        {comment.discipline && (
+                          <span className="px-2 py-0.5 bg-gray-100 rounded">
+                            {comment.discipline}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded flex-shrink-0 ${
+                          comment.status === 'open'
+                            ? 'bg-green-100 text-green-700'
+                            : comment.status === 'resolved'
+                              ? 'bg-gray-100 text-gray-600'
+                              : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {comment.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Main Content - PDF Viewer with Bounding Boxes */}
@@ -443,6 +707,21 @@ export function ViolationsSummary({
           highlightedViolationId={highlightedViolationId}
         />
       </div>
+
+      {/* Comment Detail Modal */}
+      {selectedComment && assessmentId && (
+        <CommentDetailModal
+          comment={selectedComment}
+          onClose={() => setSelectedComment(null)}
+          onNext={currentCommentIndex < comments.length - 1 ? handleNextComment : undefined}
+          onPrev={currentCommentIndex > 0 ? handlePrevComment : undefined}
+          onUpdate={handleCommentUpdate}
+          onDelete={handleCommentDelete}
+          totalComments={comments.length}
+          currentIndex={currentCommentIndex}
+          assessmentId={assessmentId}
+        />
+      )}
     </div>
   );
 }
