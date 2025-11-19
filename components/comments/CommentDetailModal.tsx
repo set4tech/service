@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CommentMarker } from '@/lib/reports/get-violations';
 import { CommentForm } from './CommentForm';
 
@@ -36,6 +37,12 @@ export function CommentDetailModal({
   const [isEditing, setIsEditing] = useState(false);
   const [resolving, setResolving] = useState(false);
   const imageLoadedRef = useRef<Set<string>>(new Set());
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure we're mounted (client-side) before using portal
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Get current screenshot
   const currentScreenshot = comment.screenshots[currentScreenshotIndex];
@@ -201,7 +208,10 @@ export function CommentDetailModal({
     }
   };
 
-  return (
+  // Don't render until mounted (avoid SSR issues)
+  if (!mounted) return null;
+
+  const modalContent = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col">
         {/* Header */}
@@ -615,4 +625,6 @@ export function CommentDetailModal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
