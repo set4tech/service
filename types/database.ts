@@ -102,7 +102,6 @@ export interface TableBlock {
 export interface CodeSection {
   id: number;
   key: string;
-  code_id: string;
   parent_key?: string;
   number: string;
   title: string;

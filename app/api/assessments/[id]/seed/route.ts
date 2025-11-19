@@ -10,18 +10,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     // 1. Fetch assessment with selected chapters
     const { data: assessment, error: assessmentError } = await supabase
       .from('assessments')
-      .select(
-        `
-        id,
-        project_id,
-        seeding_status,
-        selected_chapter_ids,
-        projects (
-          id,
-          extracted_variables
-        )
-      `
-      )
+      .select('id, project_id, seeding_status, selected_chapter_ids')
       .eq('id', id)
       .single();
 

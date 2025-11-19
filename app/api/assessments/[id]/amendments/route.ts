@@ -49,8 +49,24 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ amendments: [] });
     }
 
-    // Get all amendment sections from these codes
+    // Get all chapters for these codes
     const codeIds = codes.map(c => c.id);
+    const { data: chapters, error: chaptersError } = await supabase
+      .from('chapters')
+      .select('id')
+      .in('code_id', codeIds);
+
+    if (chaptersError) {
+      console.error('[Amendments API] Error fetching chapters:', chaptersError);
+      return NextResponse.json({ error: 'Failed to fetch chapters' }, { status: 500 });
+    }
+
+    if (!chapters || chapters.length === 0) {
+      return NextResponse.json({ amendments: [] });
+    }
+
+    // Get all amendment sections from these chapters
+    const chapterIds = chapters.map(ch => ch.id);
     const { data: sections, error: sectionsError } = await supabase
       .from('sections')
       .select(
@@ -60,9 +76,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         number,
         title,
         text,
-        code_id,
         source_url,
         amends_section_id,
+        chapters!inner(code_id, codes(title)),
         amended_section:amends_section_id (
           id,
           number,
@@ -71,7 +87,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         )
       `
       )
-      .in('code_id', codeIds)
+      .in('chapter_id', chapterIds)
       .eq('item_type', 'section')
       .not('amends_section_id', 'is', null)
       .order('number');
@@ -99,6 +115,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           .eq('item_type', 'subsection')
           .order('number');
 
+        // Extract code info from nested chapters relationship
+        const chapterData = Array.isArray(section.chapters)
+          ? section.chapters[0]
+          : section.chapters;
+        const codesData = chapterData?.codes;
+        const codeData = Array.isArray(codesData) ? codesData[0] : codesData;
+
         return {
           id: section.id,
           key: section.key,
@@ -106,7 +129,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           title: section.title,
           text: section.text,
           sourceUrl: section.source_url,
-          codeId: section.code_id,
+          codeId: chapterData?.code_id || null, // Keep for backward compatibility
+          codeTitle: codeData?.title || null,
           subsections: subsections || [],
           amendsSection: amendedSection
             ? {
