@@ -136,15 +136,31 @@ export function CheckList({
     }
   };
 
-  // Get available chapters from checks
+  // Get available chapters from checks, grouped by code
   const availableChapters = useMemo(() => {
-    const chapters = new Set<string>();
+    const chaptersByCode = new Map<string, Set<string>>();
+
     checks.forEach(check => {
       const chapter = extractChapter(check.code_section_number);
-      if (chapter) chapters.add(chapter);
+      if (!chapter) return;
+
+      // Get code title from check (if available from join)
+      const codeTitle = check.code_title || 'Unknown Code';
+
+      if (!chaptersByCode.has(codeTitle)) {
+        chaptersByCode.set(codeTitle, new Set());
+      }
+      chaptersByCode.get(codeTitle)!.add(chapter);
     });
-    // Sort using natural compare (handles "7", "11A", "11B" properly)
-    return Array.from(chapters).sort((a, b) => naturalCompare(a, b));
+
+    // Convert to array and sort chapters within each code
+    const result = Array.from(chaptersByCode.entries()).map(([codeTitle, chapters]) => ({
+      codeTitle,
+      chapters: Array.from(chapters).sort((a, b) => naturalCompare(a, b)),
+    }));
+
+    // Sort codes alphabetically
+    return result.sort((a, b) => a.codeTitle.localeCompare(b.codeTitle));
   }, [checks]);
 
   const filtered = useMemo(() => {
@@ -619,7 +635,7 @@ export function CheckList({
         </div>
 
         {/* Chapter Filter (only in section mode) */}
-        {checkMode === 'section' && availableChapters.length > 1 && (
+        {checkMode === 'section' && availableChapters.length > 0 && (
           <div className="mt-3">
             <div className="text-xs font-medium text-gray-700 mb-2">Filter by Chapter</div>
             <div className="flex flex-wrap gap-1">
@@ -634,19 +650,29 @@ export function CheckList({
               >
                 All
               </button>
-              {availableChapters.map(chapter => (
-                <button
-                  key={chapter}
-                  onClick={() => setSelectedChapter(chapter)}
-                  className={clsx(
-                    'px-3 py-1 text-xs font-medium rounded-md transition-colors',
-                    selectedChapter === chapter
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  )}
-                >
-                  {chapter.match(/^\d+$/) ? `Chapter ${chapter}` : chapter}
-                </button>
+              {availableChapters.map(({ codeTitle, chapters }) => (
+                <div key={codeTitle} className="flex flex-wrap gap-1 items-center">
+                  {/* Code label */}
+                  <span className="text-xs font-semibold text-gray-600 px-2">
+                    {codeTitle.replace(/California|Code|Building|Plumbing|20\d{2}/g, '').trim() ||
+                      codeTitle}
+                  </span>
+                  {/* Chapter pills for this code */}
+                  {chapters.map(chapter => (
+                    <button
+                      key={`${codeTitle}-${chapter}`}
+                      onClick={() => setSelectedChapter(chapter)}
+                      className={clsx(
+                        'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                        selectedChapter === chapter
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      )}
+                    >
+                      {chapter.match(/^\d+$/) ? `Ch ${chapter}` : chapter}
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           </div>
