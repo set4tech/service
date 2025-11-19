@@ -61,3 +61,4 @@ COMMENT ON FUNCTION get_element_sections IS
   'Returns empty if assessment has no selected chapters.';
 
 
+

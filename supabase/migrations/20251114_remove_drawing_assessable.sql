@@ -8,3 +8,4 @@ DROP INDEX IF EXISTS idx_sections_drawing_assessable;
 ALTER TABLE sections DROP COLUMN IF EXISTS drawing_assessable;
 
 
+
