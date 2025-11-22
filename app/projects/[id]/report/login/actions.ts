@@ -39,10 +39,21 @@ export async function handleLogin(_prevState: LoginState, formData: FormData): P
 
   console.log('[Login] Verifying password...');
   console.log('[Login] Password length:', password.length);
-  console.log('[Login] Hash starts with:', project.report_password.substring(0, 10));
+  console.log('[Login] Stored password preview:', project.report_password.substring(0, 10));
 
-  // Verify password
-  const isValid = await verifyPassword(password, project.report_password);
+  // Verify password (support both plain text and hashed passwords)
+  let isValid = false;
+
+  // First try plain text comparison
+  if (password === project.report_password) {
+    isValid = true;
+    console.log('[Login] Plain text password match');
+  }
+  // If stored password looks like bcrypt hash, try bcrypt verification
+  else if (project.report_password.startsWith('$2')) {
+    isValid = await verifyPassword(password, project.report_password);
+    console.log('[Login] Bcrypt verification result:', isValid);
+  }
 
   console.log('[Login] Password valid:', isValid);
 
