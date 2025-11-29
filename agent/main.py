@@ -201,12 +201,13 @@ def run_yolo_inference(image_paths: list[Path], weights_path: Path) -> dict:
 def build_preprocess_pipeline():
     """Build the preprocessing pipeline with all steps."""
     from pipeline import Pipeline, FilterLowConfidence, GroupByClass, CountSummary
+    from steps.extract_tables import ExtractTables
 
     return Pipeline([
         FilterLowConfidence(threshold=0.3),
         GroupByClass(),
+        ExtractTables(min_confidence=0.3),
         CountSummary(),
-        # Add more steps here as needed
     ])
 
 
@@ -250,7 +251,11 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
                 assessment_id=assessment_id,
                 agent_run_id=agent_run_id,
                 data=detections,
-                metadata={"pdf_s3_key": pdf_s3_key, "pages": len(image_paths)},
+                metadata={
+                    "pdf_s3_key": pdf_s3_key,
+                    "pages": len(image_paths),
+                    "images_dir": str(images_dir),
+                },
             )
 
             # Run pipeline with progress updates
