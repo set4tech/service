@@ -25,6 +25,75 @@ interface AgentRun {
   results?: Record<string, unknown>;
 }
 
+// Step descriptions for the pipeline - shown in the modal while running
+const STEP_DESCRIPTIONS: Record<string, { title: string; description: string }> = {
+  'Downloading PDF from S3...': {
+    title: '📥 Downloading PDF',
+    description: 'Fetching the architectural drawings from cloud storage.',
+  },
+  'Converting PDF to images...': {
+    title: '🖼️ Converting to Images',
+    description: 'Converting each page of the PDF to high-resolution PNG images for analysis.',
+  },
+  'Running YOLO': {
+    title: '🔍 Object Detection (YOLO)',
+    description:
+      'Using a trained neural network to detect building elements like doors, windows, tables, and schedules.',
+  },
+  'Running analysis pipeline...': {
+    title: '⚙️ Starting Analysis Pipeline',
+    description: 'Initializing the multi-step analysis process.',
+  },
+  'Running filter_low_confidence...': {
+    title: '🧹 Filtering Detections',
+    description: 'Removing low-confidence detections to focus on reliable results.',
+  },
+  'Running group_by_class...': {
+    title: '📊 Grouping Elements',
+    description: 'Organizing detected elements by type (doors, windows, tables, etc.).',
+  },
+  'Running extract_text...': {
+    title: '📝 Extracting Text',
+    description:
+      'Extracting text from each page and using AI to clean up messy CAD drawing labels and notes.',
+  },
+  'Running extract_tables...': {
+    title: '📋 Extracting Tables',
+    description:
+      'Detecting and parsing schedules and tables (door schedules, room schedules, etc.) into structured data.',
+  },
+  'Running count_summary...': {
+    title: '📈 Generating Summary',
+    description: 'Counting and summarizing all detected elements and extracted data.',
+  },
+  'Saving results...': {
+    title: '💾 Saving Results',
+    description: 'Storing the analysis results in the database.',
+  },
+  Complete: {
+    title: '✅ Complete',
+    description: 'Analysis finished successfully!',
+  },
+};
+
+function getStepInfo(message: string | undefined): { title: string; description: string } {
+  if (!message) return { title: 'Processing...', description: 'Please wait...' };
+
+  // Check for exact match first
+  if (STEP_DESCRIPTIONS[message]) {
+    return STEP_DESCRIPTIONS[message];
+  }
+
+  // Check for partial matches (e.g., "Running YOLO on 5 pages...")
+  for (const [key, value] of Object.entries(STEP_DESCRIPTIONS)) {
+    if (message.startsWith(key.replace('...', ''))) {
+      return value;
+    }
+  }
+
+  return { title: message, description: '' };
+}
+
 interface Props {
   assessmentId: string;
   open: boolean;
@@ -111,7 +180,7 @@ export function AgentAnalysisModal({ assessmentId, open, onOpenChange }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-white">
+      <DialogContent className="sm:max-w-lg bg-white">
         <DialogHeader>
           <DialogTitle>Agent Analysis (Beta)</DialogTitle>
           <DialogDescription>
@@ -139,19 +208,40 @@ export function AgentAnalysisModal({ assessmentId, open, onOpenChange }: Props) 
           )}
 
           {status === 'running' && agentRun && (
-            <div className="space-y-3">
-              <div className="text-sm text-gray-700">
-                {agentRun.progress?.message || 'Processing...'}
+            <div className="space-y-4">
+              {/* Step info */}
+              {(() => {
+                const stepInfo = getStepInfo(agentRun.progress?.message);
+                return (
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                    <div className="font-medium text-blue-900 text-base mb-1">{stepInfo.title}</div>
+                    {stepInfo.description && (
+                      <div className="text-sm text-blue-700">{stepInfo.description}</div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Progress bar */}
+              <div className="space-y-2">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <div className="text-xs text-gray-500 text-center">
+                  Step {agentRun.progress?.step || 0} of {agentRun.progress?.total_steps || '?'}
+                  {progressPercent > 0 && ` (${progressPercent}%)`}
+                </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <div className="text-xs text-gray-500 text-center">
-                Step {agentRun.progress?.step || 0} of {agentRun.progress?.total_steps || '?'}
-              </div>
+
+              {/* Elapsed time */}
+              {agentRun.started_at && (
+                <div className="text-xs text-gray-400 text-center">
+                  Started {new Date(agentRun.started_at).toLocaleTimeString()}
+                </div>
+              )}
             </div>
           )}
 

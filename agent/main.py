@@ -202,10 +202,12 @@ def build_preprocess_pipeline():
     """Build the preprocessing pipeline with all steps."""
     from pipeline import Pipeline, FilterLowConfidence, GroupByClass, CountSummary
     from steps.extract_tables import ExtractTables
+    from steps.extract_text import ExtractText
 
     return Pipeline([
         FilterLowConfidence(threshold=0.3),
         GroupByClass(),
+        ExtractText(clean_with_llm=True),
         ExtractTables(min_confidence=0.3),
         CountSummary(),
     ])
@@ -253,6 +255,7 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
                 data=detections,
                 metadata={
                     "pdf_s3_key": pdf_s3_key,
+                    "pdf_path": str(pdf_path),
                     "pages": len(image_paths),
                     "images_dir": str(images_dir),
                 },

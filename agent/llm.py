@@ -115,3 +115,12 @@ def call_vlm(
 ) -> dict:
     """Convenience wrapper for vision-language model calls."""
     return call_gemini(prompt, image=image, max_tokens=max_tokens, json_mode=json_mode)
+
+
+def call_text_llm(
+    prompt: str,
+    max_tokens: int = 4000,
+    json_mode: bool = False,
+) -> dict:
+    """Convenience wrapper for text-only LLM calls."""
+    return call_gemini(prompt, image=None, max_tokens=max_tokens, json_mode=json_mode)
