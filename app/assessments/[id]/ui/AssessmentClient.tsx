@@ -10,6 +10,7 @@ import { ViolationsSummary } from '@/components/checks/ViolationsSummary';
 import { ViolationDetailPanel } from '@/components/checks/ViolationDetailPanel';
 import { AssessmentScreenshotGallery } from '@/components/screenshots/AssessmentScreenshotGallery';
 import { ImportCSVDoorsModal } from '@/components/assessments/ImportCSVDoorsModal';
+import { AgentAnalysisModal } from '@/components/agent/AgentAnalysisModal';
 import type { ViolationMarker } from '@/lib/reports/get-violations';
 
 // Load PDF viewer only on client side - removes need for wrapper component
@@ -152,6 +153,7 @@ export default function AssessmentClient({
   const [rpcViolations, setRpcViolations] = useState(_rpcViolations || []);
   const [refreshingViolations, setRefreshingViolations] = useState(false);
   const [isPdfSearchOpen, setIsPdfSearchOpen] = useState(false);
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
 
   // Debug: Log screenshots on initial load
   useEffect(() => {
@@ -856,6 +858,25 @@ export default function AssessmentClient({
               {assessment.projects?.name || 'Compliance Checks'}
             </h2>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsAgentModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-purple-600 hover:text-purple-500 bg-purple-50 border border-purple-200 rounded-lg hover:border-purple-400 transition-colors"
+                title="Run AI Agent Analysis (Beta)"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                  <circle cx="8" cy="14" r="2" />
+                  <circle cx="16" cy="14" r="2" />
+                </svg>
+                AGENT: BETA
+              </button>
               <Link
                 href={`/projects/${assessment.project_id}/report`}
                 target="_blank"
@@ -1186,6 +1207,13 @@ export default function AssessmentClient({
           </div>
         )}
       </div>
+
+      {/* Agent Analysis Modal */}
+      <AgentAnalysisModal
+        assessmentId={assessment.id}
+        open={isAgentModalOpen}
+        onOpenChange={setIsAgentModalOpen}
+      />
     </div>
   );
 }
