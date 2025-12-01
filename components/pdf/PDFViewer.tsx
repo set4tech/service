@@ -24,6 +24,9 @@ import {
 } from './types';
 import { PDFToolbar } from './PDFToolbar';
 import { PDFModeBanner } from './PDFModeBanner';
+import { PDFScreenshotNavigation } from './PDFScreenshotNavigation';
+import { PDFLayerPanel } from './PDFLayerPanel';
+import { PDFPageControls } from './PDFPageControls';
 import { usePresignedUrl } from '@/hooks/usePresignedUrl';
 import { usePdfDocument } from '@/hooks/usePdfDocument';
 import { usePdfLayers } from '@/hooks/usePdfLayers';
@@ -988,48 +991,14 @@ export function PDFViewer({
 
       {/* Screenshot navigation arrows (top-left) */}
       {screenshotNavigation && (
-        <div className="absolute top-3 left-3 z-50 flex items-center gap-1.5 pointer-events-auto max-w-[500px]">
-          <button
-            onClick={screenshotNavigation.onPrev}
-            disabled={!screenshotNavigation.canGoPrev}
-            className="flex items-center justify-center p-1.5 text-gray-700 bg-white border-2 border-gray-300 rounded-md shadow-lg hover:bg-gray-50 hover:border-blue-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-300"
-            title="Show previous relevant area of drawing"
-          >
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
-          <div className="flex flex-col items-center px-4 py-2 text-xs bg-white border-2 border-blue-500 rounded-lg shadow-lg">
-            <div className="font-semibold text-blue-600 mb-0.5">
-              <span className="text-blue-600">{screenshotNavigation.current}</span>
-              <span className="text-gray-400 mx-1">/</span>
-              <span className="text-gray-600">{screenshotNavigation.total}</span>
-            </div>
-            <div className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">
-              Relevant Drawings
-            </div>
-          </div>
-          <button
-            onClick={screenshotNavigation.onNext}
-            disabled={!screenshotNavigation.canGoNext}
-            className="flex items-center justify-center p-1.5 text-gray-700 bg-white border-2 border-gray-300 rounded-md shadow-lg hover:bg-gray-50 hover:border-blue-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-300"
-            title="Show next relevant area of drawing"
-          >
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
-        </div>
+        <PDFScreenshotNavigation
+          current={screenshotNavigation.current}
+          total={screenshotNavigation.total}
+          onNext={screenshotNavigation.onNext}
+          onPrev={screenshotNavigation.onPrev}
+          canGoNext={screenshotNavigation.canGoNext}
+          canGoPrev={screenshotNavigation.canGoPrev}
+        />
       )}
 
       <PDFToolbar
@@ -1064,34 +1033,12 @@ export function PDFViewer({
         onOpenCalibration={() => setShowCalibrationModal(true)}
       />
 
-      {showLayerPanel && layerList.length > 0 && (
-        <div className="absolute top-16 right-3 z-50 bg-white border rounded shadow-lg p-3 w-64 pointer-events-auto">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold">PDF Layers</h3>
-            <button
-              className="text-xs text-gray-500 hover:text-gray-700"
-              onClick={() => setShowLayerPanel(false)}
-            >
-              ✕
-            </button>
-          </div>
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {layerList.map((layer: any) => (
-              <label
-                key={layer.id}
-                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
-              >
-                <input
-                  type="checkbox"
-                  checked={layer.visible}
-                  onChange={() => toggleLayer(layer.id)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">{layer.name}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+      {showLayerPanel && (
+        <PDFLayerPanel
+          layers={layerList}
+          onToggleLayer={toggleLayer}
+          onClose={() => setShowLayerPanel(false)}
+        />
       )}
 
       {/* Mode Indicator */}
@@ -1332,33 +1279,20 @@ export function PDFViewer({
           );
         })()}
 
-      <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
-        <button
-          className="btn-icon bg-white"
-          onClick={() => dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) })}
-          aria-label="Previous page"
-        >
-          ◀
-        </button>
-        <div className="text-sm font-medium">
-          Page {state.pageNumber} / {state.numPages || '…'}
-        </div>
-        <button
-          className="btn-icon bg-white"
-          onClick={() =>
-            dispatch({
-              type: 'SET_PAGE',
-              payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
-            })
-          }
-          aria-label="Next page"
-        >
-          ▶
-        </button>
-        <span className="text-xs text-gray-600 ml-2 hidden sm:inline">
-          Shortcuts: ←/→, -/+, 0, S, M, L, Esc{projectId && ', F'}
-        </span>
-      </div>
+      <PDFPageControls
+        pageNumber={state.pageNumber}
+        numPages={state.numPages}
+        onPrevPage={() =>
+          dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) })
+        }
+        onNextPage={() =>
+          dispatch({
+            type: 'SET_PAGE',
+            payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
+          })
+        }
+        showSearch={!!projectId}
+      />
 
       {/* PDF text search overlay */}
       <PDFSearchOverlay
