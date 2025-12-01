@@ -167,6 +167,58 @@ Return ONLY valid JSON."""
 
 
 # =============================================================================
+# PROJECT INFO EXTRACTION PROMPTS
+# =============================================================================
+
+PROJECT_INFO_EXTRACTION = """You are analyzing an architectural drawing cover sheet or title block.
+Extract the following project metadata if present. Return ONLY valid JSON.
+
+FIELDS TO EXTRACT:
+- project_name: Full project name/title
+- project_number: Project/job number (e.g., "2024-001")
+- address: Project address (street, city, state, zip if available)
+- client_name: Owner/client name
+- architect_name: Architecture firm name
+- building_area: Total building area in sq ft (number only, no commas)
+- num_stories: Number of stories/floors (integer)
+- construction_type: Building construction type (e.g., "Type V-B", "Type I-A")
+- occupancy_classification: Occupancy type (e.g., "B", "E", "R-2", "A-2")
+- sprinklers: Whether building has sprinklers (true/false/null if unknown)
+- project_description: Brief description of the project
+- drawing_date: Date on the drawings (ISO format YYYY-MM-DD if possible)
+- revision: Latest revision number/letter
+
+OUTPUT JSON:
+{
+  "project_name": "string or null",
+  "project_number": "string or null",
+  "address": "string or null",
+  "client_name": "string or null",
+  "architect_name": "string or null",
+  "building_area": number or null,
+  "num_stories": number or null,
+  "construction_type": "string or null",
+  "occupancy_classification": "string or null",
+  "sprinklers": boolean or null,
+  "project_description": "string or null",
+  "drawing_date": "string or null",
+  "revision": "string or null",
+  "confidence": "high" | "medium" | "low",
+  "source_description": "Brief description of where info was found"
+}
+
+If this page doesn't appear to be a cover sheet or title block with project data, return:
+{"is_cover_sheet": false, "confidence": "high"}
+
+Return ONLY valid JSON, no markdown code blocks."""
+
+
+def get_project_info_prompt() -> str:
+    """Get the project info extraction prompt."""
+    return PROJECT_INFO_EXTRACTION
+
+
+# =============================================================================
 # ELEMENT DETECTION PROMPTS
 # =============================================================================
 

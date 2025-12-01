@@ -75,6 +75,13 @@ TEXT_MIN_LENGTH_FOR_LLM = _env_int("TEXT_MIN_LENGTH_FOR_LLM", 50)  # Skip LLM fo
 
 
 # =============================================================================
+# Project Info Extraction
+# =============================================================================
+
+PROJECT_INFO_PAGES_TO_SCAN = _env_int("PROJECT_INFO_PAGES_TO_SCAN", 3)  # First N pages to scan for cover sheet
+
+
+# =============================================================================
 # LLM Settings
 # =============================================================================
 
@@ -131,6 +138,8 @@ def get_config_dict() -> dict:
         # Text
         "TEXT_CLEAN_WITH_LLM": TEXT_CLEAN_WITH_LLM,
         "TEXT_MIN_LENGTH_FOR_LLM": TEXT_MIN_LENGTH_FOR_LLM,
+        # Project Info
+        "PROJECT_INFO_PAGES_TO_SCAN": PROJECT_INFO_PAGES_TO_SCAN,
         # LLM
         "LLM_PROVIDER": LLM_PROVIDER,
         "LLM_MODEL": LLM_MODEL,
