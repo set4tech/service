@@ -12,7 +12,7 @@ bash run_full_pipeline.sh path/to/drawings.pdf
 
 ---
 
-## Pipeline Steps (12 Total)
+## Pipeline Steps (13 Total)
 
 ### Step 1: PDF to PNG Conversion ✅
 
@@ -149,6 +149,26 @@ bash run_full_pipeline.sh path/to/drawings.pdf
 
 ---
 
+### Step 13: Database Upload
+
+**Script:** `steps/upload_to_db.py`
+
+- **Input:** `unified_document_data.json` + `assessment_id`
+- **Output:** Updates `assessments.pipeline_output` JSONB column
+- Stores complete extracted data in database for downstream consumption
+- Requires migration to add `pipeline_output` column to assessments table
+
+**Database Migration:**
+```sql
+ALTER TABLE assessments
+ADD COLUMN pipeline_output JSONB;
+
+COMMENT ON COLUMN assessments.pipeline_output IS
+'Complete extracted data from PDF processing pipeline (unified_document_data.json)';
+```
+
+---
+
 ## Data Flow Diagram
 
 ```
@@ -199,7 +219,13 @@ PDF File
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 12: unify_extracted_data.py                           │
-│  Output: unified_document_data.json (FINAL)                 │
+│  Output: unified_document_data.json                         │
+└─────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Step 13: upload_to_db.py                                   │
+│  Output: assessments.pipeline_output (JSONB)                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
