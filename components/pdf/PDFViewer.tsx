@@ -22,6 +22,8 @@ import {
   updateSelection,
   clearSelection,
 } from './types';
+import { PDFToolbar } from './PDFToolbar';
+import { PDFModeBanner } from './PDFModeBanner';
 import { usePresignedUrl } from '@/hooks/usePresignedUrl';
 import { usePdfDocument } from '@/hooks/usePdfDocument';
 import { usePdfLayers } from '@/hooks/usePdfLayers';
@@ -974,84 +976,15 @@ export function PDFViewer({
       className="relative h-full w-full outline-none overscroll-contain"
       style={{ touchAction: 'none' }}
     >
-      {state.mode.type === 'screenshot' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            📸 Screenshot Mode: Click and drag to select area
-          </div>
-        </div>
-      )}
-
-      {state.mode.type === 'measure' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-green-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            📏 Measurement Mode: Draw lines to measure
-            {calibration?.scale_notation ? (
-              <span className="ml-2 opacity-90 font-mono">({calibration.scale_notation})</span>
-            ) : (
-              <span className="ml-2 opacity-90">(No scale set - press L)</span>
-            )}
-            <span className="ml-3 opacity-90 text-xs">Click line to select • Delete to remove</span>
-          </div>
-        </div>
-      )}
-
-      {isDrawingCalibrationLine && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-purple-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            📐 Calibration Mode: Draw a line along a known distance
-            <span className="ml-3 opacity-90 text-xs">Press Esc to cancel</span>
-          </div>
-        </div>
-      )}
-
-      {state.mode.type !== 'measure' &&
-        selectedMeasurementIds.length > 0 &&
-        measurements.length > 0 &&
-        !readOnly && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-            <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-              {selectedMeasurementIds.length === 1 ? (
-                <>
-                  Measurement selected • Press{' '}
-                  <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">
-                    Delete
-                  </kbd>{' '}
-                  to remove
-                  <span className="ml-3 opacity-90 text-xs">Ctrl+Click for multi-select</span>
-                </>
-              ) : (
-                <>
-                  {selectedMeasurementIds.length} measurements selected • Press{' '}
-                  <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">
-                    Delete
-                  </kbd>{' '}
-                  to remove all
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-      {state.mode.type === 'screenshot' && state.mode.selection && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-blue-500 font-mono">
-            C - Save to Current (exits)
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-green-500 font-mono">
-            E - Save as Elevation (stays active)
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            B - Bathroom
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            D - Door
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            K - Kitchen
-          </kbd>
-        </div>
-      )}
+      <PDFModeBanner
+        modeType={state.mode.type}
+        isDrawingCalibrationLine={isDrawingCalibrationLine}
+        hasSelection={state.mode.type === 'screenshot' && state.mode.selection !== null}
+        scaleNotation={calibration?.scale_notation}
+        selectedMeasurementCount={selectedMeasurementIds.length}
+        hasMeasurements={measurements.length > 0}
+        readOnly={readOnly}
+      />
 
       {/* Screenshot navigation arrows (top-left) */}
       {screenshotNavigation && (
@@ -1099,108 +1032,37 @@ export function PDFViewer({
         </div>
       )}
 
-      <div className="absolute top-3 right-3 z-50 flex items-center gap-2 pointer-events-auto">
-        <button
-          aria-label="Zoom out"
-          className="btn-icon bg-white shadow-md"
-          onClick={() => zoom('out')}
-        >
-          −
-        </button>
-        <div className="px-2 py-2 text-sm bg-white border rounded shadow-md">{zoomPct}%</div>
-        <button
-          aria-label="Zoom in"
-          className="btn-icon bg-white shadow-md"
-          onClick={() => zoom('in')}
-        >
-          +
-        </button>
-        <div className="flex items-center gap-1 bg-white border rounded shadow-md px-2 py-1">
-          <span className="text-xs text-gray-600 whitespace-nowrap">Detail:</span>
-          <button
-            aria-label="Decrease resolution"
-            className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.max(2, renderScale - 0.5))}
-            disabled={savingScale || renderScale <= 2}
-          >
-            −
-          </button>
-          <span className="text-xs font-medium w-8 text-center">{renderScale.toFixed(1)}x</span>
-          <button
-            aria-label="Increase resolution"
-            className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.min(8, renderScale + 0.5))}
-            disabled={savingScale || renderScale >= 8}
-          >
-            +
-          </button>
-        </div>
-        {layerList.length > 0 && (
-          <button
-            aria-pressed={showLayerPanel}
-            aria-label="Toggle layers panel"
-            className={`btn-icon shadow-md ${showLayerPanel ? 'bg-blue-600 text-white' : 'bg-white'}`}
-            onClick={() => setShowLayerPanel(!showLayerPanel)}
-            title="Layers"
-          >
-            ☰
-          </button>
-        )}
-        {!readOnly && (
-          <>
-            <button
-              aria-pressed={showScreenshotIndicators}
-              aria-label="Toggle captured area indicators"
-              title="Show/hide previously captured areas"
-              className={`btn-icon shadow-md ${showScreenshotIndicators ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => setShowScreenshotIndicators(!showScreenshotIndicators)}
-            >
-              📦
-            </button>
-            <button
-              aria-pressed={state.mode.type === 'screenshot'}
-              aria-label="Toggle screenshot mode (S)"
-              title="Capture a portion of the plan"
-              className={`btn-icon shadow-md ${state.mode.type === 'screenshot' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() =>
-                dispatch({
-                  type: 'SET_MODE',
-                  payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot',
-                })
-              }
-            >
-              📸
-            </button>
-            {state.mode.type === 'screenshot' && state.mode.selection && (
-              <button className="btn-secondary shadow-md" onClick={() => capture('current')}>
-                Save to Current
-              </button>
-            )}
-            <button
-              aria-pressed={state.mode.type === 'measure'}
-              aria-label="Toggle measurement mode (M)"
-              title="Measure distances on the plan"
-              className={`btn-icon shadow-md ${state.mode.type === 'measure' ? 'bg-green-600 text-white' : 'bg-white'}`}
-              onClick={() =>
-                dispatch({
-                  type: 'SET_MODE',
-                  payload: state.mode.type === 'measure' ? 'idle' : 'measure',
-                })
-              }
-            >
-              📏
-            </button>
-            <button
-              aria-label="Set drawing scale (L)"
-              title="Set drawing scale"
-              className="btn-icon shadow-md bg-white"
-              onClick={() => setShowCalibrationModal(true)}
-            >
-              🔧
-            </button>
-          </>
-        )}
-      </div>
+      <PDFToolbar
+        zoomPct={zoomPct}
+        onZoomIn={() => zoom('in')}
+        onZoomOut={() => zoom('out')}
+        renderScale={renderScale}
+        onRenderScaleChange={updateRenderScale}
+        savingScale={savingScale}
+        layerCount={layerList.length}
+        showLayerPanel={showLayerPanel}
+        onToggleLayerPanel={() => setShowLayerPanel(!showLayerPanel)}
+        readOnly={readOnly}
+        showScreenshotIndicators={showScreenshotIndicators}
+        onToggleScreenshotIndicators={() => setShowScreenshotIndicators(!showScreenshotIndicators)}
+        isScreenshotMode={state.mode.type === 'screenshot'}
+        onToggleScreenshotMode={() =>
+          dispatch({
+            type: 'SET_MODE',
+            payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot',
+          })
+        }
+        hasSelection={state.mode.type === 'screenshot' && state.mode.selection !== null}
+        onSaveToCurrent={() => capture('current')}
+        isMeasureMode={state.mode.type === 'measure'}
+        onToggleMeasureMode={() =>
+          dispatch({
+            type: 'SET_MODE',
+            payload: state.mode.type === 'measure' ? 'idle' : 'measure',
+          })
+        }
+        onOpenCalibration={() => setShowCalibrationModal(true)}
+      />
 
       {showLayerPanel && layerList.length > 0 && (
         <div className="absolute top-16 right-3 z-50 bg-white border rounded shadow-lg p-3 w-64 pointer-events-auto">
