@@ -23,7 +23,7 @@ AI-powered building code compliance assessment platform. Next.js 15.5.3 applicat
 
 ### Environment Setup
 
-- **Development**: Supabase project `prafecmdqiwgnsumlmqn` (staging)
+- **Development**: Supabase project `kguunjfapaoaneuidbgj` (staging)
 - **Production**: Supabase project `grosxzvvmhakkxybeuwu` (prod)
 - **S3**: Shared bucket `set4-data` across both environments
 - Database changes must be applied to BOTH environments separately
@@ -263,7 +263,7 @@ The **Supabase CLI** is the recommended way to interact with the database. It ha
 **Prerequisites:**
 
 1. Login to Supabase CLI: `supabase login`
-2. Link your project: `supabase link --project-ref prafecmdqiwgnsumlmqn --password crumblyboys33`
+2. Link your project: `supabase link --project-ref kguunjfapaoaneuidbgj --password jegheterben`
 
 **IMPORTANT:** Remove conflicting environment variables from `.envrc`:
 
@@ -300,7 +300,7 @@ If you need to use `psql` directly, always use the **pooler** connection (IPv4 c
 
 ```bash
 # DEV/STAGING (port 5432)
-PGSSLMODE=require psql "postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "YOUR_QUERY"
+PGSSLMODE=require psql "postgresql://postgres.kguunjfapaoaneuidbgj:jegheterben@aws-1-us-east-1.pooler.supabase.com:5432/postgres" -c "YOUR_QUERY"
 
 # PRODUCTION (port 6543)
 PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres" -c "YOUR_QUERY"
@@ -321,7 +321,7 @@ PGSSLMODE=require psql "postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21
 supabase db diff --linked
 
 # Using psql directly - replace with appropriate connection string below
-# DEV:  postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+# DEV:  postgresql://postgres.kguunjfapaoaneuidbgj:jegheterben@aws-1-us-east-1.pooler.supabase.com:5432/postgres
 # PROD: postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres
 
 # List tables
@@ -601,7 +601,7 @@ Required in `.env.local` (see `.envrc` for reference):
 
 **Note:** Replace `CONNECTION_STRING` with the appropriate database connection:
 
-- DEV: `postgresql://postgres.prafecmdqiwgnsumlmqn:crumblyboys33@aws-1-us-east-1.pooler.supabase.com:5432/postgres`
+- DEV: `postgresql://postgres.kguunjfapaoaneuidbgj:jegheterben@aws-1-us-east-1.pooler.supabase.com:5432/postgres`
 - PROD: `postgresql://postgres.grosxzvvmhakkxybeuwu:beiajs3%26%21%21jfSJAB12@aws-1-us-east-1.pooler.supabase.com:6543/postgres`
 
 **Check seeding status**:
