@@ -1,9 +1,0 @@
-# Force Python provider detection
-providers = ["python"]
-
-[phases.setup]
-nixPkgs = ["poppler_utils"]
-aptPkgs = ["libgl1-mesa-glx", "libglib2.0-0"]
-
-[variables]
-LD_LIBRARY_PATH = "/usr/lib/x86_64-linux-gnu:/app/.nix-profile/lib"
