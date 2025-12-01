@@ -10,15 +10,19 @@ from PIL import Image
 
 import google.generativeai as genai
 
+import config as cfg  # Avoid shadowing with local 'config' var
+
 logger = logging.getLogger(__name__)
 
 # Singleton clients
 _gemini_model: Optional[genai.GenerativeModel] = None
 
 
-def get_gemini(model_name: str = "gemini-2.0-flash") -> genai.GenerativeModel:
+def get_gemini(model_name: str = None) -> genai.GenerativeModel:
     """Get or create Gemini model client."""
     global _gemini_model
+
+    model_name = model_name or cfg.LLM_MODEL
 
     if _gemini_model is None:
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -35,7 +39,7 @@ def get_gemini(model_name: str = "gemini-2.0-flash") -> genai.GenerativeModel:
 def call_gemini(
     prompt: str,
     image: Optional[Image.Image] = None,
-    max_tokens: int = 8000,
+    max_tokens: int = None,
     json_mode: bool = False,
 ) -> dict:
     """
@@ -50,6 +54,7 @@ def call_gemini(
         }
     """
     model = get_gemini()
+    max_tokens = max_tokens or cfg.LLM_MAX_TOKENS
 
     try:
         # Build content
@@ -57,15 +62,15 @@ def call_gemini(
         if image:
             content.append(image)
 
-        # Build config
-        config = genai.GenerationConfig(max_output_tokens=max_tokens)
+        # Build generation config
+        gen_config = genai.GenerationConfig(max_output_tokens=max_tokens)
         if json_mode:
-            config = genai.GenerationConfig(
+            gen_config = genai.GenerationConfig(
                 max_output_tokens=max_tokens,
                 response_mime_type="application/json"
             )
 
-        response = model.generate_content(content, generation_config=config)
+        response = model.generate_content(content, generation_config=gen_config)
 
         # Check finish reason (2 = MAX_TOKENS)
         finish_reason = response.candidates[0].finish_reason if response.candidates else None
@@ -110,17 +115,19 @@ def call_gemini(
 def call_vlm(
     prompt: str,
     image: Image.Image,
-    max_tokens: int = 8000,
+    max_tokens: int = None,
     json_mode: bool = False,
 ) -> dict:
     """Convenience wrapper for vision-language model calls."""
+    max_tokens = max_tokens or cfg.LLM_MAX_TOKENS
     return call_gemini(prompt, image=image, max_tokens=max_tokens, json_mode=json_mode)
 
 
 def call_text_llm(
     prompt: str,
-    max_tokens: int = 4000,
+    max_tokens: int = None,
     json_mode: bool = False,
 ) -> dict:
     """Convenience wrapper for text-only LLM calls."""
+    max_tokens = max_tokens or cfg.LLM_MAX_TOKENS_TEXT
     return call_gemini(prompt, image=None, max_tokens=max_tokens, json_mode=json_mode)

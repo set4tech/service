@@ -90,24 +90,24 @@ class OCRBboxes(PipelineStep):
     def __init__(
         self,
         target_classes: list[str] = None,
-        min_confidence: float = 0.3,
-        min_bbox_size: int = 30,
-        tesseract_config: str = "--psm 6",
+        min_confidence: float = None,
+        min_bbox_size: int = None,
+        tesseract_config: str = None,
     ):
         """
         Args:
             target_classes: Which detection classes to OCR (default: all)
-            min_confidence: Minimum detection confidence to process
-            min_bbox_size: Minimum width/height in pixels to OCR
-            tesseract_config: Tesseract configuration string
+            min_confidence: Minimum detection confidence to process (default from config)
+            min_bbox_size: Minimum width/height in pixels to OCR (default from config)
+            tesseract_config: Tesseract configuration string (default from config)
                 --psm 6: Assume uniform block of text
                 --psm 3: Fully automatic page segmentation (default)
                 --psm 11: Sparse text, no particular order
         """
         self.target_classes = [c.lower() for c in target_classes] if target_classes else None
-        self.min_confidence = min_confidence
-        self.min_bbox_size = min_bbox_size
-        self.tesseract_config = tesseract_config
+        self.min_confidence = min_confidence if min_confidence is not None else config.OCR_CONFIDENCE_THRESHOLD
+        self.min_bbox_size = min_bbox_size if min_bbox_size is not None else config.OCR_MIN_BBOX_SIZE
+        self.tesseract_config = tesseract_config if tesseract_config is not None else config.OCR_TESSERACT_CONFIG
 
     def process(self, ctx: PipelineContext) -> PipelineContext:
         """Run OCR on all detected regions."""
@@ -209,7 +209,7 @@ class OCRTextBoxes(OCRBboxes):
 
     name = "ocr_text_boxes"
 
-    def __init__(self, min_confidence: float = 0.3):
+    def __init__(self, min_confidence: float = None):
         super().__init__(
             target_classes=["text_box"],
             min_confidence=min_confidence,
@@ -222,7 +222,7 @@ class OCRAllRegions(OCRBboxes):
 
     name = "ocr_all_regions"
 
-    def __init__(self, min_confidence: float = 0.3):
+    def __init__(self, min_confidence: float = None):
         super().__init__(
             target_classes=None,  # All classes
             min_confidence=min_confidence,

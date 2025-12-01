@@ -11,6 +11,7 @@ import fitz  # PyMuPDF
 
 from pipeline import PipelineStep, PipelineContext
 from llm import call_text_llm
+import config
 
 # Suppress MuPDF warnings
 fitz.TOOLS.mupdf_display_errors(False)
@@ -60,14 +61,14 @@ class ExtractText(PipelineStep):
 
     name = "extract_text"
 
-    def __init__(self, clean_with_llm: bool = True, min_text_length: int = 50):
+    def __init__(self, clean_with_llm: bool = None, min_text_length: int = None):
         """
         Args:
-            clean_with_llm: Whether to use LLM to clean messy text
-            min_text_length: Skip LLM cleaning for pages with less text than this
+            clean_with_llm: Whether to use LLM to clean messy text (default from config)
+            min_text_length: Skip LLM cleaning for pages with less text than this (default from config)
         """
-        self.clean_with_llm = clean_with_llm
-        self.min_text_length = min_text_length
+        self.clean_with_llm = clean_with_llm if clean_with_llm is not None else config.TEXT_CLEAN_WITH_LLM
+        self.min_text_length = min_text_length if min_text_length is not None else config.TEXT_MIN_LENGTH_FOR_LLM
 
     def process(self, ctx: PipelineContext) -> PipelineContext:
         """Extract text from all pages in the PDF."""

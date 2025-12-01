@@ -7,21 +7,24 @@ import logging
 from pathlib import Path
 from PIL import Image
 
+import config
+
 logger = logging.getLogger(__name__)
 
 
-def crop_bbox(image: Image.Image, bbox: list[float], padding: int = 20) -> Image.Image:
+def crop_bbox(image: Image.Image, bbox: list[float], padding: int = None) -> Image.Image:
     """
     Crop a bounding box region from an image.
 
     Args:
         image: PIL Image to crop from
         bbox: [x1, y1, x2, y2] coordinates
-        padding: Extra pixels to include around the bbox
+        padding: Extra pixels to include around the bbox (default from config)
 
     Returns:
         Cropped PIL Image
     """
+    padding = padding if padding is not None else config.IMAGE_CROP_PADDING
     x1, y1, x2, y2 = [int(v) for v in bbox]
 
     # Add padding
@@ -36,8 +39,8 @@ def crop_bbox(image: Image.Image, bbox: list[float], padding: int = 20) -> Image
 def split_into_quadrants(
     image: Image.Image,
     max_quadrants: int = 4,
-    overlap: int = 50,
-    min_size: int = 600,
+    overlap: int = None,
+    min_size: int = None,
 ) -> list[Image.Image]:
     """
     Split an image into quadrants for processing large images.
@@ -47,12 +50,14 @@ def split_into_quadrants(
     Args:
         image: PIL Image to split
         max_quadrants: Maximum pieces (1, 2, or 4)
-        overlap: Pixels of overlap between pieces (avoids cutting rows)
-        min_size: Minimum dimension to trigger splitting
+        overlap: Pixels of overlap between pieces (default from config)
+        min_size: Minimum dimension to trigger splitting (default from config)
 
     Returns:
         List of PIL Images (1-4 pieces)
     """
+    overlap = overlap if overlap is not None else config.IMAGE_QUADRANT_OVERLAP
+    min_size = min_size if min_size is not None else config.IMAGE_MIN_SIZE_FOR_SPLIT
     w, h = image.width, image.height
     aspect = w / h if h > 0 else 1
 

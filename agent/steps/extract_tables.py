@@ -12,6 +12,7 @@ from pipeline import PipelineStep, PipelineContext
 from llm import call_vlm
 from image_utils import crop_bbox, split_into_quadrants, load_page_image, dedupe_rows
 from prompts import TABLE_EXTRACTION_MARKDOWN
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -231,10 +232,12 @@ class ExtractTables(PipelineStep):
     def __init__(
         self,
         table_classes: list[str] = None,
-        min_confidence: float = 0.3,
+        min_confidence: float = None,
+        min_size: int = None,
     ):
-        self.table_classes = [c.lower() for c in (table_classes or ["table", "legend", "schedule"])]
-        self.min_confidence = min_confidence
+        self.table_classes = [c.lower() for c in (table_classes or config.TABLE_CLASSES)]
+        self.min_confidence = min_confidence if min_confidence is not None else config.TABLE_CONFIDENCE_THRESHOLD
+        self.min_size = min_size if min_size is not None else config.TABLE_MIN_SIZE
 
     def process(self, ctx: PipelineContext) -> PipelineContext:
         """Extract tables from all pages with table detections."""
@@ -268,9 +271,9 @@ class ExtractTables(PipelineStep):
 
             # Extract each table
             for i, det in enumerate(tables):
-                crop = crop_bbox(page_img, det["bbox"], padding=20)
+                crop = crop_bbox(page_img, det["bbox"], padding=config.IMAGE_CROP_PADDING)
 
-                if crop.width < 50 or crop.height < 50:
+                if crop.width < self.min_size or crop.height < self.min_size:
                     logger.debug(f"    Table {i+1}: too small, skipping")
                     continue
 

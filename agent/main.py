@@ -20,6 +20,8 @@ from supabase import create_client, Client
 from pdf2image import convert_from_path
 from ultralytics import YOLO
 
+import config
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +33,6 @@ logger = logging.getLogger(__name__)
 supabase: Optional[Client] = None
 s3_client = None
 WEIGHTS_PATH = Path(__file__).parent / "weights.pt"
-WEIGHTS_S3_KEY = "models/weights.pt"  # S3 location for YOLO weights
 
 
 def get_supabase() -> Client:
@@ -65,8 +66,8 @@ def download_weights_if_needed():
 
     bucket = get_bucket_name()
     s3 = get_s3()
-    logger.info(f"Downloading YOLO weights from s3://{bucket}/{WEIGHTS_S3_KEY}...")
-    s3.download_file(bucket, WEIGHTS_S3_KEY, str(WEIGHTS_PATH))
+    logger.info(f"Downloading YOLO weights from s3://{bucket}/{config.YOLO_WEIGHTS_S3_KEY}...")
+    s3.download_file(bucket, config.YOLO_WEIGHTS_S3_KEY, str(WEIGHTS_PATH))
     logger.info(f"YOLO weights downloaded to {WEIGHTS_PATH}")
 
 
@@ -145,7 +146,7 @@ def update_progress(agent_run_id: str, step: int, total_steps: int, message: str
 
 def get_bucket_name() -> str:
     """Get the S3 bucket name from environment."""
-    return os.environ.get('AWS_S3_BUCKET_NAME', 'set4-data')
+    return config.S3_BUCKET_NAME
 
 
 def download_pdf_from_s3(s3_key: str, local_path: Path) -> None:
@@ -156,8 +157,9 @@ def download_pdf_from_s3(s3_key: str, local_path: Path) -> None:
     s3.download_file(bucket, s3_key, str(local_path))
 
 
-def pdf_to_images(pdf_path: Path, output_dir: Path, dpi: int = 150) -> list[Path]:
+def pdf_to_images(pdf_path: Path, output_dir: Path, dpi: int = None) -> list[Path]:
     """Convert PDF pages to PNG images."""
+    dpi = dpi or config.PDF_DPI
     logger.info(f"Converting PDF to images (dpi={dpi})...")
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -203,12 +205,14 @@ def build_preprocess_pipeline():
     from pipeline import Pipeline, FilterLowConfidence, GroupByClass, CountSummary
     from steps.extract_tables import ExtractTables
     from steps.extract_text import ExtractText
+    from steps.ocr_bboxes import OCRBboxes
 
     return Pipeline([
-        FilterLowConfidence(threshold=0.3),
+        FilterLowConfidence(threshold=config.PIPELINE_FILTER_THRESHOLD),
         GroupByClass(),
-        ExtractText(clean_with_llm=True),
-        ExtractTables(min_confidence=0.3),
+        ExtractText(clean_with_llm=config.TEXT_CLEAN_WITH_LLM),
+        OCRBboxes(),  # Uses config defaults
+        ExtractTables(),  # Uses config defaults
         CountSummary(),
     ])
 
