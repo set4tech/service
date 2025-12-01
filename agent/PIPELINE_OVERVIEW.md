@@ -14,65 +14,65 @@ bash run_full_pipeline.sh path/to/drawings.pdf
 
 ## Pipeline Steps (12 Total)
 
-### Step 1: PDF to PNG Conversion
+### Step 1: PDF to PNG Conversion ✅
 
-**Script:** `pdf_to_png.py`
+**Script:** `main.py` (`pdf_to_images`)
 
 - **Input:** PDF file
 - **Output:** `pdf_output_pngs/*.png` (one per page)
-- Converts at 72 DPI (falls back to 50 DPI for large files)
+- Converts at 150 DPI (configurable via `PDF_DPI`)
 
 ---
 
-### Step 2: YOLO Object Detection
+### Step 2: YOLO Object Detection ✅
 
-**Script:** `run_yolo.py`
+**Script:** `main.py` (`run_yolo_inference`)
 
 - **Input:** PNG images
-- **Output:** `pdf_output_pngs/detections.json`
+- **Output:** `detections.json`
 - Detects 4 classes: `image`, `table`, `legend`, `text_box`
 - Returns bounding boxes with confidence scores
 
 ---
 
-### Step 3: Page Text Extraction
+### Step 3: Page Text Extraction ✅
 
-**Script:** `extract_text.py`
+**Script:** `steps/extract_text.py`
 
 - **Input:** Original PDF
-- **Output:** `page_text.json`
+- **Output:** `ctx.metadata["extracted_text"]`
 - Extracts raw text via PyMuPDF
-- Cleans with GPT-4o-mini (removes fragments, organizes sections)
+- Cleans with Gemini (removes fragments, organizes sections)
 
 ---
 
-### Step 4: OCR on Detected Regions
+### Step 4: OCR on Detected Regions ✅
 
-**Script:** `ocr_bboxes.py`
+**Script:** `steps/ocr_bboxes.py`
 
-- **Input:** PDF + detections.json
-- **Output:** `bbox_text.json`
+- **Input:** Page images + detections
+- **Output:** `ctx.metadata["bbox_ocr"]`
 - Runs Tesseract OCR on each detected region
 
 ---
 
-### Step 5: VLM Image Analysis
+### Step 5: VLM Image Analysis ✅
 
-**Script:** `analyze_images.py`
+**Script:** `steps/analyze_images.py`
 
-- **Input:** PDF + detections.json
-- **Output:** `image_analysis.json`
+- **Input:** Page images + detections
+- **Output:** `ctx.metadata["image_analysis"]`
 - Uses Gemini to analyze architectural drawings
 - Extracts: view type, content tags, room labels, dimensions, keywords
 
 ---
 
-### Step 6: Project Metadata Extraction
+### Step 6: Project Metadata Extraction ✅
 
-**Script:** `extract_project_info.py`
+**Script:** `steps/extract_project_info.py`
 
-- **Input:** PNG images
-- **Output:** `project_info.json`
+- **Input:** PNG images (first 3 pages)
+- **Output:** `ctx.metadata["project_info"]`
 - Extracts from cover sheets:
   - Project name, address
   - Building area, stories
@@ -105,12 +105,12 @@ bash run_full_pipeline.sh path/to/drawings.pdf
 
 ---
 
-### Step 9: Table Extraction
+### Step 9: Table Extraction ✅
 
-**Script:** `extract_tables.py`
+**Script:** `steps/extract_tables.py`
 
-- **Input:** PNG images + detections.json + PDF
-- **Output:** `tables_extracted.json`
+- **Input:** PNG images + detections
+- **Output:** `ctx.metadata["extracted_tables"]`
 - Extracts structured tables (Door Schedule, Window Schedule, etc.)
 - Multiple strategies: VLM markdown, direct JSON, hybrid OCR+LLM
 
