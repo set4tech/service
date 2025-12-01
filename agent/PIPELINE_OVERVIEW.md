@@ -116,14 +116,15 @@ bash run_full_pipeline.sh path/to/drawings.pdf
 
 ---
 
-### Step 10: Legend Extraction
+### Step 10: Legend Extraction ✅
 
-**Script:** `extract_legends.py`
+**Script:** `steps/extract_legends.py`
 
-- **Input:** PNG images + detections.json
-- **Output:** `legends_extracted.json`
-- Extracts legend/keynote definitions
-- Groups by category (demolition, new work, material)
+- **Input:** `ctx.metadata["extracted_tables"]` from Step 9
+- **Output:** `ctx.metadata["extracted_legends"]`
+- Post-processes table extraction to identify legend-type tables
+- Restructures into legend format with symbol/meaning entries
+- Categorizes by type (material, demolition, new work, symbol, keynote, etc.)
 
 ---
 

@@ -5,6 +5,7 @@ from .extract_tables import ExtractTables
 from .extract_text import ExtractText
 from .ocr_bboxes import OCRBboxes, OCRTextBoxes, OCRAllRegions
 from .extract_project_info import ExtractProjectInfo
+from .extract_legends import ExtractLegends
 
 __all__ = [
     "ExtractTables",
@@ -13,4 +14,5 @@ __all__ = [
     "OCRTextBoxes",
     "OCRAllRegions",
     "ExtractProjectInfo",
+    "ExtractLegends",
 ]

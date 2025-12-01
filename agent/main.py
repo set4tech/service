@@ -208,13 +208,15 @@ def build_preprocess_pipeline():
     from steps.ocr_bboxes import OCRBboxes
     from steps.extract_project_info import ExtractProjectInfo
     from steps.extract_sheet_info import ExtractSheetInfo
+    from steps.extract_legends import ExtractLegends
 
     return Pipeline([
         FilterLowConfidence(threshold=config.PIPELINE_FILTER_THRESHOLD),
         GroupByClass(),
         ExtractText(clean_with_llm=config.TEXT_CLEAN_WITH_LLM),
         OCRBboxes(),  # Uses config defaults
-        ExtractTables(),  # Uses config defaults
+        ExtractTables(),  # Step 9: Extract tables from detected regions
+        ExtractLegends(),  # Step 10: Post-process tables to extract legends
         ExtractProjectInfo(),  # Step 6: Extract project metadata from cover sheets
         ExtractSheetInfo(),  # Step 7: Extract sheet number/title from each page
         CountSummary(),
