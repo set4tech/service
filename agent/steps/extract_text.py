@@ -41,15 +41,22 @@ def clean_text_with_llm(raw_text: str, page_num: int) -> str:
     if not raw_text or len(raw_text.strip()) < 50:
         return raw_text.strip() if raw_text else ""
 
-    prompt = f"{CLEANING_PROMPT}\n\nPage {page_num} text to clean:\n\n{raw_text[:15000]}"
+    # Truncate large text to avoid input token limits
+    truncated = raw_text[:12000]  # ~3k tokens input
+    prompt = f"{CLEANING_PROMPT}\n\nPage {page_num} text to clean:\n\n{truncated}"
 
     result = call_text_llm(prompt, max_tokens=4000)
 
-    if result["status"] == "success":
-        return result["text"].strip()
-    else:
-        logger.warning(f"LLM cleaning failed for page {page_num}: {result.get('error')}")
-        return raw_text
+    # Accept both success and token_limit (partial text is still useful)
+    if result["status"] in ("success", "token_limit"):
+        cleaned = result["text"].strip()
+        if cleaned:
+            if result["status"] == "token_limit":
+                logger.warning(f"LLM cleaning hit token limit for page {page_num}, using partial result")
+            return cleaned
+
+    logger.warning(f"LLM cleaning failed for page {page_num}: {result.get('error')}")
+    return raw_text
 
 
 class ExtractText(PipelineStep):
