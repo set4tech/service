@@ -98,23 +98,40 @@ interface Props {
   assessmentId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  existingRun?: AgentRun | null;
+  onRunStatusChange?: (run: AgentRun | null) => void;
 }
 
-export function AgentAnalysisModal({ assessmentId, open, onOpenChange }: Props) {
+export function AgentAnalysisModal({
+  assessmentId,
+  open,
+  onOpenChange,
+  existingRun,
+  onRunStatusChange,
+}: Props) {
   const [status, setStatus] = useState<'idle' | 'confirming' | 'running' | 'completed' | 'failed'>(
     'confirming'
   );
   const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset state when modal opens
+  // Reset state when modal opens - check for existing run
   useEffect(() => {
     if (open) {
-      setStatus('confirming');
-      setAgentRun(null);
-      setError(null);
+      if (existingRun && (existingRun.status === 'running' || existingRun.status === 'pending')) {
+        // Resume monitoring an existing run
+        console.log('[AgentModal] Resuming existing run:', existingRun.id);
+        setStatus('running');
+        setAgentRun(existingRun);
+        setError(null);
+      } else {
+        // Start fresh - show confirmation
+        setStatus('confirming');
+        setAgentRun(null);
+        setError(null);
+      }
     }
-  }, [open]);
+  }, [open, existingRun]);
 
   // Poll for status updates when running
   useEffect(() => {
@@ -131,12 +148,17 @@ export function AgentAnalysisModal({ assessmentId, open, onOpenChange }: Props) 
         console.log('[AgentModal] Poll status:', data);
         setAgentRun(data);
 
+        // Notify parent of progress updates
+        onRunStatusChange?.(data);
+
         if (data.status === 'completed') {
           setStatus('completed');
+          onRunStatusChange?.(null); // Clear running state in parent
           clearInterval(pollInterval);
         } else if (data.status === 'failed') {
           setStatus('failed');
           setError(data.error || 'Agent analysis failed');
+          onRunStatusChange?.(null); // Clear running state in parent
           clearInterval(pollInterval);
         }
       } catch (err) {
@@ -145,7 +167,7 @@ export function AgentAnalysisModal({ assessmentId, open, onOpenChange }: Props) 
     }, 2000);
 
     return () => clearInterval(pollInterval);
-  }, [status, agentRun?.id, assessmentId]);
+  }, [status, agentRun?.id, assessmentId, onRunStatusChange]);
 
   const handleStart = useCallback(async () => {
     setStatus('running');
@@ -167,12 +189,14 @@ export function AgentAnalysisModal({ assessmentId, open, onOpenChange }: Props) 
       const data = await res.json();
       console.log('[AgentModal] Agent started:', data);
       setAgentRun(data.agentRun);
+      // Notify parent that a new run started
+      onRunStatusChange?.(data.agentRun);
     } catch (err) {
       console.error('[AgentModal] Start error:', err);
       setStatus('failed');
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
-  }, [assessmentId]);
+  }, [assessmentId, onRunStatusChange]);
 
   const progressPercent = agentRun?.progress?.total_steps
     ? Math.round(((agentRun.progress.step || 0) / agentRun.progress.total_steps) * 100)

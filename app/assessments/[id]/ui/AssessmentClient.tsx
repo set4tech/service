@@ -82,6 +82,21 @@ interface AssessmentData {
   [key: string]: unknown;
 }
 
+// Agent run status tracking
+interface AgentRun {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: {
+    step?: number;
+    total_steps?: number;
+    message?: string;
+  };
+  started_at?: string;
+  completed_at?: string;
+  error?: string;
+  results?: Record<string, unknown>;
+}
+
 interface Props {
   assessment: AssessmentData;
   checks: CheckData[];
@@ -154,6 +169,50 @@ export default function AssessmentClient({
   const [refreshingViolations, setRefreshingViolations] = useState(false);
   const [isPdfSearchOpen, setIsPdfSearchOpen] = useState(false);
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [existingAgentRun, setExistingAgentRun] = useState<AgentRun | null>(null);
+
+  // Check for running agent on mount and poll while running
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    async function checkAgentStatus() {
+      try {
+        const res = await fetch(`/api/assessments/${assessment.id}/agent/status`);
+        if (res.ok) {
+          const data: AgentRun = await res.json();
+          console.log('[AssessmentClient] Agent status check:', data.status, data.progress);
+
+          if (data.status === 'running' || data.status === 'pending') {
+            setExistingAgentRun(data);
+            // Start polling if not already
+            if (!pollInterval) {
+              pollInterval = setInterval(checkAgentStatus, 2000);
+            }
+          } else {
+            // Agent finished or failed, stop polling and clear state
+            setExistingAgentRun(null);
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              pollInterval = null;
+            }
+          }
+        } else {
+          // No agent run found (404)
+          setExistingAgentRun(null);
+        }
+      } catch (e) {
+        console.log('[AssessmentClient] Agent status check failed:', e);
+      }
+    }
+
+    checkAgentStatus();
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [assessment.id]);
 
   // Debug: Log screenshots on initial load
   useEffect(() => {
@@ -860,22 +919,50 @@ export default function AssessmentClient({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsAgentModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-purple-600 hover:text-purple-500 bg-purple-50 border border-purple-200 rounded-lg hover:border-purple-400 transition-colors"
-                title="Run AI Agent Analysis (Beta)"
+                className={clsx(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                  existingAgentRun
+                    ? 'text-amber-600 bg-amber-50 border-amber-200 hover:border-amber-400'
+                    : 'text-purple-600 hover:text-purple-500 bg-purple-50 border-purple-200 hover:border-purple-400'
+                )}
+                title={existingAgentRun ? 'View Agent Progress' : 'Run AI Agent Analysis (Beta)'}
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
-                  <circle cx="8" cy="14" r="2" />
-                  <circle cx="16" cy="14" r="2" />
-                </svg>
-                AGENT: BETA
+                {existingAgentRun ? (
+                  <>
+                    {/* Spinner icon */}
+                    <svg
+                      className="animate-spin"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
+                      <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+                    </svg>
+                    AGENT: {existingAgentRun.progress?.step || 0}/
+                    {existingAgentRun.progress?.total_steps || '?'}
+                  </>
+                ) : (
+                  <>
+                    {/* Robot icon */}
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                      <circle cx="8" cy="14" r="2" />
+                      <circle cx="16" cy="14" r="2" />
+                    </svg>
+                    AGENT: BETA
+                  </>
+                )}
               </button>
               <Link
                 href={`/projects/${assessment.project_id}/report`}
@@ -1213,6 +1300,8 @@ export default function AssessmentClient({
         assessmentId={assessment.id}
         open={isAgentModalOpen}
         onOpenChange={setIsAgentModalOpen}
+        existingRun={existingAgentRun}
+        onRunStatusChange={setExistingAgentRun}
       />
     </div>
   );
