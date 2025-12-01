@@ -8,6 +8,12 @@ AI-powered building code compliance assessment platform. Next.js 15.5.3 applicat
 
 **Tech Stack**: Next.js 15 (App Router), React 19, TypeScript 5.9, Tailwind CSS 3.4, Supabase (PostgreSQL), AWS S3, AI providers (Gemini, OpenAI, Anthropic)
 
+**Architecture**: This is a multi-service platform with:
+- **Next.js Web App** (Vercel) - Main UI and API routes
+- **Python Agent Service** (Railway) - PDF processing, YOLO detection, LLM pipelines
+
+**See [`ARCHITECTURE.md`](./ARCHITECTURE.md)** for the complete system architecture including service interactions, data flow, and deployment details.
+
 ### Branch Strategy
 
 - **`dev`** - Development branch (active development, deployed to staging)
@@ -60,6 +66,33 @@ python scripts/load_db/unified_code_upload_supabase.py --file cbc_CA_2025.json
 # Map code sections to building elements (doors, ramps, etc.)
 python scripts/tag_element_sections.py
 ```
+
+### Agent Service (Railway)
+
+The `agent/` directory contains a Python FastAPI service for PDF preprocessing. Deployed on Railway but can run locally:
+
+```bash
+# Setup agent environment
+cd agent
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Run locally (requires env vars - see agent/.env.example)
+uvicorn main:app --reload --port 8000
+
+# Run tests
+cd agent && pytest tests/
+```
+
+**Key Files**:
+- `agent/main.py` - FastAPI app with /preprocess, /assess, /status endpoints
+- `agent/pipeline.py` - Pipeline framework for processing steps
+- `agent/steps/` - Individual pipeline steps (ExtractText, ExtractTables)
+- `agent/llm.py` - Gemini LLM client
+- `agent/prompts.py` - Prompt templates
+
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for full agent service documentation.
 
 ## Git Guidelines
 
