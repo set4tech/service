@@ -219,6 +219,39 @@ def get_project_info_prompt() -> str:
 
 
 # =============================================================================
+# SHEET INFO EXTRACTION PROMPTS
+# =============================================================================
+
+SHEET_INFO_EXTRACTION = """You are analyzing an architectural drawing page.
+
+Look for the TITLE BLOCK (usually located in the bottom-right corner of the page) and extract:
+- sheet_number: The sheet identifier (e.g., "A1.01", "G0.00", "S-1", "E1.0", "M-101")
+- sheet_title: The sheet name/description (e.g., "FIRST FLOOR PLAN", "COVER SHEET", "ELECTRICAL PLAN")
+
+Common sheet number prefixes:
+- A = Architectural
+- S = Structural
+- M = Mechanical
+- E = Electrical
+- P = Plumbing
+- G = General
+- C = Civil
+- L = Landscape
+
+OUTPUT JSON:
+{
+  "sheet_number": "string or null if not found",
+  "sheet_title": "string or null if not found",
+  "confidence": "high" | "medium" | "low"
+}
+
+If no title block is visible or the page appears blank, return:
+{"sheet_number": null, "sheet_title": null, "confidence": "high"}
+
+Return ONLY valid JSON, no markdown code blocks."""
+
+
+# =============================================================================
 # ELEMENT DETECTION PROMPTS
 # =============================================================================
 

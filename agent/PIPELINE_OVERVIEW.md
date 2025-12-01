@@ -81,13 +81,13 @@ bash run_full_pipeline.sh path/to/drawings.pdf
 
 ---
 
-### Step 7: Sheet Info Extraction
+### Step 7: Sheet Info Extraction ✅
 
-**Script:** `extract_sheet_info.py`
+**Script:** `steps/extract_sheet_info.py`
 
 - **Input:** PNG images
-- **Output:** `sheet_info.json`
-- Extracts per-page: sheet number, sheet title
+- **Output:** `ctx.metadata["sheet_info"]`
+- Extracts per-page: sheet number, sheet title from title block
 
 ---
 

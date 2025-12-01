@@ -207,6 +207,7 @@ def build_preprocess_pipeline():
     from steps.extract_text import ExtractText
     from steps.ocr_bboxes import OCRBboxes
     from steps.extract_project_info import ExtractProjectInfo
+    from steps.extract_sheet_info import ExtractSheetInfo
 
     return Pipeline([
         FilterLowConfidence(threshold=config.PIPELINE_FILTER_THRESHOLD),
@@ -215,6 +216,7 @@ def build_preprocess_pipeline():
         OCRBboxes(),  # Uses config defaults
         ExtractTables(),  # Uses config defaults
         ExtractProjectInfo(),  # Step 6: Extract project metadata from cover sheets
+        ExtractSheetInfo(),  # Step 7: Extract sheet number/title from each page
         CountSummary(),
     ])
 
