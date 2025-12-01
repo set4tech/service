@@ -31,14 +31,14 @@ import { usePresignedUrl } from '@/hooks/usePresignedUrl';
 import { usePdfDocument } from '@/hooks/usePdfDocument';
 import { usePdfLayers } from '@/hooks/usePdfLayers';
 import { usePdfPersistence } from '@/hooks/usePdfPersistence';
-import { useViewTransform, screenToContent } from '@/hooks/useViewTransform';
+import { useViewTransform } from '@/hooks/useViewTransform';
 import { useMeasurements } from '@/hooks/useMeasurements';
 import { useCalibration } from '@/hooks/useCalibration';
 import { useScreenshotCapture } from '@/hooks/useScreenshotCapture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { usePdfMouseHandlers } from '@/hooks/usePdfMouseHandlers';
 import { useAssessmentData } from '@/hooks/useAssessmentData';
 import { renderPdfPage } from '@/lib/pdf/canvas-utils';
-import { lineIntersectsRect } from '@/lib/pdf/geometry-utils';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -46,9 +46,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 // Stable empty function to avoid creating new functions on every render
 const NOOP = () => {};
 
-// Minimum distances to avoid accidental clicks being saved
+// Minimum distance to avoid accidental clicks being saved
 const MIN_MEASUREMENT_PIXELS = 2; // Minimum line length for measurements (very small to allow short measurements)
-const MIN_CALIBRATION_PIXELS = 10; // Minimum line length for calibration
 
 interface ViewerState {
   pageNumber: number;
@@ -164,11 +163,9 @@ export function PDFViewer({
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
-  const dragStartRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const onPageChangeRef = useRef(onPageChange);
   onPageChangeRef.current = onPageChange;
   const loadedScaleForRef = useRef<string | null>(null);
-  const lastClickTimeRef = useRef<number>(0);
 
   // ============================================================================
   // SECTION 2: PERSISTENCE & STATE
@@ -732,138 +729,22 @@ export function PDFViewer({
   );
 
   // Mouse handlers for pan / selection
-  const onMouseDown = (e: React.MouseEvent) => {
-    // Prevent rapid double-clicks from creating 0-pixel measurements
-    const now = Date.now();
-    const timeSinceLastClick = now - lastClickTimeRef.current;
-
-    if (timeSinceLastClick < 300 && state.mode.type === 'measure') {
-      return;
-    }
-    lastClickTimeRef.current = now;
-
-    // Special modes: only left-click for selection, no panning allowed
-    if ((state.mode.type !== 'idle' || isDrawingCalibrationLine) && !readOnly) {
-      if (e.button === 0) {
-        // Left-click only
-        e.preventDefault();
-        e.stopPropagation();
-        const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-        dispatch({ type: 'START_SELECTION', payload: { x, y } });
-      }
-      return;
-    }
-
-    // Idle mode left-click: selection box for measurements
-    if (e.button === 0 && state.mode.type === 'idle' && !readOnly) {
-      e.preventDefault();
-      e.stopPropagation();
-      const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-      dispatch({ type: 'START_SELECTION', payload: { x, y } });
-      return;
-    }
-
-    // Middle-click (1) or right-click (2) for panning
-    if (e.button === 1 || e.button === 2) {
-      e.preventDefault();
-      dispatch({ type: 'START_DRAG' });
-      dragStartRef.current = {
-        x: e.clientX,
-        y: e.clientY,
-        tx: transform.tx,
-        ty: transform.ty,
-      };
-    }
-  };
-
-  const onMouseMove = (e: React.MouseEvent) => {
-    // Handle selection box drawing in any mode that has selection
-    if (state.mode.type !== 'idle' || isDrawingCalibrationLine) {
-      if (state.mode.type !== 'idle' && state.mode.selection) {
-        e.preventDefault();
-        e.stopPropagation();
-        const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-        dispatch({ type: 'UPDATE_SELECTION', payload: { x, y } });
-      }
-      return;
-    }
-
-    // Idle mode with selection: update selection box
-    if (state.mode.type === 'idle' && state.mode.selection) {
-      e.preventDefault();
-      e.stopPropagation();
-      const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-      dispatch({ type: 'UPDATE_SELECTION', payload: { x, y } });
-      return;
-    }
-
-    // Pan mode: update transform
-    if (!state.isDragging) return;
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
-    setTransform({
-      ...transform,
-      tx: dragStartRef.current.tx + dx,
-      ty: dragStartRef.current.ty + dy,
-    });
-  };
-
-  const onMouseUp = (e: React.MouseEvent) => {
-    if (state.mode.type === 'screenshot' && state.mode.selection) {
-      // Keep the selection visible so user can save it with button or keyboard shortcut
-      // Don't auto-clear like we do for measurements
-    } else if (state.mode.type === 'measure' && state.mode.selection) {
-      // Auto-save measurement (validation happens in saveMeasurement)
-      const selectionToSave = state.mode.selection;
-      // Clear selection immediately so it doesn't interfere with next drag
-      dispatch({ type: 'CLEAR_SELECTION' });
-      // Save async in background
-      saveMeasurement(selectionToSave);
-    } else if (isDrawingCalibrationLine && state.mode.type !== 'idle' && state.mode.selection) {
-      // Validate calibration line length before showing modal
-      const selection = state.mode.selection;
-      const dx = selection.endX - selection.startX;
-      const dy = selection.endY - selection.startY;
-      const pixelsDistance = Math.sqrt(dx * dx + dy * dy);
-
-      if (pixelsDistance >= MIN_CALIBRATION_PIXELS) {
-        setCalibrationLine({
-          start: { x: selection.startX, y: selection.startY },
-          end: { x: selection.endX, y: selection.endY },
-        });
-        setShowCalibrationModal(true);
-      } else {
-        console.log('[PDFViewer] Ignoring calibration line - too short:', pixelsDistance);
-      }
-      setIsDrawingCalibrationLine(false);
-      dispatch({ type: 'CLEAR_SELECTION' });
-    } else if (state.mode.type === 'idle' && state.mode.selection) {
-      // Idle mode: select measurements that intersect with selection box
-      const selection = state.mode.selection;
-      const selectionRect = {
-        x: Math.min(selection.startX, selection.endX),
-        y: Math.min(selection.startY, selection.endY),
-        width: Math.abs(selection.endX - selection.startX),
-        height: Math.abs(selection.endY - selection.startY),
-      };
-
-      // Find all measurements that intersect with the selection box
-      const selectedIds = measurements
-        .filter(m => lineIntersectsRect(m.start_point, m.end_point, selectionRect))
-        .map(m => m.id);
-
-      // Check if Shift key is held for append mode
-      const shiftHeld = e.shiftKey;
-      measurementsHook.actions.selectMultiple(selectedIds, shiftHeld);
-
-      // Clear the selection box
-      dispatch({ type: 'CLEAR_SELECTION' });
-
-      // Refocus viewport so keyboard shortcuts work (especially Delete key)
-      setTimeout(() => viewportRef.current?.focus(), 0);
-    }
-    dispatch({ type: 'END_DRAG' });
-  };
+  const mouseHandlers = usePdfMouseHandlers({
+    viewportRef,
+    mode: state.mode,
+    isDrawingCalibrationLine,
+    isDragging: state.isDragging,
+    readOnly,
+    transform,
+    measurements,
+    dispatch,
+    setTransform,
+    saveMeasurement,
+    setCalibrationLine,
+    setShowCalibrationModal,
+    setIsDrawingCalibrationLine,
+    selectMeasurements: measurementsHook.actions.selectMultiple,
+  });
 
   // User-facing controls
   const updateRenderScale = useCallback(
@@ -1054,13 +935,10 @@ export function PDFViewer({
             ? 'cursor-crosshair'
             : 'cursor-default'
         }`}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={() => {
-          if (state.mode.type === 'idle' && !isDrawingCalibrationLine)
-            dispatch({ type: 'END_DRAG' });
-        }}
+        onMouseDown={mouseHandlers.onMouseDown}
+        onMouseMove={mouseHandlers.onMouseMove}
+        onMouseUp={mouseHandlers.onMouseUp}
+        onMouseLeave={mouseHandlers.onMouseLeave}
         onContextMenu={e => e.preventDefault()}
         style={{ clipPath: 'inset(0)' }}
       >
