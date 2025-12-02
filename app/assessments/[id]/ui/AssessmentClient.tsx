@@ -157,6 +157,83 @@ function detailPanelReducer(state: DetailPanelState, action: DetailPanelAction):
   }
 }
 
+// Natural sort comparator (matches CheckList logic) - defined outside component
+function naturalCompare(a: string, b: string): number {
+  const regex = /(\d+)|(\D+)/g;
+  const aParts = a.match(regex) || [];
+  const bParts = b.match(regex) || [];
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || '';
+    const bPart = bParts[i] || '';
+    const aNum = parseInt(aPart, 10);
+    const bNum = parseInt(bPart, 10);
+
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      if (aNum !== bNum) return aNum - bNum;
+    } else {
+      if (aPart !== bPart) return aPart.localeCompare(bPart);
+    }
+  }
+  return 0;
+}
+
+// Helper: Get all navigable check IDs in display order - defined outside component
+function getAllCheckIds(checksList: CheckData[], mode: 'section' | 'element'): string[] {
+  const ids: string[] = [];
+  const mainGroups = new Map<string, CheckData[]>();
+
+  if (mode === 'element') {
+    checksList.forEach(check => {
+      if (!check.element_group_id || !(check as any).instance_label) return;
+      const groupName = (check as any).element_group_name || 'Other';
+      if (!mainGroups.has(groupName)) {
+        mainGroups.set(groupName, []);
+      }
+      mainGroups.get(groupName)!.push(check);
+    });
+    mainGroups.forEach(group => {
+      group.sort((a, b) => {
+        const aTime = new Date((a as any).created_at || 0).getTime();
+        const bTime = new Date((b as any).created_at || 0).getTime();
+        return aTime - bTime;
+      });
+    });
+  } else {
+    checksList.forEach(check => {
+      const sectionNumber = (check as any).code_section_number || '';
+      const mainPrefix = sectionNumber.split('-')[0] || 'Other';
+      if (!mainGroups.has(mainPrefix)) {
+        mainGroups.set(mainPrefix, []);
+      }
+      mainGroups.get(mainPrefix)!.push(check);
+    });
+    mainGroups.forEach(group => {
+      group.sort((a, b) =>
+        naturalCompare((a as any).code_section_number || '', (b as any).code_section_number || '')
+      );
+    });
+  }
+
+  const sortedGroups = Array.from(mainGroups.entries()).sort(([a], [b]) => naturalCompare(a, b));
+
+  sortedGroups.forEach(([_, checks]) => {
+    checks.forEach(check => {
+      ids.push(check.id);
+      if (check.instances?.length) {
+        const sortedInstances = [...check.instances].sort((a, b) => {
+          const aTime = new Date((a as any).created_at || 0).getTime();
+          const bTime = new Date((b as any).created_at || 0).getTime();
+          return aTime - bTime;
+        });
+        sortedInstances.forEach(instance => ids.push(instance.id));
+      }
+    });
+  });
+
+  return ids;
+}
+
 export default function AssessmentClient({
   assessment,
   checks: initialChecks,
@@ -899,33 +976,33 @@ export default function AssessmentClient({
           </div>
 
           {/* Mode Toggle */}
-          <div className="mb-3 flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+          <div className="mb-3 flex items-center gap-1 bg-gray-100 rounded-lg p-1 overflow-x-auto">
             <button
               onClick={() => handleModeChange('section')}
               className={clsx(
-                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
                 checkMode === 'section'
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-600 hover:text-gray-900'
               )}
             >
-              By Section
+              Section
             </button>
             <button
               onClick={() => handleModeChange('element')}
               className={clsx(
-                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
                 checkMode === 'element'
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-600 hover:text-gray-900'
               )}
             >
-              By Element
+              Element
             </button>
             <button
               onClick={() => handleModeChange('summary')}
               className={clsx(
-                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
                 checkMode === 'summary'
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-600 hover:text-gray-900'
@@ -936,7 +1013,7 @@ export default function AssessmentClient({
             <button
               onClick={() => handleModeChange('gallery')}
               className={clsx(
-                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
                 checkMode === 'gallery'
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-600 hover:text-gray-900'
@@ -947,7 +1024,7 @@ export default function AssessmentClient({
             <button
               onClick={() => handleModeChange('chat')}
               className={clsx(
-                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
                 checkMode === 'chat'
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-600 hover:text-gray-900'
