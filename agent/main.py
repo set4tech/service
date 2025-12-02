@@ -25,6 +25,7 @@ from pdf2image import convert_from_path
 from ultralytics import YOLO
 
 import config
+from tracing import setup_tracing, start_phoenix_server
 
 # Configure logging
 logging.basicConfig(
@@ -78,6 +79,16 @@ def download_weights_if_needed():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Agent Service...")
+
+    # Initialize Phoenix tracing (set PHOENIX_ENABLED=true to start local server)
+    if os.environ.get("PHOENIX_ENABLED", "").lower() in ("true", "1", "yes"):
+        phoenix_session = start_phoenix_server()
+        if phoenix_session:
+            logger.info(f"Phoenix UI available at {phoenix_session.url}")
+
+    # Set up tracing instrumentation (sends to Phoenix endpoint)
+    setup_tracing()
+
     try:
         get_supabase()
         logger.info("Supabase client initialized")
