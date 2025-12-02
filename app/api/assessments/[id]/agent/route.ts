@@ -68,48 +68,53 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     console.log('[agent] Created agent_run:', agentRun.id);
 
-    // 4. Trigger Railway service
-    try {
-      const railwayResponse = await fetch(`${RAILWAY_AGENT_URL}/preprocess`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assessment_id: assessmentId,
-          agent_run_id: agentRun.id,
-          pdf_s3_key: pdfS3Key,
-        }),
-      });
+    // 4. Trigger Railway service in background (don't await - return immediately)
+    // This prevents the API from being slow due to Railway cold starts
+    const triggerRailway = async () => {
+      try {
+        console.log('[agent] Triggering Railway service...');
+        const railwayResponse = await fetch(`${RAILWAY_AGENT_URL}/preprocess`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assessment_id: assessmentId,
+            agent_run_id: agentRun.id,
+            pdf_s3_key: pdfS3Key,
+          }),
+        });
 
-      if (!railwayResponse.ok) {
-        const errorText = await railwayResponse.text();
-        console.error('[agent] Railway service error:', errorText);
+        if (!railwayResponse.ok) {
+          const errorText = await railwayResponse.text();
+          console.error('[agent] Railway service error:', errorText);
+
+          // Mark as failed
+          await supabase
+            .from('agent_runs')
+            .update({ status: 'failed', error: `Railway service error: ${errorText}` })
+            .eq('id', agentRun.id);
+          return;
+        }
+
+        const railwayData = await railwayResponse.json();
+        console.log('[agent] Railway response:', railwayData);
+      } catch (railwayError) {
+        console.error('[agent] Failed to call Railway service:', railwayError);
 
         // Mark as failed
         await supabase
           .from('agent_runs')
-          .update({ status: 'failed', error: `Railway service error: ${errorText}` })
+          .update({
+            status: 'failed',
+            error: `Could not reach agent service: ${railwayError instanceof Error ? railwayError.message : 'Unknown error'}`,
+          })
           .eq('id', agentRun.id);
-
-        return NextResponse.json({ error: 'Failed to start agent service' }, { status: 502 });
       }
+    };
 
-      const railwayData = await railwayResponse.json();
-      console.log('[agent] Railway response:', railwayData);
-    } catch (railwayError) {
-      console.error('[agent] Failed to call Railway service:', railwayError);
+    // Fire and forget - don't await
+    triggerRailway();
 
-      // Mark as failed
-      await supabase
-        .from('agent_runs')
-        .update({
-          status: 'failed',
-          error: `Could not reach agent service: ${railwayError instanceof Error ? railwayError.message : 'Unknown error'}`,
-        })
-        .eq('id', agentRun.id);
-
-      return NextResponse.json({ error: 'Agent service unavailable' }, { status: 503 });
-    }
-
+    // Return immediately with the agent run info
     return NextResponse.json({
       message: 'Agent started',
       agentRun: {
