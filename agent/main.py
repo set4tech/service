@@ -1,20 +1,24 @@
 """
-Agent Service - PDF preprocessing and compliance assessment
+Agent Service - PDF preprocessing, compliance assessment, and chat
 
 Endpoints:
 - POST /preprocess - Download PDF, convert to images, run YOLO detection
 - POST /assess - Run compliance assessment (TODO)
+- POST /chat - Chat with architectural drawings
 """
 import os
+import json
 import logging
 import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
+from uuid import uuid4
 from contextlib import asynccontextmanager
 
 import boto3
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
 from pdf2image import convert_from_path
@@ -355,6 +359,146 @@ async def preprocess(request: PreprocessRequest, background_tasks: BackgroundTas
 async def assess(request: AssessRequest, background_tasks: BackgroundTasks):
     """Run compliance assessment. TODO: Implement."""
     raise HTTPException(status_code=501, detail="Not implemented yet")
+
+
+# =============================================================================
+# CHAT ENDPOINT
+# =============================================================================
+
+class ChatRequest(BaseModel):
+    assessment_id: str
+    message: str
+    conversation_id: Optional[str] = None
+
+
+# In-memory cache for loaded documents (keyed by assessment_id)
+_document_cache: dict[str, dict] = {}
+_images_cache: dict[str, Path] = {}
+
+
+def _get_unified_json_s3_key(assessment_id: str) -> str:
+    """Get S3 key for unified document JSON."""
+    return f"preprocessed/{assessment_id}/unified_document_data.json"
+
+
+def _get_images_s3_prefix(assessment_id: str) -> str:
+    """Get S3 prefix for page images."""
+    return f"preprocessed/{assessment_id}/pages/"
+
+
+def _load_document_data(assessment_id: str) -> tuple[dict, Path]:
+    """
+    Load unified JSON and download images for an assessment.
+
+    Returns:
+        Tuple of (unified_json dict, images_dir Path)
+    """
+    # Check cache first
+    if assessment_id in _document_cache:
+        return _document_cache[assessment_id], _images_cache[assessment_id]
+
+    bucket = get_bucket_name()
+    s3 = get_s3()
+
+    # Download unified JSON
+    json_key = _get_unified_json_s3_key(assessment_id)
+    logger.info(f"[Chat] Downloading unified JSON from s3://{bucket}/{json_key}")
+
+    try:
+        response = s3.get_object(Bucket=bucket, Key=json_key)
+        unified_json = json.loads(response['Body'].read().decode('utf-8'))
+    except s3.exceptions.NoSuchKey:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unified JSON not found for assessment {assessment_id}. Has preprocessing completed?"
+        )
+
+    # Create temp directory for images
+    images_dir = Path(tempfile.mkdtemp(prefix=f"chat_images_{assessment_id}_"))
+    logger.info(f"[Chat] Downloading page images to {images_dir}")
+
+    # Download page images
+    images_prefix = _get_images_s3_prefix(assessment_id)
+    try:
+        paginator = s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Prefix=images_prefix):
+            for obj in page.get('Contents', []):
+                key = obj['Key']
+                filename = Path(key).name
+                if filename.endswith('.png') or filename.endswith('.jpg'):
+                    local_path = images_dir / filename
+                    s3.download_file(bucket, key, str(local_path))
+                    logger.info(f"[Chat] Downloaded {filename}")
+    except Exception as e:
+        logger.warning(f"[Chat] Error downloading images: {e}")
+
+    # Cache the data
+    _document_cache[assessment_id] = unified_json
+    _images_cache[assessment_id] = images_dir
+
+    return unified_json, images_dir
+
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    """
+    Chat with architectural drawings.
+
+    Returns SSE stream with chunks:
+    - {"type": "text", "content": "..."}
+    - {"type": "tool_use", "tool": "...", "input": {...}}
+    - {"type": "tool_result", "tool": "...", "result": {...}}
+    - {"type": "image", "tool": "...", "image": {"data": "...", "media_type": "..."}}
+    - {"type": "done", "conversation_id": "..."}
+    - {"type": "error", "message": "..."}
+    """
+    from chat_agent import conversation_manager
+
+    logger.info(f"[Chat] Request: assessment={request.assessment_id}, conv={request.conversation_id}")
+
+    # Load document data
+    try:
+        unified_json, images_dir = _load_document_data(request.assessment_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[Chat] Failed to load document data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load document data: {e}")
+
+    # Get or create conversation
+    conv_id = request.conversation_id or str(uuid4())
+    agent, history = conversation_manager.get_or_create(conv_id, unified_json, images_dir)
+
+    async def generate():
+        """Generate SSE stream."""
+        try:
+            async for chunk in agent.chat_stream(request.message, history):
+                # For images, we don't send the full base64 to frontend in SSE
+                # (it's too large). Instead, send metadata and let frontend fetch if needed
+                if chunk.get("type") == "image":
+                    # Send a simplified version without the huge base64 data
+                    yield f"data: {json.dumps({
+                        'type': 'image',
+                        'tool': chunk.get('tool'),
+                        'tool_use_id': chunk.get('tool_use_id'),
+                        'metadata': chunk.get('metadata', {}),
+                    })}\n\n"
+                elif chunk.get("type") == "done":
+                    yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
+                else:
+                    yield f"data: {json.dumps(chunk)}\n\n"
+        except Exception as e:
+            logger.exception(f"[Chat] Stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 @app.get("/status/{agent_run_id}", response_model=StatusResponse)

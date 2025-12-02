@@ -11,6 +11,7 @@ import { ViolationDetailPanel } from '@/components/checks/ViolationDetailPanel';
 import { AssessmentScreenshotGallery } from '@/components/screenshots/AssessmentScreenshotGallery';
 import { ImportCSVDoorsModal } from '@/components/assessments/ImportCSVDoorsModal';
 import { AgentAnalysisModal } from '@/components/agent/AgentAnalysisModal';
+import { ChatPanel } from '@/components/chat/ChatPanel';
 import type { ViolationMarker } from '@/lib/reports/get-violations';
 
 // Load PDF viewer only on client side - removes need for wrapper component
@@ -219,15 +220,15 @@ export default function AssessmentClient({
     return () => clearInterval(pollInterval);
   }, [assessment.id, existingAgentRun?.id, existingAgentRun?.status]);
 
-  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary' | 'gallery'>(
-    'section'
-  );
+  const [checkMode, setCheckMode] = useState<
+    'section' | 'element' | 'summary' | 'gallery' | 'chat'
+  >('section');
 
   // Restore saved mode after hydration to avoid mismatch
   useEffect(() => {
     const saved = localStorage.getItem(`checkMode-${assessment.id}`);
     if (saved) {
-      setCheckMode(saved as 'section' | 'element' | 'summary' | 'gallery');
+      setCheckMode(saved as 'section' | 'element' | 'summary' | 'gallery' | 'chat');
     }
 
     // Also restore active check ID from URL hash if present
@@ -243,9 +244,9 @@ export default function AssessmentClient({
     }
   }, [assessment.id]);
 
-  // Filter checks by mode (skip filtering for summary/gallery modes)
+  // Filter checks by mode (skip filtering for summary/gallery/chat modes)
   const displayedChecks = useMemo(() => {
-    if (checkMode === 'summary' || checkMode === 'gallery') return checks;
+    if (checkMode === 'summary' || checkMode === 'gallery' || checkMode === 'chat') return checks;
 
     // Element mode: show checks with element_group_id
     // Section mode: show checks without element_group_id (standalone sections)
@@ -258,7 +259,7 @@ export default function AssessmentClient({
 
   // Pre-compute sorted check IDs for keyboard navigation (expensive sort, only recompute when checks change)
   const sortedCheckIds = useMemo(() => {
-    if (checkMode === 'summary' || checkMode === 'gallery') return [];
+    if (checkMode === 'summary' || checkMode === 'gallery' || checkMode === 'chat') return [];
     return getAllCheckIds(displayedChecks, checkMode === 'element' ? 'element' : 'section');
   }, [displayedChecks, checkMode]);
 
@@ -576,12 +577,12 @@ export default function AssessmentClient({
     }
   }, [assessment.id]);
 
-  const handleModeChange = (newMode: 'section' | 'element' | 'summary' | 'gallery') => {
+  const handleModeChange = (newMode: 'section' | 'element' | 'summary' | 'gallery' | 'chat') => {
     setCheckMode(newMode);
     localStorage.setItem(`checkMode-${assessment.id}`, newMode);
 
-    // Close detail panel when switching to summary or gallery
-    if (newMode === 'summary' || newMode === 'gallery') {
+    // Close detail panel when switching to summary, gallery, or chat
+    if (newMode === 'summary' || newMode === 'gallery' || newMode === 'chat') {
       closeDetailPanel();
       return;
     }
@@ -752,8 +753,8 @@ export default function AssessmentClient({
 
   // Keyboard navigation
   useEffect(() => {
-    // Skip in summary/gallery modes
-    if (checkMode === 'summary' || checkMode === 'gallery') return;
+    // Skip in summary/gallery/chat modes
+    if (checkMode === 'summary' || checkMode === 'gallery' || checkMode === 'chat') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in input field
@@ -943,6 +944,17 @@ export default function AssessmentClient({
             >
               Gallery
             </button>
+            <button
+              onClick={() => handleModeChange('chat')}
+              className={clsx(
+                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                checkMode === 'chat'
+                  ? 'bg-white shadow-sm text-gray-900'
+                  : 'text-gray-600 hover:text-gray-900'
+              )}
+            >
+              Chat
+            </button>
           </div>
 
           {/* CSV Import Button (only show in Element mode) */}
@@ -952,22 +964,24 @@ export default function AssessmentClient({
             </div>
           )}
 
-          {/* Progress Bar */}
-          <div className="mb-3">
-            <div className="flex justify-between text-sm text-gray-600 mb-1">
-              <span>Progress</span>
-              <span>{Math.round(progress.pct)}%</span>
+          {/* Progress Bar (hide in chat mode) */}
+          {checkMode !== 'chat' && (
+            <div className="mb-3">
+              <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Progress</span>
+                <span>{Math.round(progress.pct)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all"
+                  style={{ width: `${progress.pct}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {progress.completed} of {progress.totalChecks} checks completed
+              </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
-                style={{ width: `${progress.pct}%` }}
-              />
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {progress.completed} of {progress.totalChecks} checks completed
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Checks List */}
@@ -996,6 +1010,8 @@ export default function AssessmentClient({
             />
           ) : checkMode === 'gallery' ? (
             <AssessmentScreenshotGallery assessmentId={assessment.id} />
+          ) : checkMode === 'chat' ? (
+            <ChatPanel assessmentId={assessment.id} />
           ) : (
             <CheckList
               checks={displayedChecks}
