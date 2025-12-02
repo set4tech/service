@@ -12,3 +12,12 @@ openai>=1.0.0
 Pillow>=10.0.0
 pytesseract>=0.3.10
 anthropic>=0.40.0
+
+# Tracing / Observability
+langfuse>=2.0.0
+opentelemetry-instrumentation-anthropic>=0.30.0
+# Optional: for local Phoenix tracing
+# arize-phoenix>=8.0.0
+# openinference-instrumentation-anthropic>=0.1.0
+# opentelemetry-sdk>=1.20.0
+# opentelemetry-exporter-otlp>=1.20.0

@@ -25,6 +25,7 @@ from pdf2image import convert_from_path
 from ultralytics import YOLO
 
 import config
+from tracing import setup_tracing, start_phoenix_server
 
 # Configure logging
 logging.basicConfig(
@@ -78,6 +79,16 @@ def download_weights_if_needed():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Agent Service...")
+
+    # Initialize Phoenix tracing (set PHOENIX_ENABLED=true to start local server)
+    if os.environ.get("PHOENIX_ENABLED", "").lower() in ("true", "1", "yes"):
+        phoenix_session = start_phoenix_server()
+        if phoenix_session:
+            logger.info(f"Phoenix UI available at {phoenix_session.url}")
+
+    # Set up tracing instrumentation (sends to Phoenix endpoint)
+    setup_tracing()
+
     try:
         get_supabase()
         logger.info("Supabase client initialized")
@@ -307,8 +318,40 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
 
             result = await pipeline.run_async(ctx, progress_callback=pipeline_progress)
 
-            # Save results
-            total_steps = base_steps + len(pipeline.steps)
+            # Upload to S3 for chat endpoint
+            total_steps = base_steps + len(pipeline.steps) + 1  # +1 for S3 upload
+            update_progress(agent_run_id, base_steps + len(pipeline.steps), total_steps, "Uploading to S3...")
+
+            s3 = get_s3()
+            bucket = get_bucket_name()
+
+            # Build unified JSON from pipeline results
+            unified_json = {
+                "assessment_id": assessment_id,
+                "pages": result.data,
+                "metadata": result.metadata,
+            }
+
+            # Upload unified JSON
+            json_key = _get_unified_json_s3_key(assessment_id)
+            logger.info(f"Uploading unified JSON to s3://{bucket}/{json_key}")
+            s3.put_object(
+                Bucket=bucket,
+                Key=json_key,
+                Body=json.dumps(unified_json, default=str),
+                ContentType='application/json'
+            )
+
+            # Upload page images
+            images_prefix = _get_images_s3_prefix(assessment_id)
+            for img_path in image_paths:
+                img_key = f"{images_prefix}{img_path.name}"
+                logger.info(f"Uploading {img_path.name} to s3://{bucket}/{img_key}")
+                s3.upload_file(str(img_path), bucket, img_key)
+
+            logger.info(f"Uploaded unified JSON and {len(image_paths)} images to S3")
+
+            # Save results to DB
             update_progress(agent_run_id, total_steps, total_steps, "Saving results...")
 
             db.table("agent_runs").update({
