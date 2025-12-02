@@ -545,15 +545,23 @@ export default function AssessmentClient({
     });
   }, []);
 
-  const refetchChecks = useCallback(async () => {
-    const checksRes = await fetch(
-      `/api/assessments/${assessment.id}/checks?mode=${checkMode === 'element' ? 'element' : 'section'}`
-    );
-    if (checksRes.ok) {
-      const updatedChecks = await checksRes.json();
-      setChecks(updatedChecks);
+  const refetchChecks = useCallback(async (): Promise<CheckData[]> => {
+    // Fetch both section and element checks (mirrors page.tsx server component)
+    const [sectionRes, elementRes] = await Promise.all([
+      fetch(`/api/assessments/${assessment.id}/checks?mode=section`),
+      fetch(`/api/assessments/${assessment.id}/checks?mode=element`),
+    ]);
+    if (sectionRes.ok && elementRes.ok) {
+      const [sectionChecks, elementChecks] = await Promise.all([
+        sectionRes.json(),
+        elementRes.json(),
+      ]);
+      const combined = [...sectionChecks, ...elementChecks];
+      setChecks(combined);
+      return combined;
     }
-  }, [assessment.id, checkMode]);
+    return checks; // Return current if fetch failed
+  }, [assessment.id, checks]);
 
   const refetchViolations = useCallback(async () => {
     setRefreshingViolations(true);
@@ -997,7 +1005,9 @@ export default function AssessmentClient({
               assessmentId={assessment.id}
               onCheckAdded={handleCheckAdded}
               onInstanceDeleted={handleInstanceDeleted}
-              refetchChecks={refetchChecks}
+              refetchChecks={async () => {
+                await refetchChecks();
+              }}
             />
           )}
         </div>
@@ -1027,26 +1037,7 @@ export default function AssessmentClient({
                 violation={detailPanel.violation}
                 onClose={closeDetailPanel}
                 onCheckUpdate={async () => {
-                  // Refetch all checks to refresh violations list
-                  // In summary mode, determine the mode from the selected violation's check
-                  try {
-                    let mode: 'section' | 'element' = 'section';
-                    if (detailPanel.mode === 'violation-detail') {
-                      // Check if this violation is from an element check
-                      const check = checks.find(c => c.id === detailPanel.violation.checkId);
-                      mode = check?.element_group_id ? 'element' : 'section';
-                    }
-
-                    const res = await fetch(
-                      `/api/assessments/${assessment.id}/checks?mode=${mode}`
-                    );
-                    if (res.ok) {
-                      const updatedChecks = await res.json();
-                      setChecks(updatedChecks);
-                    }
-                  } catch {
-                    // Silently ignore
-                  }
+                  await refetchChecks();
                 }}
               />
             ) : (
@@ -1076,19 +1067,10 @@ export default function AssessmentClient({
                   }
                 }}
                 onChecksRefresh={async () => {
-                  try {
-                    const res = await fetch(
-                      `/api/assessments/${assessment.id}/checks?mode=${checkMode === 'element' ? 'element' : 'section'}`
-                    );
-                    if (res.ok) {
-                      const updatedChecks = (await res.json()) as CheckData[];
-                      setChecks(updatedChecks);
-                      if (!updatedChecks.find(c => c.id === activeCheck?.id)) {
-                        closeDetailPanel();
-                      }
-                    }
-                  } catch {
-                    // Silently ignore
+                  const updatedChecks = await refetchChecks();
+                  // Close panel if the active check was deleted
+                  if (activeCheck?.id && !updatedChecks.find(c => c.id === activeCheck.id)) {
+                    closeDetailPanel();
                   }
                 }}
                 onScreenshotAssigned={() => {
@@ -1128,7 +1110,9 @@ export default function AssessmentClient({
             onScreenshotSaved={refetchCheckScreenshots}
             onCheckAdded={handleCheckAdded}
             onCheckSelect={handleCheckSelect}
-            refetchChecks={refetchChecks}
+            refetchChecks={async () => {
+              await refetchChecks();
+            }}
             onRefreshScreenshotsReady={handleRefreshScreenshotsReady}
             onSearchStateChange={setIsPdfSearchOpen}
           />
