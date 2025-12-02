@@ -10,6 +10,7 @@ View traces at:
 - Phoenix: http://localhost:6006
 """
 
+import atexit
 import logging
 import os
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Track if instrumentation has been applied
 _instrumented = False
+_tracer_provider = None
 
 
 def setup_tracing():
@@ -58,13 +60,13 @@ def setup_tracing():
 
 def _setup_langfuse():
     """Configure Langfuse cloud tracing via OTEL."""
-    global _instrumented
+    global _instrumented, _tracer_provider
 
     try:
         import base64
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
 
@@ -73,22 +75,32 @@ def _setup_langfuse():
         secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
         host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
 
+        # Build the endpoint URL
+        endpoint = f"{host}/api/public/otel/v1/traces"
+        logger.info(f"[Tracing] Configuring OTEL export to: {endpoint}")
+        logger.info(f"[Tracing] Public key prefix: {public_key[:10] if public_key else 'NONE'}...")
+
         # Set up tracer provider
         tracer_provider = TracerProvider()
         trace.set_tracer_provider(tracer_provider)
+        _tracer_provider = tracer_provider
 
         # Configure OTLP exporter to send to Langfuse's OTEL endpoint
-        # Langfuse accepts OTEL traces at /api/public/otel/v1/traces with Basic auth
+        # Langfuse accepts OTEL traces with Basic auth (public_key:secret_key)
         auth = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
         otlp_exporter = OTLPSpanExporter(
-            endpoint=f"{host}/api/public/otel/v1/traces",
+            endpoint=endpoint,
             headers={"Authorization": f"Basic {auth}"},
         )
-        span_processor = BatchSpanProcessor(otlp_exporter)
+        # Use SimpleSpanProcessor for immediate export (easier debugging)
+        span_processor = SimpleSpanProcessor(otlp_exporter)
         tracer_provider.add_span_processor(span_processor)
 
         # Instrument Anthropic client
         AnthropicInstrumentor().instrument()
+
+        # Register shutdown handler to flush spans
+        atexit.register(_shutdown_tracing)
 
         _instrumented = True
         logger.info(f"[Tracing] Langfuse tracing enabled via OTEL")
@@ -98,7 +110,7 @@ def _setup_langfuse():
         logger.warning(f"[Tracing] Could not import tracing libraries: {e}")
         logger.warning("[Tracing] Run: pip install opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-anthropic")
     except Exception as e:
-        logger.warning(f"[Tracing] Failed to initialize Langfuse: {e}")
+        logger.warning(f"[Tracing] Failed to initialize Langfuse: {e}", exc_info=True)
 
 
 def _setup_phoenix(endpoint: str):
@@ -132,6 +144,19 @@ def _setup_phoenix(endpoint: str):
         logger.warning("[Tracing] Run: pip install arize-phoenix openinference-instrumentation-anthropic")
     except Exception as e:
         logger.warning(f"[Tracing] Failed to initialize Phoenix: {e}")
+
+
+def _shutdown_tracing():
+    """Flush and shutdown the tracer provider."""
+    global _tracer_provider
+    if _tracer_provider:
+        logger.info("[Tracing] Shutting down tracer provider...")
+        try:
+            _tracer_provider.force_flush()
+            _tracer_provider.shutdown()
+            logger.info("[Tracing] Tracer provider shutdown complete")
+        except Exception as e:
+            logger.warning(f"[Tracing] Error during shutdown: {e}")
 
 
 def start_phoenix_server():
