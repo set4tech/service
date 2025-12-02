@@ -3,7 +3,8 @@ Agent Service - PDF preprocessing, compliance assessment, and chat
 
 Endpoints:
 - POST /preprocess - Download PDF, convert to images, run YOLO detection
-- POST /assess - Run compliance assessment (TODO)
+- POST /assess - Run full compliance assessment (TODO)
+- POST /assess-check - Run agent compliance assessment for a single check (SSE streaming)
 - POST /chat - Chat with architectural drawings
 """
 import os
@@ -425,6 +426,84 @@ async def preprocess(request: PreprocessRequest, background_tasks: BackgroundTas
 async def assess(request: AssessRequest, background_tasks: BackgroundTasks):
     """Run compliance assessment. TODO: Implement."""
     raise HTTPException(status_code=501, detail="Not implemented yet")
+
+
+# =============================================================================
+# ASSESS-CHECK ENDPOINT (Agent Compliance Assessment)
+# =============================================================================
+
+class AssessCheckRequest(BaseModel):
+    """Request model for single-check agent assessment."""
+    check_id: str
+    agent_run_id: str
+    assessment_id: str
+    code_section: dict  # {number, title, text, requirements, tables}
+    building_context: Optional[dict] = None  # Project extracted_variables
+    screenshots: Optional[list[str]] = None  # List of presigned URLs
+
+
+@app.post("/assess-check")
+async def assess_check(request: AssessCheckRequest):
+    """
+    Run agent compliance assessment for a single check.
+
+    Returns SSE stream with agent reasoning:
+    - {"type": "thinking", "content": "..."}
+    - {"type": "tool_use", "tool": "...", "tool_use_id": "...", "input": {...}}
+    - {"type": "tool_result", "tool": "...", "tool_use_id": "...", "result": {...}}
+    - {"type": "done", "result": {...}}
+    - {"type": "error", "message": "..."}
+    """
+    from compliance_agent import ComplianceAgent
+
+    logger.info(f"[AssessCheck] Request: check={request.check_id}, assessment={request.assessment_id}")
+    logger.info(f"[AssessCheck] Code section: {request.code_section.get('number')} - {request.code_section.get('title')}")
+    logger.info(f"[AssessCheck] Screenshots: {len(request.screenshots or [])}")
+
+    # Try to load unified JSON for document tools (optional - may not be preprocessed)
+    unified_json = None
+    images_dir = None
+
+    try:
+        unified_json, images_dir = _load_document_data(request.assessment_id)
+        logger.info(f"[AssessCheck] Loaded unified JSON with {len(unified_json.get('pages', {}))} pages")
+    except HTTPException:
+        logger.warning(f"[AssessCheck] No preprocessed data for assessment {request.assessment_id}, tools will be limited")
+        # Create minimal unified JSON so tools don't crash
+        unified_json = {"assessment_id": request.assessment_id, "pages": {}, "metadata": {}}
+    except Exception as e:
+        logger.warning(f"[AssessCheck] Failed to load document data: {e}")
+        unified_json = {"assessment_id": request.assessment_id, "pages": {}, "metadata": {}}
+
+    # Create compliance agent
+    agent = ComplianceAgent(
+        unified_json=unified_json,
+        images_dir=images_dir,
+        model="claude-sonnet-4-20250514",
+        max_iterations=15,
+    )
+
+    async def generate():
+        """Generate SSE stream from agent."""
+        try:
+            async for chunk in agent.assess_check_stream(
+                code_section=request.code_section,
+                building_context=request.building_context or {},
+                screenshots=request.screenshots or [],
+            ):
+                yield f"data: {json.dumps(chunk, default=str)}\n\n"
+        except Exception as e:
+            logger.exception(f"[AssessCheck] Stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 # =============================================================================
