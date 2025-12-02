@@ -256,6 +256,12 @@ export default function AssessmentClient({
     }
   }, [checks, checkMode]);
 
+  // Pre-compute sorted check IDs for keyboard navigation (expensive sort, only recompute when checks change)
+  const sortedCheckIds = useMemo(() => {
+    if (checkMode === 'summary' || checkMode === 'gallery') return [];
+    return getAllCheckIds(displayedChecks, checkMode === 'element' ? 'element' : 'section');
+  }, [displayedChecks, checkMode]);
+
   // Calculate progress dynamically from checks state (all checks, not filtered)
   const progress = useMemo(() => {
     // Exclude checks marked as not_applicable from total count
@@ -495,13 +501,9 @@ export default function AssessmentClient({
 
       // Auto-advance to next check if requested
       if (autoAdvance) {
-        const allIds = getAllCheckIds(
-          displayedChecks,
-          checkMode === 'element' ? 'element' : 'section'
-        );
-        const currentIdx = allIds.indexOf(checkId);
-        if (currentIdx < allIds.length - 1) {
-          navigateToCheck(allIds[currentIdx + 1]);
+        const currentIdx = sortedCheckIds.indexOf(checkId);
+        if (currentIdx < sortedCheckIds.length - 1) {
+          navigateToCheck(sortedCheckIds[currentIdx + 1]);
         }
       }
     } catch {
@@ -510,13 +512,11 @@ export default function AssessmentClient({
   };
 
   const handleMoveToNextCheck = () => {
-    const allIds = getAllCheckIds(checks, checkMode === 'element' ? 'element' : 'section');
-    const currentIdx = allIds.indexOf(activeCheckId || '');
-
-    if (currentIdx === -1 || currentIdx === allIds.length - 1) {
+    const currentIdx = sortedCheckIds.indexOf(activeCheckId || '');
+    if (currentIdx === -1 || currentIdx === sortedCheckIds.length - 1) {
       navigateToCheck(null);
     } else {
-      navigateToCheck(allIds[currentIdx + 1]);
+      navigateToCheck(sortedCheckIds[currentIdx + 1]);
     }
   };
 
@@ -568,7 +568,7 @@ export default function AssessmentClient({
     }
   }, [assessment.id]);
 
-  const handleModeChange = async (newMode: 'section' | 'element' | 'summary' | 'gallery') => {
+  const handleModeChange = (newMode: 'section' | 'element' | 'summary' | 'gallery') => {
     setCheckMode(newMode);
     localStorage.setItem(`checkMode-${assessment.id}`, newMode);
 
@@ -578,27 +578,16 @@ export default function AssessmentClient({
       return;
     }
 
-    // Fetch data when switching between section and element modes
-    try {
-      const checksRes = await fetch(`/api/assessments/${assessment.id}/checks?mode=${newMode}`);
-      if (checksRes.ok) {
-        const updatedChecks = await checksRes.json();
-        setChecks(updatedChecks);
-
-        // Try to restore last selection for this mode (better UX)
-        const lastSelection = lastSelectionPerMode.current[newMode];
-        if (lastSelection && updatedChecks.some((c: any) => c.id === lastSelection.checkId)) {
-          dispatchDetailPanel({
-            type: 'SELECT_CHECK',
-            checkId: lastSelection.checkId,
-            filterToSectionKey: lastSelection.filterToSectionKey,
-          });
-        } else {
-          closeDetailPanel();
-        }
-      }
-    } catch {
-      // Silently ignore - user can retry mode switch
+    // Try to restore last selection for this mode
+    const lastSelection = lastSelectionPerMode.current[newMode];
+    if (lastSelection && checks.some(c => c.id === lastSelection.checkId)) {
+      dispatchDetailPanel({
+        type: 'SELECT_CHECK',
+        checkId: lastSelection.checkId,
+        filterToSectionKey: lastSelection.filterToSectionKey,
+      });
+    } else {
+      closeDetailPanel();
     }
   };
 
@@ -765,9 +754,7 @@ export default function AssessmentClient({
         return;
       }
 
-      const mode = checkMode === 'element' ? 'element' : 'section';
-      const allIds = getAllCheckIds(displayedChecks, mode);
-      const currentIdx = allIds.indexOf(activeCheckId || '');
+      const currentIdx = sortedCheckIds.indexOf(activeCheckId || '');
 
       // Arrow Up/Down: Navigate between checks
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -776,12 +763,12 @@ export default function AssessmentClient({
 
         if (e.key === 'ArrowUp' && currentIdx > 0) {
           nextIdx = currentIdx - 1;
-        } else if (e.key === 'ArrowDown' && currentIdx < allIds.length - 1) {
+        } else if (e.key === 'ArrowDown' && currentIdx < sortedCheckIds.length - 1) {
           nextIdx = currentIdx + 1;
         }
 
         if (nextIdx !== currentIdx) {
-          navigateToCheck(allIds[nextIdx]);
+          navigateToCheck(sortedCheckIds[nextIdx]);
         }
       }
 
@@ -794,7 +781,7 @@ export default function AssessmentClient({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeCheckId, displayedChecks, checkMode, isPdfSearchOpen]);
+  }, [activeCheckId, sortedCheckIds, isPdfSearchOpen]);
 
   return (
     <div className="fixed inset-0 flex overflow-hidden">
