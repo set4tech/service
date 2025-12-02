@@ -93,22 +93,25 @@ def _setup_langfuse():
             headers={"Authorization": f"Basic {auth}"},
         )
         # Use SimpleSpanProcessor for immediate export (easier debugging)
-        # Add a logging processor to confirm spans are created
+        # Wrap the OTLP exporter to log results
         from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-        class LoggingExporter(SpanExporter):
+        class LoggingOTLPExporter(SpanExporter):
+            def __init__(self, wrapped_exporter):
+                self._wrapped = wrapped_exporter
+
             def export(self, spans):
                 for span in spans:
                     logger.info(f"[Tracing] Exporting span: {span.name}")
-                return SpanExportResult.SUCCESS
+                result = self._wrapped.export(spans)
+                logger.info(f"[Tracing] Export result: {result}")
+                return result
+
             def shutdown(self):
-                pass
+                self._wrapped.shutdown()
 
-        # Log spans before exporting
-        logging_processor = SimpleSpanProcessor(LoggingExporter())
-        tracer_provider.add_span_processor(logging_processor)
-
-        span_processor = SimpleSpanProcessor(otlp_exporter)
+        logging_exporter = LoggingOTLPExporter(otlp_exporter)
+        span_processor = SimpleSpanProcessor(logging_exporter)
         tracer_provider.add_span_processor(span_processor)
 
         # Instrument Anthropic client
