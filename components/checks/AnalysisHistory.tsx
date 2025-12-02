@@ -1,7 +1,12 @@
 'use client';
 
-import type { AnalysisRun, SectionResult } from '@/types/analysis';
-import { getComplianceStatusColor, getConfidenceBadge, getComplianceStatusBadgeColor } from '@/lib/utils/status-badges';
+import { useState } from 'react';
+import type { AnalysisRun, SectionResult, AgentReasoningStep } from '@/types/analysis';
+import {
+  getComplianceStatusColor,
+  getConfidenceBadge,
+  getComplianceStatusBadgeColor,
+} from '@/lib/utils/status-badges';
 
 interface AnalysisHistoryProps {
   runs: AnalysisRun[];
@@ -10,7 +15,26 @@ interface AnalysisHistoryProps {
   onToggleRun: (runId: string) => void;
 }
 
-export function AnalysisHistory({ runs, loading, expandedRuns, onToggleRun }: AnalysisHistoryProps) {
+export function AnalysisHistory({
+  runs,
+  loading,
+  expandedRuns,
+  onToggleRun,
+}: AnalysisHistoryProps) {
+  const [expandedTraces, setExpandedTraces] = useState<Set<string>>(new Set());
+
+  const toggleTrace = (runId: string) => {
+    setExpandedTraces(prev => {
+      const next = new Set(prev);
+      if (next.has(runId)) {
+        next.delete(runId);
+      } else {
+        next.add(runId);
+      }
+      return next;
+    });
+  };
+
   if (loading) {
     return <div className="text-sm text-gray-500">Loading history...</div>;
   }
@@ -29,6 +53,8 @@ export function AnalysisHistory({ runs, loading, expandedRuns, onToggleRun }: An
         const isExpanded = expandedRuns.has(run.id);
         const statusColors = getComplianceStatusColor(run.compliance_status);
         const isBatchedRun = run.batch_group_id && (run.total_batches ?? 0) > 1;
+        const isAgentRun = run.source === 'agent';
+        const isTraceExpanded = expandedTraces.has(run.id);
 
         return (
           <div key={run.id} className="border border-gray-200 rounded overflow-hidden">
@@ -46,10 +72,17 @@ export function AnalysisHistory({ runs, loading, expandedRuns, onToggleRun }: An
                     </span>
                   )}
                 </span>
+                {isAgentRun && (
+                  <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
+                    Agent
+                  </span>
+                )}
                 <span className={`text-xs px-2 py-0.5 rounded border font-medium ${statusColors}`}>
                   {run.compliance_status.replace('_', ' ')}
                 </span>
-                <span className={`text-xs px-2 py-0.5 rounded font-medium ${getConfidenceBadge(run.confidence)}`}>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded font-medium ${getConfidenceBadge(run.confidence)}`}
+                >
                   {run.confidence}
                 </span>
                 <span className="text-xs text-gray-500 truncate">{run.ai_model}</span>
@@ -60,7 +93,12 @@ export function AnalysisHistory({ runs, loading, expandedRuns, onToggleRun }: An
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </button>
 
@@ -143,8 +181,12 @@ export function AnalysisHistory({ runs, loading, expandedRuns, onToggleRun }: An
                     <div className="text-xs font-semibold text-red-700 mb-1">Violations</div>
                     <ul className="space-y-1">
                       {run.violations.map((v: any, idx: number) => (
-                        <li key={idx} className="text-sm text-gray-800 pl-3 border-l-2 border-red-300">
-                          <span className="font-medium text-red-700">[{v.severity}]</span> {v.description}
+                        <li
+                          key={idx}
+                          className="text-sm text-gray-800 pl-3 border-l-2 border-red-300"
+                        >
+                          <span className="font-medium text-red-700">[{v.severity}]</span>{' '}
+                          {v.description}
                         </li>
                       ))}
                     </ul>
@@ -157,11 +199,76 @@ export function AnalysisHistory({ runs, loading, expandedRuns, onToggleRun }: An
                     <div className="text-xs font-semibold text-blue-700 mb-1">Recommendations</div>
                     <ul className="space-y-1">
                       {run.recommendations.map((rec: string, idx: number) => (
-                        <li key={idx} className="text-sm text-gray-800 pl-3 border-l-2 border-blue-300">
+                        <li
+                          key={idx}
+                          className="text-sm text-gray-800 pl-3 border-l-2 border-blue-300"
+                        >
                           {rec}
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {/* Agent Reasoning Trace */}
+                {isAgentRun && run.reasoning_trace && run.reasoning_trace.length > 0 && (
+                  <div className="mt-2">
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        toggleTrace(run.id);
+                      }}
+                      className="text-xs text-purple-600 hover:text-purple-700 cursor-pointer font-medium"
+                    >
+                      {isTraceExpanded ? '- Hide' : '+ View'} Agent Reasoning (
+                      {run.iteration_count || run.reasoning_trace.length} steps)
+                    </button>
+                    {isTraceExpanded && (
+                      <div className="mt-2 space-y-1 text-xs bg-gray-50 p-2 rounded max-h-48 overflow-y-auto">
+                        {run.reasoning_trace.map((step: AgentReasoningStep, i: number) => (
+                          <div
+                            key={i}
+                            className={`p-1 rounded ${
+                              step.type === 'tool_use'
+                                ? 'text-purple-600 bg-purple-50'
+                                : step.type === 'tool_result'
+                                  ? 'text-green-600 bg-green-50'
+                                  : 'text-gray-700'
+                            }`}
+                          >
+                            {step.type === 'thinking' && (
+                              <span>
+                                {step.content?.substring(0, 150)}
+                                {(step.content?.length ?? 0) > 150 ? '...' : ''}
+                              </span>
+                            )}
+                            {step.type === 'tool_use' && (
+                              <span className="font-mono">{step.tool}()</span>
+                            )}
+                            {step.type === 'tool_result' && (
+                              <span className="font-mono">← {step.tool} result</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Agent Tools Used */}
+                {isAgentRun && run.tools_used && run.tools_used.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-semibold text-purple-700 mb-1">Tools Used</div>
+                    <div className="flex flex-wrap gap-1">
+                      {run.tools_used.map((tool: string, idx: number) => (
+                        <span
+                          key={idx}
+                          className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded font-mono"
+                        >
+                          {tool}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

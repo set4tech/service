@@ -31,6 +31,21 @@ export interface AnalysisRun {
   total_batches?: number;
   section_keys_in_batch?: string[];
   section_results?: SectionResult[];
+  // Agent-specific fields
+  source?: 'ai' | 'agent';
+  reasoning_trace?: AgentReasoningStep[];
+  tools_used?: string[];
+  iteration_count?: number;
+}
+
+export interface AgentReasoningStep {
+  iteration: number;
+  type: 'thinking' | 'tool_use' | 'tool_result';
+  content?: string;
+  tool?: string;
+  tool_use_id?: string;
+  input?: Record<string, unknown>;
+  result?: Record<string, unknown>;
 }
 
 export interface CodeSection {

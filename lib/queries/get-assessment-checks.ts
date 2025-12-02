@@ -155,34 +155,61 @@ export async function getAssessmentChecks(
       });
     }
 
-    // Fetch latest analysis runs and screenshots in parallel
-    const [{ data: allAnalysisRuns }, { data: allScreenshots }] = await Promise.all([
-      supabase
-        .from('analysis_runs')
-        .select(
-          'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, checks!inner(assessment_id)'
-        )
-        .eq('checks.assessment_id', assessmentId)
-        .order('run_number', { ascending: false }),
-      supabase
-        .from('screenshot_check_assignments')
-        .select(
-          `
+    // Fetch latest analysis runs (both AI and agent) and screenshots in parallel
+    const [{ data: allAnalysisRuns }, { data: allAgentRuns }, { data: allScreenshots }] =
+      await Promise.all([
+        supabase
+          .from('analysis_runs')
+          .select(
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, executed_at, checks!inner(assessment_id)'
+          )
+          .eq('checks.assessment_id', assessmentId)
+          .order('run_number', { ascending: false }),
+        supabase
+          .from('agent_analysis_runs')
+          .select(
+            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, completed_at, reasoning_trace, tools_used, iteration_count, checks!inner(assessment_id)'
+          )
+          .eq('checks.assessment_id', assessmentId)
+          .eq('status', 'completed')
+          .order('run_number', { ascending: false }),
+        supabase
+          .from('screenshot_check_assignments')
+          .select(
+            `
           check_id,
           is_original,
           screenshots (*),
           checks!inner(assessment_id)
         `
-        )
-        .eq('checks.assessment_id', assessmentId)
-        .order('screenshots(created_at)', { ascending: true }),
-    ]);
+          )
+          .eq('checks.assessment_id', assessmentId)
+          .order('screenshots(created_at)', { ascending: true }),
+      ]);
 
-    // Create analysis map - get latest run per check
+    // Create analysis map - get latest run per check from either table
     const analysisMap = new Map();
+
+    // Add AI runs first
     (allAnalysisRuns || []).forEach((run: any) => {
       if (!analysisMap.has(run.check_id)) {
-        analysisMap.set(run.check_id, run);
+        analysisMap.set(run.check_id, { ...run, source: 'ai' });
+      }
+    });
+
+    // Add agent runs, replace if newer
+    (allAgentRuns || []).forEach((run: any) => {
+      const existing = analysisMap.get(run.check_id);
+      const agentRunWithDate = {
+        ...run,
+        executed_at: run.completed_at,
+        source: 'agent',
+      };
+      if (
+        !existing ||
+        new Date(run.completed_at) > new Date(existing.executed_at || existing.completed_at)
+      ) {
+        analysisMap.set(run.check_id, agentRunWithDate);
       }
     });
 
@@ -351,30 +378,41 @@ export async function getAssessmentChecks(
     console.log(`[getAssessmentChecks] After element mode filter: ${allChecks.length} checks`);
   }
 
-  // Fetch screenshots and analysis runs in parallel
-  const [{ data: allScreenshots }, { data: allAnalysisRuns }] = await Promise.all([
-    supabase
-      .from('screenshot_check_assignments')
-      .select(
-        `
+  // Fetch screenshots and analysis runs (both AI and agent) in parallel
+  const [{ data: allScreenshots }, { data: allAnalysisRuns }, { data: allAgentRuns }] =
+    await Promise.all([
+      supabase
+        .from('screenshot_check_assignments')
+        .select(
+          `
         check_id,
         is_original,
         screenshots (*),
         checks!inner(assessment_id)
       `
-      )
-      .eq('checks.assessment_id', assessmentId)
-      .order('screenshots(created_at)', { ascending: true }),
-    allChecks.length > 0
-      ? supabase
-          .from('analysis_runs')
-          .select(
-            'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, checks!inner(assessment_id)'
-          )
-          .eq('checks.assessment_id', assessmentId)
-          .order('run_number', { ascending: false })
-      : Promise.resolve({ data: null }),
-  ]);
+        )
+        .eq('checks.assessment_id', assessmentId)
+        .order('screenshots(created_at)', { ascending: true }),
+      allChecks.length > 0
+        ? supabase
+            .from('analysis_runs')
+            .select(
+              'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, executed_at, checks!inner(assessment_id)'
+            )
+            .eq('checks.assessment_id', assessmentId)
+            .order('run_number', { ascending: false })
+        : Promise.resolve({ data: null }),
+      allChecks.length > 0
+        ? supabase
+            .from('agent_analysis_runs')
+            .select(
+              'check_id, run_number, compliance_status, confidence, ai_reasoning, violations, recommendations, completed_at, reasoning_trace, tools_used, iteration_count, checks!inner(assessment_id)'
+            )
+            .eq('checks.assessment_id', assessmentId)
+            .eq('status', 'completed')
+            .order('run_number', { ascending: false })
+        : Promise.resolve({ data: null }),
+    ]);
 
   console.log('[getAssessmentChecks] Fetched screenshot assignments:', allScreenshots?.length || 0);
 
@@ -390,11 +428,29 @@ export async function getAssessmentChecks(
     return (a.code_section_number || '').localeCompare(b.code_section_number || '');
   });
 
-  // Create analysis map - get latest run per check
+  // Create analysis map - get latest run per check from either table
   const analysisMap = new Map();
+
+  // Add AI runs first
   (allAnalysisRuns || []).forEach((run: any) => {
     if (!analysisMap.has(run.check_id)) {
-      analysisMap.set(run.check_id, run);
+      analysisMap.set(run.check_id, { ...run, source: 'ai' });
+    }
+  });
+
+  // Add agent runs, replace if newer
+  (allAgentRuns || []).forEach((run: any) => {
+    const existing = analysisMap.get(run.check_id);
+    const agentRunWithDate = {
+      ...run,
+      executed_at: run.completed_at,
+      source: 'agent',
+    };
+    if (
+      !existing ||
+      new Date(run.completed_at) > new Date(existing.executed_at || existing.completed_at)
+    ) {
+      analysisMap.set(run.check_id, agentRunWithDate);
     }
   });
 
