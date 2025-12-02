@@ -93,6 +93,21 @@ def _setup_langfuse():
             headers={"Authorization": f"Basic {auth}"},
         )
         # Use SimpleSpanProcessor for immediate export (easier debugging)
+        # Add a logging processor to confirm spans are created
+        from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+
+        class LoggingExporter(SpanExporter):
+            def export(self, spans):
+                for span in spans:
+                    logger.info(f"[Tracing] Exporting span: {span.name}")
+                return SpanExportResult.SUCCESS
+            def shutdown(self):
+                pass
+
+        # Log spans before exporting
+        logging_processor = SimpleSpanProcessor(LoggingExporter())
+        tracer_provider.add_span_processor(logging_processor)
+
         span_processor = SimpleSpanProcessor(otlp_exporter)
         tracer_provider.add_span_processor(span_processor)
 
