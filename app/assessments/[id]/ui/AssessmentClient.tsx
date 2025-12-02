@@ -171,48 +171,63 @@ export default function AssessmentClient({
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
   const [existingAgentRun, setExistingAgentRun] = useState<AgentRun | null>(null);
 
-  // Check for running agent on mount and poll while running
+  // Check for running agent on mount
   useEffect(() => {
-    let pollInterval: NodeJS.Timeout | null = null;
-
     async function checkAgentStatus() {
       try {
         const res = await fetch(`/api/assessments/${assessment.id}/agent/status`);
         if (res.ok) {
           const data: AgentRun = await res.json();
-          console.log('[AssessmentClient] Agent status check:', data.status, data.progress);
-
+          console.log('[AssessmentClient] Initial agent status check:', data.status);
           if (data.status === 'running' || data.status === 'pending') {
             setExistingAgentRun(data);
-            // Start polling if not already
-            if (!pollInterval) {
-              pollInterval = setInterval(checkAgentStatus, 2000);
-            }
-          } else {
-            // Agent finished or failed, stop polling and clear state
-            setExistingAgentRun(null);
-            if (pollInterval) {
-              clearInterval(pollInterval);
-              pollInterval = null;
-            }
           }
-        } else {
-          // No agent run found (404)
-          setExistingAgentRun(null);
         }
       } catch (e) {
         console.log('[AssessmentClient] Agent status check failed:', e);
       }
     }
-
     checkAgentStatus();
+  }, [assessment.id]);
+
+  // Poll for updates while agent is running
+  useEffect(() => {
+    if (
+      !existingAgentRun ||
+      (existingAgentRun.status !== 'running' && existingAgentRun.status !== 'pending')
+    ) {
+      return;
+    }
+
+    console.log('[AssessmentClient] Starting poll for agent:', existingAgentRun.id);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/assessments/${assessment.id}/agent/status?runId=${existingAgentRun.id}`
+        );
+        if (res.ok) {
+          const data: AgentRun = await res.json();
+          console.log('[AssessmentClient] Poll update:', data.status, data.progress);
+
+          if (data.status === 'running' || data.status === 'pending') {
+            setExistingAgentRun(data);
+          } else {
+            // Agent finished or failed
+            console.log('[AssessmentClient] Agent finished:', data.status);
+            setExistingAgentRun(null);
+          }
+        }
+      } catch (e) {
+        console.log('[AssessmentClient] Poll failed:', e);
+      }
+    }, 2000);
 
     return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
+      console.log('[AssessmentClient] Stopping poll');
+      clearInterval(pollInterval);
     };
-  }, [assessment.id]);
+  }, [assessment.id, existingAgentRun?.id, existingAgentRun?.status]);
 
   // Debug: Log screenshots on initial load
   useEffect(() => {
