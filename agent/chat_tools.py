@@ -17,6 +17,35 @@ from typing import Any, Optional, List
 logger = logging.getLogger(__name__)
 
 
+def _parse_page_number(page_key: Any) -> Optional[int]:
+    """
+    Extract numeric page number from various page key formats.
+
+    Handles:
+    - Integer: 0, 1, 2
+    - String integer: "0", "1", "2"
+    - Filename: "page_001.png", "page_1.png", "page001.png"
+
+    Returns None if unable to parse.
+    """
+    if isinstance(page_key, int):
+        return page_key
+
+    if isinstance(page_key, str):
+        # Try direct integer conversion first
+        try:
+            return int(page_key)
+        except ValueError:
+            pass
+
+        # Try to extract number from filename pattern like "page_001.png"
+        match = re.search(r'page[_-]?(\d+)', page_key, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+
+    return None
+
+
 # =============================================================================
 # TOOL DEFINITIONS (8 tools for chat agent)
 # =============================================================================
@@ -403,7 +432,8 @@ class ChatToolExecutor:
                             info["code_data"].append(row)
 
             # Search text on early pages for common metadata patterns
-            if int(page_num) <= 2:
+            parsed_page = _parse_page_number(page_num)
+            if parsed_page is not None and parsed_page <= 2:
                 text = self.text_index.get(page_num, "")
 
                 # Look for construction type
@@ -499,13 +529,18 @@ class ChatToolExecutor:
         if page_num is None:
             return {"result": {"error": f"Sheet {sheet_id} not found"}}
 
+        # Parse page number for pattern matching
+        parsed_page = _parse_page_number(page_num)
+
         # Find the image file - try common naming patterns
         image_path = None
         patterns_to_try = [
-            f"page_{int(page_num):03d}.png",
-            f"page_{page_num}.png",
+            f"page_{page_num}.png",  # Use original key as-is
             f"page{page_num}.png",
         ]
+        # Add zero-padded pattern if we have a numeric page number
+        if parsed_page is not None:
+            patterns_to_try.insert(0, f"page_{parsed_page:03d}.png")
 
         for pattern in patterns_to_try:
             candidate = self.images_dir / pattern
@@ -513,13 +548,19 @@ class ChatToolExecutor:
                 image_path = candidate
                 break
 
-        # Also try glob patterns
-        if not image_path:
-            for pattern in [f"*page_{page_num}*.png", f"*page{page_num}*.png"]:
+        # Also try glob patterns using parsed numeric page
+        if not image_path and parsed_page is not None:
+            for pattern in [f"*page_{parsed_page}*.png", f"*page{parsed_page}*.png"]:
                 matches = list(self.images_dir.glob(pattern))
                 if matches:
                     image_path = matches[0]
                     break
+
+        # If page_num looks like a filename, try it directly
+        if not image_path and isinstance(page_num, str) and page_num.endswith('.png'):
+            candidate = self.images_dir / page_num
+            if candidate.exists():
+                image_path = candidate
 
         if not image_path or not image_path.exists():
             return {"result": {"error": f"Image file not found for page {page_num}"}}
