@@ -157,3 +157,4 @@ diff_report.json
 *.png
 test-results/
 playwright-report/
+.e2e-test-data.json
