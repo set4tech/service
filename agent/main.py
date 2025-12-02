@@ -234,6 +234,7 @@ def build_preprocess_pipeline():
     from steps.extract_legends import ExtractLegends
     from steps.extract_element_tags import ExtractElementTags
     from steps.match_tags_to_legends import MatchTagsToLegends
+    from steps.unify_and_upload import UnifyAndUpload
 
     return Pipeline([
         # Phase A: Sync preprocessing
@@ -260,6 +261,7 @@ def build_preprocess_pipeline():
         ExtractLegends(),  # Depends on ExtractTables
         MatchTagsToLegends(),  # Depends on ExtractElementTags and ExtractLegends
         CountSummary(),
+        UnifyAndUpload(),  # Final step: Unify data and upload to S3
     ])
 
 

@@ -126,6 +126,9 @@ PARALLEL_RATE_LIMIT_BASE_DELAY = _env_float("PARALLEL_RATE_LIMIT_BASE_DELAY", 2.
 # =============================================================================
 
 S3_BUCKET_NAME = _env_str("AWS_S3_BUCKET_NAME", "set4-data")
+AWS_REGION = _env_str("AWS_REGION", "us-east-1")
+AWS_ACCESS_KEY_ID = _env_str("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = _env_str("AWS_SECRET_ACCESS_KEY", "")
 
 
 # =============================================================================
