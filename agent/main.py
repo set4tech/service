@@ -477,12 +477,13 @@ async def chat(request: ChatRequest):
                 # (it's too large). Instead, send metadata and let frontend fetch if needed
                 if chunk.get("type") == "image":
                     # Send a simplified version without the huge base64 data
-                    yield f"data: {json.dumps({
+                    image_event = {
                         'type': 'image',
                         'tool': chunk.get('tool'),
                         'tool_use_id': chunk.get('tool_use_id'),
                         'metadata': chunk.get('metadata', {}),
-                    })}\n\n"
+                    }
+                    yield f"data: {json.dumps(image_event)}\n\n"
                 elif chunk.get("type") == "done":
                     yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
                 else:
