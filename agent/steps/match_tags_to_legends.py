@@ -186,6 +186,18 @@ def match_tags_to_legends(tags: list[str], legend_entries: list[dict]) -> dict:
             )
 
         parsed = json.loads(response_text)
+        # Handle case where LLM returns an array instead of object
+        if isinstance(parsed, list):
+            if len(parsed) > 0 and isinstance(parsed[0], dict):
+                logger.warning(f"LLM returned array, using first element")
+                parsed = parsed[0]
+            else:
+                return {
+                    "matches": [],
+                    "unmatched_tags": tags,
+                    "notes": "LLM returned array instead of object",
+                    "status": "json_error"
+                }
         parsed["status"] = "success"
         return parsed
 

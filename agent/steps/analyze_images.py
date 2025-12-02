@@ -95,7 +95,18 @@ def analyze_image_region(image: Image.Image) -> dict | None:
         return None
 
     try:
-        return json.loads(result["text"])
+        parsed = json.loads(result["text"])
+        # Handle case where LLM returns an array instead of object
+        if isinstance(parsed, list):
+            if len(parsed) > 0 and isinstance(parsed[0], dict):
+                logger.warning(f"LLM returned array, using first element")
+                return parsed[0]
+            else:
+                return {
+                    "raw_response": result["text"],
+                    "parse_error": "LLM returned array instead of object"
+                }
+        return parsed
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse VLM response as JSON: {e}")
         # Try to return the raw text in a structured format

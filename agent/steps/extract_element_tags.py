@@ -102,6 +102,20 @@ async def extract_tags_from_image_async(image, detection_info: dict) -> dict:
             )
 
         parsed = json.loads(response_text)
+        # Handle case where LLM returns an array instead of object
+        if isinstance(parsed, list):
+            if len(parsed) > 0 and isinstance(parsed[0], dict):
+                logger.warning(f"LLM returned array, using first element")
+                parsed = parsed[0]
+            else:
+                return {
+                    "tags_found": [],
+                    "tag_types": {},
+                    "confidence": "none",
+                    "readable": False,
+                    "notes": "LLM returned array instead of object",
+                    "status": "json_error"
+                }
         parsed["status"] = "success"
         return parsed
 

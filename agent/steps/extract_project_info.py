@@ -82,7 +82,15 @@ def parse_project_info_response(response_text: str) -> dict:
         text = "\n".join(lines)
 
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        # Handle case where LLM returns an array instead of object
+        if isinstance(parsed, list):
+            if len(parsed) > 0 and isinstance(parsed[0], dict):
+                logger.warning(f"LLM returned array, using first element")
+                return parsed[0]
+            else:
+                return {"error": "LLM returned array instead of object", "raw_response": response_text}
+        return parsed
     except json.JSONDecodeError as e:
         logger.warning(f"JSON parse error: {e}")
         logger.debug(f"Raw response: {response_text[:500]}")
