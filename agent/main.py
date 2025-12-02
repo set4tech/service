@@ -307,8 +307,40 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
 
             result = await pipeline.run_async(ctx, progress_callback=pipeline_progress)
 
-            # Save results
-            total_steps = base_steps + len(pipeline.steps)
+            # Upload to S3 for chat endpoint
+            total_steps = base_steps + len(pipeline.steps) + 1  # +1 for S3 upload
+            update_progress(agent_run_id, base_steps + len(pipeline.steps), total_steps, "Uploading to S3...")
+
+            s3 = get_s3()
+            bucket = get_bucket_name()
+
+            # Build unified JSON from pipeline results
+            unified_json = {
+                "assessment_id": assessment_id,
+                "pages": result.data,
+                "metadata": result.metadata,
+            }
+
+            # Upload unified JSON
+            json_key = _get_unified_json_s3_key(assessment_id)
+            logger.info(f"Uploading unified JSON to s3://{bucket}/{json_key}")
+            s3.put_object(
+                Bucket=bucket,
+                Key=json_key,
+                Body=json.dumps(unified_json, default=str),
+                ContentType='application/json'
+            )
+
+            # Upload page images
+            images_prefix = _get_images_s3_prefix(assessment_id)
+            for img_path in image_paths:
+                img_key = f"{images_prefix}{img_path.name}"
+                logger.info(f"Uploading {img_path.name} to s3://{bucket}/{img_key}")
+                s3.upload_file(str(img_path), bucket, img_key)
+
+            logger.info(f"Uploaded unified JSON and {len(image_paths)} images to S3")
+
+            # Save results to DB
             update_progress(agent_run_id, total_steps, total_steps, "Saving results...")
 
             db.table("agent_runs").update({
