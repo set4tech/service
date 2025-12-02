@@ -112,6 +112,16 @@ PIPELINE_FILTER_THRESHOLD = _env_float("PIPELINE_FILTER_THRESHOLD", 0.3)
 
 
 # =============================================================================
+# Parallel Processing
+# =============================================================================
+
+PARALLEL_VLM_CONCURRENCY = _env_int("PARALLEL_VLM_CONCURRENCY", 10)  # Max concurrent VLM calls
+PARALLEL_OCR_WORKERS = _env_int("PARALLEL_OCR_WORKERS", 4)  # CPU workers for Tesseract
+PARALLEL_RATE_LIMIT_RETRY = _env_int("PARALLEL_RATE_LIMIT_RETRY", 3)  # Max retries on rate limit
+PARALLEL_RATE_LIMIT_BASE_DELAY = _env_float("PARALLEL_RATE_LIMIT_BASE_DELAY", 2.0)  # Base delay in seconds
+
+
+# =============================================================================
 # S3 / Storage
 # =============================================================================
 
@@ -158,6 +168,11 @@ def get_config_dict() -> dict:
         "IMAGE_MIN_SIZE_FOR_SPLIT": IMAGE_MIN_SIZE_FOR_SPLIT,
         # Pipeline
         "PIPELINE_FILTER_THRESHOLD": PIPELINE_FILTER_THRESHOLD,
+        # Parallel Processing
+        "PARALLEL_VLM_CONCURRENCY": PARALLEL_VLM_CONCURRENCY,
+        "PARALLEL_OCR_WORKERS": PARALLEL_OCR_WORKERS,
+        "PARALLEL_RATE_LIMIT_RETRY": PARALLEL_RATE_LIMIT_RETRY,
+        "PARALLEL_RATE_LIMIT_BASE_DELAY": PARALLEL_RATE_LIMIT_BASE_DELAY,
         # S3
         "S3_BUCKET_NAME": S3_BUCKET_NAME,
     }
