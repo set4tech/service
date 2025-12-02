@@ -171,6 +171,11 @@ export default function AssessmentClient({
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
   const [existingAgentRun, setExistingAgentRun] = useState<AgentRun | null>(null);
 
+  // Debug: Log when existingAgentRun changes
+  useEffect(() => {
+    console.log('[AssessmentClient] existingAgentRun changed to:', existingAgentRun);
+  }, [existingAgentRun]);
+
   // Check for running agent on mount
   useEffect(() => {
     async function checkAgentStatus() {
