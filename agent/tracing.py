@@ -57,27 +57,46 @@ def setup_tracing():
 
 
 def _setup_langfuse():
-    """Configure Langfuse cloud tracing."""
+    """Configure Langfuse cloud tracing via OTEL."""
     global _instrumented
 
     try:
+        import base64
+        from opentelemetry import trace
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
-        from langfuse import Langfuse
 
-        # Initialize Langfuse (reads from env vars automatically)
-        langfuse = Langfuse()
+        # Get Langfuse credentials
+        public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+        secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
+        host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
+        # Set up tracer provider
+        tracer_provider = TracerProvider()
+        trace.set_tracer_provider(tracer_provider)
+
+        # Configure OTLP exporter to send to Langfuse's OTEL endpoint
+        # Langfuse accepts OTEL traces at /api/public/otel/v1/traces with Basic auth
+        auth = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
+        otlp_exporter = OTLPSpanExporter(
+            endpoint=f"{host}/api/public/otel/v1/traces",
+            headers={"Authorization": f"Basic {auth}"},
+        )
+        span_processor = BatchSpanProcessor(otlp_exporter)
+        tracer_provider.add_span_processor(span_processor)
 
         # Instrument Anthropic client
         AnthropicInstrumentor().instrument()
 
         _instrumented = True
-        host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
-        logger.info(f"[Tracing] Langfuse tracing enabled")
+        logger.info(f"[Tracing] Langfuse tracing enabled via OTEL")
         logger.info(f"[Tracing] View traces at {host}")
 
     except ImportError as e:
-        logger.warning(f"[Tracing] Could not import Langfuse libraries: {e}")
-        logger.warning("[Tracing] Run: pip install langfuse opentelemetry-instrumentation-anthropic")
+        logger.warning(f"[Tracing] Could not import tracing libraries: {e}")
+        logger.warning("[Tracing] Run: pip install opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-anthropic")
     except Exception as e:
         logger.warning(f"[Tracing] Failed to initialize Langfuse: {e}")
 
