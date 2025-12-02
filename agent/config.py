@@ -90,6 +90,10 @@ LLM_MODEL = _env_str("LLM_MODEL", "gemini-2.0-flash")
 LLM_MAX_TOKENS = _env_int("LLM_MAX_TOKENS", 8000)
 LLM_MAX_TOKENS_TEXT = _env_int("LLM_MAX_TOKENS_TEXT", 4000)  # For text-only calls
 
+# Helicone (LLM observability)
+HELICONE_ENABLED = _env_bool("HELICONE_ENABLED", True)
+HELICONE_API_KEY = _env_str("HELICONE_API_KEY", "")
+
 
 # =============================================================================
 # Image Processing
@@ -145,6 +149,9 @@ def get_config_dict() -> dict:
         "LLM_MODEL": LLM_MODEL,
         "LLM_MAX_TOKENS": LLM_MAX_TOKENS,
         "LLM_MAX_TOKENS_TEXT": LLM_MAX_TOKENS_TEXT,
+        # Helicone
+        "HELICONE_ENABLED": HELICONE_ENABLED,
+        "HELICONE_API_KEY": "***" if HELICONE_API_KEY else "",
         # Image
         "IMAGE_CROP_PADDING": IMAGE_CROP_PADDING,
         "IMAGE_QUADRANT_OVERLAP": IMAGE_QUADRANT_OVERLAP,

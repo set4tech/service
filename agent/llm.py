@@ -2,38 +2,72 @@
 LLM client management for the agent service.
 
 Provides a unified interface for calling different LLM providers.
+Uses Helicone for observability when configured.
 """
 import os
+import base64
 import logging
+from io import BytesIO
 from typing import Optional
 from PIL import Image
 
-import google.generativeai as genai
+from openai import OpenAI
 
 import config as cfg  # Avoid shadowing with local 'config' var
 
 logger = logging.getLogger(__name__)
 
 # Singleton clients
-_gemini_model: Optional[genai.GenerativeModel] = None
+_openai_client: Optional[OpenAI] = None
 
 
-def get_gemini(model_name: str = None) -> genai.GenerativeModel:
-    """Get or create Gemini model client."""
-    global _gemini_model
+def _get_client() -> OpenAI:
+    """Get or create OpenAI client (configured for Gemini via Helicone or direct)."""
+    global _openai_client
 
-    model_name = model_name or cfg.LLM_MODEL
+    if _openai_client is not None:
+        return _openai_client
 
-    if _gemini_model is None:
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY environment variable required")
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY environment variable required")
 
-        genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel(model_name)
-        logger.info(f"Initialized Gemini model: {model_name}")
+    # Check if Helicone is enabled
+    helicone_enabled = cfg.HELICONE_ENABLED and cfg.HELICONE_API_KEY
 
-    return _gemini_model
+    if helicone_enabled:
+        # Route through Helicone gateway
+        logger.info("Initializing LLM client with Helicone observability")
+        _openai_client = OpenAI(
+            api_key=api_key,
+            base_url="https://gateway.helicone.ai/v1beta/openai",
+            default_headers={
+                "Helicone-Auth": f"Bearer {cfg.HELICONE_API_KEY}",
+                "Helicone-Target-URL": "https://generativelanguage.googleapis.com",
+                "Helicone-Target-Provider": "Google",
+            },
+        )
+    else:
+        # Direct to Google's OpenAI-compatible endpoint
+        logger.info("Initializing LLM client (direct, no Helicone)")
+        _openai_client = OpenAI(
+            api_key=api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+
+    logger.info(f"LLM client initialized with model: {cfg.LLM_MODEL}")
+    return _openai_client
+
+
+def _image_to_base64(image: Image.Image) -> str:
+    """Convert PIL Image to base64 data URL."""
+    buffer = BytesIO()
+    # Convert to RGB if necessary (e.g., RGBA images)
+    if image.mode in ('RGBA', 'LA', 'P'):
+        image = image.convert('RGB')
+    image.save(buffer, format="JPEG", quality=85)
+    b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{b64}"
 
 
 def call_gemini(
@@ -50,42 +84,62 @@ def call_gemini(
             "text": str,           # Response text
             "status": "success" | "token_limit" | "error",
             "error": str | None,
-            "finish_reason": int | None,
+            "finish_reason": str | None,
         }
     """
-    model = get_gemini()
+    client = _get_client()
     max_tokens = max_tokens or cfg.LLM_MAX_TOKENS
+    model = cfg.LLM_MODEL
 
     try:
-        # Build content
-        content = [prompt]
+        # Build messages
         if image:
-            content.append(image)
+            # Vision request with image
+            content = [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": _image_to_base64(image)},
+                },
+            ]
+            messages = [{"role": "user", "content": content}]
+        else:
+            # Text-only request
+            messages = [{"role": "user", "content": prompt}]
 
-        # Build generation config
-        gen_config = genai.GenerationConfig(max_output_tokens=max_tokens)
+        logger.debug(f"Calling LLM model={model} max_tokens={max_tokens} has_image={image is not None}")
+
+        # Build request kwargs
+        kwargs = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+
         if json_mode:
-            gen_config = genai.GenerationConfig(
-                max_output_tokens=max_tokens,
-                response_mime_type="application/json"
-            )
+            kwargs["response_format"] = {"type": "json_object"}
 
-        response = model.generate_content(content, generation_config=gen_config)
+        response = client.chat.completions.create(**kwargs)
 
-        # Check finish reason (2 = MAX_TOKENS)
-        finish_reason = response.candidates[0].finish_reason if response.candidates else None
+        # Extract response
+        choice = response.choices[0]
+        finish_reason = choice.finish_reason
+        text = choice.message.content or ""
 
-        if finish_reason == 2:
-            logger.warning("Gemini hit token limit")
+        logger.debug(f"LLM response: finish_reason={finish_reason} text_len={len(text)}")
+
+        # Check for token limit
+        if finish_reason == "length":
+            logger.warning("LLM hit token limit")
             return {
-                "text": response.text if response.text else "",
+                "text": text.strip(),
                 "status": "token_limit",
                 "error": None,
                 "finish_reason": finish_reason,
             }
 
         return {
-            "text": response.text.strip(),
+            "text": text.strip(),
             "status": "success",
             "error": None,
             "finish_reason": finish_reason,
@@ -93,15 +147,15 @@ def call_gemini(
 
     except Exception as e:
         error_str = str(e)
-        logger.error(f"Gemini call failed: {error_str}")
+        logger.error(f"LLM call failed: {error_str}")
 
-        # Check if error is token limit (sometimes raises instead of returning)
-        if "finish_reason" in error_str and "2" in error_str:
+        # Check if error indicates token limit
+        if "length" in error_str.lower() or "token" in error_str.lower():
             return {
                 "text": "",
                 "status": "token_limit",
                 "error": error_str,
-                "finish_reason": 2,
+                "finish_reason": "length",
             }
 
         return {
