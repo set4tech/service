@@ -115,7 +115,7 @@ export function AgentAnalysisModal({
   const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset state when modal opens - check for existing run
+  // Handle modal open - check for existing run
   useEffect(() => {
     if (open) {
       if (existingRun && (existingRun.status === 'running' || existingRun.status === 'pending')) {
@@ -124,14 +124,23 @@ export function AgentAnalysisModal({
         setStatus('running');
         setAgentRun(existingRun);
         setError(null);
-      } else {
-        // Start fresh - show confirmation
+      }
+      // Don't reset if already completed/failed - let user see the result
+    }
+  }, [open, existingRun]);
+
+  // Reset state when modal closes (so next open starts fresh)
+  useEffect(() => {
+    if (!open && (status === 'completed' || status === 'failed')) {
+      // Delay reset slightly so user can see the final state before modal closes
+      const timer = setTimeout(() => {
         setStatus('confirming');
         setAgentRun(null);
         setError(null);
-      }
+      }, 300);
+      return () => clearTimeout(timer);
     }
-  }, [open, existingRun]);
+  }, [open, status]);
 
   // Poll for status updates when running
   useEffect(() => {
