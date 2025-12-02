@@ -187,18 +187,10 @@ export function AgentAnalysisModal({
       }
 
       const data = await res.json();
-      console.log('[AgentModal] Agent started:', data);
-      console.log('[AgentModal] data.agentRun:', data.agentRun);
-      console.log('[AgentModal] onRunStatusChange exists:', !!onRunStatusChange);
+      console.log('[AgentModal] Agent started:', data.agentRun?.id);
       setAgentRun(data.agentRun);
       // Notify parent that a new run started
-      if (onRunStatusChange) {
-        console.log('[AgentModal] Calling onRunStatusChange with:', data.agentRun);
-        onRunStatusChange(data.agentRun);
-        console.log('[AgentModal] onRunStatusChange called');
-      } else {
-        console.log('[AgentModal] WARNING: onRunStatusChange is not defined!');
-      }
+      onRunStatusChange?.(data.agentRun);
     } catch (err) {
       console.error('[AgentModal] Start error:', err);
       setStatus('failed');

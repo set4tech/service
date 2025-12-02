@@ -209,6 +209,8 @@ def build_preprocess_pipeline():
     from steps.extract_project_info import ExtractProjectInfo
     from steps.extract_sheet_info import ExtractSheetInfo
     from steps.extract_legends import ExtractLegends
+    from steps.extract_element_tags import ExtractElementTags
+    from steps.match_tags_to_legends import MatchTagsToLegends
 
     return Pipeline([
         FilterLowConfidence(threshold=config.PIPELINE_FILTER_THRESHOLD),
@@ -217,6 +219,8 @@ def build_preprocess_pipeline():
         OCRBboxes(),  # Uses config defaults
         ExtractTables(),  # Step 9: Extract tables from detected regions
         ExtractLegends(),  # Step 10: Post-process tables to extract legends
+        ExtractElementTags(),  # Step 11: Extract element tags (D-01, W-1, room numbers)
+        MatchTagsToLegends(),  # Step 12: Match tags to legend entries
         ExtractProjectInfo(),  # Step 6: Extract project metadata from cover sheets
         ExtractSheetInfo(),  # Step 7: Extract sheet number/title from each page
         CountSummary(),

@@ -6,6 +6,8 @@ from .extract_text import ExtractText
 from .ocr_bboxes import OCRBboxes, OCRTextBoxes, OCRAllRegions
 from .extract_project_info import ExtractProjectInfo
 from .extract_legends import ExtractLegends
+from .extract_element_tags import ExtractElementTags
+from .match_tags_to_legends import MatchTagsToLegends
 
 __all__ = [
     "ExtractTables",
@@ -15,4 +17,6 @@ __all__ = [
     "OCRAllRegions",
     "ExtractProjectInfo",
     "ExtractLegends",
+    "ExtractElementTags",
+    "MatchTagsToLegends",
 ]
