@@ -257,6 +257,90 @@ export default function AssessmentClient({
     }
   }, [checks, checkMode]);
 
+  // Natural sort comparator (matches CheckList logic)
+  const naturalCompare = (a: string, b: string): number => {
+    const regex = /(\d+)|(\D+)/g;
+    const aParts = a.match(regex) || [];
+    const bParts = b.match(regex) || [];
+
+    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+      const aPart = aParts[i] || '';
+      const bPart = bParts[i] || '';
+      const aNum = parseInt(aPart, 10);
+      const bNum = parseInt(bPart, 10);
+
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        if (aNum !== bNum) return aNum - bNum;
+      } else {
+        if (aPart !== bPart) return aPart.localeCompare(bPart);
+      }
+    }
+    return 0;
+  };
+
+  // Helper: Get all navigable check IDs in the SAME ORDER as displayed in CheckList
+  const getAllCheckIds = (checksList: CheckData[], mode: 'section' | 'element') => {
+    const ids: string[] = [];
+    const mainGroups = new Map<string, CheckData[]>();
+
+    // Group checks exactly like CheckList does
+    if (mode === 'element') {
+      checksList.forEach(check => {
+        if (!check.element_group_id || !(check as any).instance_label) return;
+        const groupName = (check as any).element_group_name || 'Other';
+        if (!mainGroups.has(groupName)) {
+          mainGroups.set(groupName, []);
+        }
+        mainGroups.get(groupName)!.push(check);
+      });
+      // Sort each group by creation date (oldest first)
+      mainGroups.forEach(group => {
+        group.sort((a, b) => {
+          const aTime = new Date((a as any).created_at || 0).getTime();
+          const bTime = new Date((b as any).created_at || 0).getTime();
+          return aTime - bTime; // Oldest first
+        });
+      });
+    } else {
+      // Section mode: group by section prefix
+      checksList.forEach(check => {
+        const sectionNumber = (check as any).code_section_number || '';
+        const mainPrefix = sectionNumber.split('-')[0] || 'Other';
+        if (!mainGroups.has(mainPrefix)) {
+          mainGroups.set(mainPrefix, []);
+        }
+        mainGroups.get(mainPrefix)!.push(check);
+      });
+      // Sort each group by section number using natural sort
+      mainGroups.forEach(group => {
+        group.sort((a, b) =>
+          naturalCompare((a as any).code_section_number || '', (b as any).code_section_number || '')
+        );
+      });
+    }
+
+    // Sort groups by name/prefix
+    const sortedGroups = Array.from(mainGroups.entries()).sort(([a], [b]) => naturalCompare(a, b));
+
+    // Flatten into ID list, including instances
+    sortedGroups.forEach(([_, checks]) => {
+      checks.forEach(check => {
+        ids.push(check.id);
+        if (check.instances?.length) {
+          // Sort instances by creation date (oldest first)
+          const sortedInstances = [...check.instances].sort((a, b) => {
+            const aTime = new Date((a as any).created_at || 0).getTime();
+            const bTime = new Date((b as any).created_at || 0).getTime();
+            return aTime - bTime; // Oldest first
+          });
+          sortedInstances.forEach(instance => ids.push(instance.id));
+        }
+      });
+    });
+
+    return ids;
+  };
+
   // Pre-compute sorted check IDs for keyboard navigation (expensive sort, only recompute when checks change)
   const sortedCheckIds = useMemo(() => {
     if (checkMode === 'summary' || checkMode === 'gallery' || checkMode === 'chat') return [];
@@ -374,90 +458,6 @@ export default function AssessmentClient({
       checkId: violation.checkId,
       filterToSectionKey: violation.codeSectionKey || null,
     });
-  };
-
-  // Natural sort comparator (matches CheckList logic)
-  const naturalCompare = (a: string, b: string): number => {
-    const regex = /(\d+)|(\D+)/g;
-    const aParts = a.match(regex) || [];
-    const bParts = b.match(regex) || [];
-
-    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-      const aPart = aParts[i] || '';
-      const bPart = bParts[i] || '';
-      const aNum = parseInt(aPart, 10);
-      const bNum = parseInt(bPart, 10);
-
-      if (!isNaN(aNum) && !isNaN(bNum)) {
-        if (aNum !== bNum) return aNum - bNum;
-      } else {
-        if (aPart !== bPart) return aPart.localeCompare(bPart);
-      }
-    }
-    return 0;
-  };
-
-  // Helper: Get all navigable check IDs in the SAME ORDER as displayed in CheckList
-  const getAllCheckIds = (checksList: CheckData[], mode: 'section' | 'element') => {
-    const ids: string[] = [];
-    const mainGroups = new Map<string, CheckData[]>();
-
-    // Group checks exactly like CheckList does
-    if (mode === 'element') {
-      checksList.forEach(check => {
-        if (!check.element_group_id || !(check as any).instance_label) return;
-        const groupName = (check as any).element_group_name || 'Other';
-        if (!mainGroups.has(groupName)) {
-          mainGroups.set(groupName, []);
-        }
-        mainGroups.get(groupName)!.push(check);
-      });
-      // Sort each group by creation date (oldest first)
-      mainGroups.forEach(group => {
-        group.sort((a, b) => {
-          const aTime = new Date((a as any).created_at || 0).getTime();
-          const bTime = new Date((b as any).created_at || 0).getTime();
-          return aTime - bTime; // Oldest first
-        });
-      });
-    } else {
-      // Section mode: group by section prefix
-      checksList.forEach(check => {
-        const sectionNumber = (check as any).code_section_number || '';
-        const mainPrefix = sectionNumber.split('-')[0] || 'Other';
-        if (!mainGroups.has(mainPrefix)) {
-          mainGroups.set(mainPrefix, []);
-        }
-        mainGroups.get(mainPrefix)!.push(check);
-      });
-      // Sort each group by section number using natural sort
-      mainGroups.forEach(group => {
-        group.sort((a, b) =>
-          naturalCompare((a as any).code_section_number || '', (b as any).code_section_number || '')
-        );
-      });
-    }
-
-    // Sort groups by name/prefix
-    const sortedGroups = Array.from(mainGroups.entries()).sort(([a], [b]) => naturalCompare(a, b));
-
-    // Flatten into ID list, including instances
-    sortedGroups.forEach(([_, checks]) => {
-      checks.forEach(check => {
-        ids.push(check.id);
-        if (check.instances?.length) {
-          // Sort instances by creation date (oldest first)
-          const sortedInstances = [...check.instances].sort((a, b) => {
-            const aTime = new Date((a as any).created_at || 0).getTime();
-            const bTime = new Date((b as any).created_at || 0).getTime();
-            return aTime - bTime; // Oldest first
-          });
-          sortedInstances.forEach(instance => ids.push(instance.id));
-        }
-      });
-    });
-
-    return ids;
   };
 
   // Helper: Navigate to a check by ID
