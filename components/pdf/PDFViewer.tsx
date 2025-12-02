@@ -22,18 +22,23 @@ import {
   updateSelection,
   clearSelection,
 } from './types';
+import { PDFToolbar } from './PDFToolbar';
+import { PDFModeBanner } from './PDFModeBanner';
+import { PDFScreenshotNavigation } from './PDFScreenshotNavigation';
+import { PDFLayerPanel } from './PDFLayerPanel';
+import { PDFPageControls } from './PDFPageControls';
 import { usePresignedUrl } from '@/hooks/usePresignedUrl';
 import { usePdfDocument } from '@/hooks/usePdfDocument';
 import { usePdfLayers } from '@/hooks/usePdfLayers';
 import { usePdfPersistence } from '@/hooks/usePdfPersistence';
-import { useViewTransform, screenToContent } from '@/hooks/useViewTransform';
+import { useViewTransform } from '@/hooks/useViewTransform';
 import { useMeasurements } from '@/hooks/useMeasurements';
 import { useCalibration } from '@/hooks/useCalibration';
 import { useScreenshotCapture } from '@/hooks/useScreenshotCapture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { usePdfMouseHandlers } from '@/hooks/usePdfMouseHandlers';
 import { useAssessmentData } from '@/hooks/useAssessmentData';
 import { renderPdfPage } from '@/lib/pdf/canvas-utils';
-import { lineIntersectsRect } from '@/lib/pdf/geometry-utils';
 
 // Use the unpkg CDN which is more reliable for Vercel deployments
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -41,9 +46,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 // Stable empty function to avoid creating new functions on every render
 const NOOP = () => {};
 
-// Minimum distances to avoid accidental clicks being saved
+// Minimum distance to avoid accidental clicks being saved
 const MIN_MEASUREMENT_PIXELS = 2; // Minimum line length for measurements (very small to allow short measurements)
-const MIN_CALIBRATION_PIXELS = 10; // Minimum line length for calibration
 
 interface ViewerState {
   pageNumber: number;
@@ -159,11 +163,9 @@ export function PDFViewer({
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
-  const dragStartRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const onPageChangeRef = useRef(onPageChange);
   onPageChangeRef.current = onPageChange;
   const loadedScaleForRef = useRef<string | null>(null);
-  const lastClickTimeRef = useRef<number>(0);
 
   // ============================================================================
   // SECTION 2: PERSISTENCE & STATE
@@ -727,138 +729,22 @@ export function PDFViewer({
   );
 
   // Mouse handlers for pan / selection
-  const onMouseDown = (e: React.MouseEvent) => {
-    // Prevent rapid double-clicks from creating 0-pixel measurements
-    const now = Date.now();
-    const timeSinceLastClick = now - lastClickTimeRef.current;
-
-    if (timeSinceLastClick < 300 && state.mode.type === 'measure') {
-      return;
-    }
-    lastClickTimeRef.current = now;
-
-    // Special modes: only left-click for selection, no panning allowed
-    if ((state.mode.type !== 'idle' || isDrawingCalibrationLine) && !readOnly) {
-      if (e.button === 0) {
-        // Left-click only
-        e.preventDefault();
-        e.stopPropagation();
-        const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-        dispatch({ type: 'START_SELECTION', payload: { x, y } });
-      }
-      return;
-    }
-
-    // Idle mode left-click: selection box for measurements
-    if (e.button === 0 && state.mode.type === 'idle' && !readOnly) {
-      e.preventDefault();
-      e.stopPropagation();
-      const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-      dispatch({ type: 'START_SELECTION', payload: { x, y } });
-      return;
-    }
-
-    // Middle-click (1) or right-click (2) for panning
-    if (e.button === 1 || e.button === 2) {
-      e.preventDefault();
-      dispatch({ type: 'START_DRAG' });
-      dragStartRef.current = {
-        x: e.clientX,
-        y: e.clientY,
-        tx: transform.tx,
-        ty: transform.ty,
-      };
-    }
-  };
-
-  const onMouseMove = (e: React.MouseEvent) => {
-    // Handle selection box drawing in any mode that has selection
-    if (state.mode.type !== 'idle' || isDrawingCalibrationLine) {
-      if (state.mode.type !== 'idle' && state.mode.selection) {
-        e.preventDefault();
-        e.stopPropagation();
-        const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-        dispatch({ type: 'UPDATE_SELECTION', payload: { x, y } });
-      }
-      return;
-    }
-
-    // Idle mode with selection: update selection box
-    if (state.mode.type === 'idle' && state.mode.selection) {
-      e.preventDefault();
-      e.stopPropagation();
-      const { x, y } = screenToContent(transform, viewportRef.current, e.clientX, e.clientY);
-      dispatch({ type: 'UPDATE_SELECTION', payload: { x, y } });
-      return;
-    }
-
-    // Pan mode: update transform
-    if (!state.isDragging) return;
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
-    setTransform({
-      ...transform,
-      tx: dragStartRef.current.tx + dx,
-      ty: dragStartRef.current.ty + dy,
-    });
-  };
-
-  const onMouseUp = (e: React.MouseEvent) => {
-    if (state.mode.type === 'screenshot' && state.mode.selection) {
-      // Keep the selection visible so user can save it with button or keyboard shortcut
-      // Don't auto-clear like we do for measurements
-    } else if (state.mode.type === 'measure' && state.mode.selection) {
-      // Auto-save measurement (validation happens in saveMeasurement)
-      const selectionToSave = state.mode.selection;
-      // Clear selection immediately so it doesn't interfere with next drag
-      dispatch({ type: 'CLEAR_SELECTION' });
-      // Save async in background
-      saveMeasurement(selectionToSave);
-    } else if (isDrawingCalibrationLine && state.mode.type !== 'idle' && state.mode.selection) {
-      // Validate calibration line length before showing modal
-      const selection = state.mode.selection;
-      const dx = selection.endX - selection.startX;
-      const dy = selection.endY - selection.startY;
-      const pixelsDistance = Math.sqrt(dx * dx + dy * dy);
-
-      if (pixelsDistance >= MIN_CALIBRATION_PIXELS) {
-        setCalibrationLine({
-          start: { x: selection.startX, y: selection.startY },
-          end: { x: selection.endX, y: selection.endY },
-        });
-        setShowCalibrationModal(true);
-      } else {
-        console.log('[PDFViewer] Ignoring calibration line - too short:', pixelsDistance);
-      }
-      setIsDrawingCalibrationLine(false);
-      dispatch({ type: 'CLEAR_SELECTION' });
-    } else if (state.mode.type === 'idle' && state.mode.selection) {
-      // Idle mode: select measurements that intersect with selection box
-      const selection = state.mode.selection;
-      const selectionRect = {
-        x: Math.min(selection.startX, selection.endX),
-        y: Math.min(selection.startY, selection.endY),
-        width: Math.abs(selection.endX - selection.startX),
-        height: Math.abs(selection.endY - selection.startY),
-      };
-
-      // Find all measurements that intersect with the selection box
-      const selectedIds = measurements
-        .filter(m => lineIntersectsRect(m.start_point, m.end_point, selectionRect))
-        .map(m => m.id);
-
-      // Check if Shift key is held for append mode
-      const shiftHeld = e.shiftKey;
-      measurementsHook.actions.selectMultiple(selectedIds, shiftHeld);
-
-      // Clear the selection box
-      dispatch({ type: 'CLEAR_SELECTION' });
-
-      // Refocus viewport so keyboard shortcuts work (especially Delete key)
-      setTimeout(() => viewportRef.current?.focus(), 0);
-    }
-    dispatch({ type: 'END_DRAG' });
-  };
+  const mouseHandlers = usePdfMouseHandlers({
+    viewportRef,
+    mode: state.mode,
+    isDrawingCalibrationLine,
+    isDragging: state.isDragging,
+    readOnly,
+    transform,
+    measurements,
+    dispatch,
+    setTransform,
+    saveMeasurement,
+    setCalibrationLine,
+    setShowCalibrationModal,
+    setIsDrawingCalibrationLine,
+    selectMeasurements: measurementsHook.actions.selectMultiple,
+  });
 
   // User-facing controls
   const updateRenderScale = useCallback(
@@ -974,262 +860,66 @@ export function PDFViewer({
       className="relative h-full w-full outline-none overscroll-contain"
       style={{ touchAction: 'none' }}
     >
-      {state.mode.type === 'screenshot' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            📸 Screenshot Mode: Click and drag to select area
-          </div>
-        </div>
-      )}
-
-      {state.mode.type === 'measure' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-green-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            📏 Measurement Mode: Draw lines to measure
-            {calibration?.scale_notation ? (
-              <span className="ml-2 opacity-90 font-mono">({calibration.scale_notation})</span>
-            ) : (
-              <span className="ml-2 opacity-90">(No scale set - press L)</span>
-            )}
-            <span className="ml-3 opacity-90 text-xs">Click line to select • Delete to remove</span>
-          </div>
-        </div>
-      )}
-
-      {isDrawingCalibrationLine && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-purple-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-            📐 Calibration Mode: Draw a line along a known distance
-            <span className="ml-3 opacity-90 text-xs">Press Esc to cancel</span>
-          </div>
-        </div>
-      )}
-
-      {state.mode.type !== 'measure' &&
-        selectedMeasurementIds.length > 0 &&
-        measurements.length > 0 &&
-        !readOnly && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-            <div className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg text-sm font-medium">
-              {selectedMeasurementIds.length === 1 ? (
-                <>
-                  Measurement selected • Press{' '}
-                  <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">
-                    Delete
-                  </kbd>{' '}
-                  to remove
-                  <span className="ml-3 opacity-90 text-xs">Ctrl+Click for multi-select</span>
-                </>
-              ) : (
-                <>
-                  {selectedMeasurementIds.length} measurements selected • Press{' '}
-                  <kbd className="px-1.5 py-0.5 bg-blue-700 rounded mx-1 font-mono text-xs">
-                    Delete
-                  </kbd>{' '}
-                  to remove all
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-      {state.mode.type === 'screenshot' && state.mode.selection && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex gap-2 pointer-events-none">
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-blue-500 font-mono">
-            C - Save to Current (exits)
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-green-500 font-mono">
-            E - Save as Elevation (stays active)
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            B - Bathroom
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            D - Door
-          </kbd>
-          <kbd className="px-3 py-2 bg-white shadow-md rounded text-sm border-2 border-gray-300 font-mono">
-            K - Kitchen
-          </kbd>
-        </div>
-      )}
+      <PDFModeBanner
+        modeType={state.mode.type}
+        isDrawingCalibrationLine={isDrawingCalibrationLine}
+        hasSelection={state.mode.type === 'screenshot' && state.mode.selection !== null}
+        scaleNotation={calibration?.scale_notation}
+        selectedMeasurementCount={selectedMeasurementIds.length}
+        hasMeasurements={measurements.length > 0}
+        readOnly={readOnly}
+      />
 
       {/* Screenshot navigation arrows (top-left) */}
       {screenshotNavigation && (
-        <div className="absolute top-3 left-3 z-50 flex items-center gap-1.5 pointer-events-auto max-w-[500px]">
-          <button
-            onClick={screenshotNavigation.onPrev}
-            disabled={!screenshotNavigation.canGoPrev}
-            className="flex items-center justify-center p-1.5 text-gray-700 bg-white border-2 border-gray-300 rounded-md shadow-lg hover:bg-gray-50 hover:border-blue-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-300"
-            title="Show previous relevant area of drawing"
-          >
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
-          <div className="flex flex-col items-center px-4 py-2 text-xs bg-white border-2 border-blue-500 rounded-lg shadow-lg">
-            <div className="font-semibold text-blue-600 mb-0.5">
-              <span className="text-blue-600">{screenshotNavigation.current}</span>
-              <span className="text-gray-400 mx-1">/</span>
-              <span className="text-gray-600">{screenshotNavigation.total}</span>
-            </div>
-            <div className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">
-              Relevant Drawings
-            </div>
-          </div>
-          <button
-            onClick={screenshotNavigation.onNext}
-            disabled={!screenshotNavigation.canGoNext}
-            className="flex items-center justify-center p-1.5 text-gray-700 bg-white border-2 border-gray-300 rounded-md shadow-lg hover:bg-gray-50 hover:border-blue-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-300"
-            title="Show next relevant area of drawing"
-          >
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
-        </div>
+        <PDFScreenshotNavigation
+          current={screenshotNavigation.current}
+          total={screenshotNavigation.total}
+          onNext={screenshotNavigation.onNext}
+          onPrev={screenshotNavigation.onPrev}
+          canGoNext={screenshotNavigation.canGoNext}
+          canGoPrev={screenshotNavigation.canGoPrev}
+        />
       )}
 
-      <div className="absolute top-3 right-3 z-50 flex items-center gap-2 pointer-events-auto">
-        <button
-          aria-label="Zoom out"
-          className="btn-icon bg-white shadow-md"
-          onClick={() => zoom('out')}
-        >
-          −
-        </button>
-        <div className="px-2 py-2 text-sm bg-white border rounded shadow-md">{zoomPct}%</div>
-        <button
-          aria-label="Zoom in"
-          className="btn-icon bg-white shadow-md"
-          onClick={() => zoom('in')}
-        >
-          +
-        </button>
-        <div className="flex items-center gap-1 bg-white border rounded shadow-md px-2 py-1">
-          <span className="text-xs text-gray-600 whitespace-nowrap">Detail:</span>
-          <button
-            aria-label="Decrease resolution"
-            className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.max(2, renderScale - 0.5))}
-            disabled={savingScale || renderScale <= 2}
-          >
-            −
-          </button>
-          <span className="text-xs font-medium w-8 text-center">{renderScale.toFixed(1)}x</span>
-          <button
-            aria-label="Increase resolution"
-            className="btn-icon bg-white text-xs px-1.5 py-0.5"
-            onClick={() => updateRenderScale(Math.min(8, renderScale + 0.5))}
-            disabled={savingScale || renderScale >= 8}
-          >
-            +
-          </button>
-        </div>
-        {layerList.length > 0 && (
-          <button
-            aria-pressed={showLayerPanel}
-            aria-label="Toggle layers panel"
-            className={`btn-icon shadow-md ${showLayerPanel ? 'bg-blue-600 text-white' : 'bg-white'}`}
-            onClick={() => setShowLayerPanel(!showLayerPanel)}
-            title="Layers"
-          >
-            ☰
-          </button>
-        )}
-        {!readOnly && (
-          <>
-            <button
-              aria-pressed={showScreenshotIndicators}
-              aria-label="Toggle captured area indicators"
-              title="Show/hide previously captured areas"
-              className={`btn-icon shadow-md ${showScreenshotIndicators ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => setShowScreenshotIndicators(!showScreenshotIndicators)}
-            >
-              📦
-            </button>
-            <button
-              aria-pressed={state.mode.type === 'screenshot'}
-              aria-label="Toggle screenshot mode (S)"
-              title="Capture a portion of the plan"
-              className={`btn-icon shadow-md ${state.mode.type === 'screenshot' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() =>
-                dispatch({
-                  type: 'SET_MODE',
-                  payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot',
-                })
-              }
-            >
-              📸
-            </button>
-            {state.mode.type === 'screenshot' && state.mode.selection && (
-              <button className="btn-secondary shadow-md" onClick={() => capture('current')}>
-                Save to Current
-              </button>
-            )}
-            <button
-              aria-pressed={state.mode.type === 'measure'}
-              aria-label="Toggle measurement mode (M)"
-              title="Measure distances on the plan"
-              className={`btn-icon shadow-md ${state.mode.type === 'measure' ? 'bg-green-600 text-white' : 'bg-white'}`}
-              onClick={() =>
-                dispatch({
-                  type: 'SET_MODE',
-                  payload: state.mode.type === 'measure' ? 'idle' : 'measure',
-                })
-              }
-            >
-              📏
-            </button>
-            <button
-              aria-label="Set drawing scale (L)"
-              title="Set drawing scale"
-              className="btn-icon shadow-md bg-white"
-              onClick={() => setShowCalibrationModal(true)}
-            >
-              🔧
-            </button>
-          </>
-        )}
-      </div>
+      <PDFToolbar
+        zoomPct={zoomPct}
+        onZoomIn={() => zoom('in')}
+        onZoomOut={() => zoom('out')}
+        renderScale={renderScale}
+        onRenderScaleChange={updateRenderScale}
+        savingScale={savingScale}
+        layerCount={layerList.length}
+        showLayerPanel={showLayerPanel}
+        onToggleLayerPanel={() => setShowLayerPanel(!showLayerPanel)}
+        readOnly={readOnly}
+        showScreenshotIndicators={showScreenshotIndicators}
+        onToggleScreenshotIndicators={() => setShowScreenshotIndicators(!showScreenshotIndicators)}
+        isScreenshotMode={state.mode.type === 'screenshot'}
+        onToggleScreenshotMode={() =>
+          dispatch({
+            type: 'SET_MODE',
+            payload: state.mode.type === 'screenshot' ? 'idle' : 'screenshot',
+          })
+        }
+        hasSelection={state.mode.type === 'screenshot' && state.mode.selection !== null}
+        onSaveToCurrent={() => capture('current')}
+        isMeasureMode={state.mode.type === 'measure'}
+        onToggleMeasureMode={() =>
+          dispatch({
+            type: 'SET_MODE',
+            payload: state.mode.type === 'measure' ? 'idle' : 'measure',
+          })
+        }
+        onOpenCalibration={() => setShowCalibrationModal(true)}
+      />
 
-      {showLayerPanel && layerList.length > 0 && (
-        <div className="absolute top-16 right-3 z-50 bg-white border rounded shadow-lg p-3 w-64 pointer-events-auto">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold">PDF Layers</h3>
-            <button
-              className="text-xs text-gray-500 hover:text-gray-700"
-              onClick={() => setShowLayerPanel(false)}
-            >
-              ✕
-            </button>
-          </div>
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {layerList.map((layer: any) => (
-              <label
-                key={layer.id}
-                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
-              >
-                <input
-                  type="checkbox"
-                  checked={layer.visible}
-                  onChange={() => toggleLayer(layer.id)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">{layer.name}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+      {showLayerPanel && (
+        <PDFLayerPanel
+          layers={layerList}
+          onToggleLayer={toggleLayer}
+          onClose={() => setShowLayerPanel(false)}
+        />
       )}
 
       {/* Mode Indicator */}
@@ -1245,13 +935,10 @@ export function PDFViewer({
             ? 'cursor-crosshair'
             : 'cursor-default'
         }`}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={() => {
-          if (state.mode.type === 'idle' && !isDrawingCalibrationLine)
-            dispatch({ type: 'END_DRAG' });
-        }}
+        onMouseDown={mouseHandlers.onMouseDown}
+        onMouseMove={mouseHandlers.onMouseMove}
+        onMouseUp={mouseHandlers.onMouseUp}
+        onMouseLeave={mouseHandlers.onMouseLeave}
         onContextMenu={e => e.preventDefault()}
         style={{ clipPath: 'inset(0)' }}
       >
@@ -1470,33 +1157,20 @@ export function PDFViewer({
           );
         })()}
 
-      <div className="absolute bottom-3 left-3 z-50 flex items-center gap-3 bg-white rounded px-3 py-2 border shadow-md pointer-events-auto">
-        <button
-          className="btn-icon bg-white"
-          onClick={() => dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) })}
-          aria-label="Previous page"
-        >
-          ◀
-        </button>
-        <div className="text-sm font-medium">
-          Page {state.pageNumber} / {state.numPages || '…'}
-        </div>
-        <button
-          className="btn-icon bg-white"
-          onClick={() =>
-            dispatch({
-              type: 'SET_PAGE',
-              payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
-            })
-          }
-          aria-label="Next page"
-        >
-          ▶
-        </button>
-        <span className="text-xs text-gray-600 ml-2 hidden sm:inline">
-          Shortcuts: ←/→, -/+, 0, S, M, L, Esc{projectId && ', F'}
-        </span>
-      </div>
+      <PDFPageControls
+        pageNumber={state.pageNumber}
+        numPages={state.numPages}
+        onPrevPage={() =>
+          dispatch({ type: 'SET_PAGE', payload: Math.max(1, state.pageNumber - 1) })
+        }
+        onNextPage={() =>
+          dispatch({
+            type: 'SET_PAGE',
+            payload: Math.min(state.numPages || state.pageNumber, state.pageNumber + 1),
+          })
+        }
+        showSearch={!!projectId}
+      />
 
       {/* PDF text search overlay */}
       <PDFSearchOverlay

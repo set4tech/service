@@ -10,6 +10,8 @@ import { ViolationsSummary } from '@/components/checks/ViolationsSummary';
 import { ViolationDetailPanel } from '@/components/checks/ViolationDetailPanel';
 import { AssessmentScreenshotGallery } from '@/components/screenshots/AssessmentScreenshotGallery';
 import { ImportCSVDoorsModal } from '@/components/assessments/ImportCSVDoorsModal';
+import { AgentAnalysisModal } from '@/components/agent/AgentAnalysisModal';
+import { ChatPanel } from '@/components/chat/ChatPanel';
 import type { ViolationMarker } from '@/lib/reports/get-violations';
 
 // Load PDF viewer only on client side - removes need for wrapper component
@@ -79,6 +81,21 @@ interface AssessmentData {
     [key: string]: unknown;
   };
   [key: string]: unknown;
+}
+
+// Agent run status tracking
+interface AgentRun {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: {
+    step?: number;
+    total_steps?: number;
+    message?: string;
+  };
+  started_at?: string;
+  completed_at?: string;
+  error?: string;
+  results?: Record<string, unknown>;
 }
 
 interface Props {
@@ -152,41 +169,66 @@ export default function AssessmentClient({
   const [rpcViolations, setRpcViolations] = useState(_rpcViolations || []);
   const [refreshingViolations, setRefreshingViolations] = useState(false);
   const [isPdfSearchOpen, setIsPdfSearchOpen] = useState(false);
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [existingAgentRun, setExistingAgentRun] = useState<AgentRun | null>(null);
 
-  // Debug: Log screenshots on initial load
+  // Check for running agent on mount
   useEffect(() => {
-    const checksWithScreenshots = initialChecks.filter(
-      c => c.screenshots?.length && c.screenshots.length > 0
-    );
-    const instancesWithScreenshots = initialChecks
-      .flatMap(c => c.instances || [])
-      .filter(i => i.screenshots?.length && i.screenshots.length > 0);
+    async function checkAgentStatus() {
+      try {
+        const res = await fetch(`/api/assessments/${assessment.id}/agent/status`);
+        if (res.ok) {
+          const data: AgentRun = await res.json();
+          if (data.status === 'running' || data.status === 'pending') {
+            setExistingAgentRun(data);
+          }
+        }
+      } catch {
+        // Silently ignore - agent status is optional
+      }
+    }
+    checkAgentStatus();
+  }, [assessment.id]);
 
-    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-    console.log(
-      '[AssessmentClient] Initial checks with screenshots:',
-      checksWithScreenshots.length
-    );
-    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-    console.log(
-      '[AssessmentClient] Initial INSTANCES with screenshots:',
-      instancesWithScreenshots.length
-    );
+  // Poll for updates while agent is running
+  useEffect(() => {
+    if (
+      !existingAgentRun ||
+      (existingAgentRun.status !== 'running' && existingAgentRun.status !== 'pending')
+    ) {
+      return;
+    }
 
-    instancesWithScreenshots.slice(0, 5).forEach(i => {
-      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-      console.log(`  - ${i.instance_label}: ${i.screenshots?.length ?? 0} screenshots`);
-    });
-  }, [initialChecks]);
-  const [checkMode, setCheckMode] = useState<'section' | 'element' | 'summary' | 'gallery'>(
-    'section'
-  );
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/assessments/${assessment.id}/agent/status?runId=${existingAgentRun.id}`
+        );
+        if (res.ok) {
+          const data: AgentRun = await res.json();
+          if (data.status === 'running' || data.status === 'pending') {
+            setExistingAgentRun(data);
+          } else {
+            setExistingAgentRun(null);
+          }
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [assessment.id, existingAgentRun?.id, existingAgentRun?.status]);
+
+  const [checkMode, setCheckMode] = useState<
+    'section' | 'element' | 'summary' | 'gallery' | 'chat'
+  >('section');
 
   // Restore saved mode after hydration to avoid mismatch
   useEffect(() => {
     const saved = localStorage.getItem(`checkMode-${assessment.id}`);
     if (saved) {
-      setCheckMode(saved as 'section' | 'element' | 'summary' | 'gallery');
+      setCheckMode(saved as 'section' | 'element' | 'summary' | 'gallery' | 'chat');
     }
 
     // Also restore active check ID from URL hash if present
@@ -202,9 +244,9 @@ export default function AssessmentClient({
     }
   }, [assessment.id]);
 
-  // Filter checks by mode (skip filtering for summary/gallery modes)
+  // Filter checks by mode (skip filtering for summary/gallery/chat modes)
   const displayedChecks = useMemo(() => {
-    if (checkMode === 'summary' || checkMode === 'gallery') return checks;
+    if (checkMode === 'summary' || checkMode === 'gallery' || checkMode === 'chat') return checks;
 
     // Element mode: show checks with element_group_id
     // Section mode: show checks without element_group_id (standalone sections)
@@ -214,156 +256,6 @@ export default function AssessmentClient({
       return checks.filter(c => c.element_group_id == null);
     }
   }, [checks, checkMode]);
-
-  // Calculate progress dynamically from checks state (all checks, not filtered)
-  const progress = useMemo(() => {
-    // Exclude checks marked as not_applicable from total count
-    const applicableChecks = checks.filter(c => c.manual_status !== 'not_applicable');
-    const totalChecks = applicableChecks.length;
-    // Count checks with AI assessment OR manual override
-    const completed = applicableChecks.filter(
-      c =>
-        c.latest_status ||
-        c.status === 'completed' ||
-        (c.manual_status && c.manual_status !== 'not_applicable')
-    ).length;
-    const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
-    return { totalChecks, completed, pct };
-  }, [checks]);
-  const [isSeeding, setIsSeeding] = useState(false);
-
-  // Detail Panel State (replaces 4 separate useState calls)
-  const [detailPanel, dispatchDetailPanel] = useReducer(detailPanelReducer, { mode: 'closed' });
-
-  // Derived values from reducer state
-  const activeCheckId = detailPanel.mode === 'check-detail' ? detailPanel.checkId : null;
-  const showDetailPanel = detailPanel.mode !== 'closed';
-
-  // Sync URL hash with detail panel state (side effect in useEffect, not reducer)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    if (detailPanel.mode === 'check-detail') {
-      window.history.replaceState(null, '', `#${detailPanel.checkId}`);
-    } else if (detailPanel.mode === 'closed') {
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
-    }
-    // Violation detail mode doesn't update URL
-  }, [detailPanel]);
-
-  // Remember last selection per mode for state preservation when switching
-  const lastSelectionPerMode = useRef<{
-    section: { checkId: string; filterToSectionKey: string | null } | null;
-    element: { checkId: string; filterToSectionKey: string | null } | null;
-  }>({ section: null, element: null });
-
-  const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
-  const [detailPanelWidth, setDetailPanelWidth] = useState(400);
-
-  const checksSidebarRef = useRef<HTMLDivElement>(null);
-  const detailPanelRef = useRef<HTMLDivElement>(null);
-  const checksResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
-    isDragging: false,
-    startX: 0,
-    startWidth: 0,
-  });
-  const detailResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
-    isDragging: false,
-    startX: 0,
-    startWidth: 0,
-  });
-
-  // Helper: Close detail panel and clear URL hash
-  const closeDetailPanel = () => {
-    dispatchDetailPanel({ type: 'CLOSE_PANEL' });
-  };
-
-  const handleCheckSelect = useCallback(
-    (checkId: string, sectionKey?: string) => {
-      // Save selection for current mode
-      const mode = checkMode === 'element' ? 'element' : 'section';
-      lastSelectionPerMode.current[mode] = {
-        checkId,
-        filterToSectionKey: sectionKey ?? null,
-      };
-
-      dispatchDetailPanel({
-        type: 'SELECT_CHECK',
-        checkId,
-        filterToSectionKey: sectionKey,
-      });
-    },
-    [checkMode]
-  );
-
-  const handleEditCheck = (violation: ViolationMarker) => {
-    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-    console.log('[handleEditCheck] Called with violation:', {
-      codeSectionKey: violation.codeSectionKey,
-      checkType: violation.checkType,
-    });
-
-    // Find the actual check to determine its type reliably
-    let actualCheck: CheckData | null = null;
-
-    // Search in all checks
-    actualCheck = checks.find(c => c.id === violation.checkId) || null;
-
-    // If not found directly, search in instances
-    if (!actualCheck) {
-      for (const check of checks) {
-        if (check.instances?.length) {
-          const instance = check.instances.find(i => i.id === violation.checkId);
-          if (instance) {
-            actualCheck = instance as CheckData;
-            break;
-          }
-        }
-      }
-    }
-
-    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-    console.log('[handleEditCheck] Found check:', {
-      found: !!actualCheck,
-      checkId: actualCheck?.id,
-      elementGroupId: actualCheck?.element_group_id,
-      totalChecksSearched: checks.length,
-    });
-
-    if (!actualCheck) {
-      console.error(
-        '[handleEditCheck] Check not found in checks array. CheckId:',
-        violation.checkId
-      );
-      // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-      console.log(
-        '[handleEditCheck] Available check IDs:',
-        checks.map(c => c.id)
-      );
-      console.log(
-        '[handleEditCheck] Available instance IDs:',
-        checks.flatMap(c => (c.instances || []).map(i => i.id))
-      );
-      return; // Don't proceed if check not found
-    }
-
-    // Determine mode from actual check data
-    const hasElementGroup = actualCheck?.element_group_id != null;
-    const targetMode = hasElementGroup ? 'element' : 'section';
-
-    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-    console.log('[handleEditCheck] Switching to mode:', targetMode);
-
-    // Switch mode and select check in one go
-    setCheckMode(targetMode);
-    localStorage.setItem(`checkMode-${assessment.id}`, targetMode);
-
-    dispatchDetailPanel({
-      type: 'SELECT_CHECK',
-      checkId: violation.checkId,
-      filterToSectionKey: violation.codeSectionKey || null,
-    });
-  };
 
   // Natural sort comparator (matches CheckList logic)
   const naturalCompare = (a: string, b: string): number => {
@@ -449,6 +341,125 @@ export default function AssessmentClient({
     return ids;
   };
 
+  // Pre-compute sorted check IDs for keyboard navigation (expensive sort, only recompute when checks change)
+  const sortedCheckIds = useMemo(() => {
+    if (checkMode === 'summary' || checkMode === 'gallery' || checkMode === 'chat') return [];
+    return getAllCheckIds(displayedChecks, checkMode === 'element' ? 'element' : 'section');
+  }, [displayedChecks, checkMode]);
+
+  // Calculate progress dynamically from checks state (all checks, not filtered)
+  const progress = useMemo(() => {
+    // Exclude checks marked as not_applicable from total count
+    const applicableChecks = checks.filter(c => c.manual_status !== 'not_applicable');
+    const totalChecks = applicableChecks.length;
+    // Count checks with AI assessment OR manual override
+    const completed = applicableChecks.filter(
+      c =>
+        c.latest_status ||
+        c.status === 'completed' ||
+        (c.manual_status && c.manual_status !== 'not_applicable')
+    ).length;
+    const pct = totalChecks ? Math.round((completed / totalChecks) * 100) : 0;
+    return { totalChecks, completed, pct };
+  }, [checks]);
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  // Detail Panel State (replaces 4 separate useState calls)
+  const [detailPanel, dispatchDetailPanel] = useReducer(detailPanelReducer, { mode: 'closed' });
+
+  // Derived values from reducer state
+  const activeCheckId = detailPanel.mode === 'check-detail' ? detailPanel.checkId : null;
+  const showDetailPanel = detailPanel.mode !== 'closed';
+
+  // Sync URL hash with detail panel state (side effect in useEffect, not reducer)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (detailPanel.mode === 'check-detail') {
+      window.history.replaceState(null, '', `#${detailPanel.checkId}`);
+    } else if (detailPanel.mode === 'closed') {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    // Violation detail mode doesn't update URL
+  }, [detailPanel]);
+
+  // Remember last selection per mode for state preservation when switching
+  const lastSelectionPerMode = useRef<{
+    section: { checkId: string; filterToSectionKey: string | null } | null;
+    element: { checkId: string; filterToSectionKey: string | null } | null;
+  }>({ section: null, element: null });
+
+  const [checksSidebarWidth, setChecksSidebarWidth] = useState(384); // 96 * 4 = 384px (w-96)
+  const [detailPanelWidth, setDetailPanelWidth] = useState(400);
+
+  const checksSidebarRef = useRef<HTMLDivElement>(null);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
+  const checksResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
+    isDragging: false,
+    startX: 0,
+    startWidth: 0,
+  });
+  const detailResizerRef = useRef<{ isDragging: boolean; startX: number; startWidth: number }>({
+    isDragging: false,
+    startX: 0,
+    startWidth: 0,
+  });
+
+  // Helper: Close detail panel and clear URL hash
+  const closeDetailPanel = () => {
+    dispatchDetailPanel({ type: 'CLOSE_PANEL' });
+  };
+
+  const handleCheckSelect = useCallback(
+    (checkId: string, sectionKey?: string) => {
+      // Save selection for current mode
+      const mode = checkMode === 'element' ? 'element' : 'section';
+      lastSelectionPerMode.current[mode] = {
+        checkId,
+        filterToSectionKey: sectionKey ?? null,
+      };
+
+      dispatchDetailPanel({
+        type: 'SELECT_CHECK',
+        checkId,
+        filterToSectionKey: sectionKey,
+      });
+    },
+    [checkMode]
+  );
+
+  const handleEditCheck = (violation: ViolationMarker) => {
+    // Find the actual check to determine its type reliably
+    let actualCheck: CheckData | null = checks.find(c => c.id === violation.checkId) || null;
+
+    // If not found directly, search in instances
+    if (!actualCheck) {
+      for (const check of checks) {
+        if (check.instances?.length) {
+          const instance = check.instances.find(i => i.id === violation.checkId);
+          if (instance) {
+            actualCheck = instance as CheckData;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!actualCheck) return;
+
+    // Determine mode from actual check data
+    const targetMode = actualCheck.element_group_id != null ? 'element' : 'section';
+
+    setCheckMode(targetMode);
+    localStorage.setItem(`checkMode-${assessment.id}`, targetMode);
+
+    dispatchDetailPanel({
+      type: 'SELECT_CHECK',
+      checkId: violation.checkId,
+      filterToSectionKey: violation.codeSectionKey || null,
+    });
+  };
+
   // Helper: Navigate to a check by ID
   const navigateToCheck = (checkId: string | null) => {
     if (checkId) {
@@ -491,28 +502,22 @@ export default function AssessmentClient({
 
       // Auto-advance to next check if requested
       if (autoAdvance) {
-        const allIds = getAllCheckIds(
-          displayedChecks,
-          checkMode === 'element' ? 'element' : 'section'
-        );
-        const currentIdx = allIds.indexOf(checkId);
-        if (currentIdx < allIds.length - 1) {
-          navigateToCheck(allIds[currentIdx + 1]);
+        const currentIdx = sortedCheckIds.indexOf(checkId);
+        if (currentIdx < sortedCheckIds.length - 1) {
+          navigateToCheck(sortedCheckIds[currentIdx + 1]);
         }
       }
-    } catch (error) {
-      console.error('[Keyboard Nav] Error marking as compliant:', error);
+    } catch {
+      // Silently ignore - UI will show stale state
     }
   };
 
   const handleMoveToNextCheck = () => {
-    const allIds = getAllCheckIds(checks, checkMode === 'element' ? 'element' : 'section');
-    const currentIdx = allIds.indexOf(activeCheckId || '');
-
-    if (currentIdx === -1 || currentIdx === allIds.length - 1) {
+    const currentIdx = sortedCheckIds.indexOf(activeCheckId || '');
+    if (currentIdx === -1 || currentIdx === sortedCheckIds.length - 1) {
       navigateToCheck(null);
     } else {
-      navigateToCheck(allIds[currentIdx + 1]);
+      navigateToCheck(sortedCheckIds[currentIdx + 1]);
     }
   };
 
@@ -541,71 +546,57 @@ export default function AssessmentClient({
     });
   }, []);
 
-  const refetchChecks = useCallback(async () => {
-    const checksRes = await fetch(
-      `/api/assessments/${assessment.id}/checks?mode=${checkMode === 'element' ? 'element' : 'section'}`
-    );
-    if (checksRes.ok) {
-      const updatedChecks = await checksRes.json();
-      setChecks(updatedChecks);
-    } else {
-      console.error('[AssessmentClient] Failed to refetch checks:', checksRes.status);
+  const refetchChecks = useCallback(async (): Promise<CheckData[]> => {
+    // Fetch both section and element checks (mirrors page.tsx server component)
+    const [sectionRes, elementRes] = await Promise.all([
+      fetch(`/api/assessments/${assessment.id}/checks?mode=section`),
+      fetch(`/api/assessments/${assessment.id}/checks?mode=element`),
+    ]);
+    if (sectionRes.ok && elementRes.ok) {
+      const [sectionChecks, elementChecks] = await Promise.all([
+        sectionRes.json(),
+        elementRes.json(),
+      ]);
+      const combined = [...sectionChecks, ...elementChecks];
+      setChecks(combined);
+      return combined;
     }
-  }, [assessment.id, checkMode]);
+    return checks; // Return current if fetch failed
+  }, [assessment.id, checks]);
 
   const refetchViolations = useCallback(async () => {
     setRefreshingViolations(true);
-
     try {
       const res = await fetch(`/api/assessments/${assessment.id}/violations`);
       if (res.ok) {
         const data = await res.json();
         setRpcViolations(data.violations || []);
-      } else {
-        console.error('[AssessmentClient] Failed to refetch violations:', res.status);
       }
-    } catch (error) {
-      console.error('[AssessmentClient] Error fetching violations:', error);
     } finally {
       setRefreshingViolations(false);
     }
   }, [assessment.id]);
 
-  const handleModeChange = async (newMode: 'section' | 'element' | 'summary' | 'gallery') => {
+  const handleModeChange = (newMode: 'section' | 'element' | 'summary' | 'gallery' | 'chat') => {
     setCheckMode(newMode);
     localStorage.setItem(`checkMode-${assessment.id}`, newMode);
 
-    // Close detail panel when switching to summary or gallery
-    if (newMode === 'summary' || newMode === 'gallery') {
+    // Close detail panel when switching to summary, gallery, or chat
+    if (newMode === 'summary' || newMode === 'gallery' || newMode === 'chat') {
       closeDetailPanel();
       return;
     }
 
-    // Fetch data when switching between section and element modes
-    try {
-      const checksRes = await fetch(`/api/assessments/${assessment.id}/checks?mode=${newMode}`);
-      if (checksRes.ok) {
-        const updatedChecks = await checksRes.json();
-        setChecks(updatedChecks);
-
-        // Try to restore last selection for this mode (better UX)
-        const lastSelection = lastSelectionPerMode.current[newMode];
-        if (lastSelection && updatedChecks.some((c: any) => c.id === lastSelection.checkId)) {
-          // Restore the previous selection
-          dispatchDetailPanel({
-            type: 'SELECT_CHECK',
-            checkId: lastSelection.checkId,
-            filterToSectionKey: lastSelection.filterToSectionKey,
-          });
-        } else {
-          // No saved selection or it doesn't exist anymore - close panel
-          closeDetailPanel();
-        }
-      } else {
-        console.error('[AssessmentClient] Failed to fetch checks for mode:', newMode);
-      }
-    } catch (error) {
-      console.error('[AssessmentClient] Error fetching checks:', error);
+    // Try to restore last selection for this mode
+    const lastSelection = lastSelectionPerMode.current[newMode];
+    if (lastSelection && checks.some(c => c.id === lastSelection.checkId)) {
+      dispatchDetailPanel({
+        type: 'SELECT_CHECK',
+        checkId: lastSelection.checkId,
+        filterToSectionKey: lastSelection.filterToSectionKey,
+      });
+    } else {
+      closeDetailPanel();
     }
   };
 
@@ -639,44 +630,22 @@ export default function AssessmentClient({
   });
 
   useEffect(() => {
-    // eslint-disable-next-line no-console -- Logging is allowed for internal debugging
-    console.log('[AssessmentClient] Effect triggered', {
-      checksLength: checks.length,
-      isSeeding,
-      hasSeedAttempted,
-    });
-
     if (checks.length === 0 && !isSeeding && !hasSeedAttempted) {
-      console.log('[AssessmentClient] Starting seed process for assessment:', assessment.id);
       setIsSeeding(true);
       setHasSeedAttempted(true);
       localStorage.setItem(`seed-attempted-${assessment.id}`, 'true');
 
-      // Call seed endpoint once
       fetch(`/api/assessments/${assessment.id}/seed`, { method: 'POST' })
         .then(async response => {
-          console.log('[AssessmentClient] Seed response received:', response.status, response.ok);
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('[AssessmentClient] Seed failed:', response.status, errorText);
-            throw new Error(`Seed failed: ${response.status} - ${errorText}`);
-          }
-
+          if (!response.ok) throw new Error('Seed failed');
           const data = await response.json();
-          console.log('[AssessmentClient] Seed data:', data);
-
-          // Reload to show the checks
           if (data.checks_created > 0) {
-            console.log(`[AssessmentClient] Created ${data.checks_created} checks, reloading...`);
             setTimeout(() => window.location.reload(), 500);
           } else {
-            console.warn('[AssessmentClient] No checks created, not reloading');
             setIsSeeding(false);
           }
         })
-        .catch(error => {
-          console.error('[AssessmentClient] Failed to seed assessment:', error);
+        .catch(() => {
           setIsSeeding(false);
         });
     }
@@ -722,14 +691,13 @@ export default function AssessmentClient({
         // Also refresh PDF viewer screenshot indicators
         await refreshScreenshotsRef.current?.();
       }
-    } catch (error) {
-      console.error('[refetchCheckScreenshots] Error:', error);
+    } catch {
+      // Silently ignore
     }
   }, []);
 
   // Memoized callback to prevent infinite render loop in PDFViewer
   const handleRefreshScreenshotsReady = useCallback((refresh: () => Promise<void>) => {
-    console.log('[AssessmentClient] PDFViewer refreshScreenshots function received');
     refreshScreenshotsRef.current = refresh;
   }, []);
 
@@ -785,8 +753,8 @@ export default function AssessmentClient({
 
   // Keyboard navigation
   useEffect(() => {
-    // Skip in summary/gallery modes
-    if (checkMode === 'summary' || checkMode === 'gallery') return;
+    // Skip in summary/gallery/chat modes
+    if (checkMode === 'summary' || checkMode === 'gallery' || checkMode === 'chat') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in input field
@@ -795,9 +763,7 @@ export default function AssessmentClient({
         return;
       }
 
-      const mode = checkMode === 'element' ? 'element' : 'section';
-      const allIds = getAllCheckIds(displayedChecks, mode);
-      const currentIdx = allIds.indexOf(activeCheckId || '');
+      const currentIdx = sortedCheckIds.indexOf(activeCheckId || '');
 
       // Arrow Up/Down: Navigate between checks
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -806,27 +772,25 @@ export default function AssessmentClient({
 
         if (e.key === 'ArrowUp' && currentIdx > 0) {
           nextIdx = currentIdx - 1;
-        } else if (e.key === 'ArrowDown' && currentIdx < allIds.length - 1) {
+        } else if (e.key === 'ArrowDown' && currentIdx < sortedCheckIds.length - 1) {
           nextIdx = currentIdx + 1;
         }
 
         if (nextIdx !== currentIdx) {
-          navigateToCheck(allIds[nextIdx]);
-          console.log(`[Keyboard] Navigated to check ${nextIdx + 1}/${allIds.length}`);
+          navigateToCheck(sortedCheckIds[nextIdx]);
         }
       }
 
       // Enter: Mark as compliant and advance (but not when PDF search is open)
       if (e.key === 'Enter' && activeCheckId && !isPdfSearchOpen) {
         e.preventDefault();
-        console.log(`[Keyboard] Marking check as compliant: ${activeCheckId}`);
         markCheckCompliant(activeCheckId, true);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeCheckId, displayedChecks, checkMode, isPdfSearchOpen]);
+  }, [activeCheckId, sortedCheckIds, isPdfSearchOpen]);
 
   return (
     <div className="fixed inset-0 flex overflow-hidden">
@@ -856,6 +820,53 @@ export default function AssessmentClient({
               {assessment.projects?.name || 'Compliance Checks'}
             </h2>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsAgentModalOpen(true)}
+                className={clsx(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                  existingAgentRun
+                    ? 'text-amber-600 bg-amber-50 border-amber-200 hover:border-amber-400'
+                    : 'text-purple-600 hover:text-purple-500 bg-purple-50 border-purple-200 hover:border-purple-400'
+                )}
+                title={existingAgentRun ? 'View Agent Progress' : 'Run AI Agent Analysis (Beta)'}
+              >
+                {existingAgentRun ? (
+                  <>
+                    {/* Spinner icon */}
+                    <svg
+                      className="animate-spin"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
+                      <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+                    </svg>
+                    AGENT: {existingAgentRun.progress?.step || 0}/
+                    {existingAgentRun.progress?.total_steps || '?'}
+                  </>
+                ) : (
+                  <>
+                    {/* Robot icon */}
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                      <circle cx="8" cy="14" r="2" />
+                      <circle cx="16" cy="14" r="2" />
+                    </svg>
+                    AGENT: BETA
+                  </>
+                )}
+              </button>
               <Link
                 href={`/projects/${assessment.project_id}/report`}
                 target="_blank"
@@ -933,6 +944,17 @@ export default function AssessmentClient({
             >
               Gallery
             </button>
+            <button
+              onClick={() => handleModeChange('chat')}
+              className={clsx(
+                'flex-1 px-3 py-2 text-sm font-medium rounded transition-colors',
+                checkMode === 'chat'
+                  ? 'bg-white shadow-sm text-gray-900'
+                  : 'text-gray-600 hover:text-gray-900'
+              )}
+            >
+              Chat
+            </button>
           </div>
 
           {/* CSV Import Button (only show in Element mode) */}
@@ -942,59 +964,54 @@ export default function AssessmentClient({
             </div>
           )}
 
-          {/* Progress Bar */}
-          <div className="mb-3">
-            <div className="flex justify-between text-sm text-gray-600 mb-1">
-              <span>Progress</span>
-              <span>{Math.round(progress.pct)}%</span>
+          {/* Progress Bar (hide in chat mode) */}
+          {checkMode !== 'chat' && (
+            <div className="mb-3">
+              <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Progress</span>
+                <span>{Math.round(progress.pct)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all"
+                  style={{ width: `${progress.pct}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {progress.completed} of {progress.totalChecks} checks completed
+              </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
-                style={{ width: `${progress.pct}%` }}
-              />
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {progress.completed} of {progress.totalChecks} checks completed
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Checks List */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {checkMode === 'summary' ? (
-            (() => {
-              console.log('[AssessmentClient] About to render ViolationsSummary with:', {
-                hasRefetchViolations: typeof refetchViolations === 'function',
-                refreshingViolations,
-                rpcViolationsCount: rpcViolations?.length || 0,
-              });
-              return (
-                <ViolationsSummary
-                  checks={checks}
-                  rpcViolations={rpcViolations}
-                  onCheckSelect={handleCheckSelect}
-                  onViolationSelect={violation => {
-                    if (violation) {
-                      dispatchDetailPanel({ type: 'SELECT_VIOLATION', violation });
-                    } else {
-                      closeDetailPanel();
-                    }
-                  }}
-                  onEditCheck={handleEditCheck}
-                  buildingInfo={buildingInfo}
-                  codebooks={codebooks}
-                  pdfUrl={assessment.pdf_url ?? undefined}
-                  projectName={assessment.projects?.name}
-                  assessmentId={assessment.id}
-                  embedded={true}
-                  onRefresh={refetchViolations}
-                  refreshing={refreshingViolations}
-                />
-              );
-            })()
+            <ViolationsSummary
+              checks={checks}
+              rpcViolations={rpcViolations}
+              onCheckSelect={handleCheckSelect}
+              onViolationSelect={violation => {
+                if (violation) {
+                  dispatchDetailPanel({ type: 'SELECT_VIOLATION', violation });
+                } else {
+                  closeDetailPanel();
+                }
+              }}
+              onEditCheck={handleEditCheck}
+              buildingInfo={buildingInfo}
+              codebooks={codebooks}
+              pdfUrl={assessment.pdf_url ?? undefined}
+              projectName={assessment.projects?.name}
+              assessmentId={assessment.id}
+              embedded={true}
+              onRefresh={refetchViolations}
+              refreshing={refreshingViolations}
+            />
           ) : checkMode === 'gallery' ? (
             <AssessmentScreenshotGallery assessmentId={assessment.id} />
+          ) : checkMode === 'chat' ? (
+            <ChatPanel assessmentId={assessment.id} />
           ) : (
             <CheckList
               checks={displayedChecks}
@@ -1004,7 +1021,9 @@ export default function AssessmentClient({
               assessmentId={assessment.id}
               onCheckAdded={handleCheckAdded}
               onInstanceDeleted={handleInstanceDeleted}
-              refetchChecks={refetchChecks}
+              refetchChecks={async () => {
+                await refetchChecks();
+              }}
             />
           )}
         </div>
@@ -1034,107 +1053,54 @@ export default function AssessmentClient({
                 violation={detailPanel.violation}
                 onClose={closeDetailPanel}
                 onCheckUpdate={async () => {
-                  // Refetch all checks to refresh violations list
-                  // In summary mode, determine the mode from the selected violation's check
-                  try {
-                    let mode: 'section' | 'element' = 'section';
-                    if (detailPanel.mode === 'violation-detail') {
-                      // Check if this violation is from an element check
-                      const check = checks.find(c => c.id === detailPanel.violation.checkId);
-                      mode = check?.element_group_id ? 'element' : 'section';
-                    }
-
-                    const res = await fetch(
-                      `/api/assessments/${assessment.id}/checks?mode=${mode}`
-                    );
-                    if (res.ok) {
-                      const updatedChecks = await res.json();
-                      setChecks(updatedChecks);
-                    }
-                  } catch (error) {
-                    console.error('Failed to refetch checks:', error);
-                  }
+                  await refetchChecks();
                 }}
               />
             ) : (
-              /* Show CodeDetailPanel in section/element modes */
-              (() => {
-                return (
-                  <CodeDetailPanel
-                    checkId={activeCheck?.id || null}
-                    sectionKey={activeCheck?.sections?.key || null}
-                    filterToSectionKey={
-                      detailPanel.mode === 'check-detail' ? detailPanel.filterToSectionKey : null
+              <CodeDetailPanel
+                checkId={activeCheck?.id || null}
+                sectionKey={activeCheck?.sections?.key || null}
+                filterToSectionKey={
+                  detailPanel.mode === 'check-detail' ? detailPanel.filterToSectionKey : null
+                }
+                activeCheck={activeCheck}
+                screenshotRefreshTrigger={screenshotRefreshTriggerRef.current}
+                onClose={closeDetailPanel}
+                onMoveToNextCheck={handleMoveToNextCheck}
+                onCheckUpdate={async () => {
+                  if (activeCheck?.id) {
+                    try {
+                      const res = await fetch(`/api/checks/${activeCheck.id}`);
+                      if (res.ok) {
+                        const { check: updatedCheck } = await res.json();
+                        setChecks(prev =>
+                          prev.map(c => (c.id === updatedCheck.id ? { ...c, ...updatedCheck } : c))
+                        );
+                      }
+                    } catch {
+                      // Silently ignore
                     }
-                    activeCheck={activeCheck}
-                    screenshotRefreshTrigger={screenshotRefreshTriggerRef.current}
-                    onClose={closeDetailPanel}
-                    onMoveToNextCheck={handleMoveToNextCheck}
-                    onCheckUpdate={async () => {
-                      if (activeCheck?.id) {
-                        try {
-                          const res = await fetch(`/api/checks/${activeCheck.id}`);
-                          if (res.ok) {
-                            const { check: updatedCheck } = await res.json();
-                            setChecks(prev =>
-                              prev.map(c =>
-                                c.id === updatedCheck.id
-                                  ? { ...c, ...updatedCheck } // ← Just update if ID matches
-                                  : c
-                              )
-                            );
-                          }
-                        } catch (error) {
-                          console.error('Failed to refetch check:', error);
-                        }
-                      }
-                    }}
-                    onChecksRefresh={async () => {
-                      // Refetch all checks (used after exclusion)
-                      try {
-                        const res = await fetch(
-                          `/api/assessments/${assessment.id}/checks?mode=${checkMode === 'element' ? 'element' : 'section'}`
-                        );
-                        if (res.ok) {
-                          const updatedChecks = (await res.json()) as CheckData[];
-                          setChecks(updatedChecks);
-                          // Close the detail panel if the active check was deleted
-                          if (!updatedChecks.find(c => c.id === activeCheck?.id)) {
-                            closeDetailPanel();
-                          }
-                        }
-                      } catch (error) {
-                        console.error('Failed to refetch checks:', error);
-                      }
-                    }}
-                    onScreenshotAssigned={() => {
-                      // Refetch screenshots for the active check
-                      if (activeCheck?.id) {
-                        refetchCheckScreenshots(activeCheck.id);
-                      }
-                    }}
-                    onScreenshotDeleted={async () => {
-                      console.log('[AssessmentClient] onScreenshotDeleted called');
-                      // Refresh PDF viewer screenshot indicators
-                      if (refreshScreenshotsRef.current) {
-                        console.log('[AssessmentClient] Calling refreshScreenshotsRef.current');
-                        await refreshScreenshotsRef.current();
-                        console.log('[AssessmentClient] refreshScreenshotsRef.current completed');
-                      } else {
-                        console.warn('[AssessmentClient] refreshScreenshotsRef.current is null!');
-                      }
-                      // Also refetch screenshots for the active check
-                      if (activeCheck?.id) {
-                        console.log(
-                          '[AssessmentClient] Refetching check screenshots for:',
-                          activeCheck.id
-                        );
-                        await refetchCheckScreenshots(activeCheck.id);
-                      }
-                    }}
-                  />
-                );
-              })()
+                  }
+                }}
+                onChecksRefresh={async () => {
+                  const updatedChecks = await refetchChecks();
+                  // Close panel if the active check was deleted
+                  if (activeCheck?.id && !updatedChecks.find(c => c.id === activeCheck.id)) {
+                    closeDetailPanel();
+                  }
+                }}
+                onScreenshotAssigned={() => {
+                  if (activeCheck?.id) {
+                    refetchCheckScreenshots(activeCheck.id);
+                  }
+                }}
+                onScreenshotDeleted={async () => {
+                  await refreshScreenshotsRef.current?.();
+                  if (activeCheck?.id) {
+                    await refetchCheckScreenshots(activeCheck.id);
+                  }
+                }}
+              />
             )}
           </>
         )}
@@ -1160,7 +1126,9 @@ export default function AssessmentClient({
             onScreenshotSaved={refetchCheckScreenshots}
             onCheckAdded={handleCheckAdded}
             onCheckSelect={handleCheckSelect}
-            refetchChecks={refetchChecks}
+            refetchChecks={async () => {
+              await refetchChecks();
+            }}
             onRefreshScreenshotsReady={handleRefreshScreenshotsReady}
             onSearchStateChange={setIsPdfSearchOpen}
           />
@@ -1186,6 +1154,15 @@ export default function AssessmentClient({
           </div>
         )}
       </div>
+
+      {/* Agent Analysis Modal */}
+      <AgentAnalysisModal
+        assessmentId={assessment.id}
+        open={isAgentModalOpen}
+        onOpenChange={setIsAgentModalOpen}
+        existingRun={existingAgentRun}
+        onRunStatusChange={setExistingAgentRun}
+      />
     </div>
   );
 }

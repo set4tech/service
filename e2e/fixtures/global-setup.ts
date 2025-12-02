@@ -1,9 +1,12 @@
-import { chromium, FullConfig } from '@playwright/test';
-
 /* eslint-disable no-console */
+import { chromium, FullConfig } from '@playwright/test';
+import { getTestDataManager } from './test-data-api';
+
 /**
  * Global setup runs once before all tests
- * Use this to create test users, seed database, etc.
+ *
+ * - Creates test data (customer, project, assessment) via API
+ * - Sets environment variables for test fixtures to use
  */
 async function globalSetup(config: FullConfig) {
   console.log('🔧 Running global setup...');
@@ -24,8 +27,24 @@ async function globalSetup(config: FullConfig) {
     console.log('  ✓ Server is running');
     console.log('  ℹ App has no authentication - tests run without login');
 
-    // Note: Skipping test user setup - app is open access
-    // Only customer reports require password protection
+    // 2. Create test data (unless using existing assessment)
+    if (process.env.TEST_ASSESSMENT_ID) {
+      console.log(`  ℹ Using existing assessment: ${process.env.TEST_ASSESSMENT_ID}`);
+    } else {
+      console.log('  ↪ Creating test data via API...');
+      const manager = await getTestDataManager(baseURL);
+      const testData = await manager.createTestAssessment();
+
+      // Set env vars for fixtures to use
+      process.env.TEST_ASSESSMENT_ID = testData.assessmentId;
+      process.env.TEST_PROJECT_ID = testData.projectId;
+      process.env.TEST_CUSTOMER_ID = testData.customerId;
+
+      console.log(`  ✓ Test data created:`);
+      console.log(`    - Assessment: ${testData.assessmentId}`);
+      console.log(`    - Project: ${testData.projectId}`);
+      console.log(`    - Customer: ${testData.customerId}`);
+    }
 
     console.log('✅ Global setup complete\n');
   } catch (error) {

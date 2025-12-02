@@ -6,253 +6,299 @@ import { test, expect } from './fixtures/setup';
  * Tests AI analysis execution, results display, and audit trail
  */
 test.describe('AI Analysis - Workflow', () => {
-  const TEST_ASSESSMENT_ID = process.env.TEST_ASSESSMENT_ID || 'test-assessment-id';
-
   test.beforeEach(async ({ assessmentPage }) => {
-    test.skip(!process.env.TEST_ASSESSMENT_ID, 'Set TEST_ASSESSMENT_ID to run these tests');
-    await assessmentPage.goto(TEST_ASSESSMENT_ID);
+    await assessmentPage.goto();
   });
 
   test('should display analyze button for checks', async ({ page }) => {
-    // Select a check
-    const firstCheck = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }))
-      .first();
+    // Select the first check (already clicked in assessmentPage.goto)
+    // Look for analyze/run analysis button in the detail panel
+    const analyzeBtn = page.getByRole('button', { name: /analyze|run analysis|assess/i });
+    await expect(analyzeBtn).toBeVisible({ timeout: 5000 });
+  });
 
-    await firstCheck.click();
-    await page.waitForTimeout(500);
-
-    // Look for analyze/run analysis button
+  test('should show analysis loading state when analyzing', async ({ page }) => {
+    // Find and click analyze button
     const analyzeBtn = page.getByRole('button', { name: /analyze|run analysis|assess/i });
     await expect(analyzeBtn).toBeVisible();
+
+    // Click analyze and check for loading indicator
+    await analyzeBtn.click();
+
+    // Should show some loading state (spinner, disabled button, or loading text)
+    const loadingIndicator = page
+      .locator('[data-loading="true"]')
+      .or(page.getByText(/analyzing|loading|processing/i))
+      .or(page.locator('.animate-spin'))
+      .or(analyzeBtn.locator('svg.animate-spin'));
+
+    // Loading state might be quick, so we use a short timeout
+    await expect(loadingIndicator).toBeVisible({ timeout: 3000 }).catch(() => {
+      // Loading might have finished already - that's OK
+    });
   });
 
-  test('should show analysis loading state', async ({ page }) => {
-    // Find a check to analyze
-    const firstCheck = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }))
-      .first();
-
-    await firstCheck.click();
-    await page.waitForTimeout(500);
-
-    // Click analyze button
-    const analyzeBtn = page.getByRole('button', { name: /analyze|run analysis|assess/i });
-
-    if ((await analyzeBtn.count()) > 0) {
-      await analyzeBtn.click();
-
-      // Should show loading indicator
-      // Loading state should appear (might be quick)
-      await page.waitForTimeout(1000);
-    }
-  });
-
-  test('should display analysis results', async ({ page }) => {
-    // Look for existing analysis results
-    const resultsPanel = page
-      .locator('[data-testid="analysis-results"]')
-      .or(
-        page
-          .getByText(/compliance status|confidence/i)
-          .or(page.locator('[class*="analysis"]').or(page.locator('[class*="result"]')))
-      );
-
-    // Navigate through checks to find one with results
-    const checks = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }));
-
+  test('should display compliance status after analysis', async ({ page }) => {
+    // Navigate through checks to find one with analysis results
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
     const count = await checks.count();
-    let foundResults = false;
 
-    for (let i = 0; i < Math.min(count, 5); i++) {
+    let foundStatus = false;
+    for (let i = 0; i < Math.min(count, 10); i++) {
       await checks.nth(i).click();
       await page.waitForTimeout(300);
 
-      if ((await resultsPanel.count()) > 0) {
-        foundResults = true;
+      // Look for compliance status badges or text
+      const statusIndicator = page
+        .locator('[data-status]')
+        .or(page.getByText(/^compliant$/i))
+        .or(page.getByText(/^non-compliant$/i))
+        .or(page.getByText(/^not applicable$/i))
+        .or(page.getByText(/^unclear$/i));
+
+      if ((await statusIndicator.count()) > 0) {
+        foundStatus = true;
+        await expect(statusIndicator.first()).toBeVisible();
         break;
       }
     }
 
-    // At least some checks should have analysis results
-    console.log('Found analysis results:', foundResults);
+    // At least some checks should have a status
+    expect(foundStatus).toBe(true);
   });
 
-  test('should display compliance status badges', async ({ page }) => {
-    // Look for status badges (Compliant, Non-Compliant, etc.)
-    const statusBadges = page
-      .locator('[data-status]')
-      .or(page.getByText(/compliant|non-compliant|pending|not applicable/i));
-
-    const count = await statusBadges.count();
-    expect(count).toBeGreaterThanOrEqual(0);
-  });
-
-  test('should display confidence scores', async ({ page }) => {
-    // Navigate through checks to find confidence display
-    const checks = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }));
-
+  test('should display confidence level for analyzed checks', async ({ page }) => {
+    // Navigate through checks to find one with confidence display
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
     const count = await checks.count();
 
-    for (let i = 0; i < Math.min(count, 5); i++) {
+    let foundConfidence = false;
+    for (let i = 0; i < Math.min(count, 10); i++) {
       await checks.nth(i).click();
       await page.waitForTimeout(300);
 
-      // Look for confidence percentage or score
-      const confidenceText = page.getByText(/confidence|score/i);
+      // Look for confidence indicator (high/medium/low or percentage)
+      const confidenceIndicator = page
+        .getByText(/confidence/i)
+        .or(page.getByText(/high confidence/i))
+        .or(page.getByText(/medium confidence/i))
+        .or(page.getByText(/low confidence/i));
 
-      if ((await confidenceText.count()) > 0) {
-        console.log('Found confidence display');
+      if ((await confidenceIndicator.count()) > 0) {
+        foundConfidence = true;
+        await expect(confidenceIndicator.first()).toBeVisible();
         break;
       }
     }
+
+    expect(foundConfidence).toBe(true);
   });
 
-  test('should display violation details', async ({ page }) => {
-    // Navigate through checks to find violations
-    const checks = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }));
-
+  test('should display AI reasoning for analyzed checks', async ({ page }) => {
+    // Navigate through checks to find one with reasoning
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
     const count = await checks.count();
 
-    for (let i = 0; i < Math.min(count, 5); i++) {
+    let foundReasoning = false;
+    for (let i = 0; i < Math.min(count, 10); i++) {
       await checks.nth(i).click();
       await page.waitForTimeout(300);
+
+      // Look for reasoning section - usually contains detailed text
+      const reasoningSection = page
+        .locator('[data-testid="analysis-reasoning"]')
+        .or(page.getByText(/reasoning/i).locator('..'))
+        .or(page.locator('text=/The drawing shows|Based on|According to/i'));
+
+      if ((await reasoningSection.count()) > 0) {
+        foundReasoning = true;
+        await expect(reasoningSection.first()).toBeVisible();
+        break;
+      }
+    }
+
+    expect(foundReasoning).toBe(true);
+  });
+
+  test('should display violation details for non-compliant checks', async ({ page }) => {
+    // Navigate through checks to find a non-compliant one
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
+    const count = await checks.count();
+
+    let foundViolation = false;
+    for (let i = 0; i < Math.min(count, 15); i++) {
+      await checks.nth(i).click();
+      await page.waitForTimeout(300);
+
+      // First check if this is non-compliant
+      const nonCompliant = page.getByText(/non-compliant/i);
+      if ((await nonCompliant.count()) === 0) continue;
 
       // Look for violation details
-      const violationText = page.getByText(/violation|issue|problem/i);
+      const violationDetails = page
+        .getByText(/violation|issue|deficiency/i)
+        .or(page.locator('[data-testid="violations"]'))
+        .or(page.getByText(/severity/i));
 
-      if ((await violationText.count()) > 0) {
-        console.log('Found violation display');
+      if ((await violationDetails.count()) > 0) {
+        foundViolation = true;
+        await expect(violationDetails.first()).toBeVisible();
         break;
       }
+    }
+
+    // It's OK if no non-compliant checks exist in test data
+    if (!foundViolation) {
+      test.skip();
     }
   });
 
-  test('should display AI recommendations', async ({ page }) => {
-    // Navigate through checks to find recommendations
-    const checks = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }));
-
+  test('should display recommendations for violations', async ({ page }) => {
+    // Navigate through checks to find one with recommendations
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
     const count = await checks.count();
 
-    for (let i = 0; i < Math.min(count, 5); i++) {
+    let foundRecommendation = false;
+    for (let i = 0; i < Math.min(count, 10); i++) {
       await checks.nth(i).click();
       await page.waitForTimeout(300);
 
-      // Look for recommendations
-      const recommendationText = page.getByText(/recommendation|suggestion|should/i);
+      // Look for recommendations section
+      const recommendations = page
+        .getByText(/recommendation/i)
+        .or(page.getByText(/suggested fix/i))
+        .or(page.getByText(/to resolve/i));
 
-      if ((await recommendationText.count()) > 0) {
-        console.log('Found recommendation display');
+      if ((await recommendations.count()) > 0) {
+        foundRecommendation = true;
+        await expect(recommendations.first()).toBeVisible();
         break;
       }
     }
+
+    expect(foundRecommendation).toBe(true);
   });
 
   test('should show analysis timestamp', async ({ page }) => {
-    // Navigate through checks to find timestamp
-    const checks = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }));
-
+    // Navigate through checks to find one with analysis
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
     const count = await checks.count();
 
-    for (let i = 0; i < Math.min(count, 3); i++) {
+    let foundTimestamp = false;
+    for (let i = 0; i < Math.min(count, 10); i++) {
       await checks.nth(i).click();
       await page.waitForTimeout(300);
 
-      // Look for timestamp (e.g., "2 hours ago", "Oct 7, 2024")
-      const timestampText = page.getByText(/ago|analyzed|assessed/i);
+      // Look for timestamp patterns (relative or absolute)
+      const timestamp = page
+        .getByText(/\d+ (seconds?|minutes?|hours?|days?) ago/i)
+        .or(page.getByText(/analyzed|assessed/i))
+        .or(page.getByText(/\d{1,2}\/\d{1,2}\/\d{2,4}/));
 
-      if ((await timestampText.count()) > 0) {
-        console.log('Found analysis timestamp');
+      if ((await timestamp.count()) > 0) {
+        foundTimestamp = true;
+        await expect(timestamp.first()).toBeVisible();
         break;
       }
     }
+
+    expect(foundTimestamp).toBe(true);
   });
 
-  test('should allow re-running analysis', async ({ page }) => {
-    // Select a check
-    const firstCheck = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }))
-      .first();
+  test('should allow re-running analysis on already analyzed checks', async ({ page }) => {
+    // Find a check that has been analyzed
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
+    const count = await checks.count();
 
-    await firstCheck.click();
-    await page.waitForTimeout(500);
+    for (let i = 0; i < Math.min(count, 10); i++) {
+      await checks.nth(i).click();
+      await page.waitForTimeout(300);
 
-    // Look for re-analyze or retry button
-    const retryBtn = page.getByRole('button', { name: /re-analyze|retry|run again/i });
+      // Check if this has analysis results (has a status)
+      const hasResults = page.locator('[data-status]').or(page.getByText(/^(non-)?compliant$/i));
+      if ((await hasResults.count()) === 0) continue;
 
-    // Button might exist (depending on if check has been analyzed)
-    const hasRetryBtn = (await retryBtn.count()) > 0;
-    console.log('Has retry button:', hasRetryBtn);
+      // Should still have analyze button to re-run
+      const analyzeBtn = page.getByRole('button', { name: /analyze|re-analyze|run analysis/i });
+      await expect(analyzeBtn).toBeVisible();
+      return;
+    }
+
+    // If no analyzed checks found, skip
+    test.skip();
   });
 
   test('should display AI provider information', async ({ page }) => {
-    // Navigate through checks to find AI provider info
-    const checks = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }));
-
+    // Navigate through checks to find provider info
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
     const count = await checks.count();
 
-    for (let i = 0; i < Math.min(count, 3); i++) {
+    let foundProvider = false;
+    for (let i = 0; i < Math.min(count, 10); i++) {
       await checks.nth(i).click();
       await page.waitForTimeout(300);
 
-      // Look for AI provider (Gemini, GPT-4, Claude, etc.)
-      const providerText = page.getByText(/gemini|gpt|claude|openai|anthropic/i);
+      // Look for AI provider name
+      const providerInfo = page
+        .getByText(/gemini/i)
+        .or(page.getByText(/gpt-4/i))
+        .or(page.getByText(/claude/i))
+        .or(page.getByText(/openai/i))
+        .or(page.getByText(/anthropic/i));
 
-      if ((await providerText.count()) > 0) {
-        console.log('Found AI provider display');
+      if ((await providerInfo.count()) > 0) {
+        foundProvider = true;
+        await expect(providerInfo.first()).toBeVisible();
         break;
       }
     }
-  });
 
-  test('should show batch analysis option', async ({ page }) => {
-    // Look for batch/bulk analysis button
-    const batchBtn = page.getByRole('button', { name: /batch|bulk|analyze all/i });
-
-    if ((await batchBtn.count()) > 0) {
-      await expect(batchBtn).toBeVisible();
-      console.log('Found batch analysis button');
+    // Provider info might not always be displayed - that's acceptable
+    if (!foundProvider) {
+      test.skip();
     }
   });
+});
 
-  test('should display analysis history', async ({ page }) => {
-    // Select a check
-    const firstCheck = page
-      .locator('[data-check-id]')
-      .or(page.locator('button').filter({ hasText: /11B-/ }))
-      .first();
-
-    await firstCheck.click();
-    await page.waitForTimeout(500);
-
-    // Look for history/audit trail
-    const historySection = page
-      .locator('[data-testid="analysis-history"]')
-      .or(page.getByText(/history|previous runs|audit/i));
-
-    const hasHistory = (await historySection.count()) > 0;
-    console.log('Has analysis history:', hasHistory);
+test.describe('AI Analysis - Error Handling', () => {
+  test.beforeEach(async ({ assessmentPage }) => {
+    await assessmentPage.goto();
   });
 
-  test('should handle analysis errors gracefully', async () => {
-    // This test would trigger an error condition
-    // For now, just check that error UI exists
-    // Should have error handling UI in place (might not be visible)
-    console.log('Has error handling UI');
+  test('should require screenshot before analysis', async ({ page }) => {
+    // Find a check without screenshots
+    const checks = page.locator('button').filter({ hasText: /11B-/ });
+    const count = await checks.count();
+
+    for (let i = 0; i < Math.min(count, 10); i++) {
+      await checks.nth(i).click();
+      await page.waitForTimeout(300);
+
+      // Check if there are no screenshots
+      const screenshots = page.locator('[aria-label="Open screenshot"]');
+      if ((await screenshots.count()) > 0) continue;
+
+      // Analyze button should be disabled or show warning when clicked
+      const analyzeBtn = page.getByRole('button', { name: /analyze|assess/i });
+      if ((await analyzeBtn.count()) === 0) continue;
+
+      // Either button is disabled or clicking shows warning
+      const isDisabled = await analyzeBtn.isDisabled();
+      if (isDisabled) {
+        expect(isDisabled).toBe(true);
+        return;
+      }
+
+      // Or clicking shows an error/warning
+      await analyzeBtn.click();
+      const warning = page.getByText(/screenshot required|add screenshot|no screenshot/i);
+      if ((await warning.count()) > 0) {
+        await expect(warning.first()).toBeVisible();
+        return;
+      }
+    }
+
+    // All checks have screenshots - skip this test
+    test.skip();
   });
 });

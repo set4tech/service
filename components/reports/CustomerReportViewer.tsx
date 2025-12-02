@@ -15,9 +15,9 @@ import { BlueprintLoader } from './BlueprintLoader';
 import { CalculationTablesBrowser } from './CalculationTablesBrowser';
 import { CodeInformation } from './CodeInformation';
 
-// Load PDF viewer only on client side
-const PDFViewer = dynamic(
-  () => import('@/components/pdf/PDFViewer').then(mod => ({ default: mod.PDFViewer })),
+// Load PDF report viewer only on client side (simpler read-only viewer)
+const PDFReportViewer = dynamic(
+  () => import('@/components/pdf/PDFReportViewer').then(mod => ({ default: mod.PDFReportViewer })),
   {
     ssr: false,
     loading: () => <BlueprintLoader />,
@@ -603,9 +603,8 @@ export function CustomerReportViewer({ data }: Props) {
           isNavHovered ? 'ml-[444px]' : 'ml-[414px]'
         }`}
       >
-        <PDFViewer
+        <PDFReportViewer
           pdfUrl={data.pdfUrl}
-          readOnly={true}
           violationMarkers={data.violations}
           onMarkerClick={handleViolationDetailsClick}
           currentPage={currentPage}
