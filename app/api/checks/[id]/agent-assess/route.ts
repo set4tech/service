@@ -50,7 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .select(
         `
         *,
-        sections!checks_section_id_fkey(id, key, number, title, text, requirements, tables),
+        sections!checks_section_id_fkey(id, key, number, title, text, paragraphs, tables),
         assessments(
           id,
           project_id,
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         number: section?.number || check.code_section_number,
         title: section?.title || check.code_section_title,
         text: section?.text,
-        requirements: section?.requirements,
+        paragraphs: section?.paragraphs,
         tables: section?.tables,
       },
       building_context: assessment?.projects?.extracted_variables || {},
