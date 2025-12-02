@@ -1,12 +1,15 @@
 """
-Pipeline for running sequential processing steps on YOLO detection results.
+Pipeline for running sequential and parallel processing steps on YOLO detection results.
 
-Each step takes the data structure, processes it (optionally with LLM), and returns it.
+Supports both sync and async steps, with built-in parallelization primitives.
 """
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 from dataclasses import dataclass, field
+
+import config as cfg
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +37,142 @@ class PipelineStep(ABC):
         return f"<{self.__class__.__name__}: {self.name}>"
 
 
+class AsyncPipelineStep(PipelineStep):
+    """Base class for async pipeline steps."""
+
+    async def process_async(self, ctx: PipelineContext) -> PipelineContext:
+        """Async process implementation. Override this for async steps."""
+        # Default: call sync version (backwards compatible)
+        return self.process(ctx)
+
+    def process(self, ctx: PipelineContext) -> PipelineContext:
+        """Sync wrapper - runs async in event loop. Override process_async instead."""
+        raise NotImplementedError("AsyncPipelineStep subclasses must implement process_async")
+
+
+class ParallelItemStep(AsyncPipelineStep):
+    """
+    Base class for steps that process items (pages/detections) in parallel.
+
+    Subclasses must implement:
+    - get_items(ctx): Return list of items to process
+    - process_item(item, ctx): Process a single item (async)
+    - merge_results(results, ctx): Merge results back into context
+    """
+
+    max_concurrency: int = None  # Override in subclass or use config default
+
+    def get_max_concurrency(self) -> int:
+        """Get max concurrency, defaulting to config value."""
+        if self.max_concurrency is not None:
+            return self.max_concurrency
+        return cfg.PARALLEL_VLM_CONCURRENCY
+
+    @abstractmethod
+    def get_items(self, ctx: PipelineContext) -> list[Any]:
+        """Get list of items to process in parallel."""
+        pass
+
+    @abstractmethod
+    async def process_item(self, item: Any, ctx: PipelineContext) -> Any:
+        """Process a single item. Must be implemented by subclass."""
+        pass
+
+    @abstractmethod
+    def merge_results(self, results: list[Any], ctx: PipelineContext) -> PipelineContext:
+        """Merge all results back into context."""
+        pass
+
+    async def process_async(self, ctx: PipelineContext) -> PipelineContext:
+        """Process all items in parallel with bounded concurrency."""
+        items = self.get_items(ctx)
+
+        if not items:
+            logger.info(f"  {self.name}: No items to process")
+            return self.merge_results([], ctx)
+
+        max_conc = self.get_max_concurrency()
+        semaphore = asyncio.Semaphore(max_conc)
+        total = len(items)
+
+        logger.info(f"  {self.name}: Processing {total} items (max {max_conc} concurrent)")
+
+        async def bounded_process(idx: int, item: Any) -> Any:
+            async with semaphore:
+                logger.debug(f"    [{idx + 1}/{total}] Processing...")
+                try:
+                    return await self.process_item(item, ctx)
+                except Exception as e:
+                    logger.error(f"    [{idx + 1}/{total}] Error: {e}")
+                    return None
+
+        results = await asyncio.gather(*[bounded_process(i, item) for i, item in enumerate(items)])
+
+        # Filter out None results from errors
+        valid_results = [r for r in results if r is not None]
+        logger.info(f"  {self.name}: Completed {len(valid_results)}/{total} items successfully")
+
+        return self.merge_results(valid_results, ctx)
+
+
+class ParallelSteps(AsyncPipelineStep):
+    """
+    Run multiple steps in parallel.
+
+    Each step gets its own copy of metadata to avoid race conditions.
+    Results are merged after all steps complete.
+    """
+
+    def __init__(self, steps: list[PipelineStep]):
+        self.steps = steps
+        self.name = f"parallel({', '.join(s.name for s in steps)})"
+
+    async def process_async(self, ctx: PipelineContext) -> PipelineContext:
+        """Run all steps concurrently, merge their metadata outputs."""
+        logger.info(f"  Running {len(self.steps)} steps in parallel: {[s.name for s in self.steps]}")
+
+        async def run_step(step: PipelineStep) -> PipelineContext:
+            # Each step gets a copy of metadata to avoid race conditions
+            step_ctx = PipelineContext(
+                assessment_id=ctx.assessment_id,
+                agent_run_id=ctx.agent_run_id,
+                data=ctx.data,  # Shared (read-only in these steps)
+                metadata=dict(ctx.metadata),  # Copy
+            )
+            if isinstance(step, AsyncPipelineStep):
+                return await step.process_async(step_ctx)
+            else:
+                return step.process(step_ctx)
+
+        results = await asyncio.gather(*[run_step(s) for s in self.steps])
+
+        # Merge metadata from all results
+        for result_ctx in results:
+            ctx.metadata.update(result_ctx.metadata)
+
+        logger.info(f"  Parallel steps completed")
+        return ctx
+
+    def process(self, ctx: PipelineContext) -> PipelineContext:
+        """Sync wrapper."""
+        raise NotImplementedError("ParallelSteps must be run via process_async")
+
+
 class Pipeline:
     """
     Runs a sequence of steps on detection data.
+    Supports both sync and async steps.
 
     Usage:
         pipeline = Pipeline([
             FilterLowConfidence(threshold=0.5),
-            ClassifyElements(),
-            ExtractMeasurements(),
+            ParallelSteps([Step1(), Step2()]),
+            FinalStep(),
         ])
 
-        result = pipeline.run(ctx)
+        result = await pipeline.run_async(ctx)
+        # or
+        result = pipeline.run(ctx)  # Uses asyncio.run internally
     """
 
     def __init__(self, steps: list[PipelineStep] = None):
@@ -56,9 +183,13 @@ class Pipeline:
         self.steps.append(step)
         return self
 
-    def run(self, ctx: PipelineContext, progress_callback: Callable[[int, int, str], None] = None) -> PipelineContext:
+    async def run_async(
+        self,
+        ctx: PipelineContext,
+        progress_callback: Callable[[int, int, str], None] = None
+    ) -> PipelineContext:
         """
-        Run all steps in sequence.
+        Run all steps, using async where supported.
 
         Args:
             ctx: The pipeline context with initial data
@@ -77,13 +208,28 @@ class Pipeline:
                 progress_callback(i, total, f"Running {step_name}...")
 
             try:
-                ctx = step.process(ctx)
+                if isinstance(step, AsyncPipelineStep):
+                    ctx = await step.process_async(ctx)
+                else:
+                    ctx = step.process(ctx)
             except Exception as e:
                 logger.exception(f"[Pipeline] Step {step_name} failed: {e}")
                 raise
 
         logger.info(f"[Pipeline] Completed {total} steps")
         return ctx
+
+    def run(
+        self,
+        ctx: PipelineContext,
+        progress_callback: Callable[[int, int, str], None] = None
+    ) -> PipelineContext:
+        """
+        Run all steps in sequence (sync wrapper).
+
+        Uses asyncio.run() to handle async steps properly.
+        """
+        return asyncio.run(self.run_async(ctx, progress_callback))
 
 
 # ============================================

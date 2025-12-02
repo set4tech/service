@@ -205,8 +205,16 @@ def run_yolo_inference(image_paths: list[Path], weights_path: Path) -> dict:
 
 
 def build_preprocess_pipeline():
-    """Build the preprocessing pipeline with all steps."""
-    from pipeline import Pipeline, FilterLowConfidence, GroupByClass, CountSummary
+    """
+    Build the preprocessing pipeline with parallelized steps.
+
+    Pipeline Phases:
+    - Phase A (sync): Filter and group detections
+    - Phase B (parallel): Page-level extraction (text, sheet info, project info)
+    - Phase C (parallel): Detection-level extraction (tables, OCR, element tags)
+    - Phase D (sequential): Post-processing steps that depend on earlier phases
+    """
+    from pipeline import Pipeline, ParallelSteps, FilterLowConfidence, GroupByClass, CountSummary
     from steps.extract_tables import ExtractTables
     from steps.extract_text import ExtractText
     from steps.ocr_bboxes import OCRBboxes
@@ -217,16 +225,29 @@ def build_preprocess_pipeline():
     from steps.match_tags_to_legends import MatchTagsToLegends
 
     return Pipeline([
+        # Phase A: Sync preprocessing
         FilterLowConfidence(threshold=config.PIPELINE_FILTER_THRESHOLD),
         GroupByClass(),
-        ExtractText(clean_with_llm=config.TEXT_CLEAN_WITH_LLM),
-        OCRBboxes(),  # Uses config defaults
-        ExtractTables(),  # Step 9: Extract tables from detected regions
-        ExtractLegends(),  # Step 10: Post-process tables to extract legends
-        ExtractElementTags(),  # Step 11: Extract element tags (D-01, W-1, room numbers)
-        MatchTagsToLegends(),  # Step 12: Match tags to legend entries
-        ExtractProjectInfo(),  # Step 6: Extract project metadata from cover sheets
-        ExtractSheetInfo(),  # Step 7: Extract sheet number/title from each page
+
+        # Phase B: Page-level extraction (parallel)
+        # These process each page independently and can run concurrently
+        ParallelSteps([
+            ExtractText(clean_with_llm=config.TEXT_CLEAN_WITH_LLM),
+            ExtractSheetInfo(),
+            ExtractProjectInfo(),
+        ]),
+
+        # Phase C: Detection-level extraction (parallel)
+        # These process YOLO detections and can run concurrently
+        ParallelSteps([
+            ExtractTables(),
+            OCRBboxes(),
+            ExtractElementTags(),
+        ]),
+
+        # Phase D: Sequential post-processing
+        ExtractLegends(),  # Depends on ExtractTables
+        MatchTagsToLegends(),  # Depends on ExtractElementTags and ExtractLegends
         CountSummary(),
     ])
 
@@ -284,7 +305,7 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
                 # Offset by base steps for overall progress
                 update_progress(agent_run_id, base_steps + step, base_steps + total, message)
 
-            result = pipeline.run(ctx, progress_callback=pipeline_progress)
+            result = await pipeline.run_async(ctx, progress_callback=pipeline_progress)
 
             # Save results
             total_steps = base_steps + len(pipeline.steps)

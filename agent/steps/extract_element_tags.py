@@ -1,18 +1,21 @@
 """
-Element Tag Extraction Pipeline Step
+Element Tag Extraction Pipeline Step (Parallelized)
 
 Extracts architectural element tags (door tags like D-01, window tags like W-1,
 room numbers, detail markers, etc.) from YOLO-detected image regions.
 
 Uses VLM to identify and classify tags while filtering out noise like grid lines,
 keynotes, dimensions, and general text.
+
+Processes all detections in parallel for improved performance.
 """
 import json
 import logging
-from typing import Optional
+from pathlib import Path
+from typing import Any
 
-from pipeline import PipelineStep, PipelineContext
-from llm import call_vlm
+from pipeline import ParallelItemStep, PipelineContext
+from llm import call_vlm_async_with_retry
 from image_utils import crop_bbox, load_page_image
 
 logger = logging.getLogger(__name__)
@@ -63,9 +66,9 @@ Return JSON:
 If no element tags found, return empty arrays. Be strict - when in doubt, exclude it."""
 
 
-def extract_tags_from_image(image, detection_info: dict) -> dict:
+async def extract_tags_from_image_async(image, detection_info: dict) -> dict:
     """
-    Send image to VLM and extract element tags.
+    Async version: Send image to VLM and extract element tags.
 
     Args:
         image: PIL Image of the cropped detection
@@ -75,7 +78,7 @@ def extract_tags_from_image(image, detection_info: dict) -> dict:
         Extraction result dict with tags_found, tag_types, etc.
     """
     try:
-        result = call_vlm(EXTRACTION_PROMPT, image, json_mode=True)
+        result = await call_vlm_async_with_retry(EXTRACTION_PROMPT, image, json_mode=True)
 
         if result["status"] == "error":
             logger.warning(f"VLM error: {result.get('error')}")
@@ -124,9 +127,10 @@ def extract_tags_from_image(image, detection_info: dict) -> dict:
         }
 
 
-class ExtractElementTags(PipelineStep):
+class ExtractElementTags(ParallelItemStep):
     """
     Pipeline step to extract architectural element tags from detected images.
+    Processes all detections in parallel.
 
     Processes YOLO detections of class 'image' (floor plans, elevations, etc.)
     and uses VLM to identify element tags like door numbers, window tags,
@@ -136,6 +140,7 @@ class ExtractElementTags(PipelineStep):
     """
 
     name = "extract_element_tags"
+    max_concurrency = 10
 
     def __init__(
         self,
@@ -152,37 +157,17 @@ class ExtractElementTags(PipelineStep):
         self.target_classes = target_classes or TARGET_CLASSES
         self.min_crop_size = min_crop_size
         self.min_confidence = min_confidence
+        self._images_dir = None
 
-    def process(self, ctx: PipelineContext) -> PipelineContext:
-        """
-        Extract element tags from detected image regions.
-
-        Args:
-            ctx: Pipeline context with detection data
-
-        Returns:
-            Updated context with extracted_element_tags in metadata
-        """
+    def get_items(self, ctx: PipelineContext) -> list[dict]:
+        """Get list of detection items to process."""
         images_dir = ctx.metadata.get("images_dir")
         if not images_dir:
-            logger.warning("No images_dir in metadata, skipping element tag extraction")
-            ctx.metadata["extracted_element_tags"] = []
-            return ctx
+            logger.warning("No images_dir in metadata")
+            return []
 
-        all_results = []
-        total_processed = 0
-        total_with_tags = 0
-        all_unique_tags = set()
-
-        # Collect all unique tags by type for summary
-        tag_type_counts = {
-            "door_tags": set(),
-            "window_tags": set(),
-            "room_numbers": set(),
-            "detail_markers": set(),
-            "section_markers": set(),
-            "elevation_markers": set(),
-        }
+        self._images_dir = images_dir
+        items = []
 
         for page_name, page_data in ctx.data.items():
             # Get detections for this page
@@ -195,86 +180,106 @@ class ExtractElementTags(PipelineStep):
                 and d.get("confidence", 0) >= self.min_confidence
             ]
 
-            if not target_detections:
-                logger.debug(f"  {page_name}: No target class detections")
-                continue
-
-            # Load page image
-            page_image = load_page_image(images_dir, page_name)
-            if page_image is None:
-                logger.warning(f"  {page_name}: Could not load image")
-                continue
-
-            logger.info(f"  {page_name}: Processing {len(target_detections)} detections...")
-
-            page_results = []
-
             for idx, det in enumerate(target_detections):
-                bbox = det.get("bbox")
-                if not bbox:
-                    continue
+                if det.get("bbox"):
+                    items.append({
+                        "page_name": page_name,
+                        "detection": det,
+                        "detection_index": idx,
+                    })
 
-                # Crop the detection
-                try:
-                    crop = crop_bbox(page_image, bbox, padding=5)
-                    crop_size = f"{crop.width}x{crop.height}"
+        logger.info(f"  Found {len(items)} detections to process for element tags")
+        return items
 
-                    # Skip if crop is too small
-                    if crop.width < self.min_crop_size or crop.height < self.min_crop_size:
-                        logger.debug(f"    [{idx+1}] Crop too small: {crop_size}")
-                        result = {
-                            "tags_found": [],
-                            "readable": False,
-                            "notes": "Crop too small to contain readable text",
-                            "status": "skipped_too_small"
-                        }
-                    else:
-                        # Extract tags using VLM
-                        logger.debug(f"    [{idx+1}] Processing {det['class_name']} crop {crop_size}")
-                        result = extract_tags_from_image(crop, det)
+    async def process_item(self, item: dict, ctx: PipelineContext) -> dict | None:
+        """Process a single detection - extract element tags."""
+        page_name = item["page_name"]
+        det = item["detection"]
+        idx = item["detection_index"]
+        bbox = det["bbox"]
 
-                except Exception as e:
-                    logger.error(f"    [{idx+1}] Error processing: {e}")
-                    result = {
-                        "tags_found": [],
-                        "readable": False,
-                        "notes": f"Processing error: {str(e)}",
-                        "status": "processing_error"
-                    }
-                    crop_size = None
+        # Load page image
+        page_image = load_page_image(self._images_dir, page_name)
+        if page_image is None:
+            logger.warning(f"  {page_name}: Could not load image")
+            return None
 
-                # Build detection result
-                detection_result = {
-                    "page": page_name,
-                    "detection_index": idx,
-                    "bbox": bbox,
-                    "class_name": det.get("class_name"),
-                    "confidence": det.get("confidence"),
-                    "crop_size": crop_size if 'crop_size' in dir() else None,
-                    "extraction_result": result,
+        # Crop the detection
+        try:
+            crop = crop_bbox(page_image, bbox, padding=5)
+            crop_size = f"{crop.width}x{crop.height}"
+
+            # Skip if crop is too small
+            if crop.width < self.min_crop_size or crop.height < self.min_crop_size:
+                logger.debug(f"  {page_name}[{idx}] Crop too small: {crop_size}")
+                result = {
+                    "tags_found": [],
+                    "readable": False,
+                    "notes": "Crop too small to contain readable text",
+                    "status": "skipped_too_small"
                 }
-                page_results.append(detection_result)
+            else:
+                # Extract tags using VLM
+                logger.debug(f"  {page_name}[{idx}] Processing {det['class_name']} crop {crop_size}")
+                result = await extract_tags_from_image_async(crop, det)
 
-                total_processed += 1
-                tags_found = result.get("tags_found", [])
-                if tags_found:
-                    total_with_tags += 1
-                    all_unique_tags.update(tags_found)
-                    logger.info(f"    [{idx+1}] Found {len(tags_found)} tags: {tags_found[:5]}{'...' if len(tags_found) > 5 else ''}")
+        except Exception as e:
+            logger.error(f"  {page_name}[{idx}] Error processing: {e}")
+            result = {
+                "tags_found": [],
+                "readable": False,
+                "notes": f"Processing error: {str(e)}",
+                "status": "processing_error"
+            }
+            crop_size = "unknown"
 
-                    # Track by type
-                    tag_types = result.get("tag_types", {})
-                    for type_name, tags in tag_types.items():
-                        if type_name in tag_type_counts and tags:
-                            tag_type_counts[type_name].update(tags)
-                else:
-                    logger.debug(f"    [{idx+1}] No tags found")
+        # Log if tags found
+        tags_found = result.get("tags_found", [])
+        if tags_found:
+            logger.info(f"  {page_name}[{idx}] Found {len(tags_found)} tags: {tags_found[:5]}{'...' if len(tags_found) > 5 else ''}")
 
-            all_results.extend(page_results)
+        return {
+            "page": page_name,
+            "detection_index": idx,
+            "bbox": bbox,
+            "class_name": det.get("class_name"),
+            "confidence": det.get("confidence"),
+            "crop_size": crop_size,
+            "extraction_result": result,
+        }
+
+    def merge_results(self, results: list[dict], ctx: PipelineContext) -> PipelineContext:
+        """Merge all detection results into metadata."""
+        valid_results = [r for r in results if r is not None]
+
+        # Calculate summary stats
+        total_with_tags = 0
+        all_unique_tags = set()
+        tag_type_counts = {
+            "door_tags": set(),
+            "window_tags": set(),
+            "room_numbers": set(),
+            "detail_markers": set(),
+            "section_markers": set(),
+            "elevation_markers": set(),
+        }
+
+        for r in valid_results:
+            extraction = r.get("extraction_result", {})
+            tags_found = extraction.get("tags_found", [])
+            if tags_found:
+                total_with_tags += 1
+                all_unique_tags.update(tags_found)
+
+                # Track by type
+                tag_types = extraction.get("tag_types", {})
+                for type_name, tags in tag_types.items():
+                    if type_name in tag_type_counts and tags:
+                        tag_type_counts[type_name].update(tags)
 
         # Build summary
         summary = {
-            "total_detections_processed": total_processed,
+            "total_detections_processed": len(valid_results),
             "detections_with_tags": total_with_tags,
             "unique_tags_found": len(all_unique_tags),
             "all_unique_tags": sorted(all_unique_tags),
@@ -286,11 +291,11 @@ class ExtractElementTags(PipelineStep):
         }
 
         # Store results
-        ctx.metadata["extracted_element_tags"] = all_results
+        ctx.metadata["extracted_element_tags"] = valid_results
         ctx.metadata["element_tags_summary"] = summary
 
         logger.info(f"  Element tag extraction complete:")
-        logger.info(f"    Detections processed: {total_processed}")
+        logger.info(f"    Detections processed: {len(valid_results)}")
         logger.info(f"    Detections with tags: {total_with_tags}")
         logger.info(f"    Unique tags found: {len(all_unique_tags)}")
 

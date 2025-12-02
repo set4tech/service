@@ -2,9 +2,10 @@
 Unit tests for agent/steps/extract_element_tags.py
 """
 import pytest
+import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from PIL import Image
 
 # Add agent directory to path
@@ -13,21 +14,29 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from pipeline import PipelineContext
 
 
-class TestExtractTagsFromImage:
-    """Test extract_tags_from_image function."""
+def run_async(coro):
+    """Helper to run async code in sync tests."""
+    return asyncio.run(coro)
+
+
+class TestExtractTagsFromImageAsync:
+    """Test extract_tags_from_image_async function."""
 
     def test_success_parses_json(self):
         """Successfully parses valid JSON response."""
-        from steps.extract_element_tags import extract_tags_from_image
+        from steps.extract_element_tags import extract_tags_from_image_async
 
         mock_response = {
             "text": '{"tags_found": ["D-01", "W-1"], "tag_types": {"door_tags": ["D-01"], "window_tags": ["W-1"]}, "confidence": "high", "readable": true, "notes": ""}',
             "status": "success",
         }
 
-        with patch("steps.extract_element_tags.call_vlm", return_value=mock_response):
+        async def mock_vlm(*args, **kwargs):
+            return mock_response
+
+        with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
             image = Image.new("RGB", (100, 100))
-            result = extract_tags_from_image(image, {})
+            result = run_async(extract_tags_from_image_async(image, {}))
 
         assert result["status"] == "success"
         assert result["tags_found"] == ["D-01", "W-1"]
@@ -36,23 +45,26 @@ class TestExtractTagsFromImage:
 
     def test_handles_markdown_code_blocks(self):
         """Strips markdown code blocks from response."""
-        from steps.extract_element_tags import extract_tags_from_image
+        from steps.extract_element_tags import extract_tags_from_image_async
 
         mock_response = {
             "text": '```json\n{"tags_found": ["101"], "tag_types": {"room_numbers": ["101"]}, "confidence": "medium", "readable": true, "notes": ""}\n```',
             "status": "success",
         }
 
-        with patch("steps.extract_element_tags.call_vlm", return_value=mock_response):
+        async def mock_vlm(*args, **kwargs):
+            return mock_response
+
+        with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
             image = Image.new("RGB", (100, 100))
-            result = extract_tags_from_image(image, {})
+            result = run_async(extract_tags_from_image_async(image, {}))
 
         assert result["status"] == "success"
         assert result["tags_found"] == ["101"]
 
     def test_handles_vlm_error(self):
         """Returns error result when VLM fails."""
-        from steps.extract_element_tags import extract_tags_from_image
+        from steps.extract_element_tags import extract_tags_from_image_async
 
         mock_response = {
             "text": "",
@@ -60,9 +72,12 @@ class TestExtractTagsFromImage:
             "error": "API rate limit exceeded",
         }
 
-        with patch("steps.extract_element_tags.call_vlm", return_value=mock_response):
+        async def mock_vlm(*args, **kwargs):
+            return mock_response
+
+        with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
             image = Image.new("RGB", (100, 100))
-            result = extract_tags_from_image(image, {})
+            result = run_async(extract_tags_from_image_async(image, {}))
 
         assert result["status"] == "api_error"
         assert result["tags_found"] == []
@@ -70,16 +85,19 @@ class TestExtractTagsFromImage:
 
     def test_handles_json_parse_error(self):
         """Returns error result when JSON parsing fails."""
-        from steps.extract_element_tags import extract_tags_from_image
+        from steps.extract_element_tags import extract_tags_from_image_async
 
         mock_response = {
             "text": "This is not valid JSON",
             "status": "success",
         }
 
-        with patch("steps.extract_element_tags.call_vlm", return_value=mock_response):
+        async def mock_vlm(*args, **kwargs):
+            return mock_response
+
+        with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
             image = Image.new("RGB", (100, 100))
-            result = extract_tags_from_image(image, {})
+            result = run_async(extract_tags_from_image_async(image, {}))
 
         assert result["status"] == "json_error"
         assert result["tags_found"] == []
@@ -87,11 +105,14 @@ class TestExtractTagsFromImage:
 
     def test_handles_exception(self):
         """Returns error result when exception occurs."""
-        from steps.extract_element_tags import extract_tags_from_image
+        from steps.extract_element_tags import extract_tags_from_image_async
 
-        with patch("steps.extract_element_tags.call_vlm", side_effect=Exception("Connection failed")):
+        async def mock_vlm(*args, **kwargs):
+            raise Exception("Connection failed")
+
+        with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
             image = Image.new("RGB", (100, 100))
-            result = extract_tags_from_image(image, {})
+            result = run_async(extract_tags_from_image_async(image, {}))
 
         assert result["status"] == "processing_error"
         assert result["tags_found"] == []
@@ -119,7 +140,7 @@ class TestExtractElementTagsStep:
             metadata={}
         )
 
-        result = step.process(ctx)
+        result = run_async(step.process_async(ctx))
 
         assert result.metadata["extracted_element_tags"] == []
 
@@ -141,7 +162,7 @@ class TestExtractElementTagsStep:
         )
 
         with patch("steps.extract_element_tags.load_page_image", return_value=Image.new("RGB", (1000, 1000))):
-            result = step.process(ctx)
+            result = run_async(step.process_async(ctx))
 
         # No detections processed since none are 'image' class
         assert result.metadata["extracted_element_tags"] == []
@@ -168,9 +189,12 @@ class TestExtractElementTagsStep:
             "status": "success",
         }
 
+        async def mock_vlm(*args, **kwargs):
+            return mock_vlm_response
+
         with patch("steps.extract_element_tags.load_page_image", return_value=Image.new("RGB", (1000, 1000))):
-            with patch("steps.extract_element_tags.call_vlm", return_value=mock_vlm_response):
-                result = step.process(ctx)
+            with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
+                result = run_async(step.process_async(ctx))
 
         # Only one detection should be processed (confidence 0.6 >= 0.5)
         assert len(result.metadata["extracted_element_tags"]) == 1
@@ -192,7 +216,7 @@ class TestExtractElementTagsStep:
         )
 
         with patch("steps.extract_element_tags.load_page_image", return_value=Image.new("RGB", (1000, 1000))):
-            result = step.process(ctx)
+            result = run_async(step.process_async(ctx))
 
         # Detection should be processed but marked as skipped
         assert len(result.metadata["extracted_element_tags"]) == 1
@@ -219,9 +243,12 @@ class TestExtractElementTagsStep:
             "status": "success",
         }
 
+        async def mock_vlm(*args, **kwargs):
+            return mock_vlm_response
+
         with patch("steps.extract_element_tags.load_page_image", return_value=Image.new("RGB", (1000, 1000))):
-            with patch("steps.extract_element_tags.call_vlm", return_value=mock_vlm_response):
-                result = step.process(ctx)
+            with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
+                result = run_async(step.process_async(ctx))
 
         assert len(result.metadata["extracted_element_tags"]) == 1
         extraction = result.metadata["extracted_element_tags"][0]
@@ -251,10 +278,14 @@ class TestExtractElementTagsStep:
             {"text": '{"tags_found": ["D-01"], "tag_types": {"door_tags": ["D-01"]}, "confidence": "high", "readable": true, "notes": ""}', "status": "success"},
             {"text": '{"tags_found": ["D-02", "W-1"], "tag_types": {"door_tags": ["D-02"], "window_tags": ["W-1"]}, "confidence": "high", "readable": true, "notes": ""}', "status": "success"},
         ]
+        response_iter = iter(responses)
+
+        async def mock_vlm(*args, **kwargs):
+            return next(response_iter)
 
         with patch("steps.extract_element_tags.load_page_image", return_value=Image.new("RGB", (1000, 1000))):
-            with patch("steps.extract_element_tags.call_vlm", side_effect=responses):
-                result = step.process(ctx)
+            with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
+                result = run_async(step.process_async(ctx))
 
         summary = result.metadata["element_tags_summary"]
         assert summary["total_detections_processed"] == 2
@@ -286,9 +317,12 @@ class TestExtractElementTagsStep:
             "status": "success",
         }
 
+        async def mock_vlm(*args, **kwargs):
+            return mock_vlm_response
+
         with patch("steps.extract_element_tags.load_page_image", return_value=Image.new("RGB", (1000, 1000))):
-            with patch("steps.extract_element_tags.call_vlm", return_value=mock_vlm_response):
-                result = step.process(ctx)
+            with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
+                result = run_async(step.process_async(ctx))
 
         assert len(result.metadata["extracted_element_tags"]) == 1
 
@@ -314,9 +348,12 @@ class TestExtractElementTagsStep:
             "status": "success",
         }
 
+        async def mock_vlm(*args, **kwargs):
+            return mock_vlm_response
+
         with patch("steps.extract_element_tags.load_page_image", return_value=Image.new("RGB", (1000, 1000))):
-            with patch("steps.extract_element_tags.call_vlm", return_value=mock_vlm_response):
-                result = step.process(ctx)
+            with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
+                result = run_async(step.process_async(ctx))
 
         # Only floorplan detection should be processed
         assert len(result.metadata["extracted_element_tags"]) == 1
@@ -352,8 +389,11 @@ class TestExtractElementTagsIntegration:
             "status": "success",
         }
 
+        async def mock_vlm(*args, **kwargs):
+            return mock_vlm_response
+
         with patch("steps.extract_element_tags.load_page_image", return_value=Image.new("RGB", (1000, 1000))):
-            with patch("steps.extract_element_tags.call_vlm", return_value=mock_vlm_response):
+            with patch("steps.extract_element_tags.call_vlm_async_with_retry", side_effect=mock_vlm):
                 result = pipeline.run(ctx)
 
         assert "extracted_element_tags" in result.metadata
