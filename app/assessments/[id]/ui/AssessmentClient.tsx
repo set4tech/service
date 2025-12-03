@@ -176,15 +176,22 @@ export default function AssessmentClient({
   useEffect(() => {
     async function checkAgentStatus() {
       try {
+        console.log('[AssessmentClient] Checking agent status on mount...');
         const res = await fetch(`/api/assessments/${assessment.id}/agent/status`);
         if (res.ok) {
           const data: AgentRun = await res.json();
+          console.log('[AssessmentClient] Agent status response:', data.id, data.status);
           if (data.status === 'running' || data.status === 'pending') {
+            console.log('[AssessmentClient] Setting existingAgentRun:', data.id);
             setExistingAgentRun(data);
+          } else {
+            console.log('[AssessmentClient] Agent run not active, status:', data.status);
           }
+        } else {
+          console.log('[AssessmentClient] Agent status not found (404)');
         }
-      } catch {
-        // Silently ignore - agent status is optional
+      } catch (err) {
+        console.log('[AssessmentClient] Error checking agent status:', err);
       }
     }
     checkAgentStatus();
