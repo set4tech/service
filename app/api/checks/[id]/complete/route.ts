@@ -42,6 +42,13 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .eq('check_id', checkId)
       .order('run_number', { ascending: false });
 
+    // Also fetch agent analysis runs
+    const agentAnalysisRunsQuery = supabase
+      .from('agent_analysis_runs')
+      .select('*')
+      .eq('check_id', checkId)
+      .order('run_number', { ascending: false });
+
     const siblingChecksQuery = elementInstanceId
       ? supabase
           .from('checks')
@@ -75,16 +82,35 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .order('created_at', { ascending: false });
 
     // Execute all parallel queries
-    const [analysisRunsResult, siblingChecksResult, codeSectionResult, screenshotsResult] =
-      await Promise.all([
-        analysisRunsQuery,
-        siblingChecksQuery || Promise.resolve({ data: null, error: null }),
-        codeSectionQuery || Promise.resolve({ data: null, error: null }),
-        screenshotsQuery,
-      ]);
+    const [
+      analysisRunsResult,
+      agentAnalysisRunsResult,
+      siblingChecksResult,
+      codeSectionResult,
+      screenshotsResult,
+    ] = await Promise.all([
+      analysisRunsQuery,
+      agentAnalysisRunsQuery,
+      siblingChecksQuery || Promise.resolve({ data: null, error: null }),
+      codeSectionQuery || Promise.resolve({ data: null, error: null }),
+      screenshotsQuery,
+    ]);
 
     // Process results
-    const analysisRuns = analysisRunsResult.data || [];
+    const regularRuns = (analysisRunsResult.data || []).map((run: any) => ({
+      ...run,
+      source: 'standard',
+    }));
+    const agentRuns = (agentAnalysisRunsResult.data || []).map((run: any) => ({
+      ...run,
+      source: 'agent',
+    }));
+    // Merge and sort by executed_at (most recent first)
+    const analysisRuns = [...regularRuns, ...agentRuns].sort((a, b) => {
+      const dateA = new Date(a.executed_at || a.created_at).getTime();
+      const dateB = new Date(b.executed_at || b.created_at).getTime();
+      return dateB - dateA;
+    });
     const siblingChecks = siblingChecksResult.data || [];
     const codeSectionData = codeSectionResult.data;
 
