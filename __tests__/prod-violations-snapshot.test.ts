@@ -580,10 +580,7 @@ async function fetchViolationsFromProd(assessmentId: string): Promise<ViolationS
 }
 
 describe('Production Violations Snapshot', () => {
-  // Skip in CI if no prod connection is available
-  const shouldRun = process.env.CI !== 'true' || process.env.PROD_DATABASE_URL;
-
-  describe.skipIf(!shouldRun)('Violations consistency checks', () => {
+  describe('Violations consistency checks', () => {
     Object.entries(EXPECTED_VIOLATIONS).forEach(([assessmentId, expectedViolations]) => {
       it(`Assessment ${assessmentId} should have ${expectedViolations.length} violations`, async () => {
         const actualViolations = await fetchViolationsFromProd(assessmentId);
