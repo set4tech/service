@@ -22,7 +22,6 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
-from pdf2image import convert_from_path
 from ultralytics import YOLO
 
 import config
@@ -174,20 +173,33 @@ def download_pdf_from_s3(s3_key: str, local_path: Path) -> None:
 
 
 def pdf_to_images(pdf_path: Path, output_dir: Path, dpi: int = None) -> list[Path]:
-    """Convert PDF pages to PNG images."""
+    """Convert PDF pages to PNG images using per-page conversion for better performance."""
+    import fitz  # pymupdf - much faster than pdf2image/poppler
+
     dpi = dpi or config.PDF_DPI
-    logger.info(f"Converting PDF to images (dpi={dpi})...")
+    logger.info(f"Converting PDF to images (dpi={dpi}) using pymupdf...")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    images = convert_from_path(pdf_path, dpi=dpi)
+    # Calculate zoom factor from DPI (pymupdf default is 72 dpi)
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+
     image_paths = []
+    doc = fitz.open(pdf_path)
+    total_pages = len(doc)
+    logger.info(f"  PDF has {total_pages} pages")
 
-    for i, image in enumerate(images, start=1):
+    for i, page in enumerate(doc, start=1):
+        # Render page to pixmap
+        pix = page.get_pixmap(matrix=matrix)
+
+        # Save as PNG
         img_path = output_dir / f"page_{i:03d}.png"
-        image.save(img_path, "PNG")
+        pix.save(str(img_path))
         image_paths.append(img_path)
-        logger.info(f"  Saved {img_path.name}")
+        logger.info(f"  Saved {img_path.name} ({pix.width}x{pix.height})")
 
+    doc.close()
     return image_paths
 
 
