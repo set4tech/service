@@ -239,6 +239,7 @@ class ChatToolExecutor:
         self.navigator = navigator
         self.images_dir = images_dir
         self._build_keyword_index()
+        self._build_page_index()
 
     def _build_keyword_index(self):
         """Build a searchable index of text from all pages."""
@@ -258,6 +259,93 @@ class ChatToolExecutor:
                     page_text += " " + section.get("raw_text", "")
 
             self.text_index[page_num] = page_text.lower()
+
+    def _build_page_index(self):
+        """
+        Build indices for sheet identifier normalization.
+
+        Creates mappings from:
+        - Numeric indices (0, 1, 2...) to page keys
+        - Sheet numbers (A1.0, G0.1) to page keys
+        """
+        self.index_to_page_key = {}  # "0" -> "page_001.png"
+        self.sheet_number_to_page_key = {}  # "A1.0" -> "page_001.png"
+
+        # Sort pages by their parsed numeric value for consistent indexing
+        page_items = list(self.navigator.pages.items())
+        page_items_sorted = sorted(
+            page_items,
+            key=lambda x: (_parse_page_number(x[0]) or 999999, str(x[0]))
+        )
+
+        for idx, (page_key, page_data) in enumerate(page_items_sorted):
+            # Map numeric index to page key
+            self.index_to_page_key[str(idx)] = page_key
+
+            # Map sheet number to page key
+            sheet_num = page_data.get("sheet_number", "")
+            if sheet_num:
+                self.sheet_number_to_page_key[sheet_num.lower()] = page_key
+
+        logger.debug(f"[PageIndex] Built index: {len(self.index_to_page_key)} pages, "
+                     f"{len(self.sheet_number_to_page_key)} sheet numbers")
+
+    def _resolve_sheet_identifier(self, sheet_id: str) -> tuple[Optional[str], Optional[dict]]:
+        """
+        Resolve a sheet identifier to its page key and data.
+
+        Accepts multiple formats:
+        - Page key: "page_001.png" (direct match)
+        - Sheet number: "A1.0", "G0.1" (from title block)
+        - Numeric index: "0", "1", "2" (zero-based page order)
+
+        Returns:
+            (page_key, page_data) if found, (None, None) if not found
+        """
+        sheet_id_str = str(sheet_id).strip()
+
+        # 1. Try direct match with page keys
+        if sheet_id_str in self.navigator.pages:
+            return sheet_id_str, self.navigator.pages[sheet_id_str]
+
+        # 2. Try sheet number match (case-insensitive)
+        sheet_id_lower = sheet_id_str.lower()
+        for page_key, page_data in self.navigator.pages.items():
+            sheet_num = page_data.get("sheet_number", "")
+            if sheet_num and sheet_num.lower() == sheet_id_lower:
+                return page_key, page_data
+
+        # 3. Try numeric index mapping
+        if sheet_id_str in self.index_to_page_key:
+            page_key = self.index_to_page_key[sheet_id_str]
+            return page_key, self.navigator.pages.get(page_key)
+
+        # 4. Try parsing as integer and using as index
+        try:
+            idx = int(sheet_id_str)
+            if str(idx) in self.index_to_page_key:
+                page_key = self.index_to_page_key[str(idx)]
+                return page_key, self.navigator.pages.get(page_key)
+        except ValueError:
+            pass
+
+        return None, None
+
+    def _get_available_sheets_hint(self) -> str:
+        """Get a hint string showing available sheet identifiers."""
+        hints = []
+        for idx, page_key in list(self.index_to_page_key.items())[:5]:
+            page_data = self.navigator.pages.get(page_key, {})
+            sheet_num = page_data.get("sheet_number", "")
+            if sheet_num:
+                hints.append(f"'{idx}' or '{sheet_num}'")
+            else:
+                hints.append(f"'{idx}'")
+
+        hint_str = ", ".join(hints)
+        if len(self.index_to_page_key) > 5:
+            hint_str += f", ... ({len(self.index_to_page_key)} total)"
+        return hint_str
 
     def execute(self, tool_name: str, tool_input: dict) -> dict:
         """
@@ -459,30 +547,44 @@ class ChatToolExecutor:
         return info
 
     def _get_sheet_list(self) -> list:
-        """Get list of all sheets."""
+        """Get list of all sheets with their identifiers."""
         sheets = []
-        for page_num, page_data in self.navigator.pages.items():
+
+        # Use sorted order consistent with index mapping
+        page_items = list(self.navigator.pages.items())
+        page_items_sorted = sorted(
+            page_items,
+            key=lambda x: (_parse_page_number(x[0]) or 999999, str(x[0]))
+        )
+
+        for idx, (page_key, page_data) in enumerate(page_items_sorted):
             sheets.append({
-                "page_index": page_num,
-                "sheet_number": page_data.get("sheet_number", f"Page {page_num}"),
+                "index": str(idx),  # Numeric index that can be used with read_sheet_details/view_sheet_image
+                "page_key": page_key,
+                "sheet_number": page_data.get("sheet_number", ""),
                 "sheet_title": page_data.get("sheet_title", "Unknown")
             })
         return sheets
 
     def _read_sheet_details(self, sheet_id: str) -> dict:
         """Read details from a specific sheet."""
-        for page_num, page_data in self.navigator.pages.items():
-            sheet_num = page_data.get("sheet_number") or ""
-            if str(page_num) == sheet_id or sheet_num.lower() == sheet_id.lower():
-                return {
-                    "page_index": page_num,
-                    "sheet_number": sheet_num,
-                    "sheet_title": page_data.get("sheet_title"),
-                    "text_preview": (page_data.get("page_text", {}) or {}).get("raw", "")[:2000],
-                    "sections_count": len(page_data.get("sections", [])),
-                    "section_types": [s.get("section_type") for s in page_data.get("sections", [])]
-                }
-        return {"error": f"Sheet {sheet_id} not found"}
+        page_key, page_data = self._resolve_sheet_identifier(sheet_id)
+
+        if page_key is None or page_data is None:
+            available = self._get_available_sheets_hint()
+            return {
+                "error": f"Sheet '{sheet_id}' not found. Available sheets: {available}"
+            }
+
+        sheet_num = page_data.get("sheet_number") or ""
+        return {
+            "page_index": page_key,
+            "sheet_number": sheet_num,
+            "sheet_title": page_data.get("sheet_title"),
+            "text_preview": (page_data.get("page_text", {}) or {}).get("raw", "")[:2000],
+            "sections_count": len(page_data.get("sections", [])),
+            "section_types": [s.get("section_type") for s in page_data.get("sections", [])]
+        }
 
     def _get_keynotes(self) -> dict:
         """Get keynotes and general notes."""
@@ -515,19 +617,15 @@ class ChatToolExecutor:
         if not self.images_dir:
             return {"result": {"error": "Images directory not configured"}}
 
-        # Find the page for this sheet
-        page_num = None
-        sheet_number = None
+        # Resolve the sheet identifier to page key and data
+        page_key, page_data = self._resolve_sheet_identifier(sheet_id)
 
-        for pn, page_data in self.navigator.pages.items():
-            sheet_num = page_data.get("sheet_number", "")
-            if str(pn) == sheet_id or (sheet_num and sheet_num.lower() == sheet_id.lower()):
-                page_num = pn
-                sheet_number = sheet_num
-                break
+        if page_key is None or page_data is None:
+            available = self._get_available_sheets_hint()
+            return {"result": {"error": f"Sheet '{sheet_id}' not found. Available sheets: {available}"}}
 
-        if page_num is None:
-            return {"result": {"error": f"Sheet {sheet_id} not found"}}
+        page_num = page_key
+        sheet_number = page_data.get("sheet_number", "")
 
         # Parse page number for pattern matching
         parsed_page = _parse_page_number(page_num)
