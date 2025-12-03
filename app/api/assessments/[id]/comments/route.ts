@@ -11,7 +11,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const { id: assessmentId } = await params;
     const supabase = supabaseAdmin();
 
-    console.log('[comments] Fetching comments for assessment:', assessmentId);
+    console.warn('[comments] Fetching comments for assessment:', assessmentId);
 
     // Fetch comments with their screenshots (LEFT JOIN, so comments without screenshots are included)
     const { data: comments, error } = await supabase
@@ -103,7 +103,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       };
     });
 
-    console.log(`[comments] Found ${transformedComments?.length || 0} comments`);
+    console.warn(`[comments] Found ${transformedComments?.length || 0} comments`);
 
     return NextResponse.json({
       comments: transformedComments || [],

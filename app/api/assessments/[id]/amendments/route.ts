@@ -8,7 +8,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    console.log('[GET /api/assessments/:id/amendments] Assessment ID:', id);
+    console.warn('[GET /api/assessments/:id/amendments] Assessment ID:', id);
 
     const supabase = supabaseAdmin();
 
@@ -24,11 +24,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
 
-    console.log('[Amendments API] Assessment jurisdiction:', assessment.jurisdiction);
+    console.warn('[Amendments API] Assessment jurisdiction:', assessment.jurisdiction);
 
     // If no jurisdiction set, return empty array
     if (!assessment.jurisdiction) {
-      console.log('[Amendments API] No jurisdiction set for assessment');
+      console.warn('[Amendments API] No jurisdiction set for assessment');
       return NextResponse.json({ amendments: [] });
     }
 
@@ -43,7 +43,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Failed to fetch codes' }, { status: 500 });
     }
 
-    console.log('[Amendments API] Found codes:', codes?.length || 0);
+    console.warn('[Amendments API] Found codes:', codes?.length || 0);
 
     if (!codes || codes.length === 0) {
       return NextResponse.json({ amendments: [] });
@@ -97,7 +97,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Failed to fetch amendments' }, { status: 500 });
     }
 
-    console.log('[Amendments API] Found amendment sections:', sections?.length || 0);
+    console.warn('[Amendments API] Found amendment sections:', sections?.length || 0);
 
     // Fetch subsections for each amendment to get the detailed content
     const amendmentsWithContent = await Promise.all(
@@ -144,7 +144,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       })
     );
 
-    console.log('[Amendments API] Returning amendments:', amendmentsWithContent.length);
+    console.warn('[Amendments API] Returning amendments:', amendmentsWithContent.length);
     return NextResponse.json({
       amendments: amendmentsWithContent,
       jurisdiction: assessment.jurisdiction,

@@ -29,9 +29,17 @@ const PAGE_MARGIN = 15; // Margin in mm
  * Exports a compliance report PDF with violations marked up
  */
 export async function exportCompliancePDF(options: ExportOptions): Promise<void> {
-  const { pdfUrl, violations, projectName, buildingParams, codeInfo } = options;
+  const { pdfUrl, violations, projectName, buildingParams: _buildingParams, codeInfo } = options;
 
-  console.log('[PDF Export] Starting export with', violations.length, 'violations');
+  // Filter violations to only include those with analysis (AI or human)
+  const violationsWithAnalysis = violations.filter(v => v.reasoning || v.manualReasoning);
+
+  console.log('[PDF Export] Starting export with', violations.length, 'total violations');
+  console.log(
+    '[PDF Export] Filtered to',
+    violationsWithAnalysis.length,
+    'violations with analysis'
+  );
   console.log('[PDF Export] Input PDF URL:', pdfUrl);
 
   // Get presigned URL if needed
@@ -103,61 +111,6 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     yPos += 12;
   }
 
-  // Building parameters - format nicely
-  if (buildingParams && Object.keys(buildingParams).length > 0) {
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Building Parameters', PAGE_MARGIN, yPos);
-    yPos += 8;
-
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-
-    const formatValue = (val: any, indent = 0): string[] => {
-      const indentStr = '  '.repeat(indent);
-      if (typeof val === 'object' && val !== null) {
-        const lines: string[] = [];
-        for (const [k, v] of Object.entries(val)) {
-          const key = k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-          if (typeof v === 'object' && v !== null) {
-            lines.push(`${indentStr}${key}:`);
-            lines.push(...formatValue(v, indent + 1));
-          } else {
-            lines.push(`${indentStr}${key}: ${v}`);
-          }
-        }
-        return lines;
-      }
-      return [`${indentStr}${val}`];
-    };
-
-    for (const [key, value] of Object.entries(buildingParams)) {
-      if (yPos > pageHeight - PAGE_MARGIN - 20) {
-        pdf.addPage();
-        yPos = PAGE_MARGIN;
-      }
-
-      const displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(displayKey + ':', PAGE_MARGIN + 5, yPos);
-      yPos += 5;
-
-      pdf.setFont('helvetica', 'normal');
-      const lines = formatValue(value, 1);
-      lines.forEach(line => {
-        if (yPos > pageHeight - PAGE_MARGIN - 10) {
-          pdf.addPage();
-          yPos = PAGE_MARGIN;
-        }
-        const wrappedLines = pdf.splitTextToSize(line, contentWidth - 10);
-        pdf.text(wrappedLines, PAGE_MARGIN + 5, yPos);
-        yPos += 4.5 * wrappedLines.length;
-      });
-      yPos += 3;
-    }
-    yPos += 5;
-  }
-
   // Summary stats
   pdf.setFontSize(12);
   pdf.setFont('helvetica', 'bold');
@@ -165,14 +118,18 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
   yPos += 8;
 
   const severityCounts = {
-    major: violations.filter(v => v.severity === 'major').length,
-    moderate: violations.filter(v => v.severity === 'moderate').length,
-    minor: violations.filter(v => v.severity === 'minor').length,
+    major: violationsWithAnalysis.filter(v => v.severity === 'major').length,
+    moderate: violationsWithAnalysis.filter(v => v.severity === 'moderate').length,
+    minor: violationsWithAnalysis.filter(v => v.severity === 'minor').length,
   };
 
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'normal');
-  pdf.text(`Total Violations: ${violations.length}`, PAGE_MARGIN + 5, yPos);
+  pdf.text(
+    `Total Violations with Analysis: ${violationsWithAnalysis.length}`,
+    PAGE_MARGIN + 5,
+    yPos
+  );
   yPos += 6;
   pdf.setTextColor(220, 38, 38);
   pdf.text(`Major: ${severityCounts.major}`, PAGE_MARGIN + 5, yPos);
@@ -190,143 +147,11 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
 
   console.log('[PDF Export] Created title page');
 
-  // ==================== DRAWING PAGES WITH MARKERS ====================
-  // Load source PDF
-  const loadingTask = pdfjsLib.getDocument(presignedUrl);
-  const pdfDoc = await loadingTask.promise;
-  const numPages = pdfDoc.numPages;
-
-  console.log('[PDF Export] Loaded PDF with', numPages, 'pages');
-
-  // Group violations by page
-  const violationsByPage = new Map<number, ViolationMarker[]>();
-  violations.forEach(v => {
-    if (!violationsByPage.has(v.pageNumber)) {
-      violationsByPage.set(v.pageNumber, []);
-    }
-    violationsByPage.get(v.pageNumber)!.push(v);
-  });
-
-  // Render each page that has violations
-  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-    const pageViolations = violationsByPage.get(pageNum) || [];
-    if (pageViolations.length === 0) {
-      continue; // Skip pages without violations
-    }
-
-    console.log(
-      `[PDF Export] Rendering drawing page ${pageNum} with ${pageViolations.length} violations`
-    );
-
-    pdf.addPage('a4', 'landscape');
-
-    // Get PDF page
-    const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 2.0 }); // High resolution
-
-    // Create canvas for rendering
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d')!;
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    // Render PDF page to canvas
-    await page.render({
-      canvasContext: context,
-      viewport: viewport,
-    }).promise;
-
-    // Calculate layout dimensions (landscape page)
-    const drawingPageWidth = pdf.internal.pageSize.getWidth();
-    const drawingPageHeight = pdf.internal.pageSize.getHeight();
-    const drawingWidth = drawingPageWidth - PAGE_MARGIN * 2;
-    const drawingHeight = drawingPageHeight - PAGE_MARGIN * 2;
-
-    // Calculate aspect ratio to fit
-    const imgAspect = viewport.width / viewport.height;
-    const boxAspect = drawingWidth / drawingHeight;
-    let imgWidth, imgHeight;
-
-    if (imgAspect > boxAspect) {
-      imgWidth = drawingWidth;
-      imgHeight = drawingWidth / imgAspect;
-    } else {
-      imgHeight = drawingHeight;
-      imgWidth = drawingHeight * imgAspect;
-    }
-
-    // Center the image
-    const imgX = PAGE_MARGIN + (drawingWidth - imgWidth) / 2;
-    const imgY = PAGE_MARGIN + (drawingHeight - imgHeight) / 2;
-
-    // Add the PDF page image
-    const imgData = canvas.toDataURL('image/jpeg', 0.9);
-    pdf.addImage(imgData, 'JPEG', imgX, imgY, imgWidth, imgHeight);
-
-    // Draw violation markers on the drawing
-    pageViolations.forEach(violation => {
-      if (violation.bounds.width === 0 || violation.bounds.height === 0) {
-        return; // Skip if no bounds
-      }
-
-      // Bounds are stored in base PDF pixels (scale 1) regardless of capture zoom level
-      // The viewer's screenToContent function normalizes coordinates by dividing by transform.scale
-      // So zoom_level is just metadata - we only need to scale by the renderScale we're using here
-      const renderScale = 2.0;
-
-      console.log('[PDF Export] Violation bounds:', {
-        checkId: violation.checkId,
-        originalBounds: violation.bounds,
-        renderScale,
-        viewportDims: { width: viewport.width, height: viewport.height },
-      });
-
-      // Scale bounds from base PDF pixels (scale 1) to viewport pixels (scale 2.0)
-      const viewportX = violation.bounds.x * renderScale;
-      const viewportY = violation.bounds.y * renderScale;
-      const viewportW = violation.bounds.width * renderScale;
-      const viewportH = violation.bounds.height * renderScale;
-
-      // Convert viewport coordinates to PDF page image coordinates
-      const x = imgX + (viewportX / viewport.width) * imgWidth;
-      const y = imgY + (viewportY / viewport.height) * imgHeight;
-      const w = (viewportW / viewport.width) * imgWidth;
-      const h = (viewportH / viewport.height) * imgHeight;
-
-      // Draw rectangle around violation
-      const color = getSeverityColor(violation.severity);
-      pdf.setDrawColor(color.r, color.g, color.b);
-      pdf.setLineWidth(1.5);
-      pdf.rect(x, y, w, h, 'S');
-
-      // Draw filled circle marker with number
-      pdf.setFillColor(color.r, color.g, color.b);
-      pdf.circle(x + 5, y + 5, 4, 'F');
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(8);
-      pdf.setFont('helvetica', 'bold');
-      const violationNum = violations.findIndex(v => v.checkId === violation.checkId) + 1;
-      pdf.text(String(violationNum), x + 5, y + 6.5, { align: 'center' });
-    });
-
-    // Page title
-    pdf.setFontSize(10);
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text(
-      `Drawing Page ${pageNum} - ${pageViolations.length} Violation(s)`,
-      PAGE_MARGIN,
-      PAGE_MARGIN - 3
-    );
-
-    console.log('[PDF Export] Completed drawing page', pageNum);
-  }
-
   // ==================== VIOLATION DETAIL PAGES ====================
-  // Process each violation
-  for (let i = 0; i < violations.length; i++) {
-    const violation = violations[i];
-    console.log(`[PDF Export] Processing violation ${i + 1}/${violations.length}`);
+  // Process each violation (filtered to only those with analysis)
+  for (let i = 0; i < violationsWithAnalysis.length; i++) {
+    const violation = violationsWithAnalysis[i];
+    console.log(`[PDF Export] Processing violation ${i + 1}/${violationsWithAnalysis.length}`);
 
     pdf.addPage();
     yPos = PAGE_MARGIN;
@@ -339,7 +164,7 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     pdf.setFontSize(12);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(255, 255, 255);
-    pdf.text(`Violation ${i + 1} of ${violations.length}`, PAGE_MARGIN + 3, yPos + 7);
+    pdf.text(`Violation ${i + 1} of ${violationsWithAnalysis.length}`, PAGE_MARGIN + 3, yPos + 7);
     pdf.text(violation.severity.toUpperCase(), pageWidth - PAGE_MARGIN - 3, yPos + 7, {
       align: 'right',
     });
@@ -351,6 +176,122 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     pdf.setFont('helvetica', 'bold');
     pdf.text(`Code Section: ${violation.codeSectionNumber}`, PAGE_MARGIN, yPos);
     yPos += 10;
+
+    // Fetch and display section content
+    if (violation.codeSectionKey) {
+      try {
+        const sectionRes = await fetch(`/api/code-sections/${violation.codeSectionKey}`);
+        if (sectionRes.ok) {
+          const section = await sectionRes.json();
+
+          console.log('[PDF Export] Section data:', {
+            checkId: violation.checkId,
+            hasParent: !!section.parent_section,
+            hasText: !!section.text,
+            hasRequirements: !!section.requirements,
+          });
+
+          // Check if we need a new page
+          if (yPos > pageHeight - 100) {
+            pdf.addPage();
+            yPos = PAGE_MARGIN;
+          }
+
+          // Parent section context (if exists)
+          if (section.parent_section) {
+            pdf.setFontSize(9);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(100, 100, 100);
+            pdf.text('Parent Section Context:', PAGE_MARGIN, yPos);
+            yPos += 6;
+
+            pdf.setFont('helvetica', 'normal');
+            const parentLabel = `${section.parent_section.number} - ${section.parent_section.title || ''}`;
+            pdf.text(parentLabel, PAGE_MARGIN + 3, yPos);
+            yPos += 6;
+
+            // Parent section text (summary)
+            if (section.parent_section.text) {
+              const parentTextLines = pdf.splitTextToSize(
+                section.parent_section.text,
+                contentWidth - 6
+              );
+              parentTextLines.forEach((line: string) => {
+                if (yPos > pageHeight - PAGE_MARGIN - 10) {
+                  pdf.addPage();
+                  yPos = PAGE_MARGIN;
+                }
+                pdf.text(line, PAGE_MARGIN + 3, yPos);
+                yPos += 4.5;
+              });
+            }
+            yPos += 6;
+          }
+
+          // Section Summary (this is the main section text)
+          if (section.text) {
+            pdf.setFontSize(9);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(100, 100, 100);
+            pdf.text('Section Summary:', PAGE_MARGIN, yPos);
+            yPos += 6;
+
+            pdf.setFont('helvetica', 'normal');
+            pdf.setTextColor(0, 0, 0);
+            const textLines = pdf.splitTextToSize(section.text, contentWidth - 3);
+            textLines.forEach((line: string) => {
+              if (yPos > pageHeight - PAGE_MARGIN - 10) {
+                pdf.addPage();
+                yPos = PAGE_MARGIN;
+              }
+              pdf.text(line, PAGE_MARGIN + 3, yPos);
+              yPos += 4.5;
+            });
+            yPos += 6;
+          }
+
+          // Requirements (paragraphs)
+          if (
+            section.requirements &&
+            Array.isArray(section.requirements) &&
+            section.requirements.length > 0
+          ) {
+            pdf.setFontSize(9);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(100, 100, 100);
+            pdf.text('Requirements:', PAGE_MARGIN, yPos);
+            yPos += 6;
+
+            pdf.setFont('helvetica', 'normal');
+            pdf.setTextColor(0, 0, 0);
+
+            section.requirements.forEach((req: any, _idx: number) => {
+              const text = typeof req === 'string' ? req : req.text || '';
+              if (text) {
+                const reqLines = pdf.splitTextToSize(text, contentWidth - 6);
+                reqLines.forEach((line: string) => {
+                  if (yPos > pageHeight - PAGE_MARGIN - 10) {
+                    pdf.addPage();
+                    yPos = PAGE_MARGIN;
+                  }
+                  pdf.text(line, PAGE_MARGIN + 6, yPos);
+                  yPos += 4.5;
+                });
+                yPos += 3; // Space between requirements
+              }
+            });
+            yPos += 4;
+          }
+
+          yPos += 4;
+        } else {
+          console.error('[PDF Export] Section fetch failed:', sectionRes.status);
+        }
+      } catch (err) {
+        console.error('[PDF Export] Failed to fetch section content:', err);
+        yPos += 5;
+      }
+    }
 
     // Violation description
     pdf.setFontSize(10);
@@ -364,8 +305,9 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     pdf.text(descLines, PAGE_MARGIN, yPos);
     yPos += 5 * descLines.length + 6;
 
-    // AI reasoning
-    if (violation.reasoning) {
+    // Analysis - prioritize manual reasoning over AI reasoning
+    const analysisText = violation.manualReasoning || violation.reasoning;
+    if (analysisText) {
       if (yPos > pageHeight - 60) {
         pdf.addPage();
         yPos = PAGE_MARGIN;
@@ -373,12 +315,25 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
 
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('Analysis:', PAGE_MARGIN, yPos);
+
+      // Show different label based on whether it's manual or AI
+      const analysisLabel = violation.manualReasoning ? 'Manual Assessment:' : 'AI Analysis:';
+      pdf.text(analysisLabel, PAGE_MARGIN, yPos);
+
+      // Add "Human Reviewed" badge if manual reasoning
+      if (violation.manualReasoning) {
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(37, 99, 235); // Blue color
+        pdf.text('(Human Reviewed)', PAGE_MARGIN + 50, yPos);
+        pdf.setTextColor(0, 0, 0); // Reset to black
+      }
+
       yPos += 6;
 
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
-      const reasoningLines = pdf.splitTextToSize(violation.reasoning, contentWidth);
+      const reasoningLines = pdf.splitTextToSize(analysisText, contentWidth);
       pdf.text(reasoningLines, PAGE_MARGIN, yPos);
       yPos += 5 * reasoningLines.length + 6;
     }
@@ -445,7 +400,7 @@ export async function exportCompliancePDF(options: ExportOptions): Promise<void>
     pdf.setFontSize(8);
     pdf.setTextColor(150, 150, 150);
     pdf.text(
-      `Page ${i + 2} of ${violations.length + 1}`,
+      `Page ${i + 2} of ${violationsWithAnalysis.length + 1}`,
       pageWidth / 2,
       pageHeight - PAGE_MARGIN / 2,
       { align: 'center' }

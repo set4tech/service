@@ -8,7 +8,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const supabase = supabaseAdmin();
 
-  console.log(
+  console.warn(
     '[GET /api/assessments/[id]/agent/status] Assessment:',
     assessmentId,
     'RunId:',
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data, error } = await query.single();
 
     if (error || !data) {
-      console.log('[agent/status] No agent run found');
+      console.warn('[agent/status] No agent run found');
       return NextResponse.json({ error: 'No agent run found' }, { status: 404 });
     }
 

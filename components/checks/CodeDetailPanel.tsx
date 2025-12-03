@@ -8,6 +8,7 @@ import { AnalysisHistory } from './AnalysisHistory';
 import { DoorParametersForm } from './DoorParametersForm';
 import { useManualOverride } from '@/hooks/useManualOverride';
 import { useAssessmentPolling } from '@/hooks/useAssessmentPolling';
+import { useAgentAssessment } from '@/hooks/useAgentAssessment';
 import { useCheckData } from './hooks/useCheckData';
 import type { DoorParameters } from '@/types/compliance';
 
@@ -132,6 +133,25 @@ export function CodeDetailPanel({
     checkId,
     onComplete: handleAssessmentComplete,
   });
+
+  // Agent assessment hook
+  const {
+    assessing: agentAssessing,
+    reasoning: agentReasoning,
+    toolCalls: agentToolCalls,
+    result: agentResult,
+    error: agentError,
+    startAssessment: startAgentAssessment,
+  } = useAgentAssessment(checkId);
+
+  // Handler for agent assessment completion
+  useEffect(() => {
+    if (agentResult) {
+      // Refresh analysis runs to show agent result
+      refresh(true);
+      if (onCheckUpdate) onCheckUpdate();
+    }
+  }, [agentResult, refresh, onCheckUpdate]);
 
   // Other UI state
   const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-pro');
@@ -1106,7 +1126,7 @@ export function CodeDetailPanel({
                 {/* Assess Button */}
                 <button
                   onClick={handleAssess}
-                  disabled={assessing}
+                  disabled={assessing || agentAssessing}
                   className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
                 >
                   {assessing
@@ -1116,10 +1136,54 @@ export function CodeDetailPanel({
                       : 'Assess Compliance'}
                 </button>
 
+                {/* Agent Analysis Button */}
+                <button
+                  onClick={startAgentAssessment}
+                  disabled={agentAssessing || assessing}
+                  className="w-full px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-purple-300 disabled:cursor-not-allowed"
+                >
+                  {agentAssessing ? 'Agent Analyzing...' : 'Agent Analysis'}
+                </button>
+
+                {/* Agent Reasoning Stream */}
+                {agentAssessing && (
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded">
+                    <div className="text-xs font-semibold text-purple-700 mb-2">
+                      Agent Reasoning
+                    </div>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {agentReasoning.map((text, i) => (
+                        <div key={i} className="text-xs text-gray-700 bg-white p-2 rounded">
+                          {text.length > 200 ? text.substring(0, 200) + '...' : text}
+                        </div>
+                      ))}
+                      {agentToolCalls.map((tc, i) => (
+                        <div
+                          key={i}
+                          className="text-xs bg-gray-100 p-2 rounded flex items-center gap-2"
+                        >
+                          <span className="text-purple-600 font-mono">{tc.tool}</span>
+                          {tc.status === 'running' && (
+                            <span className="animate-pulse text-gray-500">...</span>
+                          )}
+                          {tc.status === 'complete' && <span className="text-green-600">done</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Assessment Error */}
                 {assessmentError && (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
                     {assessmentError}
+                  </div>
+                )}
+
+                {/* Agent Error */}
+                {agentError && (
+                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                    {agentError}
                   </div>
                 )}
               </div>

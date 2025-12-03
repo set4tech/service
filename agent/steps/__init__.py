@@ -8,6 +8,7 @@ from .extract_project_info import ExtractProjectInfo
 from .extract_legends import ExtractLegends
 from .extract_element_tags import ExtractElementTags
 from .match_tags_to_legends import MatchTagsToLegends
+from .unify_and_upload import UnifyAndUpload
 
 __all__ = [
     "ExtractTables",
@@ -19,4 +20,5 @@ __all__ = [
     "ExtractLegends",
     "ExtractElementTags",
     "MatchTagsToLegends",
+    "UnifyAndUpload",
 ]

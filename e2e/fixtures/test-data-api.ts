@@ -1,11 +1,16 @@
 /* eslint-disable no-console */
 import { request, APIRequestContext } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Test Data API Client
  *
  * Creates and manages test data via API calls.
  * Works in both local development and CI environments.
+ *
+ * NOTE: Test data IDs are persisted to a JSON file so that global teardown
+ * (which runs in a separate Node process) can clean up data created by global setup.
  */
 
 export interface TestData {
@@ -13,6 +18,9 @@ export interface TestData {
   projectId: string;
   assessmentId: string;
 }
+
+// File to persist test data IDs between global setup and teardown
+const TEST_DATA_FILE = path.join(process.cwd(), '.e2e-test-data.json');
 
 // Environment detection
 const isCI = !!process.env.CI;
@@ -47,6 +55,8 @@ export class TestDataManager {
       baseURL: this.baseUrl,
       timeout: 30000, // 30s timeout for API calls
     });
+    // Load any previously persisted test data (for teardown)
+    this.loadPersistedData();
     console.log(`[TestData] Initialized for ${isCI ? 'CI' : 'local'} environment`);
   }
 
@@ -54,6 +64,51 @@ export class TestDataManager {
     if (this.context) {
       await this.context.dispose();
       this.context = null;
+    }
+    // Clean up the persistence file
+    this.clearPersistedData();
+  }
+
+  /**
+   * Persist test data IDs to a file so teardown can find them
+   */
+  private persistData(): void {
+    try {
+      fs.writeFileSync(TEST_DATA_FILE, JSON.stringify(this.createdData, null, 2));
+      console.log(`[TestData] Persisted ${this.createdData.length} test data entries to file`);
+    } catch (error) {
+      console.warn(`[TestData] Failed to persist test data:`, error);
+    }
+  }
+
+  /**
+   * Load persisted test data IDs from file
+   */
+  private loadPersistedData(): void {
+    try {
+      if (fs.existsSync(TEST_DATA_FILE)) {
+        const data = JSON.parse(fs.readFileSync(TEST_DATA_FILE, 'utf-8'));
+        if (Array.isArray(data)) {
+          this.createdData = data;
+          console.log(`[TestData] Loaded ${this.createdData.length} test data entries from file`);
+        }
+      }
+    } catch (error) {
+      console.warn(`[TestData] Failed to load persisted test data:`, error);
+    }
+  }
+
+  /**
+   * Clear the persisted test data file
+   */
+  private clearPersistedData(): void {
+    try {
+      if (fs.existsSync(TEST_DATA_FILE)) {
+        fs.unlinkSync(TEST_DATA_FILE);
+        console.log(`[TestData] Cleared persisted test data file`);
+      }
+    } catch (error) {
+      console.warn(`[TestData] Failed to clear persisted test data:`, error);
     }
   }
 
@@ -196,8 +251,9 @@ export class TestDataManager {
       assessmentId,
     };
 
-    // Track for cleanup
+    // Track for cleanup and persist to file
     this.createdData.push(testData);
+    this.persistData();
 
     console.log(`[TestData] Test assessment ready: ${assessmentId}`);
     return testData;
@@ -206,7 +262,7 @@ export class TestDataManager {
   /**
    * Delete a specific test assessment and all related data.
    * Uses CASCADE delete - removing project removes assessment, checks, etc.
-   * Note: Customers are left behind (no delete endpoint) - they're harmless orphans.
+   * Also deletes the customer to prevent orphaned test data in the database.
    */
   async deleteTestData(data: TestData): Promise<void> {
     console.log(`[TestData] Cleaning up test data for assessment: ${data.assessmentId}`);
@@ -218,6 +274,21 @@ export class TestDataManager {
         const errorText = await projectRes.text();
         if (projectRes.status() !== 404) {
           console.warn(`[TestData] Failed to delete project: ${errorText}`);
+        }
+      } else {
+        console.log(`[TestData] Deleted project: ${data.projectId}`);
+      }
+
+      // Delete customer (if we have the ID)
+      if (data.customerId) {
+        const customerRes = await this.api.delete(`/api/customers/${data.customerId}`);
+        if (!customerRes.ok()) {
+          const errorText = await customerRes.text();
+          if (customerRes.status() !== 404) {
+            console.warn(`[TestData] Failed to delete customer: ${errorText}`);
+          }
+        } else {
+          console.log(`[TestData] Deleted customer: ${data.customerId}`);
         }
       }
 
