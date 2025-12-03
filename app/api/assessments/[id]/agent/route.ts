@@ -7,7 +7,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id: assessmentId } = await params;
   const supabase = supabaseAdmin();
 
-  console.log('[POST /api/assessments/[id]/agent] Starting agent for assessment:', assessmentId);
+  console.warn('[POST /api/assessments/[id]/agent] Starting agent for assessment:', assessmentId);
 
   try {
     // 1. Verify assessment exists and get PDF URL from project
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Extract S3 key from PDF URL (e.g., "drawings/project-id/file.pdf")
     const pdfS3Key = pdfUrl.includes('/') ? pdfUrl.split('.com/').pop() || pdfUrl : pdfUrl;
-    console.log('[agent] PDF S3 key:', pdfS3Key);
+    console.warn('[agent] PDF S3 key:', pdfS3Key);
 
     // 2. Check if there's already a running agent
     const { data: existingRun } = await supabase
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single();
 
     if (existingRun) {
-      console.log('[agent] Agent already running:', existingRun.id);
+      console.warn('[agent] Agent already running:', existingRun.id);
       return NextResponse.json(
         { error: 'An agent is already running for this assessment', existingRunId: existingRun.id },
         { status: 409 }
@@ -66,13 +66,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Failed to create agent run' }, { status: 500 });
     }
 
-    console.log('[agent] Created agent_run:', agentRun.id);
+    console.warn('[agent] Created agent_run:', agentRun.id);
 
     // 4. Trigger Railway service in background (don't await - return immediately)
     // This prevents the API from being slow due to Railway cold starts
     const triggerRailway = async () => {
       try {
-        console.log('[agent] Triggering Railway service...');
+        console.warn('[agent] Triggering Railway service...');
         const railwayResponse = await fetch(`${RAILWAY_AGENT_URL}/preprocess`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
 
         const railwayData = await railwayResponse.json();
-        console.log('[agent] Railway response:', railwayData);
+        console.warn('[agent] Railway response:', railwayData);
       } catch (railwayError) {
         console.error('[agent] Failed to call Railway service:', railwayError);
 

@@ -5,7 +5,7 @@ const RAILWAY_AGENT_URL = process.env.RAILWAY_AGENT_URL || 'http://localhost:800
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: assessmentId } = await params;
 
-  console.log('[POST /api/assessments/[id]/chat] Chat request for assessment:', assessmentId);
+  console.warn('[POST /api/assessments/[id]/chat] Chat request for assessment:', assessmentId);
 
   try {
     const body = await request.json();
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Forward to Railway chat endpoint
-    console.log('[chat] Forwarding to Railway service...');
+    console.warn('[chat] Forwarding to Railway service...');
     const railwayResponse = await fetch(`${RAILWAY_AGENT_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
