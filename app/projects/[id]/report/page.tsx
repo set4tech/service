@@ -1,3 +1,4 @@
+import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getProjectViolations } from '@/lib/reports/get-violations';
 import { CustomerReportViewer } from '@/components/reports/CustomerReportViewer';
@@ -7,6 +8,19 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 // Force dynamic rendering - don't use static cache
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id: assessmentId } = await params;
+  const data = await getProjectViolations(assessmentId);
+
+  return {
+    title: data ? `${data.projectName} Report` : 'Report',
+  };
+}
 
 export default async function ProjectReportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: assessmentId } = await params;
