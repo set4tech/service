@@ -935,12 +935,12 @@ export function PDFViewer({
             ? 'cursor-crosshair'
             : 'cursor-default'
         }`}
+        style={{ backgroundColor: '#f7f8f7', clipPath: 'inset(0)' }}
         onMouseDown={mouseHandlers.onMouseDown}
         onMouseMove={mouseHandlers.onMouseMove}
         onMouseUp={mouseHandlers.onMouseUp}
         onMouseLeave={mouseHandlers.onMouseLeave}
         onContextMenu={e => e.preventDefault()}
-        style={{ clipPath: 'inset(0)' }}
       >
         <div
           style={{

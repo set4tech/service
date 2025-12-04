@@ -167,15 +167,6 @@ export function CodeDetailPanel({
 
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
 
-  const [showExcludeDialog, setShowExcludeDialog] = useState(false);
-  const [excludingSection, setExcludingSection] = useState(false);
-  const [excludeReason, setExcludeReason] = useState('');
-
-  const [showExcludeGroupDialog, setShowExcludeGroupDialog] = useState(false);
-  const [excludingGroup, setExcludingGroup] = useState(false);
-  const [groupSections, setGroupSections] = useState<any[]>([]);
-  const [selectedSectionKeys, setSelectedSectionKeys] = useState<Set<string>>(new Set());
-
   const [showSectionTabs, setShowSectionTabs] = useState(false);
   const [showParametersForm, setShowParametersForm] = useState(false);
   const [elementParameters, setElementParameters] = useState<DoorParameters | null>(null);
@@ -337,126 +328,6 @@ export function CodeDetailPanel({
     }
   };
 
-  const handleExcludeSection = async () => {
-    if (!effectiveCheckId || !excludeReason.trim() || !activeCheckWithData?.assessment_id) return;
-
-    const isViewingChildSection = !!activeChildCheckId && checkId !== effectiveCheckId;
-    const activeChild = childChecks.find(c => c.id === activeChildCheckId);
-    const sectionKeyToExclude = isViewingChildSection ? activeChild?.sections?.key : sectionKey;
-
-    if (!sectionKeyToExclude) return;
-
-    setExcludingSection(true);
-    try {
-      const response = await fetch(
-        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sectionKey: sectionKeyToExclude,
-            reason: excludeReason.trim(),
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to exclude section');
-      }
-
-      if (onCheckUpdate) onCheckUpdate();
-      if (onChecksRefresh) onChecksRefresh();
-
-      if (isViewingChildSection && childChecks.length > 1) {
-        const currentIndex = childChecks.findIndex(c => c.id === activeChildCheckId);
-        if (currentIndex < childChecks.length - 1) {
-          setActiveChildCheckId(childChecks[currentIndex + 1].id);
-        } else if (onMoveToNextCheck) {
-          onMoveToNextCheck();
-        }
-      } else if (onMoveToNextCheck) {
-        onMoveToNextCheck();
-      }
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setExcludingSection(false);
-      setShowExcludeDialog(false);
-      setExcludeReason('');
-    }
-  };
-
-  const handleOpenExcludeGroup = async () => {
-    if (!activeCheckWithData?.assessment_id || !section?.parent_key) return;
-
-    try {
-      const response = await fetch(
-        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section-group?sectionKey=${encodeURIComponent(section.parent_key)}`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to preview section group');
-      }
-
-      const sectionsData = data.sections || [];
-      setGroupSections(sectionsData);
-
-      const defaultSelected = new Set<string>(
-        sectionsData.filter((s: any) => !s.alreadyExcluded).map((s: any) => s.key as string)
-      );
-      setSelectedSectionKeys(defaultSelected);
-      setShowExcludeGroupDialog(true);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleExcludeGroup = async () => {
-    if (
-      !activeCheckWithData?.assessment_id ||
-      selectedSectionKeys.size === 0 ||
-      !excludeReason.trim()
-    )
-      return;
-
-    setExcludingGroup(true);
-    try {
-      const response = await fetch(
-        `/api/assessments/${activeCheckWithData.assessment_id}/exclude-section-group`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sectionKeys: Array.from(selectedSectionKeys),
-            reason: excludeReason.trim(),
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to exclude sections');
-      }
-
-      if (onCheckUpdate) onCheckUpdate();
-      if (onChecksRefresh) onChecksRefresh();
-      if (onMoveToNextCheck) onMoveToNextCheck();
-
-      setShowExcludeGroupDialog(false);
-      setExcludeReason('');
-      setSelectedSectionKeys(new Set());
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setExcludingGroup(false);
-    }
-  };
-
   const handleSectionResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
@@ -486,7 +357,7 @@ export function CodeDetailPanel({
     return (
       <div className="h-full flex items-center justify-center bg-white border-r border-gray-200">
         <div className="text-center">
-          <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <div className="w-8 h-8 border-3 border-gray-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
           <div className="text-sm text-gray-500">Loading check...</div>
         </div>
       </div>
@@ -588,7 +459,7 @@ export function CodeDetailPanel({
                     onClick={() => setActiveChildCheckId(childCheck.id)}
                     className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors text-left ${
                       childCheck.id === activeChildCheckId
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-gray-800 text-white'
                         : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
@@ -617,7 +488,7 @@ export function CodeDetailPanel({
                 </div>
                 <button
                   onClick={() => setShowParametersForm(true)}
-                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+                  className="text-xs px-3 py-1.5 bg-gray-800 text-white rounded hover:bg-gray-900 font-medium"
                 >
                   {elementParameters ? 'Edit Parameters' : 'Add Parameters'}
                 </button>
@@ -647,44 +518,56 @@ export function CodeDetailPanel({
               <label className="block text-xs font-medium text-gray-700 mb-2">
                 Set Compliance Status
               </label>
-              <div className="flex gap-1.5">
+              <div className="flex gap-2">
                 {[
                   {
                     value: 'compliant',
                     label: 'Compliant',
-                    base: 'bg-green-50 border-green-200 text-green-700',
-                    selected: 'bg-green-100 border-green-400 text-green-800 ring-2 ring-green-400',
+                    color: 'green',
                   },
                   {
                     value: 'non_compliant',
                     label: 'Non-Compliant',
-                    base: 'bg-red-50 border-red-200 text-red-700',
-                    selected: 'bg-red-100 border-red-400 text-red-800 ring-2 ring-red-400',
+                    color: 'red',
                   },
                   {
                     value: 'not_applicable',
                     label: 'N/A',
-                    base: 'bg-gray-100 border-gray-200 text-gray-600',
-                    selected: 'bg-gray-200 border-gray-400 text-gray-800 ring-2 ring-gray-400',
+                    color: 'gray',
                   },
                   {
                     value: 'insufficient_information',
                     label: 'Not in Plan',
-                    base: 'bg-amber-50 border-amber-200 text-amber-700',
-                    selected: 'bg-amber-100 border-amber-400 text-amber-800 ring-2 ring-amber-400',
+                    color: 'amber',
                   },
-                ].map(option => (
-                  <button
-                    key={option.value}
-                    onClick={() => setManualOverride(option.value)}
-                    disabled={savingOverride}
-                    className={`flex-1 px-2 py-2 text-xs font-medium rounded border transition-all disabled:opacity-50 ${
-                      manualOverride === option.value ? option.selected : option.base
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+                ].map(option => {
+                  const isSelected = manualOverride === option.value;
+                  const colorClasses = {
+                    green: isSelected
+                      ? 'border-l-green-600 text-green-700'
+                      : 'border-l-green-400/50',
+                    red: isSelected ? 'border-l-red-600 text-red-700' : 'border-l-red-400/50',
+                    gray: isSelected ? 'border-l-gray-500 text-gray-700' : 'border-l-gray-300',
+                    amber: isSelected
+                      ? 'border-l-amber-500 text-amber-700'
+                      : 'border-l-amber-400/50',
+                  }[option.color];
+
+                  return (
+                    <button
+                      key={option.value}
+                      onClick={() => setManualOverride(option.value)}
+                      disabled={savingOverride}
+                      className={`flex-1 px-2.5 py-2 text-xs font-medium rounded-sm border-l-2 transition-all disabled:opacity-50 ${colorClasses} ${
+                        isSelected
+                          ? 'bg-white shadow-sm border border-gray-300 border-l-2'
+                          : 'bg-gray-50 hover:bg-white text-gray-600 border border-transparent hover:border-gray-200'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -715,30 +598,10 @@ export function CodeDetailPanel({
                   </div>
                 )}
 
-                <div className="pt-2 border-t border-gray-200 space-y-2">
-                  <button
-                    onClick={() => setShowExcludeDialog(true)}
-                    disabled={excludingSection}
-                    className="w-full px-3 py-2 text-sm text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-300 rounded transition-colors disabled:opacity-50"
-                  >
-                    🚫 Exclude Section from Project
-                  </button>
-
-                  {section?.parent_section && (
-                    <button
-                      onClick={handleOpenExcludeGroup}
-                      disabled={excludingGroup}
-                      className="w-full px-3 py-2 text-sm text-red-700 bg-red-50 hover:bg-red-100 border border-red-300 rounded transition-colors disabled:opacity-50"
-                    >
-                      🚫 Exclude Section Group ({section.parent_section.number})
-                    </button>
-                  )}
-                </div>
-
                 <button
                   onClick={handleSaveOverride}
                   disabled={savingOverride}
-                  className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   {savingOverride ? 'Saving...' : 'Save Manual Override'}
                 </button>
@@ -952,7 +815,7 @@ export function CodeDetailPanel({
       {/* Resize Handle */}
       <div
         onMouseDown={handleSectionResizeStart}
-        className="h-1 bg-gray-200 hover:bg-blue-500 cursor-row-resize flex-shrink-0 transition-colors"
+        className="h-1 bg-gray-200 hover:bg-gray-400 cursor-row-resize flex-shrink-0 transition-colors"
         style={{ touchAction: 'none' }}
       />
 
@@ -1043,7 +906,7 @@ export function CodeDetailPanel({
                     onClick={handleViewPrompt}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                   >
-                    {showPrompt ? '− Hide' : '📝 View/Edit'} Prompt
+                    {showPrompt ? '− Hide' : '+ View/Edit'} Prompt
                   </button>
                 </div>
 
@@ -1137,7 +1000,7 @@ export function CodeDetailPanel({
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                       <div
-                        className="bg-blue-600 h-full transition-all duration-300 ease-out"
+                        className="bg-gray-700 h-full transition-all duration-300 ease-out"
                         style={{ width: `${assessmentProgress}%` }}
                       />
                     </div>
@@ -1148,7 +1011,7 @@ export function CodeDetailPanel({
                 <button
                   onClick={handleAssess}
                   disabled={assessing || agentAssessing}
-                  className="w-full px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 bg-gray-800 text-white text-sm font-medium rounded hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   {assessing
                     ? 'Analyzing...'
@@ -1161,7 +1024,7 @@ export function CodeDetailPanel({
                 <button
                   onClick={startAgentAssessment}
                   disabled={agentAssessing || assessing}
-                  className="w-full px-4 py-2.5 bg-blue-100 text-blue-700 border border-blue-300 text-sm font-medium rounded hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-50 disabled:text-blue-400 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 border border-gray-300 text-sm font-medium rounded hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
                   {agentAssessing ? 'Agent Analyzing...' : 'Agent Analysis'}
                 </button>
@@ -1232,131 +1095,6 @@ export function CodeDetailPanel({
                   });
                 }}
               />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modals - preserving exact structure from lines 1890-2246 */}
-      {showExcludeDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-3">Exclude Section from Project?</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              This will exclude section <strong>{section?.number}</strong> from this project only.
-            </p>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reason (optional)
-              </label>
-              <input
-                type="text"
-                value={excludeReason}
-                onChange={e => setExcludeReason(e.target.value)}
-                placeholder="e.g., 20% construction cost rule applies"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded"
-              />
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowExcludeDialog(false);
-                  setExcludeReason('');
-                }}
-                disabled={excludingSection}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExcludeSection}
-                disabled={excludingSection}
-                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
-              >
-                {excludingSection ? 'Excluding...' : 'Exclude from Project'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showExcludeGroupDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
-            <h3 className="text-lg font-semibold mb-3">Exclude Section Group from Project?</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              This will exclude <strong>{section?.parent_section?.number}</strong> and all its
-              subsections from this project.
-            </p>
-
-            <div className="mb-4 flex-1 overflow-y-auto border border-gray-300 rounded max-h-96">
-              <ul className="divide-y divide-gray-200">
-                {groupSections.map(s => (
-                  <li key={s.key}>
-                    <div className="flex items-start px-3 py-2 gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedSectionKeys.has(s.key)}
-                        disabled={s.alreadyExcluded}
-                        onChange={() => {
-                          setSelectedSectionKeys(prev => {
-                            const next = new Set(prev);
-                            if (next.has(s.key)) {
-                              next.delete(s.key);
-                            } else {
-                              next.add(s.key);
-                            }
-                            return next;
-                          });
-                        }}
-                        className="mt-1 h-4 w-4"
-                      />
-                      <div className="flex-1">
-                        <span className="font-mono text-sm font-semibold">{s.number}</span>
-                        <span className="text-sm text-gray-700 ml-2">{s.title}</span>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reason (optional)
-              </label>
-              <input
-                type="text"
-                value={excludeReason}
-                onChange={e => setExcludeReason(e.target.value)}
-                placeholder="e.g., entire play area section not applicable"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowExcludeGroupDialog(false);
-                  setExcludeReason('');
-                  setSelectedSectionKeys(new Set());
-                }}
-                disabled={excludingGroup}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExcludeGroup}
-                disabled={excludingGroup || selectedSectionKeys.size === 0}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-              >
-                {excludingGroup
-                  ? 'Excluding...'
-                  : selectedSectionKeys.size === 0
-                    ? 'Select sections to exclude'
-                    : `Exclude ${selectedSectionKeys.size} Section${selectedSectionKeys.size !== 1 ? 's' : ''}`}
-              </button>
             </div>
           </div>
         </div>
