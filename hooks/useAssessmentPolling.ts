@@ -17,6 +17,11 @@ export interface UseAssessmentPollingOptions {
 // Cache state across component mounts per checkId
 const stateCache = new Map<string, AssessmentPollingState>();
 
+// Export for testing - clears the module-level cache
+export function clearStateCacheForTesting() {
+  stateCache.clear();
+}
+
 /**
  * Ultra-simple polling hook - API is the ONLY source of truth.
  *

@@ -1,5 +1,5 @@
-import { renderHook, waitFor } from '@testing-library/react';
-import { useAssessmentPolling } from '@/hooks/useAssessmentPolling';
+import { renderHook, act } from '@testing-library/react';
+import { useAssessmentPolling, clearStateCacheForTesting } from '@/hooks/useAssessmentPolling';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // Mock fetch
@@ -23,42 +23,62 @@ function createMockResponse(isInProgress: boolean, completed = 0, total = 0) {
   };
 }
 
+// Helper to flush promises and advance timers in a controlled way
+async function flushPromisesAndTimers(pollInterval = 100) {
+  // Flush microtask queue (promises)
+  await act(async () => {
+    await Promise.resolve();
+  });
+  // Advance timers by just enough for one poll cycle
+  await act(async () => {
+    vi.advanceTimersByTime(pollInterval + 10);
+    await Promise.resolve();
+  });
+}
+
 describe('useAssessmentPolling', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     mockFetch.mockReset();
+    clearStateCacheForTesting();
     // Default to not-in-progress state
     mockFetch.mockResolvedValue(createMockResponse(false));
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
-  it('should start with assessing=false for a new check', () => {
-    const { result } = renderHook(() => useAssessmentPolling({ checkId: 'new-check-123' }));
+  it('should start with assessing=false for a new check', async () => {
+    const { result } = renderHook(() =>
+      useAssessmentPolling({ checkId: 'new-check-123', pollInterval: 100 })
+    );
 
     // Initial state should be not assessing (no cache exists)
     expect(result.current.assessing).toBe(false);
     expect(result.current.progress).toBe(0);
     expect(result.current.message).toBe('');
+
+    // Cleanup: advance timers to let any pending effects settle
+    await flushPromisesAndTimers();
   });
 
   it('should reset state immediately when checkId changes to a new check', async () => {
     // First check will be processing
     mockFetch.mockResolvedValue(createMockResponse(true, 5, 10));
 
-    const { result, rerender } = renderHook(({ checkId }) => useAssessmentPolling({ checkId }), {
-      initialProps: { checkId: 'check-reset-a' },
-    });
-
-    // Wait for polling to update state
-    await waitFor(
-      () => {
-        expect(result.current.assessing).toBe(true);
-      },
-      { timeout: 3000 }
+    const { result, rerender } = renderHook(
+      ({ checkId }) => useAssessmentPolling({ checkId, pollInterval: 100 }),
+      {
+        initialProps: { checkId: 'check-reset-a' },
+      }
     );
 
+    // Wait for the initial poll to complete
+    await flushPromisesAndTimers();
+
+    expect(result.current.assessing).toBe(true);
     expect(result.current.progress).toBe(50);
 
     // Switch to a different check - mock returns not-in-progress
@@ -69,23 +89,26 @@ describe('useAssessmentPolling', () => {
     // This is the key assertion - the bug was that state persisted
     expect(result.current.assessing).toBe(false);
     expect(result.current.progress).toBe(0);
+
+    // Cleanup
+    await flushPromisesAndTimers();
   });
 
   it('should restore cached state when switching back to a processing check', async () => {
     // Check A is processing
     mockFetch.mockResolvedValue(createMockResponse(true, 3, 10));
 
-    const { result, rerender } = renderHook(({ checkId }) => useAssessmentPolling({ checkId }), {
-      initialProps: { checkId: 'check-cache-a' },
-    });
-
-    // Wait for state to be cached
-    await waitFor(
-      () => {
-        expect(result.current.assessing).toBe(true);
-      },
-      { timeout: 3000 }
+    const { result, rerender } = renderHook(
+      ({ checkId }) => useAssessmentPolling({ checkId, pollInterval: 100 }),
+      {
+        initialProps: { checkId: 'check-cache-a' },
+      }
     );
+
+    // Wait for the initial poll to cache the state
+    await flushPromisesAndTimers();
+
+    expect(result.current.assessing).toBe(true);
 
     // Switch to check B (not processing)
     mockFetch.mockResolvedValue(createMockResponse(false));
@@ -101,21 +124,25 @@ describe('useAssessmentPolling', () => {
     // before new polling completes
     expect(result.current.assessing).toBe(true);
     expect(result.current.progress).toBe(30); // Cached from first poll
+
+    // Cleanup
+    await flushPromisesAndTimers();
   });
 
   it('should clear state when checkId becomes null', async () => {
     mockFetch.mockResolvedValue(createMockResponse(true, 5, 10));
 
-    const { result, rerender } = renderHook(({ checkId }) => useAssessmentPolling({ checkId }), {
-      initialProps: { checkId: 'check-null-a' as string | null },
-    });
-
-    await waitFor(
-      () => {
-        expect(result.current.assessing).toBe(true);
-      },
-      { timeout: 3000 }
+    const { result, rerender } = renderHook(
+      ({ checkId }) => useAssessmentPolling({ checkId, pollInterval: 100 }),
+      {
+        initialProps: { checkId: 'check-null-a' as string | null },
+      }
     );
+
+    // Wait for the initial poll
+    await flushPromisesAndTimers();
+
+    expect(result.current.assessing).toBe(true);
 
     // Set checkId to null
     rerender({ checkId: null });
@@ -134,23 +161,18 @@ describe('useAssessmentPolling', () => {
       useAssessmentPolling({ checkId: 'check-complete-test', onComplete, pollInterval: 100 })
     );
 
-    await waitFor(
-      () => {
-        expect(result.current.assessing).toBe(true);
-      },
-      { timeout: 3000 }
-    );
+    // Wait for the initial poll
+    await flushPromisesAndTimers();
+
+    expect(result.current.assessing).toBe(true);
 
     // Now it completes
     mockFetch.mockResolvedValue(createMockResponse(false));
 
-    await waitFor(
-      () => {
-        expect(result.current.assessing).toBe(false);
-      },
-      { timeout: 3000 }
-    );
+    // Trigger another poll cycle
+    await flushPromisesAndTimers();
 
+    expect(result.current.assessing).toBe(false);
     expect(onComplete).toHaveBeenCalled();
   });
 });
