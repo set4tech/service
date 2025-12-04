@@ -7,14 +7,84 @@ representation of architectural drawings.
 Adapted from compliance_agent/tools.py and compliance_agent/batch_assess.py
 """
 
+import io
 import json
 import re
 import base64
 import logging
 from pathlib import Path
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Tuple
+
+from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+# Claude's max image size is 5MB (5,242,880 bytes)
+# Use a slightly smaller limit to account for base64 overhead
+MAX_IMAGE_BYTES = 4_500_000
+
+
+def _resize_image_to_limit(image_path: Path, max_bytes: int = MAX_IMAGE_BYTES) -> Tuple[bytes, str]:
+    """
+    Load an image and resize it if needed to stay under the byte limit.
+
+    Args:
+        image_path: Path to the image file
+        max_bytes: Maximum size in bytes for the output
+
+    Returns:
+        Tuple of (image_bytes, media_type)
+    """
+    # Determine media type from suffix
+    suffix = image_path.suffix.lower()
+    media_type = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp"
+    }.get(suffix, "image/png")
+
+    # First try loading as-is
+    with open(image_path, "rb") as f:
+        original_bytes = f.read()
+
+    if len(original_bytes) <= max_bytes:
+        return original_bytes, media_type
+
+    logger.info(f"[resize_image] Image {image_path.name} is {len(original_bytes):,} bytes, resizing...")
+
+    # Load with PIL and resize
+    img = Image.open(image_path)
+
+    # Convert to RGB if necessary (for JPEG output)
+    if img.mode in ('RGBA', 'P'):
+        img = img.convert('RGB')
+        media_type = "image/jpeg"
+
+    # Try progressively smaller sizes until under limit
+    scale_factors = [0.75, 0.5, 0.4, 0.3, 0.25, 0.2]
+
+    for scale in scale_factors:
+        new_width = int(img.width * scale)
+        new_height = int(img.height * scale)
+        resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        # Save to bytes buffer as JPEG (better compression than PNG)
+        buffer = io.BytesIO()
+        resized.save(buffer, format="JPEG", quality=85, optimize=True)
+        result_bytes = buffer.getvalue()
+
+        logger.info(f"[resize_image] Scale {scale}: {new_width}x{new_height} = {len(result_bytes):,} bytes")
+
+        if len(result_bytes) <= max_bytes:
+            return result_bytes, "image/jpeg"
+
+    # Last resort: aggressive JPEG compression
+    buffer = io.BytesIO()
+    smallest = img.resize((int(img.width * 0.15), int(img.height * 0.15)), Image.Resampling.LANCZOS)
+    smallest.save(buffer, format="JPEG", quality=60, optimize=True)
+    return buffer.getvalue(), "image/jpeg"
 
 
 def _parse_page_number(page_key: Any) -> Optional[int]:
@@ -711,19 +781,9 @@ class ChatToolExecutor:
 
         logger.info(f"[view_sheet_image] Loading {image_path.name} for sheet {sheet_id}")
 
-        # Load and encode image
-        with open(image_path, "rb") as f:
-            image_data = base64.standard_b64encode(f.read()).decode("utf-8")
-
-        # Determine media type
-        suffix = image_path.suffix.lower()
-        media_type = {
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".gif": "image/gif",
-            ".webp": "image/webp"
-        }.get(suffix, "image/png")
+        # Load and encode image (with automatic resizing if too large for Claude)
+        image_bytes, media_type = _resize_image_to_limit(image_path)
+        image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
         return {
             "image": {
