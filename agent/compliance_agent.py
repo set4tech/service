@@ -127,7 +127,7 @@ class ComplianceAgent:
         self,
         unified_json: dict,
         images_dir: Optional[Path] = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-opus-4-5-20251101",
         max_iterations: int = 15,
     ):
         """
