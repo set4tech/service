@@ -331,6 +331,43 @@ class ChatToolExecutor:
 
         return None, None
 
+    def _validate_tool_input(self, tool_name: str, tool_input: dict) -> Optional[dict]:
+        """
+        Validate tool input and return error dict if invalid, None if valid.
+
+        Normalizes inputs where possible (e.g., strips whitespace).
+        """
+        if tool_name == "search_drawings":
+            keywords = tool_input.get("keywords")
+            if keywords is None:
+                return {"error": "Missing required parameter: keywords"}
+            if not isinstance(keywords, list):
+                return {"error": f"Parameter 'keywords' must be a list, got {type(keywords).__name__}"}
+            if len(keywords) == 0:
+                return {"error": "Parameter 'keywords' cannot be empty"}
+            # Validate each keyword is a non-empty string
+            for i, kw in enumerate(keywords):
+                if not isinstance(kw, str) or not kw.strip():
+                    return {"error": f"Keyword at index {i} must be a non-empty string"}
+
+        elif tool_name == "find_schedules":
+            schedule_type = tool_input.get("schedule_type", "all")
+            valid_types = ["all", "door", "window", "finish", "equipment", "plumbing", "room"]
+            if schedule_type.lower() not in valid_types:
+                return {"error": f"Invalid schedule_type '{schedule_type}'. Valid types: {valid_types}"}
+
+        elif tool_name == "read_sheet_details":
+            sheet_id = tool_input.get("sheet_identifier")
+            if sheet_id is None or (isinstance(sheet_id, str) and not sheet_id.strip()):
+                return {"error": "Missing required parameter: sheet_identifier"}
+
+        elif tool_name == "view_sheet_image":
+            sheet_id = tool_input.get("sheet_identifier")
+            if sheet_id is None or (isinstance(sheet_id, str) and not sheet_id.strip()):
+                return {"error": "Missing required parameter: sheet_identifier"}
+
+        return None
+
     def _get_available_sheets_hint(self) -> str:
         """Get a hint string showing available sheet identifiers."""
         hints = []
@@ -356,6 +393,12 @@ class ChatToolExecutor:
         - "image": {"data": base64_str, "media_type": str} for vision tools
         """
         logger.info(f"[Tool] {tool_name}({json.dumps(tool_input, default=str)[:100]})")
+
+        # Validate input before processing
+        validation_error = self._validate_tool_input(tool_name, tool_input)
+        if validation_error:
+            logger.warning(f"[Tool Validation] {tool_name}: {validation_error}")
+            return {"result": validation_error}
 
         try:
             if tool_name == "find_schedules":
@@ -616,6 +659,9 @@ class ChatToolExecutor:
         """
         if not self.images_dir:
             return {"result": {"error": "Images directory not configured"}}
+
+        if not self.images_dir.exists():
+            return {"result": {"error": f"Images directory not found: {self.images_dir}"}}
 
         # Resolve the sheet identifier to page key and data
         page_key, page_data = self._resolve_sheet_identifier(sheet_id)

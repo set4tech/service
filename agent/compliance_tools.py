@@ -336,6 +336,13 @@ class ComplianceToolExecutor(ChatToolExecutor):
     calculation, parsing, and lookup tools.
     """
 
+    # Valid element types for get_elements_by_type
+    VALID_ELEMENT_TYPES = [
+        "door", "doors", "window", "windows", "stair", "stairs",
+        "ramp", "ramps", "parking", "restroom", "restrooms",
+        "elevator", "elevators"
+    ]
+
     def __init__(
         self,
         navigator: DocumentNavigator,
@@ -436,6 +443,61 @@ class ComplianceToolExecutor(ChatToolExecutor):
                     "source": "schedule"
                 })
 
+    def _validate_tool_input(self, tool_name: str, tool_input: dict) -> Optional[dict]:
+        """
+        Validate tool input for compliance-specific tools.
+
+        Extends parent validation with compliance tool checks.
+        """
+        if tool_name == "calculate":
+            expr = tool_input.get("expression")
+            if not expr or (isinstance(expr, str) and not expr.strip()):
+                return {"error": "Missing required parameter: expression"}
+
+        elif tool_name == "parse_dimension":
+            dim = tool_input.get("dimension")
+            if not dim or (isinstance(dim, str) and not dim.strip()):
+                return {"error": "Missing required parameter: dimension"}
+
+        elif tool_name == "compare_dimensions":
+            dim_a = tool_input.get("dimension_a")
+            dim_b = tool_input.get("dimension_b")
+            if not dim_a or (isinstance(dim_a, str) and not dim_a.strip()):
+                return {"error": "Missing required parameter: dimension_a"}
+            if not dim_b or (isinstance(dim_b, str) and not dim_b.strip()):
+                return {"error": "Missing required parameter: dimension_b"}
+
+        elif tool_name == "get_elements_by_type":
+            elem_type = tool_input.get("element_type")
+            if not elem_type or (isinstance(elem_type, str) and not elem_type.strip()):
+                return {"error": f"Missing required parameter: element_type. Valid types: {self.VALID_ELEMENT_TYPES}"}
+            if elem_type.lower() not in self.VALID_ELEMENT_TYPES:
+                return {"error": f"Invalid element_type '{elem_type}'. Valid types: {self.VALID_ELEMENT_TYPES}"}
+
+        elif tool_name == "get_element_attributes":
+            tag = tool_input.get("element_tag")
+            if not tag or (isinstance(tag, str) and not tag.strip()):
+                return {"error": "Missing required parameter: element_tag"}
+
+        elif tool_name == "check_clearance_requirement":
+            actual = tool_input.get("actual_dimension")
+            required = tool_input.get("required_minimum")
+            if not actual or (isinstance(actual, str) and not actual.strip()):
+                return {"error": "Missing required parameter: actual_dimension"}
+            if not required or (isinstance(required, str) and not required.strip()):
+                return {"error": "Missing required parameter: required_minimum"}
+
+        elif tool_name == "lookup_cbc_table":
+            table = tool_input.get("table_name")
+            if not table or (isinstance(table, str) and not table.strip()):
+                return {"error": f"Missing required parameter: table_name. Available: {list(CBC_TABLES.keys())}"}
+
+        else:
+            # Fall back to parent validation for chat tools
+            return super()._validate_tool_input(tool_name, tool_input)
+
+        return None
+
     def execute(self, tool_name: str, tool_input: dict) -> dict:
         """
         Execute a tool and return the result.
@@ -443,6 +505,12 @@ class ComplianceToolExecutor(ChatToolExecutor):
         Extends ChatToolExecutor with compliance-specific tools.
         """
         logger.info(f"[ComplianceTool] {tool_name}({json.dumps(tool_input, default=str)[:100]})")
+
+        # Validate input before processing
+        validation_error = self._validate_tool_input(tool_name, tool_input)
+        if validation_error:
+            logger.warning(f"[ComplianceTool Validation] {tool_name}: {validation_error}")
+            return {"result": validation_error}
 
         try:
             # Check if it's a compliance-specific tool
