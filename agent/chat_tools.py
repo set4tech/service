@@ -87,6 +87,75 @@ def _resize_image_to_limit(image_path: Path, max_bytes: int = MAX_IMAGE_BYTES) -
     return buffer.getvalue(), "image/jpeg"
 
 
+def _extract_quadrant(image_path: Path, quadrant: str, max_bytes: int = MAX_IMAGE_BYTES) -> Tuple[bytes, str]:
+    """
+    Extract a quadrant from an image at full resolution.
+
+    Args:
+        image_path: Path to the image file
+        quadrant: One of "top-left", "top-right", "bottom-left", "bottom-right"
+        max_bytes: Maximum size in bytes for the output
+
+    Returns:
+        Tuple of (image_bytes, media_type)
+    """
+    img = Image.open(image_path)
+    width, height = img.size
+
+    # Calculate quadrant boundaries
+    half_w, half_h = width // 2, height // 2
+
+    quadrant_coords = {
+        "top-left": (0, 0, half_w, half_h),
+        "top-right": (half_w, 0, width, half_h),
+        "bottom-left": (0, half_h, half_w, height),
+        "bottom-right": (half_w, half_h, width, height),
+    }
+
+    if quadrant not in quadrant_coords:
+        raise ValueError(f"Invalid quadrant: {quadrant}. Use: {list(quadrant_coords.keys())}")
+
+    coords = quadrant_coords[quadrant]
+    cropped = img.crop(coords)
+
+    logger.info(f"[extract_quadrant] {quadrant} of {image_path.name}: {cropped.width}x{cropped.height}")
+
+    # Convert to RGB if necessary
+    if cropped.mode in ('RGBA', 'P'):
+        cropped = cropped.convert('RGB')
+
+    # Try PNG first, fall back to JPEG if too large
+    buffer = io.BytesIO()
+    cropped.save(buffer, format="PNG", optimize=True)
+    result_bytes = buffer.getvalue()
+
+    if len(result_bytes) <= max_bytes:
+        return result_bytes, "image/png"
+
+    # Fall back to JPEG
+    buffer = io.BytesIO()
+    cropped.save(buffer, format="JPEG", quality=90, optimize=True)
+    result_bytes = buffer.getvalue()
+
+    if len(result_bytes) <= max_bytes:
+        return result_bytes, "image/jpeg"
+
+    # If still too large, resize the quadrant
+    logger.info(f"[extract_quadrant] Quadrant still too large ({len(result_bytes):,} bytes), resizing...")
+    scale = 0.75
+    while len(result_bytes) > max_bytes and scale > 0.2:
+        resized = cropped.resize(
+            (int(cropped.width * scale), int(cropped.height * scale)),
+            Image.Resampling.LANCZOS
+        )
+        buffer = io.BytesIO()
+        resized.save(buffer, format="JPEG", quality=85, optimize=True)
+        result_bytes = buffer.getvalue()
+        scale -= 0.1
+
+    return result_bytes, "image/jpeg"
+
+
 def _parse_page_number(page_key: Any) -> Optional[int]:
     """
     Extract numeric page number from various page key formats.
@@ -202,7 +271,7 @@ CHAT_TOOLS = [
     },
     {
         "name": "view_sheet_image",
-        "description": "View the actual drawing sheet image. Use this when text search fails and you need to visually inspect dimensions, layouts, equipment, or annotations. The image will be returned for you to analyze directly.",
+        "description": "View an OVERVIEW of the drawing sheet (may be scaled down for large sheets). Use this first to understand the layout, then use view_sheet_region for full-resolution detail of specific areas.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -212,6 +281,25 @@ CHAT_TOOLS = [
                 }
             },
             "required": ["sheet_identifier"]
+        }
+    },
+    {
+        "name": "view_sheet_region",
+        "description": "View a FULL-RESOLUTION quadrant of a drawing sheet. Use this after view_sheet_image to read fine details like dimensions, text, schedules, or annotations that may be hard to read in the overview.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sheet_identifier": {
+                    "type": "string",
+                    "description": "Sheet number (e.g., 'A1.0') or page index (e.g., '1', '2')"
+                },
+                "quadrant": {
+                    "type": "string",
+                    "enum": ["top-left", "top-right", "bottom-left", "bottom-right"],
+                    "description": "Which quadrant to view at full resolution"
+                }
+            },
+            "required": ["sheet_identifier", "quadrant"]
         }
     }
 ]
@@ -436,6 +524,15 @@ class ChatToolExecutor:
             if sheet_id is None or (isinstance(sheet_id, str) and not sheet_id.strip()):
                 return {"error": "Missing required parameter: sheet_identifier"}
 
+        elif tool_name == "view_sheet_region":
+            sheet_id = tool_input.get("sheet_identifier")
+            if sheet_id is None or (isinstance(sheet_id, str) and not sheet_id.strip()):
+                return {"error": "Missing required parameter: sheet_identifier"}
+            quadrant = tool_input.get("quadrant")
+            valid_quadrants = ["top-left", "top-right", "bottom-left", "bottom-right"]
+            if quadrant not in valid_quadrants:
+                return {"error": f"Invalid quadrant '{quadrant}'. Valid: {valid_quadrants}"}
+
         return None
 
     def _get_available_sheets_hint(self) -> str:
@@ -495,6 +592,12 @@ class ChatToolExecutor:
             elif tool_name == "view_sheet_image":
                 # This returns image data to be included in the message
                 return self._view_sheet_image(tool_input.get("sheet_identifier", "1"))
+            elif tool_name == "view_sheet_region":
+                # This returns a full-resolution quadrant of the image
+                return self._view_sheet_region(
+                    tool_input.get("sheet_identifier", "1"),
+                    tool_input.get("quadrant", "top-left")
+                )
             else:
                 return {"result": {"error": f"Unknown tool: {tool_name}"}}
 
@@ -793,6 +896,86 @@ class ChatToolExecutor:
             "result": {
                 "sheet": sheet_number or f"Page {page_num}",
                 "page_index": page_num,
+                "image_file": image_path.name,
+                "note": "This is an overview. Use view_sheet_region for full-resolution detail of specific quadrants."
+            }
+        }
+
+    def _view_sheet_region(self, sheet_id: str, quadrant: str) -> dict:
+        """
+        Get a full-resolution quadrant of a sheet image.
+
+        Args:
+            sheet_id: Sheet number or page index
+            quadrant: One of "top-left", "top-right", "bottom-left", "bottom-right"
+
+        Returns:
+            dict with either:
+            - "image": {"data": base64_str, "media_type": str}, "result": {...}
+            - "result": {"error": str}
+        """
+        if not self.images_dir:
+            return {"result": {"error": "Images directory not configured"}}
+
+        if not self.images_dir.exists():
+            return {"result": {"error": f"Images directory not found: {self.images_dir}"}}
+
+        # Resolve the sheet identifier to page key and data
+        page_key, page_data = self._resolve_sheet_identifier(sheet_id)
+
+        if page_key is None or page_data is None:
+            available = self._get_available_sheets_hint()
+            return {"result": {"error": f"Sheet '{sheet_id}' not found. Available sheets: {available}"}}
+
+        page_num = page_key
+        sheet_number = page_data.get("sheet_number", "")
+
+        # Find the image file (same logic as _view_sheet_image)
+        parsed_page = _parse_page_number(page_num)
+        image_path = None
+        patterns_to_try = [
+            f"page_{page_num}.png",
+            f"page{page_num}.png",
+        ]
+        if parsed_page is not None:
+            patterns_to_try.insert(0, f"page_{parsed_page:03d}.png")
+
+        for pattern in patterns_to_try:
+            candidate = self.images_dir / pattern
+            if candidate.exists():
+                image_path = candidate
+                break
+
+        if not image_path and parsed_page is not None:
+            for pattern in [f"*page_{parsed_page}*.png", f"*page{parsed_page}*.png"]:
+                matches = list(self.images_dir.glob(pattern))
+                if matches:
+                    image_path = matches[0]
+                    break
+
+        if not image_path and isinstance(page_num, str) and page_num.endswith('.png'):
+            candidate = self.images_dir / page_num
+            if candidate.exists():
+                image_path = candidate
+
+        if not image_path or not image_path.exists():
+            return {"result": {"error": f"Image file not found for page {page_num}"}}
+
+        logger.info(f"[view_sheet_region] Loading {quadrant} quadrant of {image_path.name}")
+
+        # Extract and encode the quadrant at full resolution
+        image_bytes, media_type = _extract_quadrant(image_path, quadrant)
+        image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
+
+        return {
+            "image": {
+                "data": image_data,
+                "media_type": media_type,
+            },
+            "result": {
+                "sheet": sheet_number or f"Page {page_num}",
+                "page_index": page_num,
+                "quadrant": quadrant,
                 "image_file": image_path.name,
             }
         }
