@@ -26,6 +26,8 @@ describe('ChatPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Clear localStorage to isolate tests - the component persists chat state
+    localStorage.clear();
   });
 
   describe('Rendering', () => {

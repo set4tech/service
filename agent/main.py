@@ -22,8 +22,8 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
-from pdf2image import convert_from_path
 from ultralytics import YOLO
+from openai import OpenAI
 
 import config
 from tracing import setup_tracing, start_phoenix_server
@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 # Clients
 supabase: Optional[Client] = None
 s3_client = None
+openai_client: Optional[OpenAI] = None
 WEIGHTS_PATH = Path(__file__).parent / "weights.pt"
 
 
@@ -62,6 +63,17 @@ def get_s3():
             aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
         )
     return s3_client
+
+
+def get_openai() -> OpenAI:
+    """Get or create OpenAI client for GPT-4o-mini filtering."""
+    global openai_client
+    if openai_client is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY must be set for filtering")
+        openai_client = OpenAI(api_key=api_key)
+    return openai_client
 
 
 def download_weights_if_needed():
@@ -147,6 +159,19 @@ class StatusResponse(BaseModel):
     error: Optional[str]
 
 
+class FilterRequest(BaseModel):
+    assessment_id: str
+    reset: bool = False
+
+
+class FilterResponse(BaseModel):
+    status: str
+    message: str
+
+
+FILTER_BATCH_SIZE = 20
+
+
 def update_progress(agent_run_id: str, step: int, total_steps: int, message: str):
     """Update agent_run progress in database."""
     db = get_supabase()
@@ -174,20 +199,33 @@ def download_pdf_from_s3(s3_key: str, local_path: Path) -> None:
 
 
 def pdf_to_images(pdf_path: Path, output_dir: Path, dpi: int = None) -> list[Path]:
-    """Convert PDF pages to PNG images."""
+    """Convert PDF pages to PNG images using per-page conversion for better performance."""
+    import fitz  # pymupdf - much faster than pdf2image/poppler
+
     dpi = dpi or config.PDF_DPI
-    logger.info(f"Converting PDF to images (dpi={dpi})...")
+    logger.info(f"Converting PDF to images (dpi={dpi}) using pymupdf...")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    images = convert_from_path(pdf_path, dpi=dpi)
+    # Calculate zoom factor from DPI (pymupdf default is 72 dpi)
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+
     image_paths = []
+    doc = fitz.open(pdf_path)
+    total_pages = len(doc)
+    logger.info(f"  PDF has {total_pages} pages")
 
-    for i, image in enumerate(images, start=1):
+    for i, page in enumerate(doc, start=1):
+        # Render page to pixmap
+        pix = page.get_pixmap(matrix=matrix)
+
+        # Save as PNG
         img_path = output_dir / f"page_{i:03d}.png"
-        image.save(img_path, "PNG")
+        pix.save(str(img_path))
         image_paths.append(img_path)
-        logger.info(f"  Saved {img_path.name}")
+        logger.info(f"  Saved {img_path.name} ({pix.width}x{pix.height})")
 
+    doc.close()
     return image_paths
 
 
@@ -426,6 +464,230 @@ async def preprocess(request: PreprocessRequest, background_tasks: BackgroundTas
 async def assess(request: AssessRequest, background_tasks: BackgroundTasks):
     """Run compliance assessment. TODO: Implement."""
     raise HTTPException(status_code=501, detail="Not implemented yet")
+
+
+# =============================================================================
+# FILTER ENDPOINT (AI-powered check filtering)
+# =============================================================================
+
+def flatten_variables(variables: dict) -> dict:
+    """Flatten extracted_variables into a simple key-value map."""
+    flat = {}
+    for category, vars_dict in variables.items():
+        if category == "_metadata":
+            continue
+        if not isinstance(vars_dict, dict):
+            continue
+        for key, val in vars_dict.items():
+            # Handle { value: x, confidence: y } structure
+            if isinstance(val, dict) and "value" in val:
+                flat[key] = val["value"]
+            else:
+                flat[key] = val
+    return flat
+
+
+def evaluate_check_batch(checks: list[dict], project_params: dict) -> list[dict]:
+    """Call GPT-4o-mini to evaluate which checks should be excluded."""
+    client = get_openai()
+
+    # Format project parameters for the prompt
+    param_lines = []
+    for key, value in project_params.items():
+        if value is None or value == "":
+            continue
+        formatted_key = key.replace("_", " ").title()
+        param_lines.append(f"- {formatted_key}: {json.dumps(value)}")
+    param_str = "\n".join(param_lines) if param_lines else "(No parameters provided)"
+
+    # Format checks for the prompt
+    check_lines = []
+    for i, c in enumerate(checks, 1):
+        check_lines.append(f"{i}. [{c['id']}] {c['code_section_number']} - {c['code_section_title']}")
+    check_str = "\n".join(check_lines)
+
+    prompt = f"""You evaluate building code sections for applicability to a specific project.
+
+PROJECT PARAMETERS:
+{param_str}
+
+Evaluate each code section below. Mark "exclude": true if the section should be EXCLUDED because:
+- It references building elements NOT present in this project (e.g., parking requirements when the project has no parking)
+- It applies to different building/occupancy types than this project
+- It requires conditions not met by this project (e.g., elevator sections when there's no elevator)
+- It's for work types not applicable (e.g., alteration-only sections for new construction)
+
+Be conservative - if uncertain, do NOT exclude (exclude: false).
+
+CODE SECTIONS TO EVALUATE:
+{check_str}
+
+Respond ONLY with valid JSON array:
+[{{"id":"<check_id>","exclude":true/false}},...]"""
+
+    logger.info(f"[filter] Evaluating batch of {len(checks)} checks")
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=2000,
+            temperature=0.1,
+        )
+
+        raw = response.choices[0].message.content or "[]"
+
+        # Parse the response - handle both array and object with "results" key
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict) and "results" in parsed:
+            parsed = parsed["results"]
+        if not isinstance(parsed, list):
+            logger.error(f"[filter] Unexpected response format: {raw}")
+            return [{"id": c["id"], "exclude": False} for c in checks]
+
+        return parsed
+
+    except Exception as e:
+        logger.error(f"[filter] Failed to evaluate batch: {e}")
+        return [{"id": c["id"], "exclude": False} for c in checks]
+
+
+async def run_filter_checks(assessment_id: str, reset: bool):
+    """Background task: Filter checks using GPT-4o-mini."""
+    db = get_supabase()
+
+    try:
+        # Get assessment with project data
+        result = db.table("assessments").select(
+            "id, project_id, projects(id, extracted_variables)"
+        ).eq("id", assessment_id).single().execute()
+
+        if not result.data:
+            logger.error(f"[filter] Assessment {assessment_id} not found")
+            return
+
+        assessment = result.data
+        project = assessment.get("projects")
+        extracted_variables = project.get("extracted_variables") if project else None
+
+        if not extracted_variables:
+            logger.error(f"[filter] No project parameters for assessment {assessment_id}")
+            db.table("assessments").update({
+                "filtering_status": "failed",
+                "filtering_error": "No project parameters found",
+            }).eq("id", assessment_id).execute()
+            return
+
+        # Flatten variables for the prompt
+        flat_params = flatten_variables(extracted_variables)
+        logger.info(f"[filter] Project parameters: {flat_params}")
+
+        # If reset, clear all is_excluded flags first
+        if reset:
+            logger.info("[filter] Resetting existing exclusions")
+            db.table("checks").update({"is_excluded": False}).eq("assessment_id", assessment_id).execute()
+
+        # Get all checks to evaluate
+        checks_result = db.table("checks").select(
+            "id, code_section_number, code_section_title"
+        ).eq("assessment_id", assessment_id).eq("is_excluded", False).order("code_section_number").execute()
+
+        checks = checks_result.data or []
+        total_checks = len(checks)
+        logger.info(f"[filter] Found {total_checks} checks to evaluate")
+
+        if total_checks == 0:
+            db.table("assessments").update({
+                "filtering_status": "completed",
+                "filtering_checks_processed": 0,
+                "filtering_checks_total": 0,
+                "filtering_excluded_count": 0,
+                "filtering_completed_at": datetime.utcnow().isoformat(),
+            }).eq("id", assessment_id).execute()
+            return
+
+        # Update status to in_progress
+        db.table("assessments").update({
+            "filtering_status": "in_progress",
+            "filtering_checks_total": total_checks,
+            "filtering_checks_processed": 0,
+            "filtering_excluded_count": 0,
+            "filtering_started_at": datetime.utcnow().isoformat(),
+            "filtering_error": None,
+        }).eq("id", assessment_id).execute()
+
+        # Process in batches
+        processed = 0
+        excluded_count = 0
+
+        for i in range(0, total_checks, FILTER_BATCH_SIZE):
+            batch = checks[i:i + FILTER_BATCH_SIZE]
+
+            try:
+                results = evaluate_check_batch(batch, flat_params)
+
+                # Update excluded checks
+                to_exclude = [r["id"] for r in results if r.get("exclude")]
+                if to_exclude:
+                    db.table("checks").update({"is_excluded": True}).in_("id", to_exclude).execute()
+                    excluded_count += len(to_exclude)
+
+                processed += len(batch)
+
+                # Update progress
+                db.table("assessments").update({
+                    "filtering_checks_processed": processed,
+                    "filtering_excluded_count": excluded_count,
+                }).eq("id", assessment_id).execute()
+
+                logger.info(f"[filter] Progress: {processed}/{total_checks}, excluded: {excluded_count}")
+
+            except Exception as batch_error:
+                logger.error(f"[filter] Batch error at {i}: {batch_error}")
+                processed += len(batch)
+
+        # Mark as completed
+        db.table("assessments").update({
+            "filtering_status": "completed",
+            "filtering_checks_processed": processed,
+            "filtering_excluded_count": excluded_count,
+            "filtering_completed_at": datetime.utcnow().isoformat(),
+        }).eq("id", assessment_id).execute()
+
+        logger.info(f"[filter] Completed: {excluded_count}/{total_checks} checks excluded")
+
+    except Exception as e:
+        logger.exception(f"[filter] Error filtering assessment {assessment_id}: {e}")
+        db.table("assessments").update({
+            "filtering_status": "failed",
+            "filtering_error": str(e),
+        }).eq("id", assessment_id).execute()
+
+
+@app.post("/filter", response_model=FilterResponse)
+async def filter_checks(request: FilterRequest, background_tasks: BackgroundTasks):
+    """Filter checks using AI to determine applicability based on project parameters."""
+    logger.info(f"[filter] Request: assessment={request.assessment_id}, reset={request.reset}")
+
+    db = get_supabase()
+
+    # Verify assessment exists
+    result = db.table("assessments").select("id, filtering_status").eq("id", request.assessment_id).single().execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Check if already in progress
+    if result.data.get("filtering_status") == "in_progress":
+        raise HTTPException(status_code=400, detail="Filtering already in progress")
+
+    # Start background task
+    background_tasks.add_task(run_filter_checks, request.assessment_id, request.reset)
+
+    return FilterResponse(
+        status="started",
+        message="Filtering started",
+    )
 
 
 # =============================================================================

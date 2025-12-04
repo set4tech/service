@@ -6,10 +6,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = supabaseAdmin();
 
   try {
-    // Get assessment status
+    // Get assessment status (including filtering status)
     const { data: assessment, error } = await supabase
       .from('assessments')
-      .select('seeding_status, sections_processed, sections_total')
+      .select(
+        'seeding_status, sections_processed, sections_total, filtering_status, filtering_checks_processed, filtering_checks_total, filtering_excluded_count'
+      )
       .eq('id', id)
       .single();
 
@@ -28,6 +30,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       sections_processed: assessment.sections_processed || 0,
       sections_total: assessment.sections_total || 0,
       check_count: checkCount || 0,
+      // Filtering status
+      filtering_status: assessment.filtering_status || 'pending',
+      filtering_checks_processed: assessment.filtering_checks_processed || 0,
+      filtering_checks_total: assessment.filtering_checks_total || 0,
+      filtering_excluded_count: assessment.filtering_excluded_count || 0,
     });
   } catch (error) {
     return NextResponse.json(

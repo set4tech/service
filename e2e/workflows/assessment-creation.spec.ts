@@ -88,33 +88,42 @@ test.describe('Complete Assessment Creation Workflow', () => {
     await deleteTestAssessment(page, assessmentId);
   });
 
-  test('should handle assessment creation with invalid PDF', async ({ page }) => {
-    await page.goto('/projects');
+  test('should handle invalid PDF upload in wizard', async ({ page }) => {
+    // Navigate to home page
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
 
-    // Click new assessment button
-    const newAssessmentBtn = page.getByRole('button', {
-      name: /new assessment|create assessment/i,
-    });
-    await newAssessmentBtn.click();
+    // Click "Create New Project" link
+    await page.getByRole('link', { name: /create new project/i }).click();
 
-    // Try to upload invalid file (text file instead of PDF)
-    const fileInput = page.locator('input[type="file"]');
+    // Wait for the wizard to load
+    await page.waitForURL('/projects/new');
+    await expect(page.getByText('Project Information')).toBeVisible();
 
-    // Create a temporary text file
-    await fileInput.setInputFiles({
+    // Step 1: Fill in project name and proceed
+    await page.fill('input[type="text"]', 'Test Invalid PDF Project');
+    await page.getByRole('button', { name: /next/i }).click();
+
+    // Step 2: PDF Upload - try to upload invalid file
+    await expect(page.getByText('Upload PDF Document')).toBeVisible();
+
+    // The file input only accepts PDFs, so a non-PDF should be rejected
+    // Try to upload a text file disguised as PDF
+    await page.setInputFiles('input[type="file"]', {
       name: 'invalid.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('This is not a PDF'),
     });
 
-    // Should show error message
-    await expect(page.getByText(/invalid file type|must be a pdf|only pdf files/i)).toBeVisible({
-      timeout: 5000,
-    });
+    // The file input has accept=".pdf" so browser may reject, or app should show error
+    // Check that Next button remains disabled (no valid file selected)
+    const nextButton = page.getByRole('button', { name: /next/i });
 
-    // Cancel button should be visible
-    const cancelBtn = page.getByRole('button', { name: /cancel/i });
-    await expect(cancelBtn).toBeVisible();
+    // The green checkmark should NOT appear for invalid file
+    await expect(page.locator('.text-green-600')).not.toBeVisible({ timeout: 2000 });
+
+    // Next button should be disabled without valid PDF
+    await expect(nextButton).toBeDisabled();
   });
 
   test('should persist progress across page reload', async ({ page }) => {

@@ -17,6 +17,11 @@ export interface UseAssessmentPollingOptions {
 // Cache state across component mounts per checkId
 const stateCache = new Map<string, AssessmentPollingState>();
 
+// Export for testing - clears the module-level cache
+export function clearStateCacheForTesting() {
+  stateCache.clear();
+}
+
 /**
  * Ultra-simple polling hook - API is the ONLY source of truth.
  *
@@ -57,6 +62,22 @@ export function useAssessmentPolling(
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
+
+  // Reset state when checkId changes (useState initializer only runs on mount)
+  useEffect(() => {
+    if (checkId) {
+      if (stateCache.has(checkId)) {
+        setState(stateCache.get(checkId)!);
+      } else {
+        // New check with no cached state - reset to default
+        setState({ assessing: false, progress: 0, message: '' });
+      }
+    } else {
+      setState({ assessing: false, progress: 0, message: '' });
+    }
+    // Reset the previous in-progress ref for the new check
+    previousInProgressRef.current = false;
+  }, [checkId]);
 
   // Stop polling when page is hidden
   useEffect(() => {

@@ -244,17 +244,10 @@ export function ViolationsSummary({
     }
   };
 
-  // Determine severity color
-  const getSeverityIcon = () => {
-    if (violations.length === 0) return '✅';
-    if (violations.length >= 6) return '🚨';
-    return '⚠️';
-  };
-
   const getSeverityColor = () => {
-    if (violations.length === 0) return 'text-green-700 bg-green-50 border-green-200';
-    if (violations.length >= 6) return 'text-red-700 bg-red-50 border-red-200';
-    return 'text-yellow-700 bg-yellow-50 border-yellow-200';
+    if (violations.length === 0) return 'text-green-300 bg-[#2d4a3d] border-green-700/50';
+    if (violations.length >= 6) return 'text-red-300 bg-[#4a2d2d] border-red-700/50';
+    return 'text-yellow-300 bg-[#4a4a2d] border-yellow-700/50';
   };
 
   // If no PDF URL OR embedded mode, show sidebar-only view
@@ -262,34 +255,34 @@ export function ViolationsSummary({
     return (
       <div className="flex flex-col h-full">
         {/* Compact Stats Header with View Toggle and Refresh Button */}
-        <div className="px-4 py-3 border-b bg-white space-y-2">
+        <div className="px-4 py-3 border-b border-[#2d3838] bg-[#3d4a4a] space-y-2">
           {/* View Mode Toggle */}
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode('violations')}
               className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 viewMode === 'violations'
-                  ? 'bg-red-100 text-red-700 border border-red-200'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  ? 'bg-red-900/40 text-red-300 border border-red-700/50'
+                  : 'bg-[#4d5a5a] text-slate-300 hover:bg-[#5d6a6a]'
               }`}
             >
-              🚨 Violations ({violations.length})
+              Violations ({violations.length})
             </button>
             <button
               onClick={() => setViewMode('comments')}
               className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 viewMode === 'comments'
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  ? 'bg-blue-900/40 text-blue-300 border border-blue-700/50'
+                  : 'bg-[#4d5a5a] text-slate-300 hover:bg-[#5d6a6a]'
               }`}
             >
-              💬 Comments ({loadingComments ? '...' : comments.length})
+              Comments ({loadingComments ? '...' : comments.length})
             </button>
           </div>
 
           {/* Stats Row */}
           <div className="flex items-center justify-between">
-            <div className="font-semibold text-sm flex items-center gap-2">
+            <div className="font-semibold text-sm text-slate-100 flex items-center gap-2">
               {viewMode === 'violations'
                 ? `${violations.length} Violation${violations.length === 1 ? '' : 's'}`
                 : `${comments.length} Comment${comments.length === 1 ? '' : 's'}`}
@@ -300,12 +293,12 @@ export function ViolationsSummary({
                     onRefresh();
                   }}
                   disabled={refreshing}
-                  className="p-1 rounded hover:bg-gray-100 transition-colors disabled:opacity-50"
+                  className="p-1 rounded hover:bg-slate-600 transition-colors disabled:opacity-50"
                   title="Refresh violations"
                 >
                   {refreshing ? (
                     <svg
-                      className="animate-spin h-4 w-4 text-gray-600"
+                      className="animate-spin h-4 w-4 text-slate-300"
                       fill="none"
                       viewBox="0 0 24 24"
                     >
@@ -325,7 +318,7 @@ export function ViolationsSummary({
                     </svg>
                   ) : (
                     <svg
-                      className="w-4 h-4 text-gray-600"
+                      className="w-4 h-4 text-slate-300"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -342,7 +335,7 @@ export function ViolationsSummary({
               )}
             </div>
             {viewMode === 'violations' && (
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-slate-400">
                 {stats.assessed} / {stats.totalSections} assessed
               </div>
             )}
@@ -363,9 +356,9 @@ export function ViolationsSummary({
         ) : (
           <div className="flex-1 overflow-y-auto p-4">
             {loadingComments ? (
-              <div className="text-center text-gray-500 py-8">Loading comments...</div>
+              <div className="text-center text-slate-400 py-8">Loading comments...</div>
             ) : comments.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">
+              <div className="text-center text-slate-400 py-8">
                 No comments yet. Add coordination or QC comments as needed.
               </div>
             ) : (
@@ -373,32 +366,34 @@ export function ViolationsSummary({
                 {comments.map(comment => (
                   <div
                     key={comment.commentId}
-                    className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow cursor-pointer"
+                    className="border border-[#2d3838] rounded-lg p-3 bg-[#4d5a5a] hover:bg-[#5d6a6a] transition-colors cursor-pointer"
                     onClick={() => handleCommentClick(comment)}
                   >
                     <div className="flex items-start justify-between gap-2 mb-1">
-                      <h4 className="font-semibold text-sm">{comment.title}</h4>
+                      <h4 className="font-semibold text-sm text-slate-100">{comment.title}</h4>
                       <span
                         className={`text-xs px-2 py-0.5 rounded ${
                           comment.severity === 'major'
-                            ? 'bg-red-100 text-red-700'
+                            ? 'bg-red-900/40 text-red-300'
                             : comment.severity === 'moderate'
-                              ? 'bg-orange-100 text-orange-700'
+                              ? 'bg-orange-900/40 text-orange-300'
                               : comment.severity === 'minor'
-                                ? 'bg-yellow-100 text-yellow-700'
-                                : 'bg-blue-100 text-blue-700'
+                                ? 'bg-yellow-900/40 text-yellow-300'
+                                : 'bg-blue-900/40 text-blue-300'
                         }`}
                       >
                         {comment.severity}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-600 mb-2 line-clamp-2">{comment.description}</p>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
+                    <p className="text-xs text-slate-300 mb-2 line-clamp-2">
+                      {comment.description}
+                    </p>
+                    <div className="flex items-center justify-between text-xs text-slate-400">
                       <div className="flex items-center gap-3">
-                        <span>📄 Page {comment.pageNumber}</span>
-                        {comment.sheetName && <span>📋 {comment.sheetName}</span>}
+                        <span>Page {comment.pageNumber}</span>
+                        {comment.sheetName && <span>{comment.sheetName}</span>}
                         {comment.discipline && (
-                          <span className="px-2 py-0.5 bg-gray-100 rounded">
+                          <span className="px-2 py-0.5 bg-[#2d3838] rounded">
                             {comment.discipline}
                           </span>
                         )}
@@ -406,10 +401,10 @@ export function ViolationsSummary({
                       <span
                         className={`px-2 py-0.5 rounded ${
                           comment.status === 'open'
-                            ? 'bg-green-100 text-green-700'
+                            ? 'bg-green-900/40 text-green-300'
                             : comment.status === 'resolved'
-                              ? 'bg-gray-100 text-gray-600'
-                              : 'bg-blue-100 text-blue-700'
+                              ? 'bg-[#2d3838] text-slate-400'
+                              : 'bg-blue-900/40 text-blue-300'
                         }`}
                       >
                         {comment.status}
@@ -444,35 +439,35 @@ export function ViolationsSummary({
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-gray-100">
       {/* Left Sidebar - Violations List */}
-      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden relative z-10">
+      <div className="w-96 flex-shrink-0 bg-[#3d4a4a] border-r border-[#2d3838] flex flex-col h-screen overflow-hidden relative z-10">
         {/* View Mode Toggle */}
-        <div className="px-4 pt-4 pb-2 bg-white">
+        <div className="px-4 pt-4 pb-2">
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode('violations')}
               className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 viewMode === 'violations'
-                  ? 'bg-red-100 text-red-700 border border-red-200'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  ? 'bg-red-900/40 text-red-300 border border-red-700/50'
+                  : 'bg-[#4d5a5a] text-slate-300 hover:bg-[#5d6a6a]'
               }`}
             >
-              🚨 Violations ({violations.length})
+              Violations ({violations.length})
             </button>
             <button
               onClick={() => setViewMode('comments')}
               className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 viewMode === 'comments'
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  ? 'bg-blue-900/40 text-blue-300 border border-blue-700/50'
+                  : 'bg-[#4d5a5a] text-slate-300 hover:bg-[#5d6a6a]'
               }`}
             >
-              💬 Comments ({loadingComments ? '...' : comments.length})
+              Comments ({loadingComments ? '...' : comments.length})
             </button>
           </div>
         </div>
 
         {/* Stats Header - Clickable to refresh */}
-        <div className="px-4 py-3 border-b bg-white space-y-3">
+        <div className="px-4 py-3 border-b border-[#2d3838] space-y-3">
           <div
             className={`px-4 py-3 rounded-lg border ${getSeverityColor()} ${
               onRefresh ? 'cursor-pointer hover:shadow-md transition-shadow' : ''
@@ -498,7 +493,6 @@ export function ViolationsSummary({
                   />
                 </svg>
               )}
-              <span className="text-2xl">{getSeverityIcon()}</span>
               <div className="flex-1">
                 <div className="font-semibold text-sm flex items-center gap-2">
                   {violations.length === 0 ? (
@@ -635,9 +629,9 @@ export function ViolationsSummary({
         ) : (
           <div className="flex-1 overflow-y-auto p-4">
             {loadingComments ? (
-              <div className="text-center text-gray-500 py-8">Loading comments...</div>
+              <div className="text-center text-slate-400 py-8">Loading comments...</div>
             ) : comments.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">
+              <div className="text-center text-slate-400 py-8">
                 No comments yet. Add coordination or QC comments as needed.
               </div>
             ) : (
@@ -645,32 +639,34 @@ export function ViolationsSummary({
                 {comments.map(comment => (
                   <div
                     key={comment.commentId}
-                    className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow cursor-pointer"
+                    className="border border-[#2d3838] rounded-lg p-3 bg-[#4d5a5a] hover:bg-[#5d6a6a] transition-colors cursor-pointer"
                     onClick={() => handleCommentClick(comment)}
                   >
                     <div className="flex items-start justify-between gap-2 mb-1">
-                      <h4 className="font-semibold text-sm">{comment.title}</h4>
+                      <h4 className="font-semibold text-sm text-slate-100">{comment.title}</h4>
                       <span
                         className={`text-xs px-2 py-0.5 rounded flex-shrink-0 ${
                           comment.severity === 'major'
-                            ? 'bg-red-100 text-red-700'
+                            ? 'bg-red-900/40 text-red-300'
                             : comment.severity === 'moderate'
-                              ? 'bg-orange-100 text-orange-700'
+                              ? 'bg-orange-900/40 text-orange-300'
                               : comment.severity === 'minor'
-                                ? 'bg-yellow-100 text-yellow-700'
-                                : 'bg-blue-100 text-blue-700'
+                                ? 'bg-yellow-900/40 text-yellow-300'
+                                : 'bg-blue-900/40 text-blue-300'
                         }`}
                       >
                         {comment.severity}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-600 mb-2 line-clamp-2">{comment.description}</p>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
+                    <p className="text-xs text-slate-300 mb-2 line-clamp-2">
+                      {comment.description}
+                    </p>
+                    <div className="flex items-center justify-between text-xs text-slate-400">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span>📄 Page {comment.pageNumber}</span>
-                        {comment.sheetName && <span>📋 {comment.sheetName}</span>}
+                        <span>Page {comment.pageNumber}</span>
+                        {comment.sheetName && <span>{comment.sheetName}</span>}
                         {comment.discipline && (
-                          <span className="px-2 py-0.5 bg-gray-100 rounded">
+                          <span className="px-2 py-0.5 bg-[#2d3838] rounded">
                             {comment.discipline}
                           </span>
                         )}
@@ -678,10 +674,10 @@ export function ViolationsSummary({
                       <span
                         className={`px-2 py-0.5 rounded flex-shrink-0 ${
                           comment.status === 'open'
-                            ? 'bg-green-100 text-green-700'
+                            ? 'bg-green-900/40 text-green-300'
                             : comment.status === 'resolved'
-                              ? 'bg-gray-100 text-gray-600'
-                              : 'bg-blue-100 text-blue-700'
+                              ? 'bg-[#2d3838] text-slate-400'
+                              : 'bg-blue-900/40 text-blue-300'
                         }`}
                       >
                         {comment.status}

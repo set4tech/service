@@ -638,7 +638,7 @@ export function CodeDetailPanel({
       {/* Manual Override Section - preserving exact JSX from original lines 1185-1373 */}
       {(effectiveCheckId || (checkId && sectionKey)) && (
         <div className="border-b bg-gray-50 p-4 flex-shrink-0">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-3">
             Manual Compliance Judgment
           </div>
 
@@ -647,27 +647,39 @@ export function CodeDetailPanel({
               <label className="block text-xs font-medium text-gray-700 mb-2">
                 Set Compliance Status
               </label>
-              <div className="flex gap-1">
+              <div className="flex gap-1.5">
                 {[
-                  { value: 'compliant', label: 'Compliant', color: 'green' },
-                  { value: 'non_compliant', label: 'Non-Compliant', color: 'red' },
-                  { value: 'not_applicable', label: 'Not Applicable', color: 'gray' },
-                  { value: 'insufficient_information', label: 'Info Not in Plan', color: 'yellow' },
+                  {
+                    value: 'compliant',
+                    label: 'Compliant',
+                    base: 'bg-green-50 border-green-200 text-green-700',
+                    selected: 'bg-green-100 border-green-400 text-green-800 ring-2 ring-green-400',
+                  },
+                  {
+                    value: 'non_compliant',
+                    label: 'Non-Compliant',
+                    base: 'bg-red-50 border-red-200 text-red-700',
+                    selected: 'bg-red-100 border-red-400 text-red-800 ring-2 ring-red-400',
+                  },
+                  {
+                    value: 'not_applicable',
+                    label: 'N/A',
+                    base: 'bg-gray-100 border-gray-200 text-gray-600',
+                    selected: 'bg-gray-200 border-gray-400 text-gray-800 ring-2 ring-gray-400',
+                  },
+                  {
+                    value: 'insufficient_information',
+                    label: 'Not in Plan',
+                    base: 'bg-amber-50 border-amber-200 text-amber-700',
+                    selected: 'bg-amber-100 border-amber-400 text-amber-800 ring-2 ring-amber-400',
+                  },
                 ].map(option => (
                   <button
                     key={option.value}
                     onClick={() => setManualOverride(option.value)}
                     disabled={savingOverride}
-                    className={`flex-1 px-2 py-1.5 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
-                      manualOverride === option.value
-                        ? option.color === 'green'
-                          ? 'bg-green-100 border-green-400 text-green-800'
-                          : option.color === 'red'
-                            ? 'bg-red-100 border-red-400 text-red-800'
-                            : option.color === 'yellow'
-                              ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
-                              : 'bg-gray-100 border-gray-400 text-gray-800'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    className={`flex-1 px-2 py-2 text-xs font-medium rounded border transition-all disabled:opacity-50 ${
+                      manualOverride === option.value ? option.selected : option.base
                     }`}
                   >
                     {option.label}
@@ -753,8 +765,8 @@ export function CodeDetailPanel({
           <div className="space-y-6">
             {/* Section Header */}
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-medium tracking-wide text-ink-500 uppercase">
                   Section
                 </div>
                 {section.source_url && (
@@ -782,18 +794,32 @@ export function CodeDetailPanel({
                   </a>
                 )}
               </div>
-              <div className="text-lg font-bold text-gray-900">{section.number}</div>
-              <div className="text-base text-gray-700 mt-1">{section.title}</div>
+              <div className="text-2xl font-mono font-semibold text-gray-900">{section.number}</div>
+              <div className="text-lg font-normal text-ink-700 mt-1">{section.title}</div>
             </div>
 
             {/* Section Text */}
             {section.text && (
               <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-2">
                   Section Summary
                 </div>
                 <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
-                  {section.text}
+                  {/* First sentence emphasized */}
+                  {(() => {
+                    const firstSentenceMatch = section.text.match(/^[^.!?]+[.!?]/);
+                    if (firstSentenceMatch) {
+                      const firstSentence = firstSentenceMatch[0];
+                      const rest = section.text.slice(firstSentence.length);
+                      return (
+                        <>
+                          <span className="font-medium text-gray-900">{firstSentence}</span>
+                          {rest}
+                        </>
+                      );
+                    }
+                    return section.text;
+                  })()}
                 </div>
               </div>
             )}
@@ -801,7 +827,7 @@ export function CodeDetailPanel({
             {/* Requirements/Paragraphs */}
             {section.requirements && section.requirements.length > 0 && (
               <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-2">
                   Explanation
                 </div>
                 <div className="space-y-3">
@@ -823,7 +849,7 @@ export function CodeDetailPanel({
             {/* Tables */}
             {section.tables && section.tables.length > 0 && (
               <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-2">
                   Tables
                 </div>
                 <TableRenderer tables={section.tables} />
@@ -833,7 +859,7 @@ export function CodeDetailPanel({
             {/* Referenced Sections */}
             {section.references && section.references.length > 0 && (
               <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-2">
                   Referenced Sections ({section.references.length})
                 </div>
                 <div className="space-y-4">
@@ -892,29 +918,24 @@ export function CodeDetailPanel({
 
             {/* Parent Section Context */}
             {section.parent_section && (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">
+              <div className="bg-gray-50 border border-gray-200 border-l-4 border-l-sage-500 rounded p-3">
+                <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-2">
                   Parent Section Context
                 </div>
-                <div className="text-xs text-purple-800 mb-2">
-                  This section is part of a larger requirement:
-                </div>
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-sm font-mono font-medium text-purple-900">
+                  <span className="text-sm font-mono font-medium text-gray-900">
                     {section.parent_section.number}
                   </span>
-                  <span className="text-sm text-purple-800">{section.parent_section.title}</span>
+                  <span className="text-sm text-gray-700">{section.parent_section.title}</span>
                 </div>
                 {section.parent_section.text && (
-                  <div className="text-sm text-purple-900 leading-relaxed mt-2 pl-3 border-l-2 border-purple-300">
-                    <div className="font-medium mb-1">Summary:</div>
+                  <div className="text-sm text-gray-700 leading-relaxed mt-2 pl-3 border-l-2 border-gray-300">
                     {section.parent_section.text}
                   </div>
                 )}
                 {section.parent_section.paragraphs &&
                   section.parent_section.paragraphs.length > 0 && (
-                    <div className="text-sm text-purple-900 leading-relaxed mt-2 pl-3 border-l-2 border-purple-300">
-                      <div className="font-medium mb-1">Requirements:</div>
+                    <div className="text-sm text-gray-700 leading-relaxed mt-2 pl-3 border-l-2 border-gray-300">
                       {typeof section.parent_section.paragraphs === 'string'
                         ? section.parent_section.paragraphs
                         : Array.isArray(section.parent_section.paragraphs)
@@ -950,7 +971,7 @@ export function CodeDetailPanel({
                     onClick={() => setShowScreenshots(!showScreenshots)}
                     className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors px-2 py-1 rounded"
                   >
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <div className="text-xs font-medium tracking-wide text-ink-500 uppercase">
                       Screenshots & Elevations
                     </div>
                     <svg
@@ -995,7 +1016,7 @@ export function CodeDetailPanel({
 
             {/* AI Assessment Section */}
             <div className="border-t pt-6">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-3">
                 AI Assessment
               </div>
 
@@ -1127,7 +1148,7 @@ export function CodeDetailPanel({
                 <button
                   onClick={handleAssess}
                   disabled={assessing || agentAssessing}
-                  className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
                 >
                   {assessing
                     ? 'Analyzing...'
@@ -1136,11 +1157,11 @@ export function CodeDetailPanel({
                       : 'Assess Compliance'}
                 </button>
 
-                {/* Agent Analysis Button */}
+                {/* Agent Analysis Button - secondary style */}
                 <button
                   onClick={startAgentAssessment}
                   disabled={agentAssessing || assessing}
-                  className="w-full px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-purple-300 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 bg-blue-100 text-blue-700 border border-blue-300 text-sm font-medium rounded hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-50 disabled:text-blue-400 disabled:cursor-not-allowed"
                 >
                   {agentAssessing ? 'Agent Analyzing...' : 'Agent Analysis'}
                 </button>
@@ -1191,7 +1212,7 @@ export function CodeDetailPanel({
 
             {/* Assessment History */}
             <div className="border-t pt-6">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-3">
                 Assessment History
               </div>
 

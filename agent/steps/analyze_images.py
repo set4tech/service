@@ -9,7 +9,7 @@ import re
 import json
 from pathlib import Path
 
-from pdf2image import convert_from_path
+import fitz  # pymupdf
 from PIL import Image
 
 from pipeline import PipelineStep, PipelineContext
@@ -41,7 +41,7 @@ def extract_page_number(page_name: str) -> int:
 
 def crop_region_from_pdf(pdf_path: Path, page_num: int, bbox: list[float]) -> Image.Image:
     """
-    Render PDF page at high DPI and crop to bbox.
+    Render PDF page at high DPI and crop to bbox using pymupdf.
 
     Args:
         pdf_path: Path to the PDF file
@@ -51,14 +51,20 @@ def crop_region_from_pdf(pdf_path: Path, page_num: int, bbox: list[float]) -> Im
     Returns:
         Cropped PIL Image at VLM_DPI
     """
+    doc = fitz.open(pdf_path)
+    page = doc[page_num - 1]  # 0-indexed
+
+    # Calculate zoom factor for VLM_DPI (pymupdf default is 72 dpi)
+    zoom = VLM_DPI / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+
     # Render page at VLM_DPI
-    images = convert_from_path(
-        pdf_path,
-        dpi=VLM_DPI,
-        first_page=page_num,
-        last_page=page_num
-    )
-    page_img = images[0]
+    pix = page.get_pixmap(matrix=matrix)
+
+    # Convert to PIL Image
+    page_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+    doc.close()
 
     # Scale bbox from YOLO_DPI to VLM_DPI
     x1, y1, x2, y2 = bbox
@@ -71,7 +77,7 @@ def crop_region_from_pdf(pdf_path: Path, page_num: int, bbox: list[float]) -> Im
     region = page_img.crop((x1_s, y1_s, x2_s, y2_s))
 
     # Clean up
-    del page_img, images
+    del page_img, pix
 
     return region
 

@@ -19,7 +19,60 @@ interface ChatPanelProps {
   assessmentId: string;
 }
 
+interface PersistedChatState {
+  messages: ChatMessage[];
+  conversationId: string | null;
+}
+
+/**
+ * Hook to persist chat state to localStorage.
+ * Survives component unmount when switching tabs.
+ */
+function useChatPersistence(assessmentId: string) {
+  const storageKey = `chat-state-${assessmentId}`;
+
+  const loadState = useCallback((): PersistedChatState => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as PersistedChatState;
+        // Clear streaming flag on reload
+        return {
+          ...parsed,
+          messages: parsed.messages.map(m => ({ ...m, isStreaming: false })),
+        };
+      }
+    } catch (err) {
+      console.warn('[ChatPanel] Failed to load chat state:', err);
+    }
+    return { messages: [], conversationId: null };
+  }, [storageKey]);
+
+  const saveState = useCallback(
+    (state: PersistedChatState) => {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(state));
+      } catch (err) {
+        console.warn('[ChatPanel] Failed to save chat state:', err);
+      }
+    },
+    [storageKey]
+  );
+
+  const clearState = useCallback(() => {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (err) {
+      console.warn('[ChatPanel] Failed to clear chat state:', err);
+    }
+  }, [storageKey]);
+
+  return { loadState, saveState, clearState };
+}
+
 export function ChatPanel({ assessmentId }: ChatPanelProps) {
+  const { loadState, saveState, clearState } = useChatPersistence(assessmentId);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -27,6 +80,18 @@ export function ChatPanel({ assessmentId }: ChatPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load persisted state on mount
+  useEffect(() => {
+    const state = loadState();
+    setMessages(state.messages);
+    setConversationId(state.conversationId);
+  }, [loadState]);
+
+  // Save state when messages or conversationId change
+  useEffect(() => {
+    saveState({ messages, conversationId });
+  }, [messages, conversationId, saveState]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -182,6 +247,7 @@ export function ChatPanel({ assessmentId }: ChatPanelProps) {
     setMessages([]);
     setConversationId(null);
     setError(null);
+    clearState();
   };
 
   return (

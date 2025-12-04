@@ -86,9 +86,9 @@ SAMPLE_UNIFIED_JSON = {
 class TestChatToolsDefinition:
     """Test that CHAT_TOOLS are properly defined."""
 
-    def test_tools_list_has_eight_tools(self):
-        """Should have exactly 8 tools defined."""
-        assert len(CHAT_TOOLS) == 8
+    def test_tools_list_has_nine_tools(self):
+        """Should have exactly 9 tools defined."""
+        assert len(CHAT_TOOLS) == 9
 
     def test_tool_names_are_correct(self):
         """Each tool should have expected name."""
@@ -101,6 +101,7 @@ class TestChatToolsDefinition:
             "read_sheet_details",
             "get_keynotes",
             "view_sheet_image",
+            "view_sheet_region",
         ]
         actual_names = [t["name"] for t in CHAT_TOOLS]
         assert actual_names == expected_names

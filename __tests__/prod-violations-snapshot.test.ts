@@ -471,9 +471,29 @@ const EXPECTED_VIOLATIONS: Record<string, ViolationSnapshot[]> = {
       effective_status: 'insufficient_information',
     },
     {
+      check_id: '728cdecb-4b37-4a2f-8933-cd97cec7e4df',
+      code_section_number: '11B-703.4',
+      effective_status: 'non_compliant',
+    },
+    {
       check_id: '74c72984-e27b-4d92-8aa8-afbe1b4e97b4',
       code_section_number: '11B-404.2.8.1',
       effective_status: 'insufficient_information',
+    },
+    {
+      check_id: '7cef7c52-60b6-4548-be1c-5a18a2b64a63',
+      code_section_number: '11B-603.2',
+      effective_status: 'non_compliant',
+    },
+    {
+      check_id: '8a8aa141-0da9-4932-88c7-caa89e9f5740',
+      code_section_number: '11B-603.2',
+      effective_status: 'non_compliant',
+    },
+    {
+      check_id: 'd2df13f3-f9a0-4518-b541-a89e44eebc7e',
+      code_section_number: '11B-703.4',
+      effective_status: 'non_compliant',
     },
     {
       check_id: 'dab66d8e-7c7a-4d4b-a5b1-68ad3590c307',

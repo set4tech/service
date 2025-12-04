@@ -38,7 +38,7 @@ interface CheckListProps {
   assessmentId?: string;
   onCheckAdded?: (newCheck: any) => void;
   onInstanceDeleted?: (elementInstanceId: string) => void;
-  refetchChecks?: () => Promise<void>;
+  refetchChecks?: (includeExcluded?: boolean) => Promise<void>;
 }
 
 export function CheckList({
@@ -68,6 +68,7 @@ export function CheckList({
   const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [showUnassessedOnly, setShowUnassessedOnly] = useState(false);
+  const [showExcluded, setShowExcluded] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
 
   // Bulk selection state
@@ -94,8 +95,9 @@ export function CheckList({
     setSearching(true);
     const timeoutId = setTimeout(async () => {
       try {
+        const includeExcludedParam = showExcluded ? '&include_excluded=true' : '';
         const response = await fetch(
-          `/api/assessments/${assessmentId}/checks?mode=${checkMode}&search=${encodeURIComponent(q)}`
+          `/api/assessments/${assessmentId}/checks?mode=${checkMode}&search=${encodeURIComponent(q)}${includeExcludedParam}`
         );
         if (response.ok) {
           const results = await response.json();
@@ -109,7 +111,15 @@ export function CheckList({
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [query, assessmentId, checkMode]);
+  }, [query, assessmentId, checkMode, showExcluded]);
+
+  // Refetch checks when showExcluded changes (only when no search query)
+  useEffect(() => {
+    if (refetchChecks && !query.trim()) {
+      refetchChecks(showExcluded);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showExcluded]);
 
   // Extract chapter from section number
   // Examples: "11B-403.5" -> "11B", "803.2" -> "8", "1022.3.4" -> "10", "900" -> "9"
@@ -678,8 +688,8 @@ export function CheckList({
           </div>
         )}
 
-        {/* Unassessed Only Filter */}
-        <div className="mt-2">
+        {/* Filters */}
+        <div className="mt-2 space-y-1">
           <label className="flex items-center text-sm text-gray-700 cursor-pointer hover:text-gray-900">
             <input
               type="checkbox"
@@ -688,6 +698,15 @@ export function CheckList({
               className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span>Show unassessed only</span>
+          </label>
+          <label className="flex items-center text-sm text-gray-700 cursor-pointer hover:text-gray-900">
+            <input
+              type="checkbox"
+              checked={showExcluded}
+              onChange={e => setShowExcluded(e.target.checked)}
+              className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Show excluded checks</span>
           </label>
         </div>
       </div>
@@ -820,21 +839,6 @@ export function CheckList({
                       <div key={check.id} className="border-b border-gray-100 last:border-b-0">
                         {/* Parent Check */}
                         <div className="flex items-stretch">
-                          {/* Checkbox for bulk selection */}
-                          <div className="flex items-center px-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedCheckIds.has(check.id)}
-                              onChange={e => {
-                                e.stopPropagation();
-                                const isShiftClick = (e.nativeEvent as MouseEvent).shiftKey;
-                                toggleSelection(check.id, isShiftClick);
-                              }}
-                              onClick={e => e.stopPropagation()}
-                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                            />
-                          </div>
-
                           {/* Expand/Collapse button (only if has instances) */}
                           {hasInstances && (
                             <button
@@ -894,16 +898,22 @@ export function CheckList({
                               }
                             }}
                             className={clsx(
-                              'flex-1 px-4 py-2 flex items-start text-left hover:bg-gray-100 cursor-pointer transition-colors',
-                              activeCheckId === check.id &&
-                                'bg-blue-100 border-l-4 border-blue-500 hover:bg-blue-200',
-                              !hasInstances && 'pl-6'
+                              'flex-1 py-2 flex items-start text-left cursor-pointer transition-colors group/check',
+                              activeCheckId === check.id
+                                ? 'bg-sage-200 border-l-4 border-sage-600'
+                                : 'hover:bg-gray-100 pl-1',
+                              !hasInstances && !activeCheckId !== check.id && 'pl-5'
                             )}
                           >
-                            <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>
+                            <span
+                              className={clsx(
+                                'mt-0.5 mr-2 text-sm flex-shrink-0',
+                                getStatusColor(check)
+                              )}
+                            >
                               {getStatusIcon(check)}
                             </span>
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 pr-2">
                               {checkMode === 'element' ? (
                                 // Element mode: show instance label and section count
                                 <>
@@ -970,17 +980,17 @@ export function CheckList({
                                   </div>
                                 </>
                               ) : (
-                                // Section mode: show section number and title (original)
+                                // Section mode: show section number and title split
                                 <>
-                                  <div className="flex items-start">
-                                    <span className="font-medium text-sm text-gray-900 mr-2">
+                                  <div className="flex flex-col">
+                                    <span className="font-mono font-semibold text-sm text-ink-900">
                                       {check.code_section_number}
                                     </span>
-                                    <span className="text-sm text-gray-700 truncate">
+                                    <span className="text-sm font-normal text-ink-600 line-clamp-2">
                                       {check.code_section_title}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-2 mt-0.5">
+                                  <div className="flex items-center gap-2 mt-1">
                                     {check.manual_status && (
                                       <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
                                         Manual
@@ -995,6 +1005,27 @@ export function CheckList({
                                   </div>
                                 </>
                               )}
+                            </div>
+                            {/* Checkbox on right, appears on hover */}
+                            <div
+                              className={clsx(
+                                'flex-shrink-0 pr-2 transition-opacity',
+                                selectedCheckIds.has(check.id)
+                                  ? 'opacity-100'
+                                  : 'opacity-0 group-hover/check:opacity-100'
+                              )}
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedCheckIds.has(check.id)}
+                                onChange={e => {
+                                  e.stopPropagation();
+                                  const isShiftClick = (e.nativeEvent as MouseEvent).shiftKey;
+                                  toggleSelection(check.id, isShiftClick);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              />
                             </div>
                           </button>
 

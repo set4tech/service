@@ -6,12 +6,23 @@ import AssessmentClient from './ui/AssessmentClient';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+interface ExtractedVariables {
+  [category: string]: {
+    [variable: string]:
+      | {
+          value: unknown;
+          confidence?: string;
+        }
+      | unknown;
+  };
+}
+
 interface ProjectData {
   id: string;
   name: string;
   pdf_url: string | null;
   selected_code_ids: string[];
-  extracted_variables: Record<string, unknown>;
+  extracted_variables: ExtractedVariables | null;
 }
 
 interface AssessmentWithProject {
@@ -44,7 +55,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     getAssessmentChecks(id, { mode: 'section' }),
     getAssessmentChecks(id, { mode: 'element' }),
   ]);
-  
+
   // Combine both types of checks
   const checks = [...(sectionChecks || []), ...(elementChecks || [])];
 
@@ -82,6 +93,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const assessmentWithPdf = {
     ...assessment,
     pdf_url: typedAssessment.projects?.pdf_url || null,
+    extracted_variables: typedAssessment.projects?.extracted_variables || null,
   };
 
   // Format progress data to match AssessmentClient's expected shape

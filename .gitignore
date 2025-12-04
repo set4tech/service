@@ -154,6 +154,7 @@ diff_report.json
 
 *json
 *.pdf
+!e2e/fixtures/*.pdf
 *.png
 test-results/
 playwright-report/

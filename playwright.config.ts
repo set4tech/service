@@ -19,8 +19,8 @@ export default defineConfig({
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
 
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
+  /* Retry on CI only - reduced to fail faster */
+  retries: process.env.CI ? 1 : 0,
 
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
@@ -46,9 +46,9 @@ export default defineConfig({
     /* Video on failure */
     video: 'retain-on-failure',
 
-    /* CI-specific timeouts (slower machines, network latency) */
-    actionTimeout: process.env.CI ? 30000 : 10000,
-    navigationTimeout: process.env.CI ? 60000 : 30000,
+    /* Timeouts - reduced for faster failure detection */
+    actionTimeout: process.env.CI ? 15000 : 10000,
+    navigationTimeout: process.env.CI ? 30000 : 20000,
   },
 
   /* Configure projects for major browsers */

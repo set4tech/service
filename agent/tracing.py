@@ -8,17 +8,33 @@ Supports two backends:
 View traces at:
 - Langfuse: https://cloud.langfuse.com or https://us.cloud.langfuse.com
 - Phoenix: http://localhost:6006
+
+Usage in agent code:
+    from tracing import trace_agent, trace_iteration, trace_tool
+
+    @trace_agent("compliance_assessment")
+    async def assess_check(...):
+        for iteration in range(max_iterations):
+            with trace_iteration(iteration, section_number):
+                # API call happens here (auto-instrumented)
+                for tool_call in tool_calls:
+                    with trace_tool(tool_call.name, tool_call.input):
+                        result = execute_tool(...)
 """
 
 import atexit
 import logging
 import os
+from contextlib import contextmanager
+from functools import wraps
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 # Track if instrumentation has been applied
 _instrumented = False
 _tracer_provider = None
+_langfuse_client = None
 
 
 def setup_tracing():
@@ -196,3 +212,128 @@ def start_phoenix_server():
     except Exception as e:
         logger.warning(f"[Tracing] Failed to start Phoenix server: {e}")
         return None
+
+
+# =============================================================================
+# NATIVE LANGFUSE SDK HELPERS (v3 API)
+# =============================================================================
+# These provide structured traces with nested spans for agentic workflows.
+# Each iteration and tool call appears as a separate span in Langfuse.
+#
+# Langfuse v3 uses:
+#   - langfuse.start_span(name=...) to create a parent span
+#   - parent_span.start_span(name=...) to create nested child spans
+#   - span.end() to close spans
+
+
+def get_langfuse():
+    """Get the Langfuse client, initializing if needed."""
+    global _langfuse_client
+
+    if _langfuse_client is not None:
+        return _langfuse_client
+
+    # Check if Langfuse is configured
+    if not os.environ.get("LANGFUSE_SECRET_KEY"):
+        return None
+
+    try:
+        from langfuse import get_client
+
+        _langfuse_client = get_client()
+        logger.info("[Tracing] Langfuse client initialized (v3 SDK)")
+        return _langfuse_client
+    except ImportError:
+        logger.warning("[Tracing] Langfuse SDK not installed")
+        return None
+    except Exception as e:
+        logger.warning(f"[Tracing] Failed to initialize Langfuse client: {e}")
+        return None
+
+
+def create_trace_span(
+    langfuse,
+    name: str,
+    metadata: Optional[dict] = None,
+    input_data: Optional[dict] = None,
+):
+    """
+    Create a parent trace span for an agent run.
+
+    Args:
+        langfuse: The Langfuse client
+        name: Name for the trace/span
+        metadata: Optional metadata dict
+        input_data: Optional input data
+
+    Returns:
+        A span object that can be used to create child spans
+    """
+    try:
+        span = langfuse.start_span(
+            name=name,
+            metadata=metadata,
+            input=input_data,
+        )
+        return span
+    except Exception as e:
+        logger.warning(f"[Tracing] Failed to create trace span: {e}")
+        return None
+
+
+def create_child_span(
+    parent_span,
+    name: str,
+    metadata: Optional[dict] = None,
+    input_data: Optional[dict] = None,
+):
+    """
+    Create a child span nested under a parent span.
+
+    Args:
+        parent_span: The parent span object
+        name: Name for the child span
+        metadata: Optional metadata dict
+        input_data: Optional input data
+
+    Returns:
+        A child span object, or None if parent_span is None
+    """
+    if not parent_span:
+        return None
+
+    try:
+        child = parent_span.start_span(
+            name=name,
+            metadata=metadata,
+            input=input_data,
+        )
+        return child
+    except Exception as e:
+        logger.warning(f"[Tracing] Failed to create child span: {e}")
+        return None
+
+
+def end_span(span, output: Optional[Any] = None, level: Optional[str] = None):
+    """
+    End a span, optionally updating its output and level.
+
+    Args:
+        span: The span to end
+        output: Optional output data
+        level: Optional level (e.g., "ERROR", "WARNING")
+    """
+    if not span:
+        return
+
+    try:
+        if output is not None or level is not None:
+            update_kwargs = {}
+            if output is not None:
+                update_kwargs["output"] = output
+            if level is not None:
+                update_kwargs["level"] = level
+            span.update(**update_kwargs)
+        span.end()
+    except Exception as e:
+        logger.warning(f"[Tracing] Failed to end span: {e}")

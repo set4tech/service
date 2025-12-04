@@ -290,19 +290,17 @@ PDF File
 ### Python Libraries
 
 ```
-pdf2image          # PDF to PNG (requires Poppler)
+PyMuPDF (fitz)     # PDF to PNG and text extraction (fast, no system deps)
 pillow             # Image processing
 ultralytics        # YOLO inference
 pytesseract        # OCR (requires Tesseract)
 google-generativeai # Gemini VLM
 openai             # GPT-4o-mini for text cleaning
-PyMuPDF (fitz)     # PDF text extraction
 ```
 
 ### System Packages
 
 ```
-poppler            # PDF rendering backend
 tesseract          # OCR engine
 ```
 

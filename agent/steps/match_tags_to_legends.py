@@ -352,9 +352,10 @@ class MatchTagsToLegends(PipelineStep):
         # Log some example matches
         for match in all_matches[:5]:
             tag = match.get("tag")
-            legend = match.get("legend_match", "")[:40]
+            legend = match.get("legend_match")
+            legend_preview = legend[:40] if legend else "(no match)"
             conf = match.get("confidence")
-            logger.info(f"      {tag} -> {legend}... ({conf})")
+            logger.info(f"      {tag} -> {legend_preview}... ({conf})")
 
         if len(all_matches) > 5:
             logger.info(f"      ... and {len(all_matches) - 5} more matches")

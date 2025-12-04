@@ -219,7 +219,12 @@ class UnifyAndUpload(PipelineStep):
 
         # Add table data if this is a table
         if detection.get("class_name") == "table":
-            page_tables = extracted_tables.get(page_num, extracted_tables.get(filename, []))
+            # extracted_tables is a list with each item having a "page" field
+            if isinstance(extracted_tables, list):
+                page_tables = [t for t in extracted_tables if t.get("page") in (page_num, filename)]
+            else:
+                # Fallback for dict format (keyed by page)
+                page_tables = extracted_tables.get(page_num, extracted_tables.get(filename, []))
             if isinstance(page_tables, list):
                 for table in page_tables:
                     if self._bboxes_match(detection.get("bbox"), table.get("bbox")):
@@ -228,7 +233,12 @@ class UnifyAndUpload(PipelineStep):
 
         # Add legend data if this is a legend
         if detection.get("class_name") == "legend":
-            page_legends = extracted_legends.get(page_num, extracted_legends.get(filename, []))
+            # extracted_legends is a list with each item having a "page" field
+            if isinstance(extracted_legends, list):
+                page_legends = [l for l in extracted_legends if l.get("page") in (page_num, filename)]
+            else:
+                # Fallback for dict format (keyed by page)
+                page_legends = extracted_legends.get(page_num, extracted_legends.get(filename, []))
             if isinstance(page_legends, list):
                 for legend in page_legends:
                     if self._bboxes_match(detection.get("bbox"), legend.get("bbox")):

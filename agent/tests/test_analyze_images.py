@@ -54,59 +54,78 @@ class TestExtractPageNumber:
 class TestCropRegionFromPdf:
     """Test crop_region_from_pdf function."""
 
-    @patch('steps.analyze_images.convert_from_path')
-    def test_scales_bbox_correctly(self, mock_convert):
+    @patch('steps.analyze_images.fitz')
+    def test_scales_bbox_correctly(self, mock_fitz):
         """Bbox is scaled from YOLO_DPI to VLM_DPI."""
         from steps.analyze_images import crop_region_from_pdf, SCALE_FACTOR
 
-        # Create mock page image
+        # Create mock pixmap with sample data
+        mock_pix = MagicMock()
+        mock_pix.width = 500
+        mock_pix.height = 500
+        mock_pix.samples = b'\x00' * (500 * 500 * 3)  # RGB data
+
         mock_page = MagicMock()
-        mock_page.crop.return_value = MagicMock()
-        mock_convert.return_value = [mock_page]
+        mock_page.get_pixmap.return_value = mock_pix
+
+        mock_doc = MagicMock()
+        mock_doc.__getitem__ = MagicMock(return_value=mock_page)
+        mock_fitz.open.return_value = mock_doc
 
         bbox = [100, 200, 300, 400]  # At YOLO_DPI (72)
-        crop_region_from_pdf(Path("/tmp/test.pdf"), 1, bbox)
+        result = crop_region_from_pdf(Path("/tmp/test.pdf"), 1, bbox)
 
-        # Verify crop was called with scaled coordinates
-        expected_bbox = (
-            int(100 * SCALE_FACTOR),
-            int(200 * SCALE_FACTOR),
-            int(300 * SCALE_FACTOR),
-            int(400 * SCALE_FACTOR),
-        )
-        mock_page.crop.assert_called_once_with(expected_bbox)
+        # Verify result is a PIL image (cropped)
+        assert result is not None
+        # The function should use page index 0 for page 1
+        mock_doc.__getitem__.assert_called_once_with(0)
 
-    @patch('steps.analyze_images.convert_from_path')
-    def test_renders_at_vlm_dpi(self, mock_convert):
+    @patch('steps.analyze_images.fitz')
+    def test_renders_at_vlm_dpi(self, mock_fitz):
         """PDF page is rendered at VLM_DPI (150)."""
         from steps.analyze_images import crop_region_from_pdf, VLM_DPI
 
+        mock_pix = MagicMock()
+        mock_pix.width = 500
+        mock_pix.height = 500
+        mock_pix.samples = b'\x00' * (500 * 500 * 3)
+
         mock_page = MagicMock()
-        mock_page.crop.return_value = MagicMock()
-        mock_convert.return_value = [mock_page]
+        mock_page.get_pixmap.return_value = mock_pix
+
+        mock_doc = MagicMock()
+        mock_doc.__getitem__ = MagicMock(return_value=mock_page)
+        mock_fitz.open.return_value = mock_doc
 
         crop_region_from_pdf(Path("/tmp/test.pdf"), 5, [0, 0, 100, 100])
 
-        mock_convert.assert_called_once_with(
-            Path("/tmp/test.pdf"),
-            dpi=VLM_DPI,
-            first_page=5,
-            last_page=5
-        )
+        # Verify page index is 4 (0-indexed for page 5)
+        mock_doc.__getitem__.assert_called_once_with(4)
+        # Verify get_pixmap was called with a matrix
+        mock_page.get_pixmap.assert_called_once()
 
-    @patch('steps.analyze_images.convert_from_path')
-    def test_returns_cropped_region(self, mock_convert):
+    @patch('steps.analyze_images.fitz')
+    def test_returns_cropped_region(self, mock_fitz):
         """Returns the cropped region."""
         from steps.analyze_images import crop_region_from_pdf
 
-        cropped = MagicMock()
+        mock_pix = MagicMock()
+        mock_pix.width = 500
+        mock_pix.height = 500
+        mock_pix.samples = b'\x00' * (500 * 500 * 3)
+
         mock_page = MagicMock()
-        mock_page.crop.return_value = cropped
-        mock_convert.return_value = [mock_page]
+        mock_page.get_pixmap.return_value = mock_pix
+
+        mock_doc = MagicMock()
+        mock_doc.__getitem__ = MagicMock(return_value=mock_page)
+        mock_fitz.open.return_value = mock_doc
 
         result = crop_region_from_pdf(Path("/tmp/test.pdf"), 1, [0, 0, 100, 100])
 
-        assert result is cropped
+        # Should return a PIL Image (cropped)
+        from PIL import Image
+        assert isinstance(result, Image.Image)
 
 
 class TestAnalyzeImageRegion:

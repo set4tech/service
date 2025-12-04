@@ -492,10 +492,10 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
               <button
                 onClick={() => setManualOverride('compliant')}
                 disabled={savingOverride}
-                className={`px-3 py-2 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
+                className={`px-3 py-2.5 text-xs font-medium rounded border transition-all disabled:opacity-50 ${
                   manualOverride === 'compliant'
-                    ? 'bg-green-100 border-green-400 text-green-800'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    ? 'bg-green-100 border-green-400 text-green-800 ring-2 ring-green-400'
+                    : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
                 }`}
               >
                 Compliant
@@ -503,10 +503,10 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
               <button
                 onClick={() => setManualOverride('non_compliant')}
                 disabled={savingOverride}
-                className={`px-3 py-2 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
+                className={`px-3 py-2.5 text-xs font-medium rounded border transition-all disabled:opacity-50 ${
                   manualOverride === 'non_compliant'
-                    ? 'bg-red-100 border-red-400 text-red-800'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    ? 'bg-red-100 border-red-400 text-red-800 ring-2 ring-red-400'
+                    : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
                 }`}
               >
                 Non-Compliant
@@ -514,10 +514,10 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
               <button
                 onClick={() => setManualOverride('insufficient_information')}
                 disabled={savingOverride}
-                className={`px-3 py-2 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
+                className={`px-3 py-2.5 text-xs font-medium rounded border transition-all disabled:opacity-50 ${
                   manualOverride === 'insufficient_information'
-                    ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    ? 'bg-amber-100 border-amber-400 text-amber-800 ring-2 ring-amber-400'
+                    : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
                 }`}
               >
                 Needs More Info
@@ -525,10 +525,10 @@ export function ViolationDetailPanel({ violation, onClose, onCheckUpdate }: Prop
               <button
                 onClick={() => setManualOverride('not_applicable')}
                 disabled={savingOverride}
-                className={`px-3 py-2 text-xs font-medium rounded border transition-colors disabled:opacity-50 ${
+                className={`px-3 py-2.5 text-xs font-medium rounded border transition-all disabled:opacity-50 ${
                   manualOverride === 'not_applicable'
-                    ? 'bg-gray-100 border-gray-400 text-gray-800'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    ? 'bg-gray-200 border-gray-400 text-gray-800 ring-2 ring-gray-400'
+                    : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
                 }`}
                 title="This code section is not relevant to this design"
               >

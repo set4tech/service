@@ -28,50 +28,50 @@ interface AgentRun {
 // Step descriptions for the pipeline - shown in the modal while running
 const STEP_DESCRIPTIONS: Record<string, { title: string; description: string }> = {
   'Downloading PDF from S3...': {
-    title: '📥 Downloading PDF',
+    title: 'Downloading PDF',
     description: 'Fetching the architectural drawings from cloud storage.',
   },
   'Converting PDF to images...': {
-    title: '🖼️ Converting to Images',
+    title: 'Converting to Images',
     description: 'Converting each page of the PDF to high-resolution PNG images for analysis.',
   },
   'Running YOLO': {
-    title: '🔍 Object Detection (YOLO)',
+    title: 'Object Detection (YOLO)',
     description:
       'Using a trained neural network to detect building elements like doors, windows, tables, and schedules.',
   },
   'Running analysis pipeline...': {
-    title: '⚙️ Starting Analysis Pipeline',
+    title: 'Starting Analysis Pipeline',
     description: 'Initializing the multi-step analysis process.',
   },
   'Running filter_low_confidence...': {
-    title: '🧹 Filtering Detections',
+    title: 'Filtering Detections',
     description: 'Removing low-confidence detections to focus on reliable results.',
   },
   'Running group_by_class...': {
-    title: '📊 Grouping Elements',
+    title: 'Grouping Elements',
     description: 'Organizing detected elements by type (doors, windows, tables, etc.).',
   },
   'Running extract_text...': {
-    title: '📝 Extracting Text',
+    title: 'Extracting Text',
     description:
       'Extracting text from each page and using AI to clean up messy CAD drawing labels and notes.',
   },
   'Running extract_tables...': {
-    title: '📋 Extracting Tables',
+    title: 'Extracting Tables',
     description:
       'Detecting and parsing schedules and tables (door schedules, room schedules, etc.) into structured data.',
   },
   'Running count_summary...': {
-    title: '📈 Generating Summary',
+    title: 'Generating Summary',
     description: 'Counting and summarizing all detected elements and extracted data.',
   },
   'Saving results...': {
-    title: '💾 Saving Results',
+    title: 'Saving Results',
     description: 'Storing the analysis results in the database.',
   },
   Complete: {
-    title: '✅ Complete',
+    title: 'Complete',
     description: 'Analysis finished successfully!',
   },
 };

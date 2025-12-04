@@ -1,16 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-
-interface AgentReasoningStep {
-  iteration: number;
-  type: 'thinking' | 'tool_use' | 'tool_result';
-  content?: string;
-  tool?: string;
-  tool_use_id?: string;
-  input?: Record<string, unknown>;
-  result?: Record<string, unknown>;
-}
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 interface ToolCall {
   tool: string;
@@ -29,47 +19,110 @@ interface AgentResult {
     location_in_evidence?: string;
   }>;
   recommendations?: string[];
-  reasoning_trace?: AgentReasoningStep[];
+  reasoning_trace?: Array<{
+    iteration: number;
+    type: 'thinking' | 'tool_use' | 'tool_result';
+    content?: string;
+    tool?: string;
+    tool_use_id?: string;
+    input?: Record<string, unknown>;
+    result?: Record<string, unknown>;
+  }>;
   tools_used?: string[];
   iteration_count?: number;
 }
 
-interface UseAgentAssessmentReturn {
+interface AgentAssessmentState {
   assessing: boolean;
   reasoning: string[];
   toolCalls: ToolCall[];
   result: AgentResult | null;
   error: string | null;
+}
+
+interface UseAgentAssessmentReturn extends AgentAssessmentState {
   startAssessment: () => Promise<void>;
   reset: () => void;
 }
 
+const defaultState: AgentAssessmentState = {
+  assessing: false,
+  reasoning: [],
+  toolCalls: [],
+  result: null,
+  error: null,
+};
+
+// Cache state per checkId so switching back shows ongoing assessment
+const stateCache = new Map<string, AgentAssessmentState>();
+
+// Export for testing
+export function clearStateCacheForTesting() {
+  stateCache.clear();
+}
+
 export function useAgentAssessment(checkId: string | null): UseAgentAssessmentReturn {
-  const [assessing, setAssessing] = useState(false);
-  const [reasoning, setReasoning] = useState<string[]>([]);
-  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
-  const [result, setResult] = useState<AgentResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Initialize from cache if available
+  const [state, setState] = useState<AgentAssessmentState>(() => {
+    if (checkId && stateCache.has(checkId)) {
+      return stateCache.get(checkId)!;
+    }
+    return defaultState;
+  });
+
+  // Track current checkId so stream updates can check if still relevant
+  const currentCheckIdRef = useRef(checkId);
+  currentCheckIdRef.current = checkId;
+
+  // Restore from cache or reset when checkId changes
+  useEffect(() => {
+    if (checkId) {
+      if (stateCache.has(checkId)) {
+        setState(stateCache.get(checkId)!);
+      } else {
+        setState(defaultState);
+      }
+    } else {
+      setState(defaultState);
+    }
+  }, [checkId]);
 
   const reset = useCallback(() => {
-    setAssessing(false);
-    setReasoning([]);
-    setToolCalls([]);
-    setResult(null);
-    setError(null);
-  }, []);
+    setState(defaultState);
+    if (checkId) {
+      stateCache.delete(checkId);
+    }
+  }, [checkId]);
 
   const startAssessment = useCallback(async () => {
     if (!checkId) return;
 
-    setAssessing(true);
-    setReasoning([]);
-    setToolCalls([]);
-    setResult(null);
-    setError(null);
+    // Capture checkId for this assessment (user might switch away)
+    const assessingCheckId = checkId;
+
+    // Helper to update both cache and component state (if still viewing this check)
+    const updateState = (updater: (prev: AgentAssessmentState) => AgentAssessmentState) => {
+      const cached = stateCache.get(assessingCheckId) || defaultState;
+      const updated = updater(cached);
+      stateCache.set(assessingCheckId, updated);
+
+      // Only update component state if still viewing this check
+      if (currentCheckIdRef.current === assessingCheckId) {
+        setState(updated);
+      }
+    };
+
+    // Start assessment
+    updateState(() => ({
+      assessing: true,
+      reasoning: [],
+      toolCalls: [],
+      result: null,
+      error: null,
+    }));
 
     try {
-      const response = await fetch(`/api/checks/${checkId}/agent-assess`, {
+      const response = await fetch(`/api/checks/${assessingCheckId}/agent-assess`, {
         method: 'POST',
       });
 
@@ -105,39 +158,52 @@ export function useAgentAssessment(checkId: string | null): UseAgentAssessmentRe
               switch (data.type) {
                 case 'thinking':
                   if (data.content) {
-                    setReasoning(prev => [...prev, data.content]);
+                    updateState(prev => ({
+                      ...prev,
+                      reasoning: [...prev.reasoning, data.content],
+                    }));
                   }
                   break;
 
                 case 'tool_use':
-                  setToolCalls(prev => [
+                  updateState(prev => ({
                     ...prev,
-                    {
-                      tool: data.tool,
-                      input: data.input,
-                      status: 'running',
-                    },
-                  ]);
+                    toolCalls: [
+                      ...prev.toolCalls,
+                      {
+                        tool: data.tool,
+                        input: data.input,
+                        status: 'running' as const,
+                      },
+                    ],
+                  }));
                   break;
 
                 case 'tool_result':
-                  setToolCalls(prev =>
-                    prev.map(tc =>
+                  updateState(prev => ({
+                    ...prev,
+                    toolCalls: prev.toolCalls.map(tc =>
                       tc.tool === data.tool && tc.status === 'running'
-                        ? { ...tc, result: data.result, status: 'complete' }
+                        ? { ...tc, result: data.result, status: 'complete' as const }
                         : tc
-                    )
-                  );
+                    ),
+                  }));
                   break;
 
                 case 'done':
-                  setResult(data.result);
-                  setAssessing(false);
+                  updateState(prev => ({
+                    ...prev,
+                    result: data.result,
+                    assessing: false,
+                  }));
                   break;
 
                 case 'error':
-                  setError(data.message);
-                  setAssessing(false);
+                  updateState(prev => ({
+                    ...prev,
+                    error: data.message,
+                    assessing: false,
+                  }));
                   break;
               }
             } catch {
@@ -147,21 +213,21 @@ export function useAgentAssessment(checkId: string | null): UseAgentAssessmentRe
         }
       }
 
-      // If we exit the loop without a result, mark as complete
-      setAssessing(false);
-    } catch (err: any) {
+      // If we exit the loop without a done/error event, mark as complete
+      updateState(prev => ({ ...prev, assessing: false }));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Agent assessment failed';
       console.error('[useAgentAssessment] Error:', err);
-      setError(err.message || 'Agent assessment failed');
-      setAssessing(false);
+      updateState(prev => ({
+        ...prev,
+        error: message,
+        assessing: false,
+      }));
     }
   }, [checkId]);
 
   return {
-    assessing,
-    reasoning,
-    toolCalls,
-    result,
-    error,
+    ...state,
     startAssessment,
     reset,
   };
