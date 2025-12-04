@@ -160,15 +160,15 @@ export function ViolationListSidebar({
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'major':
-        return 'text-danger-600 bg-white border-line';
+        return 'text-red-300 bg-red-900/30 border-red-700/50';
       case 'moderate':
-        return 'text-yellow-700 bg-white border-line';
+        return 'text-yellow-300 bg-yellow-900/30 border-yellow-700/50';
       case 'minor':
-        return 'text-accent-600 bg-white border-line';
+        return 'text-accent-400 bg-accent-900/30 border-accent-700/50';
       case 'needs_more_info':
-        return 'text-blue-600 bg-white border-line';
+        return 'text-blue-300 bg-blue-900/30 border-blue-700/50';
       default:
-        return 'text-ink-700 bg-white border-line';
+        return 'text-slate-300 bg-[#4d5a5a] border-[#2d3838]';
     }
   };
 
@@ -190,13 +190,13 @@ export function ViolationListSidebar({
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Search and Group Controls */}
-      <div className="px-4 py-3 border-b border-line bg-white">
+      <div className="px-4 py-3 border-b border-[#2d3838] bg-[#3d4a4a]">
         <input
           type="text"
           placeholder="Search violations..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent"
+          className="w-full px-3 py-2 text-sm border border-[#2d3838] rounded-lg bg-[#4d5a5a] text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent"
         />
 
         {/* Severity Filter Pills */}
@@ -206,12 +206,12 @@ export function ViolationListSidebar({
             className={clsx(
               'px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
               severityFilter.has('major')
-                ? 'bg-danger-50 border-danger-600 text-danger-700'
-                : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
+                ? 'bg-red-900/40 border-red-600 text-red-300'
+                : 'bg-[#4d5a5a] border-[#2d3838] text-slate-400 opacity-50 hover:opacity-100'
             )}
           >
             Major
-            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
+            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#2d3838] font-mono text-[10px]">
               {severityCounts.major}
             </span>
           </button>
@@ -220,12 +220,12 @@ export function ViolationListSidebar({
             className={clsx(
               'px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
               severityFilter.has('moderate')
-                ? 'bg-yellow-50 border-yellow-600 text-yellow-700'
-                : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
+                ? 'bg-yellow-900/40 border-yellow-600 text-yellow-300'
+                : 'bg-[#4d5a5a] border-[#2d3838] text-slate-400 opacity-50 hover:opacity-100'
             )}
           >
             Moderate
-            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
+            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#2d3838] font-mono text-[10px]">
               {severityCounts.moderate}
             </span>
           </button>
@@ -234,12 +234,12 @@ export function ViolationListSidebar({
             className={clsx(
               'px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
               severityFilter.has('minor')
-                ? 'bg-accent-50 border-accent-600 text-accent-700'
-                : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
+                ? 'bg-accent-900/40 border-accent-600 text-accent-400'
+                : 'bg-[#4d5a5a] border-[#2d3838] text-slate-400 opacity-50 hover:opacity-100'
             )}
           >
             Minor
-            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
+            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#2d3838] font-mono text-[10px]">
               {severityCounts.minor}
             </span>
           </button>
@@ -248,25 +248,25 @@ export function ViolationListSidebar({
             className={clsx(
               'px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all',
               severityFilter.has('needs_more_info')
-                ? 'bg-blue-50 border-blue-600 text-blue-700'
-                : 'bg-white border-line text-ink-500 opacity-50 hover:opacity-100'
+                ? 'bg-blue-900/40 border-blue-600 text-blue-300'
+                : 'bg-[#4d5a5a] border-[#2d3838] text-slate-400 opacity-50 hover:opacity-100'
             )}
           >
             Needs Info
-            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white font-mono text-[10px]">
+            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#2d3838] font-mono text-[10px]">
               {severityCounts.needs_more_info}
             </span>
           </button>
         </div>
 
-        <div className="mt-3 flex gap-1 bg-paper rounded-lg p-1">
+        <div className="mt-3 flex gap-1 bg-[#2d3838] rounded-lg p-1">
           <button
             onClick={() => setGroupBy('page')}
             className={clsx(
               'flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors',
               groupBy === 'page'
-                ? 'bg-white shadow-sm text-ink-900'
-                : 'text-ink-500 hover:text-ink-900'
+                ? 'bg-[#4d5a5a] shadow-sm text-slate-100'
+                : 'text-slate-400 hover:text-slate-200'
             )}
           >
             By Page
@@ -276,8 +276,8 @@ export function ViolationListSidebar({
             className={clsx(
               'flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors',
               groupBy === 'severity'
-                ? 'bg-white shadow-sm text-ink-900'
-                : 'text-ink-500 hover:text-ink-900'
+                ? 'bg-[#4d5a5a] shadow-sm text-slate-100'
+                : 'text-slate-400 hover:text-slate-200'
             )}
           >
             By Severity
@@ -287,8 +287,8 @@ export function ViolationListSidebar({
             className={clsx(
               'flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors',
               groupBy === 'section'
-                ? 'bg-white shadow-sm text-ink-900'
-                : 'text-ink-500 hover:text-ink-900'
+                ? 'bg-[#4d5a5a] shadow-sm text-slate-100'
+                : 'text-slate-400 hover:text-slate-200'
             )}
           >
             By Section
@@ -300,36 +300,36 @@ export function ViolationListSidebar({
       <div className="flex-1 overflow-y-auto">
         {violations.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <h3 className="text-lg font-medium text-ink-900 mb-2">No Violations Found</h3>
-            <p className="text-sm text-ink-500">
+            <h3 className="text-lg font-medium text-slate-100 mb-2">No Violations Found</h3>
+            <p className="text-sm text-slate-400">
               This project is currently compliant with all assessed code sections.
             </p>
           </div>
         ) : groupedViolations.length === 0 ? (
-          <div className="px-4 py-8 text-center text-ink-500 text-sm">
+          <div className="px-4 py-8 text-center text-slate-400 text-sm">
             No violations found matching your search.
           </div>
         ) : (
           groupedViolations.map(group => (
-            <div key={group.key} className="border-b border-line">
+            <div key={group.key} className="border-b border-[#2d3838]">
               {/* Group Header */}
-              <div className="sticky top-0 bg-paper px-4 py-2 border-b border-line">
-                <h3 className="text-xs font-semibold text-ink-700 uppercase tracking-wide">
+              <div className="sticky top-0 bg-[#3d4a4a] px-4 py-2 border-b border-[#2d3838]">
+                <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
                   {group.key}
-                  <span className="ml-2 text-ink-500 font-mono">({group.violations.length})</span>
+                  <span className="ml-2 text-slate-400 font-mono">({group.violations.length})</span>
                 </h3>
               </div>
 
               {/* Group Items */}
-              <div className="divide-y divide-line">
+              <div className="divide-y divide-[#2d3838]">
                 {group.violations.map(violation => (
                   <div
                     key={`${violation.checkId}-${violation.screenshotId}`}
                     className={clsx(
-                      'relative px-4 py-3 hover:bg-paper transition-colors cursor-pointer',
+                      'relative px-4 py-3 hover:bg-[#4d5a5a] transition-colors cursor-pointer',
                       selectedViolation?.checkId === violation.checkId &&
                         selectedViolation?.screenshotId === violation.screenshotId
-                        ? 'bg-paper border-l-4 border-accent-600'
+                        ? 'bg-[#4d5a5a] border-l-4 border-accent-600'
                         : 'border-l-4 border-transparent'
                     )}
                     onClick={() => onViolationClick(violation)}
@@ -342,10 +342,10 @@ export function ViolationListSidebar({
                         )}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-ink-900 line-clamp-2">
+                        <div className="text-sm font-medium text-slate-100 line-clamp-2">
                           {formatViolationDescription(violation)}
                         </div>
-                        <div className="mt-1.5 flex items-center gap-2 text-xs text-ink-500 flex-wrap">
+                        <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-400 flex-wrap">
                           <span className="font-mono">Page {violation.pageNumber}</span>
                           <span>•</span>
                           <span
@@ -359,7 +359,7 @@ export function ViolationListSidebar({
                           {violation.checkType === 'element' && violation.elementGroupName && (
                             <>
                               <span>•</span>
-                              <span className="font-medium text-accent-600">
+                              <span className="font-medium text-accent-400">
                                 {violation.elementGroupName}
                                 {violation.instanceLabel && ` - ${violation.instanceLabel}`}
                               </span>
@@ -375,11 +375,11 @@ export function ViolationListSidebar({
                               e.stopPropagation();
                               onEditCheck(violation);
                             }}
-                            className="flex-shrink-0 p-2 rounded-lg hover:bg-accent-50 hover:text-accent-700 transition-colors group"
+                            className="flex-shrink-0 p-2 rounded-lg hover:bg-[#5d6a6a] hover:text-accent-400 transition-colors group"
                             title="Edit check details, screenshots, and prompt"
                           >
                             <svg
-                              className="w-4 h-4 text-ink-500 group-hover:text-accent-600"
+                              className="w-4 h-4 text-slate-400 group-hover:text-accent-400"
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -400,11 +400,11 @@ export function ViolationListSidebar({
                               e.stopPropagation();
                               onViolationDetailsClick(violation);
                             }}
-                            className="flex-shrink-0 p-2 rounded-lg hover:bg-white transition-colors"
+                            className="flex-shrink-0 p-2 rounded-lg hover:bg-[#5d6a6a] transition-colors"
                             title="View details"
                           >
                             <svg
-                              className="w-4 h-4 text-ink-500"
+                              className="w-4 h-4 text-slate-400"
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -429,8 +429,8 @@ export function ViolationListSidebar({
       </div>
 
       {/* Footer with total count */}
-      <div className="px-4 py-3 border-t border-line bg-white">
-        <div className="text-xs text-ink-500 text-center font-mono">
+      <div className="px-4 py-3 border-t border-[#2d3838] bg-[#3d4a4a]">
+        <div className="text-xs text-slate-400 text-center font-mono">
           Showing {filteredViolations.length} of {violations.length} violations
         </div>
       </div>
