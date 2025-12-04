@@ -78,7 +78,7 @@ export function AnalysisHistory({
                   </span>
                 )}
                 <span className={`text-xs px-2 py-0.5 rounded border font-medium ${statusColors}`}>
-                  {run.compliance_status.replace('_', ' ')}
+                  {run.compliance_status?.replace('_', ' ') || 'pending'}
                 </span>
                 <span
                   className={`text-xs px-2 py-0.5 rounded font-medium ${getConfidenceBadge(run.confidence)}`}
@@ -154,7 +154,7 @@ export function AnalysisHistory({
                                 <span
                                   className={`text-xs px-1.5 py-0.5 rounded font-medium ${getComplianceStatusBadgeColor(sectionResult.compliance_status)}`}
                                 >
-                                  {sectionResult.compliance_status.replace('_', ' ')}
+                                  {sectionResult.compliance_status?.replace('_', ' ') || 'pending'}
                                 </span>
                                 {sectionResult.confidence !== 'n/a' && (
                                   <span
