@@ -870,11 +870,11 @@ export default function AssessmentClient({
       {/* Left Sidebar with Checks */}
       <div
         ref={checksSidebarRef}
-        className="flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden relative z-10"
+        className="flex-shrink-0 bg-[#e8eeea] border-r border-[#d0d9d3] flex flex-col h-screen overflow-hidden relative z-10"
         style={{ width: `${checksSidebarWidth}px` }}
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b bg-gray-50">
+        <div className="px-4 py-3 border-b border-[#d0d9d3] bg-[#dce5df]">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Link href="/" className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -951,7 +951,7 @@ export default function AssessmentClient({
           </div>
 
           {/* Main Tab Navigation */}
-          <div className="mb-2 flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="mb-2 flex items-center gap-1 bg-[#c8d4cc] rounded-lg p-1">
             <button
               onClick={() => handleMainTabChange('checks')}
               className={clsx(
@@ -1000,7 +1000,7 @@ export default function AssessmentClient({
 
           {/* Sub-tab for Checks mode */}
           {mainTab === 'checks' && (
-            <div className="mb-3 flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg p-0.5">
+            <div className="mb-3 flex items-center gap-1 bg-[#d5dfd8] border border-[#c0ccc4] rounded-lg p-0.5">
               <button
                 onClick={() => handleChecksSubTabChange('elements')}
                 className={clsx(
