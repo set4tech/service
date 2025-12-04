@@ -244,13 +244,6 @@ export function ViolationsSummary({
     }
   };
 
-  // Determine severity color
-  const getSeverityIcon = () => {
-    if (violations.length === 0) return '✅';
-    if (violations.length >= 6) return '🚨';
-    return '⚠️';
-  };
-
   const getSeverityColor = () => {
     if (violations.length === 0) return 'text-green-700 bg-green-50 border-green-200';
     if (violations.length >= 6) return 'text-red-700 bg-red-50 border-red-200';
@@ -262,7 +255,7 @@ export function ViolationsSummary({
     return (
       <div className="flex flex-col h-full">
         {/* Compact Stats Header with View Toggle and Refresh Button */}
-        <div className="px-4 py-3 border-b bg-white space-y-2">
+        <div className="px-4 py-3 border-b border-[#2d3838] bg-[#3d4a4a] space-y-2">
           {/* View Mode Toggle */}
           <div className="flex gap-2">
             <button
@@ -273,7 +266,7 @@ export function ViolationsSummary({
                   : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              🚨 Violations ({violations.length})
+              Violations ({violations.length})
             </button>
             <button
               onClick={() => setViewMode('comments')}
@@ -283,13 +276,13 @@ export function ViolationsSummary({
                   : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              💬 Comments ({loadingComments ? '...' : comments.length})
+              Comments ({loadingComments ? '...' : comments.length})
             </button>
           </div>
 
           {/* Stats Row */}
           <div className="flex items-center justify-between">
-            <div className="font-semibold text-sm flex items-center gap-2">
+            <div className="font-semibold text-sm text-slate-100 flex items-center gap-2">
               {viewMode === 'violations'
                 ? `${violations.length} Violation${violations.length === 1 ? '' : 's'}`
                 : `${comments.length} Comment${comments.length === 1 ? '' : 's'}`}
@@ -300,12 +293,12 @@ export function ViolationsSummary({
                     onRefresh();
                   }}
                   disabled={refreshing}
-                  className="p-1 rounded hover:bg-gray-100 transition-colors disabled:opacity-50"
+                  className="p-1 rounded hover:bg-slate-600 transition-colors disabled:opacity-50"
                   title="Refresh violations"
                 >
                   {refreshing ? (
                     <svg
-                      className="animate-spin h-4 w-4 text-gray-600"
+                      className="animate-spin h-4 w-4 text-slate-300"
                       fill="none"
                       viewBox="0 0 24 24"
                     >
@@ -325,7 +318,7 @@ export function ViolationsSummary({
                     </svg>
                   ) : (
                     <svg
-                      className="w-4 h-4 text-gray-600"
+                      className="w-4 h-4 text-slate-300"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -342,7 +335,7 @@ export function ViolationsSummary({
               )}
             </div>
             {viewMode === 'violations' && (
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-slate-400">
                 {stats.assessed} / {stats.totalSections} assessed
               </div>
             )}
@@ -395,8 +388,8 @@ export function ViolationsSummary({
                     <p className="text-xs text-gray-600 mb-2 line-clamp-2">{comment.description}</p>
                     <div className="flex items-center justify-between text-xs text-gray-500">
                       <div className="flex items-center gap-3">
-                        <span>📄 Page {comment.pageNumber}</span>
-                        {comment.sheetName && <span>📋 {comment.sheetName}</span>}
+                        <span>Page {comment.pageNumber}</span>
+                        {comment.sheetName && <span>{comment.sheetName}</span>}
                         {comment.discipline && (
                           <span className="px-2 py-0.5 bg-gray-100 rounded">
                             {comment.discipline}
@@ -444,9 +437,9 @@ export function ViolationsSummary({
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-gray-100">
       {/* Left Sidebar - Violations List */}
-      <div className="w-96 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden relative z-10">
+      <div className="w-96 flex-shrink-0 bg-[#3d4a4a] border-r border-[#2d3838] flex flex-col h-screen overflow-hidden relative z-10">
         {/* View Mode Toggle */}
-        <div className="px-4 pt-4 pb-2 bg-white">
+        <div className="px-4 pt-4 pb-2">
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode('violations')}
@@ -456,7 +449,7 @@ export function ViolationsSummary({
                   : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              🚨 Violations ({violations.length})
+              Violations ({violations.length})
             </button>
             <button
               onClick={() => setViewMode('comments')}
@@ -466,13 +459,13 @@ export function ViolationsSummary({
                   : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              💬 Comments ({loadingComments ? '...' : comments.length})
+              Comments ({loadingComments ? '...' : comments.length})
             </button>
           </div>
         </div>
 
         {/* Stats Header - Clickable to refresh */}
-        <div className="px-4 py-3 border-b bg-white space-y-3">
+        <div className="px-4 py-3 border-b border-[#2d3838] space-y-3">
           <div
             className={`px-4 py-3 rounded-lg border ${getSeverityColor()} ${
               onRefresh ? 'cursor-pointer hover:shadow-md transition-shadow' : ''
@@ -498,7 +491,6 @@ export function ViolationsSummary({
                   />
                 </svg>
               )}
-              <span className="text-2xl">{getSeverityIcon()}</span>
               <div className="flex-1">
                 <div className="font-semibold text-sm flex items-center gap-2">
                   {violations.length === 0 ? (
@@ -667,8 +659,8 @@ export function ViolationsSummary({
                     <p className="text-xs text-gray-600 mb-2 line-clamp-2">{comment.description}</p>
                     <div className="flex items-center justify-between text-xs text-gray-500">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span>📄 Page {comment.pageNumber}</span>
-                        {comment.sheetName && <span>📋 {comment.sheetName}</span>}
+                        <span>Page {comment.pageNumber}</span>
+                        {comment.sheetName && <span>{comment.sheetName}</span>}
                         {comment.discipline && (
                           <span className="px-2 py-0.5 bg-gray-100 rounded">
                             {comment.discipline}

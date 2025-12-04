@@ -300,7 +300,6 @@ export function ViolationListSidebar({
       <div className="flex-1 overflow-y-auto">
         {violations.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <div className="text-4xl mb-3 text-accent-600">✓</div>
             <h3 className="text-lg font-medium text-ink-900 mb-2">No Violations Found</h3>
             <p className="text-sm text-ink-500">
               This project is currently compliant with all assessed code sections.

@@ -89,7 +89,7 @@ export function CommentListSidebar({
         {/* Meta info */}
         <div className="flex items-center gap-2 text-xs text-ink-500 mb-2">
           {comment.sheetName && (
-            <span className="bg-gray-100 px-2 py-0.5 rounded">📄 {comment.sheetName}</span>
+            <span className="bg-gray-100 px-2 py-0.5 rounded">{comment.sheetName}</span>
           )}
           {comment.discipline && (
             <span className="bg-gray-100 px-2 py-0.5 rounded">{comment.discipline}</span>
@@ -117,19 +117,19 @@ export function CommentListSidebar({
         {/* Screenshot count */}
         {comment.screenshots.length > 0 && (
           <div className="text-xs text-ink-500 mb-2">
-            📷 {comment.screenshots.length} screenshot{comment.screenshots.length > 1 ? 's' : ''}
+            {comment.screenshots.length} screenshot{comment.screenshots.length > 1 ? 's' : ''}
           </div>
         )}
 
         {/* Status badge */}
         {comment.status === 'resolved' && (
           <div className="text-xs text-green-700 bg-green-100 px-2 py-1 rounded inline-block">
-             Resolved
+            Resolved
           </div>
         )}
         {comment.status === 'acknowledged' && (
           <div className="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded inline-block">
-            ✓ Acknowledged
+            Acknowledged
           </div>
         )}
 
