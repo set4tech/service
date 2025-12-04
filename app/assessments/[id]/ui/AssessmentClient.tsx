@@ -12,6 +12,7 @@ import { AssessmentScreenshotGallery } from '@/components/screenshots/Assessment
 import { ImportCSVDoorsModal } from '@/components/assessments/ImportCSVDoorsModal';
 import { AgentAnalysisModal } from '@/components/agent/AgentAnalysisModal';
 import { ChatPanel } from '@/components/chat/ChatPanel';
+import { ProjectPanel } from '@/components/project/ProjectPanel';
 import type { ViolationMarker } from '@/lib/reports/get-violations';
 
 // Load PDF viewer only on client side - removes need for wrapper component
@@ -72,10 +73,22 @@ interface CheckData {
   [key: string]: unknown;
 }
 
+interface ExtractedVariables {
+  [category: string]: {
+    [variable: string]:
+      | {
+          value: unknown;
+          confidence?: string;
+        }
+      | unknown;
+  };
+}
+
 interface AssessmentData {
   id: string;
   project_id: string;
   pdf_url?: string | null;
+  extracted_variables?: ExtractedVariables | null;
   projects?: {
     name?: string;
     [key: string]: unknown;
@@ -227,15 +240,31 @@ export default function AssessmentClient({
     return () => clearInterval(pollInterval);
   }, [assessment.id, existingAgentRun?.id, existingAgentRun?.status]);
 
-  const [checkMode, setCheckMode] = useState<
-    'section' | 'element' | 'summary' | 'gallery' | 'chat'
-  >('section');
+  // Two-level navigation: main tab and checks sub-tab
+  const [mainTab, setMainTab] = useState<'checks' | 'violations' | 'chat' | 'project'>('checks');
+  const [checksSubTab, setChecksSubTab] = useState<'elements' | 'sections' | 'gallery'>('sections');
+
+  // Derived checkMode for compatibility with existing code
+  const checkMode =
+    mainTab === 'checks'
+      ? checksSubTab === 'elements'
+        ? 'element'
+        : checksSubTab === 'sections'
+          ? 'section'
+          : 'gallery'
+      : mainTab === 'violations'
+        ? 'summary'
+        : mainTab;
 
   // Restore saved mode after hydration to avoid mismatch
   useEffect(() => {
-    const saved = localStorage.getItem(`checkMode-${assessment.id}`);
-    if (saved) {
-      setCheckMode(saved as 'section' | 'element' | 'summary' | 'gallery' | 'chat');
+    const savedMainTab = localStorage.getItem(`mainTab-${assessment.id}`);
+    const savedSubTab = localStorage.getItem(`checksSubTab-${assessment.id}`);
+    if (savedMainTab) {
+      setMainTab(savedMainTab as 'checks' | 'violations' | 'chat' | 'project');
+    }
+    if (savedSubTab) {
+      setChecksSubTab(savedSubTab as 'elements' | 'sections' | 'gallery');
     }
 
     // Also restore active check ID from URL hash if present
@@ -454,11 +483,13 @@ export default function AssessmentClient({
 
     if (!actualCheck) return;
 
-    // Determine mode from actual check data
-    const targetMode = actualCheck.element_group_id != null ? 'element' : 'section';
+    // Switch to checks tab with appropriate sub-tab
+    setMainTab('checks');
+    localStorage.setItem(`mainTab-${assessment.id}`, 'checks');
 
-    setCheckMode(targetMode);
-    localStorage.setItem(`checkMode-${assessment.id}`, targetMode);
+    const targetSubTab = actualCheck.element_group_id != null ? 'elements' : 'sections';
+    setChecksSubTab(targetSubTab);
+    localStorage.setItem(`checksSubTab-${assessment.id}`, targetSubTab);
 
     dispatchDetailPanel({
       type: 'SELECT_CHECK',
@@ -584,18 +615,40 @@ export default function AssessmentClient({
     }
   }, [assessment.id]);
 
-  const handleModeChange = (newMode: 'section' | 'element' | 'summary' | 'gallery' | 'chat') => {
-    setCheckMode(newMode);
-    localStorage.setItem(`checkMode-${assessment.id}`, newMode);
+  const handleMainTabChange = (newTab: 'checks' | 'violations' | 'chat' | 'project') => {
+    setMainTab(newTab);
+    localStorage.setItem(`mainTab-${assessment.id}`, newTab);
 
-    // Close detail panel when switching to summary, gallery, or chat
-    if (newMode === 'summary' || newMode === 'gallery' || newMode === 'chat') {
+    // Close detail panel when switching to violations, chat, or project
+    if (newTab !== 'checks') {
+      closeDetailPanel();
+    } else {
+      // Try to restore last selection when switching back to checks
+      const mode = checksSubTab === 'elements' ? 'element' : 'section';
+      const lastSelection = lastSelectionPerMode.current[mode];
+      if (lastSelection && checks.some(c => c.id === lastSelection.checkId)) {
+        dispatchDetailPanel({
+          type: 'SELECT_CHECK',
+          checkId: lastSelection.checkId,
+          filterToSectionKey: lastSelection.filterToSectionKey,
+        });
+      }
+    }
+  };
+
+  const handleChecksSubTabChange = (newSubTab: 'elements' | 'sections' | 'gallery') => {
+    setChecksSubTab(newSubTab);
+    localStorage.setItem(`checksSubTab-${assessment.id}`, newSubTab);
+
+    // Close detail panel for gallery
+    if (newSubTab === 'gallery') {
       closeDetailPanel();
       return;
     }
 
     // Try to restore last selection for this mode
-    const lastSelection = lastSelectionPerMode.current[newMode];
+    const mode = newSubTab === 'elements' ? 'element' : 'section';
+    const lastSelection = lastSelectionPerMode.current[mode];
     if (lastSelection && checks.some(c => c.id === lastSelection.checkId)) {
       dispatchDetailPanel({
         type: 'SELECT_CHECK',
@@ -823,75 +876,7 @@ export default function AssessmentClient({
         {/* Header */}
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-gray-900">
-              {assessment.projects?.name || 'Compliance Checks'}
-            </h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsAgentModalOpen(true)}
-                className={clsx(
-                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors',
-                  existingAgentRun
-                    ? 'text-amber-600 bg-amber-50 border-amber-200 hover:border-amber-400'
-                    : 'text-purple-600 hover:text-purple-500 bg-purple-50 border-purple-200 hover:border-purple-400'
-                )}
-                title={existingAgentRun ? 'View Agent Progress' : 'Run AI Agent Analysis (Beta)'}
-              >
-                {existingAgentRun ? (
-                  <>
-                    {/* Spinner icon */}
-                    <svg
-                      className="animate-spin"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
-                      <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
-                    </svg>
-                    AGENT: {existingAgentRun.progress?.step || 0}/
-                    {existingAgentRun.progress?.total_steps || '?'}
-                  </>
-                ) : (
-                  <>
-                    {/* Robot icon */}
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
-                      <circle cx="8" cy="14" r="2" />
-                      <circle cx="16" cy="14" r="2" />
-                    </svg>
-                    AGENT: BETA
-                  </>
-                )}
-              </button>
-              <Link
-                href={`/projects/${assessment.project_id}/report`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-accent-600 hover:text-accent-500 bg-white border border-line rounded-lg hover:border-accent-400 transition-colors"
-                title="View Compliance Report (opens in new tab)"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M14 3h7v7M21 3l-9 9"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    fill="none"
-                  />
-                  <path d="M21 14v7H3V3h7" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                </svg>
-                Report
-              </Link>
               <Link href="/" className="text-gray-400 hover:text-gray-600 transition-colors">
                 <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -902,77 +887,165 @@ export default function AssessmentClient({
                   />
                 </svg>
               </Link>
+              <h2 className="text-base font-semibold text-gray-900 truncate max-w-[180px]">
+                {assessment.projects?.name || 'Compliance Checks'}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsAgentModalOpen(true)}
+                className={clsx(
+                  'inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-lg border transition-colors',
+                  existingAgentRun
+                    ? 'text-amber-600 bg-amber-50 border-amber-200 hover:border-amber-400'
+                    : 'text-purple-600 hover:text-purple-500 bg-purple-50 border-purple-200 hover:border-purple-400'
+                )}
+                title={existingAgentRun ? 'View Agent Progress' : 'Run AI Agent Analysis (Beta)'}
+              >
+                {existingAgentRun ? (
+                  <svg
+                    className="animate-spin"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                    <circle cx="8" cy="14" r="2" />
+                    <circle cx="16" cy="14" r="2" />
+                  </svg>
+                )}
+              </button>
+              <Link
+                href={`/projects/${assessment.project_id}/report`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-accent-600 hover:text-accent-500 bg-white border border-line rounded-lg hover:border-accent-400 transition-colors"
+                title="View Compliance Report (opens in new tab)"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M14 3h7v7M21 3l-9 9"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    fill="none"
+                  />
+                  <path d="M21 14v7H3V3h7" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                </svg>
+              </Link>
             </div>
           </div>
 
-          {/* Mode Toggle */}
-          <div className="mb-3 flex items-center gap-1 bg-gray-100 rounded-lg p-1 overflow-x-auto">
+          {/* Main Tab Navigation */}
+          <div className="mb-2 flex items-center gap-1 bg-gray-100 rounded-lg p-1">
             <button
-              onClick={() => handleModeChange('section')}
+              onClick={() => handleMainTabChange('checks')}
               className={clsx(
-                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
-                checkMode === 'section'
+                'flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors',
+                mainTab === 'checks'
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-600 hover:text-gray-900'
               )}
             >
-              Section
+              Checks
             </button>
             <button
-              onClick={() => handleModeChange('element')}
+              onClick={() => handleMainTabChange('violations')}
               className={clsx(
-                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
-                checkMode === 'element'
+                'flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors',
+                mainTab === 'violations'
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-600 hover:text-gray-900'
               )}
             >
-              Element
+              Violations
             </button>
             <button
-              onClick={() => handleModeChange('summary')}
+              onClick={() => handleMainTabChange('chat')}
               className={clsx(
-                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
-                checkMode === 'summary'
-                  ? 'bg-white shadow-sm text-gray-900'
-                  : 'text-gray-600 hover:text-gray-900'
-              )}
-            >
-              Summary
-            </button>
-            <button
-              onClick={() => handleModeChange('gallery')}
-              className={clsx(
-                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
-                checkMode === 'gallery'
-                  ? 'bg-white shadow-sm text-gray-900'
-                  : 'text-gray-600 hover:text-gray-900'
-              )}
-            >
-              Gallery
-            </button>
-            <button
-              onClick={() => handleModeChange('chat')}
-              className={clsx(
-                'flex-shrink-0 px-2 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap',
-                checkMode === 'chat'
+                'flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors',
+                mainTab === 'chat'
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-600 hover:text-gray-900'
               )}
             >
               Chat
             </button>
+            <button
+              onClick={() => handleMainTabChange('project')}
+              className={clsx(
+                'flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors',
+                mainTab === 'project'
+                  ? 'bg-white shadow-sm text-gray-900'
+                  : 'text-gray-600 hover:text-gray-900'
+              )}
+            >
+              Project
+            </button>
           </div>
 
-          {/* CSV Import Button (only show in Element mode) */}
-          {checkMode === 'element' && (
+          {/* Sub-tab for Checks mode */}
+          {mainTab === 'checks' && (
+            <div className="mb-3 flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg p-0.5">
+              <button
+                onClick={() => handleChecksSubTabChange('elements')}
+                className={clsx(
+                  'flex-1 px-2 py-1 text-xs font-medium rounded transition-colors',
+                  checksSubTab === 'elements'
+                    ? 'bg-white shadow-sm text-gray-900'
+                    : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                Elements
+              </button>
+              <button
+                onClick={() => handleChecksSubTabChange('sections')}
+                className={clsx(
+                  'flex-1 px-2 py-1 text-xs font-medium rounded transition-colors',
+                  checksSubTab === 'sections'
+                    ? 'bg-white shadow-sm text-gray-900'
+                    : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                Sections
+              </button>
+              <button
+                onClick={() => handleChecksSubTabChange('gallery')}
+                className={clsx(
+                  'flex-1 px-2 py-1 text-xs font-medium rounded transition-colors',
+                  checksSubTab === 'gallery'
+                    ? 'bg-white shadow-sm text-gray-900'
+                    : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                Gallery
+              </button>
+            </div>
+          )}
+
+          {/* CSV Import Button (only show in Elements mode) */}
+          {mainTab === 'checks' && checksSubTab === 'elements' && (
             <div className="mb-3">
               <ImportCSVDoorsModal assessmentId={assessment.id} onSuccess={refetchChecks} />
             </div>
           )}
 
-          {/* Progress Bar (hide in chat mode) */}
-          {checkMode !== 'chat' && (
+          {/* Progress Bar (show only in checks mode) */}
+          {mainTab === 'checks' && checksSubTab !== 'gallery' && (
             <div className="mb-3">
               <div className="flex justify-between text-sm text-gray-600 mb-1">
                 <span>Progress</span>
@@ -991,9 +1064,9 @@ export default function AssessmentClient({
           )}
         </div>
 
-        {/* Checks List */}
+        {/* Content Area */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          {checkMode === 'summary' ? (
+          {mainTab === 'violations' ? (
             <ViolationsSummary
               checks={checks}
               rpcViolations={rpcViolations}
@@ -1015,14 +1088,20 @@ export default function AssessmentClient({
               onRefresh={refetchViolations}
               refreshing={refreshingViolations}
             />
-          ) : checkMode === 'gallery' ? (
-            <AssessmentScreenshotGallery assessmentId={assessment.id} />
-          ) : checkMode === 'chat' ? (
+          ) : mainTab === 'chat' ? (
             <ChatPanel assessmentId={assessment.id} />
+          ) : mainTab === 'project' ? (
+            <ProjectPanel
+              projectId={assessment.project_id}
+              projectName={assessment.projects?.name || 'Project'}
+              initialVariables={assessment.extracted_variables}
+            />
+          ) : checksSubTab === 'gallery' ? (
+            <AssessmentScreenshotGallery assessmentId={assessment.id} />
           ) : (
             <CheckList
               checks={displayedChecks}
-              checkMode={checkMode === 'section' ? 'section' : 'element'}
+              checkMode={checksSubTab === 'sections' ? 'section' : 'element'}
               activeCheckId={activeCheckId}
               onSelect={handleCheckSelect}
               assessmentId={assessment.id}
@@ -1054,8 +1133,8 @@ export default function AssessmentClient({
       >
         {showDetailPanel && (
           <>
-            {/* Show ViolationDetailPanel in summary mode with selected violation */}
-            {checkMode === 'summary' && detailPanel.mode === 'violation-detail' ? (
+            {/* Show ViolationDetailPanel in violations mode with selected violation */}
+            {mainTab === 'violations' && detailPanel.mode === 'violation-detail' ? (
               <ViolationDetailPanel
                 violation={detailPanel.violation}
                 onClose={closeDetailPanel}

@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Script from 'next/script';
 
 import { useMultiStepForm } from '@/hooks/useMultiStepForm';
 import { useProjectForm } from './hooks/useProjectForm';
@@ -11,11 +10,10 @@ import { TOTAL_STEPS } from './hooks/useMultiStepForm';
 import { ProjectInfoStep } from './components/steps/ProjectInfoStep';
 import { PdfUploadStep } from './components/steps/PdfUploadStep';
 import { CodeBookSelectionStep } from './components/steps/CodeBookSelectionStep';
-import { ProjectVariablesStep } from './components/steps/ProjectVariablesStep';
 import { CustomerInfoStep } from './components/steps/CustomerInfoStep';
 import { ReviewStep } from './components/steps/ReviewStep';
 
-import type { Customer, CodeBook, VariableChecklist } from './types';
+import type { Customer, CodeBook } from './types';
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -25,70 +23,11 @@ export default function NewProjectPage() {
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [codeBooks, setCodeBooks] = useState<CodeBook[]>([]);
-  const [variableChecklist, setVariableChecklist] = useState<VariableChecklist | null>(null);
-  const [googleLoaded, setGoogleLoaded] = useState(false);
-  const addressInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchCustomers();
     fetchCodeBooks();
-    fetchVariableChecklist();
   }, []);
-
-  // Google Maps autocomplete initialization
-  useEffect(() => {
-    if (!googleLoaded || step !== 4) return;
-
-    const timer = setTimeout(() => {
-      if (addressInputRef.current && (window as any).google?.maps?.places) {
-        const autocomplete = new (window as any).google.maps.places.Autocomplete(
-          addressInputRef.current,
-          {
-            types: ['address'],
-            componentRestrictions: { country: 'us' },
-          }
-        );
-
-        autocomplete.addListener('place_changed', () => {
-          const place = autocomplete.getPlace();
-          if (place.formatted_address) {
-            formState.updateVariable('project_identity', 'full_address', place.formatted_address);
-          }
-        });
-      }
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [googleLoaded, step, formState]);
-
-  // Initialize autocomplete when project_identity category is expanded
-  useEffect(() => {
-    if (
-      formState.expandedCategories.has('project_identity') &&
-      googleLoaded &&
-      addressInputRef.current &&
-      (window as any).google?.maps?.places
-    ) {
-      setTimeout(() => {
-        if (addressInputRef.current && (window as any).google?.maps?.places) {
-          const autocomplete = new (window as any).google.maps.places.Autocomplete(
-            addressInputRef.current,
-            {
-              types: ['address'],
-              componentRestrictions: { country: 'us' },
-            }
-          );
-
-          autocomplete.addListener('place_changed', () => {
-            const place = autocomplete.getPlace();
-            if (place.formatted_address) {
-              formState.updateVariable('project_identity', 'full_address', place.formatted_address);
-            }
-          });
-        }
-      }, 100);
-    }
-  }, [formState.expandedCategories, googleLoaded, formState]);
 
   const fetchCustomers = async () => {
     try {
@@ -111,18 +50,6 @@ export default function NewProjectPage() {
       }
     } catch (error) {
       console.error('Error fetching code books:', error);
-    }
-  };
-
-  const fetchVariableChecklist = async () => {
-    try {
-      const response = await fetch('/variable_checklist.json');
-      if (response.ok) {
-        const data = await response.json();
-        setVariableChecklist(data);
-      }
-    } catch (error) {
-      console.error('Error fetching variable checklist:', error);
     }
   };
 
@@ -213,36 +140,7 @@ export default function NewProjectPage() {
         return;
       }
 
-      // Format manually entered variables
-      const extractedVariables: Record<string, any> = {};
-      for (const [category, variables] of Object.entries(formState.projectVariables)) {
-        if (Object.keys(variables).length > 0) {
-          extractedVariables[category] = {};
-          for (const [varName, value] of Object.entries(variables)) {
-            if (value === null || value === undefined) continue;
-            if (typeof value === 'string' && value.trim() === '') continue;
-            if (Array.isArray(value) && value.length === 0) continue;
-
-            extractedVariables[category][varName] = {
-              value: value,
-              confidence: 'high',
-            };
-          }
-        }
-      }
-
-      const finalVariables =
-        Object.keys(extractedVariables).length > 0
-          ? {
-              ...extractedVariables,
-              _metadata: {
-                entry_method: 'manual',
-                entry_date: new Date().toISOString(),
-              },
-            }
-          : null;
-
-      // Create project
+      // Create project (variables will be added later in the assessment view)
       const projectResponse = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -251,9 +149,6 @@ export default function NewProjectPage() {
           customer_id: customerId,
           pdf_url: pdfUrl,
           status: 'in_progress',
-          extracted_variables: finalVariables,
-          extraction_status: finalVariables ? 'completed' : null,
-          extraction_completed_at: finalVariables ? new Date().toISOString() : null,
         }),
       });
 
@@ -320,20 +215,6 @@ export default function NewProjectPage() {
         );
       case 4:
         return (
-          <ProjectVariablesStep
-            variableChecklist={variableChecklist}
-            projectVariables={formState.projectVariables}
-            expandedCategories={formState.expandedCategories}
-            onUpdateVariable={formState.updateVariable}
-            onToggleMultiselect={formState.toggleMultiselect}
-            onToggleCategory={formState.toggleCategory}
-            addressInputRef={addressInputRef}
-            onNext={next}
-            onBack={back}
-          />
-        );
-      case 5:
-        return (
           <CustomerInfoStep
             customers={customers}
             selectedCustomerId={formState.projectData.customer_id}
@@ -346,7 +227,7 @@ export default function NewProjectPage() {
             onBack={back}
           />
         );
-      case 6:
+      case 5:
         return (
           <ReviewStep
             projectData={formState.projectData}
@@ -367,23 +248,15 @@ export default function NewProjectPage() {
   };
 
   return (
-    <>
-      <Script
-        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
-        onLoad={() => setGoogleLoaded(true)}
-        onError={e => console.error('Google Maps load error:', e)}
-      />
-
-      <main className="min-h-screen bg-gray-50">
-        <div className="max-w-3xl mx-auto px-4 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Create New Project</h1>
-            <StepIndicator currentStep={step} totalSteps={TOTAL_STEPS} />
-          </div>
-
-          <div className="card">{renderStep()}</div>
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Create New Project</h1>
+          <StepIndicator currentStep={step} totalSteps={TOTAL_STEPS} />
         </div>
-      </main>
-    </>
+
+        <div className="card">{renderStep()}</div>
+      </div>
+    </main>
   );
 }
