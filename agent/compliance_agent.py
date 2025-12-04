@@ -22,7 +22,7 @@ from anthropic import Anthropic
 
 from chat_tools import DocumentNavigator
 from compliance_tools import ComplianceToolExecutor, COMPLIANCE_TOOLS
-from tracing import trace_iteration, trace_tool, trace_tool_result, get_langfuse
+from tracing import get_langfuse, create_trace_span, create_child_span, end_span
 
 logger = logging.getLogger(__name__)
 
@@ -284,29 +284,28 @@ class ComplianceAgent:
         langfuse = get_langfuse()
         trace = None
         if langfuse:
-            trace = langfuse.trace(
+            trace = create_trace_span(
+                langfuse,
                 name="compliance_assessment",
                 metadata={
                     "section_number": section_number,
                     "section_title": code_section.get("title", "unknown"),
                     "screenshot_count": len(screenshots),
                 },
-                tags=["agent", "compliance"],
             )
-            self._langfuse_trace = trace
-            logger.info(f"[ComplianceAgent] Created Langfuse trace: {trace.id}")
+            if trace:
+                logger.info(f"[ComplianceAgent] Created Langfuse trace span")
 
         try:
           for iteration in range(self.max_iterations):
             logger.info(f"[ComplianceAgent] Iteration {iteration + 1}/{self.max_iterations}")
 
             # Create iteration span
-            iteration_span = None
-            if trace:
-                iteration_span = trace.span(
-                    name=f"iteration_{iteration + 1}",
-                    metadata={"iteration": iteration + 1, "section": section_number},
-                )
+            iteration_span = create_child_span(
+                trace,
+                name=f"iteration_{iteration + 1}",
+                metadata={"iteration": iteration + 1, "section": section_number},
+            )
 
             try:
                 response = self.client.messages.create(
@@ -318,9 +317,7 @@ class ComplianceAgent:
                 )
             except Exception as e:
                 logger.error(f"[ComplianceAgent] API error: {e}")
-                if iteration_span:
-                    iteration_span.update(level="ERROR", status_message=str(e))
-                    iteration_span.end()
+                end_span(iteration_span, output={"error": str(e)}, level="ERROR")
                 yield {"type": "error", "message": str(e)}
                 return
 
@@ -385,11 +382,8 @@ class ComplianceAgent:
                 logger.info(f"[ComplianceAgent] Assessment complete: {result.get('compliance_status')}")
 
                 # End iteration span and update trace with final result
-                if iteration_span:
-                    iteration_span.update(output={"status": result.get("compliance_status")})
-                    iteration_span.end()
-                if trace:
-                    trace.update(output=result)
+                end_span(iteration_span, output={"status": result.get("compliance_status")})
+                end_span(trace, output=result)
 
                 yield {"type": "done", "result": result}
                 return
@@ -402,13 +396,12 @@ class ComplianceAgent:
                     logger.info(f"[ComplianceAgent] Executing tool: {tc.name}")
 
                     # Create tool span
-                    tool_span = None
-                    if iteration_span:
-                        tool_span = iteration_span.span(
-                            name=f"tool_{tc.name}",
-                            input=tc.input,
-                            metadata={"tool_use_id": tc.id},
-                        )
+                    tool_span = create_child_span(
+                        iteration_span,
+                        name=f"tool_{tc.name}",
+                        input_data=tc.input,
+                        metadata={"tool_use_id": tc.id},
+                    )
 
                     exec_result = self.tool_executor.execute(tc.name, tc.input)
 
@@ -463,22 +456,19 @@ class ComplianceAgent:
                     })
 
                     # End tool span
-                    if tool_span:
-                        # Don't include images in output (too large)
-                        output_for_span = exec_result.get("result", exec_result)
-                        if isinstance(output_for_span, dict) and "image" in output_for_span:
-                            output_for_span = {k: v for k, v in output_for_span.items() if k != "image"}
-                        tool_span.update(output=output_for_span)
-                        tool_span.end()
+                    # Don't include images in output (too large)
+                    output_for_span = exec_result.get("result", exec_result)
+                    if isinstance(output_for_span, dict) and "image" in output_for_span:
+                        output_for_span = {k: v for k, v in output_for_span.items() if k != "image"}
+                    end_span(tool_span, output=output_for_span)
 
                 messages.append({"role": "user", "content": tool_results})
 
             # End iteration span
-            if iteration_span:
-                iteration_span.update(
-                    output={"tool_calls": [tc.name for tc in tool_calls]} if tool_calls else {"done": False}
-                )
-                iteration_span.end()
+            end_span(
+                iteration_span,
+                output={"tool_calls": [tc.name for tc in tool_calls]} if tool_calls else {"done": False}
+            )
 
             # Safety check for end_turn with tool calls
             if response.stop_reason == "end_turn":
@@ -498,8 +488,7 @@ class ComplianceAgent:
               "recommendations": ["Manual review recommended - agent reached iteration limit"],
               "additional_evidence_needed": []
           }
-          if trace:
-              trace.update(output=max_iter_result, level="WARNING")
+          end_span(trace, output=max_iter_result, level="WARNING")
           yield {"type": "done", "result": max_iter_result}
 
         finally:

@@ -215,10 +215,15 @@ def start_phoenix_server():
 
 
 # =============================================================================
-# NATIVE LANGFUSE SDK HELPERS
+# NATIVE LANGFUSE SDK HELPERS (v3 API)
 # =============================================================================
 # These provide structured traces with nested spans for agentic workflows.
 # Each iteration and tool call appears as a separate span in Langfuse.
+#
+# Langfuse v3 uses:
+#   - langfuse.start_span(name=...) to create a parent span
+#   - parent_span.start_span(name=...) to create nested child spans
+#   - span.end() to close spans
 
 
 def get_langfuse():
@@ -233,10 +238,10 @@ def get_langfuse():
         return None
 
     try:
-        from langfuse import Langfuse
+        from langfuse import get_client
 
-        _langfuse_client = Langfuse()
-        logger.info("[Tracing] Langfuse client initialized")
+        _langfuse_client = get_client()
+        logger.info("[Tracing] Langfuse client initialized (v3 SDK)")
         return _langfuse_client
     except ImportError:
         logger.warning("[Tracing] Langfuse SDK not installed")
@@ -246,152 +251,89 @@ def get_langfuse():
         return None
 
 
-def trace_agent(name: str = "agent"):
-    """
-    Decorator to create a parent trace for an agent run.
-
-    Usage:
-        @trace_agent("compliance_assessment")
-        async def assess_check(self, code_section, ...):
-            ...
-    """
-    def decorator(func):
-        @wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            langfuse = get_langfuse()
-            if not langfuse:
-                # No tracing configured, just run the function
-                async for item in func(*args, **kwargs):
-                    yield item
-                return
-
-            # Extract metadata from kwargs or args for trace context
-            trace_metadata = {}
-            if "code_section" in kwargs:
-                cs = kwargs["code_section"]
-                trace_metadata["section_number"] = cs.get("number", "unknown")
-                trace_metadata["section_title"] = cs.get("title", "unknown")
-
-            # Create the parent trace
-            trace = langfuse.trace(
-                name=name,
-                metadata=trace_metadata,
-                tags=["agent", name],
-            )
-
-            # Store trace in a way the iteration/tool helpers can access
-            # We use a simple approach: store on the first arg (self) if it exists
-            if args and hasattr(args[0], "__dict__"):
-                args[0]._langfuse_trace = trace
-
-            try:
-                async for item in func(*args, **kwargs):
-                    yield item
-            finally:
-                # End the trace
-                if args and hasattr(args[0], "_langfuse_trace"):
-                    delattr(args[0], "_langfuse_trace")
-                langfuse.flush()
-
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs):
-            langfuse = get_langfuse()
-            if not langfuse:
-                return func(*args, **kwargs)
-
-            trace = langfuse.trace(name=name, tags=["agent", name])
-
-            if args and hasattr(args[0], "__dict__"):
-                args[0]._langfuse_trace = trace
-
-            try:
-                return func(*args, **kwargs)
-            finally:
-                if args and hasattr(args[0], "_langfuse_trace"):
-                    delattr(args[0], "_langfuse_trace")
-                langfuse.flush()
-
-        # Return appropriate wrapper based on function type
-        import asyncio
-        if asyncio.iscoroutinefunction(func) or hasattr(func, "__wrapped__"):
-            return async_wrapper
-        return sync_wrapper
-
-    return decorator
-
-
-@contextmanager
-def trace_iteration(
-    agent_self: Any,
-    iteration: int,
-    section_number: Optional[str] = None,
+def create_trace_span(
+    langfuse,
+    name: str,
+    metadata: Optional[dict] = None,
+    input_data: Optional[dict] = None,
 ):
     """
-    Context manager to trace a single agentic loop iteration.
+    Create a parent trace span for an agent run.
 
-    Usage:
-        with trace_iteration(self, iteration, section_number="11B-404.2"):
-            response = self.client.messages.create(...)
+    Args:
+        langfuse: The Langfuse client
+        name: Name for the trace/span
+        metadata: Optional metadata dict
+        input_data: Optional input data
+
+    Returns:
+        A span object that can be used to create child spans
     """
-    trace = getattr(agent_self, "_langfuse_trace", None)
-    if not trace:
-        yield None
-        return
-
-    span_name = f"iteration_{iteration + 1}"
-    if section_number:
-        span_name = f"{span_name}_{section_number}"
-
-    span = trace.span(
-        name=span_name,
-        metadata={"iteration": iteration + 1},
-    )
-
     try:
-        yield span
-    finally:
-        span.end()
-
-
-@contextmanager
-def trace_tool(
-    agent_self: Any,
-    tool_name: str,
-    tool_input: Optional[dict] = None,
-    tool_use_id: Optional[str] = None,
-):
-    """
-    Context manager to trace a tool execution.
-
-    Usage:
-        with trace_tool(self, "search_drawings", {"keywords": ["door"]}):
-            result = self.tool_executor.execute(...)
-    """
-    trace = getattr(agent_self, "_langfuse_trace", None)
-    if not trace:
-        yield None
-        return
-
-    # Create a span for this tool call
-    span = trace.span(
-        name=f"tool_{tool_name}",
-        input=tool_input,
-        metadata={
-            "tool_name": tool_name,
-            "tool_use_id": tool_use_id,
-        },
-    )
-
-    try:
-        yield span
+        span = langfuse.start_span(
+            name=name,
+            metadata=metadata,
+            input=input_data,
+        )
+        return span
     except Exception as e:
-        span.update(level="ERROR", status_message=str(e))
-        raise
-    finally:
+        logger.warning(f"[Tracing] Failed to create trace span: {e}")
+        return None
+
+
+def create_child_span(
+    parent_span,
+    name: str,
+    metadata: Optional[dict] = None,
+    input_data: Optional[dict] = None,
+):
+    """
+    Create a child span nested under a parent span.
+
+    Args:
+        parent_span: The parent span object
+        name: Name for the child span
+        metadata: Optional metadata dict
+        input_data: Optional input data
+
+    Returns:
+        A child span object, or None if parent_span is None
+    """
+    if not parent_span:
+        return None
+
+    try:
+        child = parent_span.start_span(
+            name=name,
+            metadata=metadata,
+            input=input_data,
+        )
+        return child
+    except Exception as e:
+        logger.warning(f"[Tracing] Failed to create child span: {e}")
+        return None
+
+
+def end_span(span, output: Optional[Any] = None, level: Optional[str] = None):
+    """
+    End a span, optionally updating its output and level.
+
+    Args:
+        span: The span to end
+        output: Optional output data
+        level: Optional level (e.g., "ERROR", "WARNING")
+    """
+    if not span:
+        return
+
+    try:
+        if output is not None or level is not None:
+            update_kwargs = {}
+            if output is not None:
+                update_kwargs["output"] = output
+            if level is not None:
+                update_kwargs["level"] = level
+            span.update(**update_kwargs)
         span.end()
-
-
-def trace_tool_result(span: Any, result: Any):
-    """Update a tool span with its result."""
-    if span:
-        span.update(output=result)
+    except Exception as e:
+        logger.warning(f"[Tracing] Failed to end span: {e}")
