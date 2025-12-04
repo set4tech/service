@@ -1051,18 +1051,19 @@ export default function AssessmentClient({
           {/* Progress Bar (show only in checks mode) */}
           {mainTab === 'checks' && checksSubTab !== 'gallery' && (
             <div className="mb-3">
-              <div className="flex justify-between text-sm text-gray-600 mb-1">
-                <span>Progress</span>
-                <span>{Math.round(progress.pct)}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="relative w-full bg-gray-200 rounded h-6 overflow-hidden">
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all"
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-sage-500 to-sage-600 transition-all duration-300"
                   style={{ width: `${progress.pct}%` }}
                 />
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {progress.completed} of {progress.totalChecks} checks completed
+                <div className="absolute inset-0 flex items-center px-3">
+                  <span className="text-xs font-medium text-gray-800 drop-shadow-sm">
+                    {progress.completed} / {progress.totalChecks}
+                  </span>
+                  <span className="ml-auto text-xs font-medium text-gray-600">
+                    {Math.round(progress.pct)}%
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -1208,7 +1209,7 @@ export default function AssessmentClient({
       )}
 
       {/* Main Content Area with PDF Viewer */}
-      <div className="flex-1 bg-gray-50 overflow-hidden h-screen">
+      <div className="flex-1 bg-white overflow-hidden h-screen border-l border-gray-300">
         {pdfUrl ? (
           <PDFViewer
             pdfUrl={pdfUrl}

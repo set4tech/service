@@ -839,21 +839,6 @@ export function CheckList({
                       <div key={check.id} className="border-b border-gray-100 last:border-b-0">
                         {/* Parent Check */}
                         <div className="flex items-stretch">
-                          {/* Checkbox for bulk selection */}
-                          <div className="flex items-center px-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedCheckIds.has(check.id)}
-                              onChange={e => {
-                                e.stopPropagation();
-                                const isShiftClick = (e.nativeEvent as MouseEvent).shiftKey;
-                                toggleSelection(check.id, isShiftClick);
-                              }}
-                              onClick={e => e.stopPropagation()}
-                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                            />
-                          </div>
-
                           {/* Expand/Collapse button (only if has instances) */}
                           {hasInstances && (
                             <button
@@ -913,16 +898,22 @@ export function CheckList({
                               }
                             }}
                             className={clsx(
-                              'flex-1 px-4 py-2 flex items-start text-left hover:bg-gray-100 cursor-pointer transition-colors',
-                              activeCheckId === check.id &&
-                                'bg-blue-100 border-l-4 border-blue-500 hover:bg-blue-200',
-                              !hasInstances && 'pl-6'
+                              'flex-1 py-2 flex items-start text-left cursor-pointer transition-colors group/check',
+                              activeCheckId === check.id
+                                ? 'bg-sage-200 border-l-4 border-sage-600'
+                                : 'hover:bg-gray-100 pl-1',
+                              !hasInstances && !activeCheckId !== check.id && 'pl-5'
                             )}
                           >
-                            <span className={clsx('mt-0.5 mr-2 text-sm', getStatusColor(check))}>
+                            <span
+                              className={clsx(
+                                'mt-0.5 mr-2 text-sm flex-shrink-0',
+                                getStatusColor(check)
+                              )}
+                            >
                               {getStatusIcon(check)}
                             </span>
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 pr-2">
                               {checkMode === 'element' ? (
                                 // Element mode: show instance label and section count
                                 <>
@@ -989,17 +980,17 @@ export function CheckList({
                                   </div>
                                 </>
                               ) : (
-                                // Section mode: show section number and title (original)
+                                // Section mode: show section number and title split
                                 <>
-                                  <div className="flex items-start">
-                                    <span className="font-medium text-sm text-gray-900 mr-2">
+                                  <div className="flex flex-col">
+                                    <span className="font-mono font-semibold text-sm text-ink-900">
                                       {check.code_section_number}
                                     </span>
-                                    <span className="text-sm text-gray-700 truncate">
+                                    <span className="text-sm font-normal text-ink-600 line-clamp-2">
                                       {check.code_section_title}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-2 mt-0.5">
+                                  <div className="flex items-center gap-2 mt-1">
                                     {check.manual_status && (
                                       <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
                                         Manual
@@ -1014,6 +1005,27 @@ export function CheckList({
                                   </div>
                                 </>
                               )}
+                            </div>
+                            {/* Checkbox on right, appears on hover */}
+                            <div
+                              className={clsx(
+                                'flex-shrink-0 pr-2 transition-opacity',
+                                selectedCheckIds.has(check.id)
+                                  ? 'opacity-100'
+                                  : 'opacity-0 group-hover/check:opacity-100'
+                              )}
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedCheckIds.has(check.id)}
+                                onChange={e => {
+                                  e.stopPropagation();
+                                  const isShiftClick = (e.nativeEvent as MouseEvent).shiftKey;
+                                  toggleSelection(check.id, isShiftClick);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              />
                             </div>
                           </button>
 
