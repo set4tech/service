@@ -148,11 +148,15 @@ type DetailPanelAction =
     };
 
 function detailPanelReducer(state: DetailPanelState, action: DetailPanelAction): DetailPanelState {
+  // DEBUG: Log all state changes to identify glitching source
+  console.log('[DetailPanel] Action:', action.type, 'payload:', action, 'prev state:', state);
+
   switch (action.type) {
     case 'CLOSE_PANEL':
       return { mode: 'closed' };
 
     case 'SELECT_CHECK':
+      console.log('[DetailPanel] Selecting check:', action.checkId);
       return {
         mode: 'check-detail',
         checkId: action.checkId,
@@ -271,6 +275,7 @@ export default function AssessmentClient({
     if (typeof window !== 'undefined' && window.location.hash) {
       const hashCheckId = window.location.hash.substring(1); // Remove the '#'
       if (hashCheckId) {
+        console.log('[DEBUG] URL hash restoration triggered for:', hashCheckId);
         dispatchDetailPanel({
           type: 'SELECT_CHECK',
           checkId: hashCheckId,
@@ -601,9 +606,9 @@ export default function AssessmentClient({
         setChecks(combined);
         return combined;
       }
-      return checks; // Return current if fetch failed
+      return []; // Return empty if fetch failed
     },
-    [assessment.id, checks]
+    [assessment.id]
   );
 
   const refetchViolations = useCallback(async () => {
