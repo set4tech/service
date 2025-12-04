@@ -16,3 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python dependencies (the slow part - ultralytics/pytorch ~2-3 min)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Download YOLO weights at base image build time
+ARG AWS_ACCESS_KEY_ID
+ARG AWS_SECRET_ACCESS_KEY
+RUN python -c "import boto3; s3 = boto3.client('s3', region_name='us-east-1'); s3.download_file('set4-data', 'models/weights.pt', 'weights.pt'); print('Downloaded weights.pt')"
