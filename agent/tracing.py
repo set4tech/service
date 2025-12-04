@@ -8,17 +8,33 @@ Supports two backends:
 View traces at:
 - Langfuse: https://cloud.langfuse.com or https://us.cloud.langfuse.com
 - Phoenix: http://localhost:6006
+
+Usage in agent code:
+    from tracing import trace_agent, trace_iteration, trace_tool
+
+    @trace_agent("compliance_assessment")
+    async def assess_check(...):
+        for iteration in range(max_iterations):
+            with trace_iteration(iteration, section_number):
+                # API call happens here (auto-instrumented)
+                for tool_call in tool_calls:
+                    with trace_tool(tool_call.name, tool_call.input):
+                        result = execute_tool(...)
 """
 
 import atexit
 import logging
 import os
+from contextlib import contextmanager
+from functools import wraps
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 # Track if instrumentation has been applied
 _instrumented = False
 _tracer_provider = None
+_langfuse_client = None
 
 
 def setup_tracing():
@@ -196,3 +212,186 @@ def start_phoenix_server():
     except Exception as e:
         logger.warning(f"[Tracing] Failed to start Phoenix server: {e}")
         return None
+
+
+# =============================================================================
+# NATIVE LANGFUSE SDK HELPERS
+# =============================================================================
+# These provide structured traces with nested spans for agentic workflows.
+# Each iteration and tool call appears as a separate span in Langfuse.
+
+
+def get_langfuse():
+    """Get the Langfuse client, initializing if needed."""
+    global _langfuse_client
+
+    if _langfuse_client is not None:
+        return _langfuse_client
+
+    # Check if Langfuse is configured
+    if not os.environ.get("LANGFUSE_SECRET_KEY"):
+        return None
+
+    try:
+        from langfuse import Langfuse
+
+        _langfuse_client = Langfuse()
+        logger.info("[Tracing] Langfuse client initialized")
+        return _langfuse_client
+    except ImportError:
+        logger.warning("[Tracing] Langfuse SDK not installed")
+        return None
+    except Exception as e:
+        logger.warning(f"[Tracing] Failed to initialize Langfuse client: {e}")
+        return None
+
+
+def trace_agent(name: str = "agent"):
+    """
+    Decorator to create a parent trace for an agent run.
+
+    Usage:
+        @trace_agent("compliance_assessment")
+        async def assess_check(self, code_section, ...):
+            ...
+    """
+    def decorator(func):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            langfuse = get_langfuse()
+            if not langfuse:
+                # No tracing configured, just run the function
+                async for item in func(*args, **kwargs):
+                    yield item
+                return
+
+            # Extract metadata from kwargs or args for trace context
+            trace_metadata = {}
+            if "code_section" in kwargs:
+                cs = kwargs["code_section"]
+                trace_metadata["section_number"] = cs.get("number", "unknown")
+                trace_metadata["section_title"] = cs.get("title", "unknown")
+
+            # Create the parent trace
+            trace = langfuse.trace(
+                name=name,
+                metadata=trace_metadata,
+                tags=["agent", name],
+            )
+
+            # Store trace in a way the iteration/tool helpers can access
+            # We use a simple approach: store on the first arg (self) if it exists
+            if args and hasattr(args[0], "__dict__"):
+                args[0]._langfuse_trace = trace
+
+            try:
+                async for item in func(*args, **kwargs):
+                    yield item
+            finally:
+                # End the trace
+                if args and hasattr(args[0], "_langfuse_trace"):
+                    delattr(args[0], "_langfuse_trace")
+                langfuse.flush()
+
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            langfuse = get_langfuse()
+            if not langfuse:
+                return func(*args, **kwargs)
+
+            trace = langfuse.trace(name=name, tags=["agent", name])
+
+            if args and hasattr(args[0], "__dict__"):
+                args[0]._langfuse_trace = trace
+
+            try:
+                return func(*args, **kwargs)
+            finally:
+                if args and hasattr(args[0], "_langfuse_trace"):
+                    delattr(args[0], "_langfuse_trace")
+                langfuse.flush()
+
+        # Return appropriate wrapper based on function type
+        import asyncio
+        if asyncio.iscoroutinefunction(func) or hasattr(func, "__wrapped__"):
+            return async_wrapper
+        return sync_wrapper
+
+    return decorator
+
+
+@contextmanager
+def trace_iteration(
+    agent_self: Any,
+    iteration: int,
+    section_number: Optional[str] = None,
+):
+    """
+    Context manager to trace a single agentic loop iteration.
+
+    Usage:
+        with trace_iteration(self, iteration, section_number="11B-404.2"):
+            response = self.client.messages.create(...)
+    """
+    trace = getattr(agent_self, "_langfuse_trace", None)
+    if not trace:
+        yield None
+        return
+
+    span_name = f"iteration_{iteration + 1}"
+    if section_number:
+        span_name = f"{span_name}_{section_number}"
+
+    span = trace.span(
+        name=span_name,
+        metadata={"iteration": iteration + 1},
+    )
+
+    try:
+        yield span
+    finally:
+        span.end()
+
+
+@contextmanager
+def trace_tool(
+    agent_self: Any,
+    tool_name: str,
+    tool_input: Optional[dict] = None,
+    tool_use_id: Optional[str] = None,
+):
+    """
+    Context manager to trace a tool execution.
+
+    Usage:
+        with trace_tool(self, "search_drawings", {"keywords": ["door"]}):
+            result = self.tool_executor.execute(...)
+    """
+    trace = getattr(agent_self, "_langfuse_trace", None)
+    if not trace:
+        yield None
+        return
+
+    # Create a span for this tool call
+    span = trace.span(
+        name=f"tool_{tool_name}",
+        input=tool_input,
+        metadata={
+            "tool_name": tool_name,
+            "tool_use_id": tool_use_id,
+        },
+    )
+
+    try:
+        yield span
+    except Exception as e:
+        span.update(level="ERROR", status_message=str(e))
+        raise
+    finally:
+        span.end()
+
+
+def trace_tool_result(span: Any, result: Any):
+    """Update a tool span with its result."""
+    if span:
+        span.update(output=result)

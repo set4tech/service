@@ -35,19 +35,25 @@ class TestGetClient:
 
         with patch('llm.OpenAI', mock_openai):
             with patch.dict('os.environ', {'GEMINI_API_KEY': 'test-key'}, clear=True):
-                if 'llm' in sys.modules:
-                    del sys.modules['llm']
-                import llm
-                llm._openai_client = None
-                llm.OpenAI = mock_openai
+                with patch('llm.cfg') as mock_cfg:
+                    # Disable Helicone to test direct Gemini connection
+                    mock_cfg.HELICONE_ENABLED = False
+                    mock_cfg.HELICONE_API_KEY = None
 
-                result = llm._get_client()
+                    if 'llm' in sys.modules:
+                        del sys.modules['llm']
+                    import llm
+                    llm._openai_client = None
+                    llm.OpenAI = mock_openai
+                    llm.cfg = mock_cfg
 
-                mock_openai.assert_called_once()
-                call_kwargs = mock_openai.call_args[1]
-                assert call_kwargs['api_key'] == 'test-key'
-                assert 'generativelanguage.googleapis.com' in call_kwargs['base_url']
-                assert result is mock_client
+                    result = llm._get_client()
+
+                    mock_openai.assert_called_once()
+                    call_kwargs = mock_openai.call_args[1]
+                    assert call_kwargs['api_key'] == 'test-key'
+                    assert 'generativelanguage.googleapis.com' in call_kwargs['base_url']
+                    assert result is mock_client
 
     def test_uses_google_api_key_fallback(self):
         """Falls back to GOOGLE_API_KEY if GEMINI_API_KEY is not set."""
