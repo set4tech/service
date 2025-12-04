@@ -652,84 +652,24 @@ export function CodeDetailPanel({
                   {
                     value: 'compliant',
                     label: 'Compliant',
-                    icon: (
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2.5}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    ),
                     base: 'bg-green-50 border-green-200 text-green-700',
                     selected: 'bg-green-100 border-green-400 text-green-800 ring-2 ring-green-400',
                   },
                   {
                     value: 'non_compliant',
                     label: 'Non-Compliant',
-                    icon: (
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2.5}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    ),
                     base: 'bg-red-50 border-red-200 text-red-700',
                     selected: 'bg-red-100 border-red-400 text-red-800 ring-2 ring-red-400',
                   },
                   {
                     value: 'not_applicable',
                     label: 'N/A',
-                    icon: (
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2.5}
-                          d="M20 12H4"
-                        />
-                      </svg>
-                    ),
                     base: 'bg-gray-100 border-gray-200 text-gray-600',
                     selected: 'bg-gray-200 border-gray-400 text-gray-800 ring-2 ring-gray-400',
                   },
                   {
                     value: 'insufficient_information',
                     label: 'Not in Plan',
-                    icon: (
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2.5}
-                          d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    ),
                     base: 'bg-amber-50 border-amber-200 text-amber-700',
                     selected: 'bg-amber-100 border-amber-400 text-amber-800 ring-2 ring-amber-400',
                   },
@@ -738,12 +678,11 @@ export function CodeDetailPanel({
                     key={option.value}
                     onClick={() => setManualOverride(option.value)}
                     disabled={savingOverride}
-                    className={`flex-1 px-2 py-2 text-xs font-medium rounded border transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 ${
+                    className={`flex-1 px-2 py-2 text-xs font-medium rounded border transition-all disabled:opacity-50 ${
                       manualOverride === option.value ? option.selected : option.base
                     }`}
                   >
-                    {option.icon}
-                    <span className="hidden sm:inline">{option.label}</span>
+                    {option.label}
                   </button>
                 ))}
               </div>
