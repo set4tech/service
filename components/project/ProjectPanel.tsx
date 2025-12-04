@@ -261,6 +261,12 @@ export function ProjectPanel({
   const startFiltering = async (reset: boolean = false) => {
     if (!assessmentId) return;
 
+    // Cancel any pending debounced save and save immediately
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    await saveVariables();
+
     setFilteringStatus('in_progress');
     setFilteringError(null);
     setFilteringProgress({ processed: 0, total: 0, excluded: 0 });
