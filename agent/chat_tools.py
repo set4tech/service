@@ -19,9 +19,10 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-# Claude's max image size is 5MB (5,242,880 bytes)
-# Use a slightly smaller limit to account for base64 overhead
-MAX_IMAGE_BYTES = 4_500_000
+# Claude's max image size is 5MB (5,242,880 bytes) for base64-encoded images
+# Base64 encoding increases size by ~33%, so we need: 5MB / 1.33 ≈ 3.75MB raw bytes
+# Using 3.5MB to have a safety margin
+MAX_IMAGE_BYTES = 3_500_000
 
 
 def _resize_image_to_limit(image_path: Path, max_bytes: int = MAX_IMAGE_BYTES) -> Tuple[bytes, str]:
