@@ -329,7 +329,7 @@ export function ViolationListSidebar({
                       'relative px-4 py-3 hover:bg-[#4d5a5a] transition-colors cursor-pointer',
                       selectedViolation?.checkId === violation.checkId &&
                         selectedViolation?.screenshotId === violation.screenshotId
-                        ? 'bg-[#4d5a5a] border-l-4 border-accent-600'
+                        ? 'bg-[#4d5a5a] border-l-4 border-sage-500'
                         : 'border-l-4 border-transparent'
                     )}
                     onClick={() => onViolationClick(violation)}
@@ -342,10 +342,10 @@ export function ViolationListSidebar({
                         )}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-100 line-clamp-2">
+                        <div className="text-sm font-medium text-white line-clamp-2">
                           {formatViolationDescription(violation)}
                         </div>
-                        <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                        <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-300 flex-wrap">
                           <span className="font-mono">Page {violation.pageNumber}</span>
                           <span>•</span>
                           <span
@@ -354,12 +354,14 @@ export function ViolationListSidebar({
                               getSeverityColor(violation.severity)
                             )}
                           >
-                            {violation.severity}
+                            {violation.severity === 'needs_more_info'
+                              ? 'Needs_more_info'
+                              : violation.severity}
                           </span>
                           {violation.checkType === 'element' && violation.elementGroupName && (
                             <>
                               <span>•</span>
-                              <span className="font-medium text-accent-400">
+                              <span className="font-medium text-sage-300">
                                 {violation.elementGroupName}
                                 {violation.instanceLabel && ` - ${violation.instanceLabel}`}
                               </span>
