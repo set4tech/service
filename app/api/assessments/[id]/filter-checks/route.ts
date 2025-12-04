@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
-const RAILWAY_AGENT_URL =
-  process.env.RAILWAY_AGENT_URL || 'https://agent-production.up.railway.app';
+const RAILWAY_AGENT_URL = process.env.RAILWAY_AGENT_URL;
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: assessmentId } = await params;
   const supabase = supabaseAdmin();
 
   console.log(`[filter-checks] Starting filtering for assessment ${assessmentId}`);
+
+  if (!RAILWAY_AGENT_URL) {
+    console.error('[filter-checks] RAILWAY_AGENT_URL env var not set');
+    return NextResponse.json({ error: 'RAILWAY_AGENT_URL not configured' }, { status: 500 });
+  }
 
   try {
     // Parse request body

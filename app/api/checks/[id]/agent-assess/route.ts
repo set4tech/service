@@ -11,8 +11,7 @@ const s3 = new S3Client({
   },
 });
 
-const RAILWAY_AGENT_URL =
-  process.env.RAILWAY_AGENT_URL || 'https://agent-production.up.railway.app';
+const RAILWAY_AGENT_URL = process.env.RAILWAY_AGENT_URL;
 
 // Helper to extract S3 key from s3:// URL
 function getS3Key(url: string): string {
@@ -42,6 +41,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const supabase = supabaseAdmin();
 
   console.log(`[AgentAssess] POST received for check ${checkId}`);
+
+  if (!RAILWAY_AGENT_URL) {
+    console.error('[AgentAssess] RAILWAY_AGENT_URL env var not set');
+    return Response.json({ error: 'RAILWAY_AGENT_URL not configured' }, { status: 500 });
+  }
 
   try {
     // 1. Fetch check with section data and assessment/project info
