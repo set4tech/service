@@ -38,7 +38,7 @@ interface CheckListProps {
   assessmentId?: string;
   onCheckAdded?: (newCheck: any) => void;
   onInstanceDeleted?: (elementInstanceId: string) => void;
-  refetchChecks?: () => Promise<void>;
+  refetchChecks?: (includeExcluded?: boolean) => Promise<void>;
 }
 
 export function CheckList({
@@ -68,6 +68,7 @@ export function CheckList({
   const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [showUnassessedOnly, setShowUnassessedOnly] = useState(false);
+  const [showExcluded, setShowExcluded] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
 
   // Bulk selection state
@@ -94,8 +95,9 @@ export function CheckList({
     setSearching(true);
     const timeoutId = setTimeout(async () => {
       try {
+        const includeExcludedParam = showExcluded ? '&include_excluded=true' : '';
         const response = await fetch(
-          `/api/assessments/${assessmentId}/checks?mode=${checkMode}&search=${encodeURIComponent(q)}`
+          `/api/assessments/${assessmentId}/checks?mode=${checkMode}&search=${encodeURIComponent(q)}${includeExcludedParam}`
         );
         if (response.ok) {
           const results = await response.json();
@@ -109,7 +111,15 @@ export function CheckList({
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [query, assessmentId, checkMode]);
+  }, [query, assessmentId, checkMode, showExcluded]);
+
+  // Refetch checks when showExcluded changes (only when no search query)
+  useEffect(() => {
+    if (refetchChecks && !query.trim()) {
+      refetchChecks(showExcluded);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showExcluded]);
 
   // Extract chapter from section number
   // Examples: "11B-403.5" -> "11B", "803.2" -> "8", "1022.3.4" -> "10", "900" -> "9"
@@ -678,8 +688,8 @@ export function CheckList({
           </div>
         )}
 
-        {/* Unassessed Only Filter */}
-        <div className="mt-2">
+        {/* Filters */}
+        <div className="mt-2 space-y-1">
           <label className="flex items-center text-sm text-gray-700 cursor-pointer hover:text-gray-900">
             <input
               type="checkbox"
@@ -688,6 +698,15 @@ export function CheckList({
               className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span>Show unassessed only</span>
+          </label>
+          <label className="flex items-center text-sm text-gray-700 cursor-pointer hover:text-gray-900">
+            <input
+              type="checkbox"
+              checked={showExcluded}
+              onChange={e => setShowExcluded(e.target.checked)}
+              className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Show excluded checks</span>
           </label>
         </div>
       </div>

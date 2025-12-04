@@ -584,23 +584,27 @@ export default function AssessmentClient({
     });
   }, []);
 
-  const refetchChecks = useCallback(async (): Promise<CheckData[]> => {
-    // Fetch both section and element checks (mirrors page.tsx server component)
-    const [sectionRes, elementRes] = await Promise.all([
-      fetch(`/api/assessments/${assessment.id}/checks?mode=section`),
-      fetch(`/api/assessments/${assessment.id}/checks?mode=element`),
-    ]);
-    if (sectionRes.ok && elementRes.ok) {
-      const [sectionChecks, elementChecks] = await Promise.all([
-        sectionRes.json(),
-        elementRes.json(),
+  const refetchChecks = useCallback(
+    async (includeExcluded?: boolean): Promise<CheckData[]> => {
+      // Fetch both section and element checks (mirrors page.tsx server component)
+      const excludedParam = includeExcluded ? '&include_excluded=true' : '';
+      const [sectionRes, elementRes] = await Promise.all([
+        fetch(`/api/assessments/${assessment.id}/checks?mode=section${excludedParam}`),
+        fetch(`/api/assessments/${assessment.id}/checks?mode=element${excludedParam}`),
       ]);
-      const combined = [...sectionChecks, ...elementChecks];
-      setChecks(combined);
-      return combined;
-    }
-    return checks; // Return current if fetch failed
-  }, [assessment.id, checks]);
+      if (sectionRes.ok && elementRes.ok) {
+        const [sectionChecks, elementChecks] = await Promise.all([
+          sectionRes.json(),
+          elementRes.json(),
+        ]);
+        const combined = [...sectionChecks, ...elementChecks];
+        setChecks(combined);
+        return combined;
+      }
+      return checks; // Return current if fetch failed
+    },
+    [assessment.id, checks]
+  );
 
   const refetchViolations = useCallback(async () => {
     setRefreshingViolations(true);
@@ -1040,7 +1044,7 @@ export default function AssessmentClient({
           {/* CSV Import Button (only show in Elements mode) */}
           {mainTab === 'checks' && checksSubTab === 'elements' && (
             <div className="mb-3">
-              <ImportCSVDoorsModal assessmentId={assessment.id} onSuccess={refetchChecks} />
+              <ImportCSVDoorsModal assessmentId={assessment.id} onSuccess={() => refetchChecks()} />
             </div>
           )}
 
@@ -1095,6 +1099,8 @@ export default function AssessmentClient({
               projectId={assessment.project_id}
               projectName={assessment.projects?.name || 'Project'}
               initialVariables={assessment.extracted_variables}
+              assessmentId={assessment.id}
+              onChecksFiltered={refetchChecks}
             />
           ) : checksSubTab === 'gallery' ? (
             <AssessmentScreenshotGallery assessmentId={assessment.id} />

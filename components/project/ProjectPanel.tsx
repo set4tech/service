@@ -32,9 +32,17 @@ interface ProjectPanelProps {
   projectId: string;
   projectName: string;
   initialVariables?: ProjectVariables | null;
+  assessmentId?: string;
+  onChecksFiltered?: () => void;
 }
 
-export function ProjectPanel({ projectId, projectName, initialVariables }: ProjectPanelProps) {
+export function ProjectPanel({
+  projectId,
+  projectName,
+  initialVariables,
+  assessmentId,
+  onChecksFiltered,
+}: ProjectPanelProps) {
   const [variableChecklist, setVariableChecklist] = useState<VariableChecklist | null>(null);
   const [projectVariables, setProjectVariables] = useState<Record<string, Record<string, unknown>>>(
     {}
@@ -45,6 +53,18 @@ export function ProjectPanel({ projectId, projectName, initialVariables }: Proje
   const [googleLoaded, setGoogleLoaded] = useState(false);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Filtering state
+  const [filteringStatus, setFilteringStatus] = useState<
+    'pending' | 'in_progress' | 'completed' | 'failed'
+  >('pending');
+  const [filteringProgress, setFilteringProgress] = useState({
+    processed: 0,
+    total: 0,
+    excluded: 0,
+  });
+  const [filteringError, setFilteringError] = useState<string | null>(null);
+  const filteringPollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load variable checklist
   useEffect(() => {
@@ -205,6 +225,90 @@ export function ProjectPanel({ projectId, projectName, initialVariables }: Proje
     }
   };
 
+  // Poll filtering status
+  const pollFilteringStatus = useCallback(async () => {
+    if (!assessmentId) return;
+
+    try {
+      const res = await fetch(`/api/assessments/${assessmentId}/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setFilteringStatus(data.filtering_status || 'pending');
+        setFilteringProgress({
+          processed: data.filtering_checks_processed || 0,
+          total: data.filtering_checks_total || 0,
+          excluded: data.filtering_excluded_count || 0,
+        });
+
+        // If completed or failed, stop polling
+        if (data.filtering_status === 'completed' || data.filtering_status === 'failed') {
+          if (filteringPollRef.current) {
+            clearInterval(filteringPollRef.current);
+            filteringPollRef.current = null;
+          }
+          // Notify parent to refetch checks
+          if (data.filtering_status === 'completed' && onChecksFiltered) {
+            onChecksFiltered();
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error polling filtering status:', err);
+    }
+  }, [assessmentId, onChecksFiltered]);
+
+  // Start filtering
+  const startFiltering = async (reset: boolean = false) => {
+    if (!assessmentId) return;
+
+    setFilteringStatus('in_progress');
+    setFilteringError(null);
+    setFilteringProgress({ processed: 0, total: 0, excluded: 0 });
+
+    try {
+      const res = await fetch(`/api/assessments/${assessmentId}/filter-checks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reset }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setFilteringError(data.error || 'Filtering failed');
+        setFilteringStatus('failed');
+        return;
+      }
+
+      // Start polling for progress
+      filteringPollRef.current = setInterval(pollFilteringStatus, 1000);
+    } catch (err) {
+      console.error('Error starting filtering:', err);
+      setFilteringError(err instanceof Error ? err.message : 'Unknown error');
+      setFilteringStatus('failed');
+    }
+  };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (filteringPollRef.current) {
+        clearInterval(filteringPollRef.current);
+      }
+    };
+  }, []);
+
+  // Check initial filtering status on mount
+  useEffect(() => {
+    if (assessmentId) {
+      pollFilteringStatus();
+    }
+  }, [assessmentId, pollFilteringStatus]);
+
+  // Check if we have parameters filled in
+  const hasParameters = Object.keys(projectVariables).some(cat =>
+    Object.values(projectVariables[cat] || {}).some(v => v !== null && v !== undefined && v !== '')
+  );
+
   const formatLabel = (str: string) =>
     str.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
@@ -298,6 +402,73 @@ export function ProjectPanel({ projectId, projectName, initialVariables }: Proje
               })}
             </Accordion>
           ))}
+
+          {/* Filtering Section */}
+          {assessmentId && (
+            <div className="border-t pt-4 mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-700">Check Filtering</h3>
+                {filteringStatus === 'completed' && filteringProgress.excluded > 0 && (
+                  <span className="text-xs text-gray-500">
+                    {filteringProgress.excluded} excluded
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Use AI to exclude checks that don&apos;t apply based on project parameters
+              </p>
+
+              {filteringStatus === 'in_progress' ? (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>Evaluating checks...</span>
+                    <span>
+                      {filteringProgress.processed}/{filteringProgress.total}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style={{
+                        width:
+                          filteringProgress.total > 0
+                            ? `${(filteringProgress.processed / filteringProgress.total) * 100}%`
+                            : '0%',
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {filteringProgress.excluded} checks excluded so far
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => startFiltering(filteringStatus === 'completed')}
+                    disabled={!hasParameters}
+                    className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {filteringStatus === 'completed'
+                      ? 'Re-filter Checks'
+                      : 'Filter Checks by Parameters'}
+                  </button>
+                  {!hasParameters && (
+                    <p className="text-xs text-amber-600">Fill in project parameters above first</p>
+                  )}
+                </div>
+              )}
+
+              {filteringStatus === 'completed' && (
+                <p className="text-xs text-green-600 mt-2">
+                  Filtering complete: {filteringProgress.excluded} checks excluded
+                </p>
+              )}
+
+              {filteringStatus === 'failed' && filteringError && (
+                <p className="text-xs text-red-600 mt-2">Error: {filteringError}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>

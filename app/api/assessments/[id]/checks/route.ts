@@ -7,6 +7,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const search = searchParams.get('search');
   const elementGroup = searchParams.get('element_group'); // e.g., 'doors', 'bathrooms', 'kitchens'
   const mode = searchParams.get('mode') as 'section' | 'element' | null;
+  const includeExcluded = searchParams.get('include_excluded') === 'true';
 
   // Require mode parameter
   if (!mode || (mode !== 'section' && mode !== 'element')) {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   try {
-    const checks = await getAssessmentChecks(id, { search, elementGroup, mode });
+    const checks = await getAssessmentChecks(id, { search, elementGroup, mode, includeExcluded });
     return NextResponse.json(checks);
   } catch (error) {
     return NextResponse.json(
