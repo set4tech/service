@@ -906,7 +906,7 @@ export function CodeDetailPanel({
                     onClick={handleViewPrompt}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                   >
-                    {showPrompt ? '− Hide' : '📝 View/Edit'} Prompt
+                    {showPrompt ? '− Hide' : '+ View/Edit'} Prompt
                   </button>
                 </div>
 
