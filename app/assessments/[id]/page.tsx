@@ -1,3 +1,4 @@
+import { Metadata } from 'next';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { normalizeVariables } from '@/lib/variables';
 import { getAssessmentChecks } from '@/lib/queries/get-assessment-checks';
@@ -5,6 +6,28 @@ import AssessmentClient from './ui/AssessmentClient';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = supabaseAdmin();
+
+  const { data: assessment } = await supabase
+    .from('assessments')
+    .select('projects(name)')
+    .eq('id', id)
+    .single();
+
+  const projectName =
+    (assessment?.projects as unknown as { name: string } | null)?.name || 'Assessment';
+
+  return {
+    title: projectName,
+  };
+}
 
 interface ExtractedVariables {
   [category: string]: {

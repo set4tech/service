@@ -16,8 +16,11 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Set 4 Service - E2E Plan Review',
-  description: 'End-to-end accessibility code review service for 255 California Street',
+  title: {
+    default: 'set:4',
+    template: 'set:4 | %s',
+  },
+  description: 'End-to-end accessibility code review service',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
