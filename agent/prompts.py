@@ -184,7 +184,8 @@ FIELDS TO EXTRACT:
 - construction_type: Building construction type (e.g., "Type V-B", "Type I-A")
 - occupancy_classification: Occupancy type (e.g., "B", "E", "R-2", "A-2")
 - sprinklers: Whether building has sprinklers (true/false/null if unknown)
-- project_description: Brief description of the project
+- work_type: Type of work - look for terms like "New Construction", "Addition", "Alteration", "Tenant Improvement", "Renovation", "Remodel", "Change of Occupancy"
+- project_description: Brief description of the project scope
 - drawing_date: Date on the drawings (ISO format YYYY-MM-DD if possible)
 - revision: Latest revision number/letter
 
@@ -200,6 +201,7 @@ OUTPUT JSON:
   "construction_type": "string or null",
   "occupancy_classification": "string or null",
   "sprinklers": boolean or null,
+  "work_type": "string or null",
   "project_description": "string or null",
   "drawing_date": "string or null",
   "revision": "string or null",

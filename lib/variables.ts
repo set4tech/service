@@ -13,8 +13,8 @@ export type NormalizedVars = {
   work_type: string | null; // canonical string
   facility_category: string | null; // as stored
   has_parking: boolean | null;
-  building_size_sf: number | null; // per story
-  number_of_stories: number | null;
+  building_area: number | null; // total building area in sq ft
+  num_stories: number | null;
   elevator_exemption_applies: boolean | null; // derived if possible
   raw: any; // the original extracted variables
 };
@@ -48,16 +48,16 @@ export function normalizeVariables(extracted: any): NormalizedVars {
     }
   }
 
-  const building_size_sf = toInt(val(['building_characteristics', 'building_size_sf']));
-  const number_of_stories = toInt(val(['building_characteristics', 'number_of_stories']));
+  const building_area = toInt(val(['building_characteristics', 'building_area']));
+  const num_stories = toInt(val(['building_characteristics', 'num_stories']));
   const explicitElevExempt = toBool(
     val(['building_characteristics', 'elevator_exemption_applies'])
   );
   const elevator_exemption_applies =
     explicitElevExempt ??
-    (number_of_stories != null && number_of_stories <= 3
+    (num_stories != null && num_stories <= 3
       ? true
-      : building_size_sf != null && building_size_sf <= 3000
+      : building_area != null && building_area <= 3000
         ? true
         : null);
 
@@ -65,10 +65,10 @@ export function normalizeVariables(extracted: any): NormalizedVars {
     occupancy_letter,
     occupancy_is_mixed,
     work_type: toStr(val(['project_scope', 'work_type'])),
-    facility_category: toStr(val(['facility_type', 'category'])),
+    facility_category: toStr(val(['facility_type', 'facility_category'])),
     has_parking: toBool(val(['building_characteristics', 'has_parking'])),
-    building_size_sf,
-    number_of_stories,
+    building_area,
+    num_stories,
     elevator_exemption_applies,
     raw: extracted,
   };
@@ -102,8 +102,8 @@ export function variablesHash(norm: NormalizedVars): string {
     work_type: norm.work_type ?? null,
     facility_category: norm.facility_category ?? null,
     has_parking: norm.has_parking,
-    building_size_sf: norm.building_size_sf,
-    number_of_stories: norm.number_of_stories,
+    building_area: norm.building_area,
+    num_stories: norm.num_stories,
     elevator_exemption_applies: norm.elevator_exemption_applies,
   });
   return crypto.createHash('sha256').update(stable).digest('hex');

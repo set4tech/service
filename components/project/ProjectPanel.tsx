@@ -30,72 +30,16 @@ interface ProjectVariables {
 
 interface PipelineOutput {
   metadata?: {
-    project_info?: {
-      project_name?: string;
-      address?: string;
-      building_area?: number | string;
-      num_stories?: number | string;
-      occupancy_classification?: string;
-      construction_type?: string;
-      confidence?: string;
-      [key: string]: unknown;
-    };
+    project_info?: Record<string, unknown>;
     [key: string]: unknown;
   };
   [key: string]: unknown;
 }
 
-// Mapping from agent's project_info fields to form fields
-// Format: { agent_field: { category, variable, transform? } }
-const FIELD_MAPPING: Record<
-  string,
-  {
-    category: string;
-    variable: string;
-    transform?: (value: unknown) => unknown;
-  }
-> = {
-  address: { category: 'project_identity', variable: 'full_address' },
-  building_area: {
-    category: 'building_characteristics',
-    variable: 'building_size_sf',
-    transform: v => (typeof v === 'string' ? parseInt(v.replace(/,/g, ''), 10) || null : v),
-  },
-  num_stories: {
-    category: 'building_characteristics',
-    variable: 'number_of_stories',
-    transform: v => (typeof v === 'string' ? parseInt(v, 10) || null : v),
-  },
-  occupancy_classification: {
-    category: 'building_characteristics',
-    variable: 'occupancy_classification',
-    transform: v => {
-      // Transform "B" → "B - Business", "R-2" → "R - Residential", etc.
-      if (typeof v !== 'string') return v;
-      const letter = v.charAt(0).toUpperCase();
-      const occupancyMap: Record<string, string> = {
-        A: 'A - Assembly',
-        B: 'B - Business',
-        E: 'E - Educational',
-        F: 'F - Factory',
-        H: 'H - High Hazard',
-        I: 'I - Institutional',
-        M: 'M - Mercantile',
-        R: 'R - Residential',
-        S: 'S - Storage',
-        U: 'U - Utility',
-      };
-      return occupancyMap[letter] || v;
-    },
-  },
-};
-
 interface Suggestion {
   category: string;
   variable: string;
   value: unknown;
-  rawValue: unknown; // Original value from agent
-  confidence?: string;
 }
 
 interface ProjectPanelProps {
@@ -168,38 +112,35 @@ export function ProjectPanel({
   }, [initialVariables]);
 
   // Extract suggestions from pipeline output (AI-extracted project info)
+  // Field names in project_info match field names in variableChecklist directly
   useEffect(() => {
     const projectInfo = pipelineOutput?.metadata?.project_info;
-    if (!projectInfo) {
+    if (!projectInfo || !variableChecklist) {
       setSuggestions([]);
       return;
     }
 
     const newSuggestions: Suggestion[] = [];
-    const confidence = projectInfo.confidence as string | undefined;
 
-    for (const [agentField, rawValue] of Object.entries(projectInfo)) {
-      if (rawValue === null || rawValue === undefined || agentField === 'confidence') continue;
-
-      const mapping = FIELD_MAPPING[agentField];
-      if (!mapping) continue;
-
-      // Transform value if needed
-      const value = mapping.transform ? mapping.transform(rawValue) : rawValue;
+    // Find which category each project_info field belongs to
+    for (const [field, value] of Object.entries(projectInfo)) {
+      // Skip metadata fields
+      if (field === 'confidence' || field === 'source_pages' || field === 'is_cover_sheet')
+        continue;
       if (value === null || value === undefined) continue;
 
-      newSuggestions.push({
-        category: mapping.category,
-        variable: mapping.variable,
-        value,
-        rawValue,
-        confidence,
-      });
+      // Find the category that contains this field
+      for (const [category, fields] of Object.entries(variableChecklist)) {
+        if (field in fields) {
+          newSuggestions.push({ category, variable: field, value });
+          break;
+        }
+      }
     }
 
     setSuggestions(newSuggestions);
     console.log('[ProjectPanel] Extracted suggestions from pipeline:', newSuggestions);
-  }, [pipelineOutput]);
+  }, [pipelineOutput, variableChecklist]);
 
   // Google Maps autocomplete
   useEffect(() => {
@@ -218,7 +159,7 @@ export function ProjectPanel({
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.formatted_address) {
-        updateVariable('project_identity', 'full_address', place.formatted_address);
+        updateVariable('project_identity', 'address', place.formatted_address);
       }
     });
   }, [googleLoaded, expandedCategories]);
@@ -575,8 +516,7 @@ export function ProjectPanel({
             >
               {Object.entries(items).map(([varName, varInfo]) => {
                 const label = formatLabel(varName);
-                const isAddressField =
-                  category === 'project_identity' && varName === 'full_address';
+                const isAddressField = category === 'project_identity' && varName === 'address';
                 const suggestion = getSuggestion(category, varName);
 
                 const config: DynamicFieldConfig = {

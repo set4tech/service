@@ -236,8 +236,8 @@ export function CustomerReportViewer({ data }: Props) {
     const bp = data.buildingParams;
 
     // Project Identity
-    if (bp.project_identity?.full_address) {
-      params.push({ label: 'Address', value: formatParamValue(bp.project_identity.full_address) });
+    if (bp.project_identity?.address) {
+      params.push({ label: 'Address', value: formatParamValue(bp.project_identity.address) });
     }
     if (bp.project_identity?.authority_having_jurisdiction) {
       params.push({
@@ -253,10 +253,10 @@ export function CustomerReportViewer({ data }: Props) {
         value: formatParamValue(bp.building_characteristics.occupancy_classification),
       });
     }
-    if (bp.building_characteristics?.number_of_stories) {
+    if (bp.building_characteristics?.num_stories) {
       params.push({
         label: 'Stories',
-        value: formatParamValue(bp.building_characteristics.number_of_stories),
+        value: formatParamValue(bp.building_characteristics.num_stories),
       });
     }
     if (bp.building_characteristics?.has_parking !== undefined) {

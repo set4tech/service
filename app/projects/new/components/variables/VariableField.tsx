@@ -25,7 +25,7 @@ export function VariableField({
   addressInputRef,
 }: VariableFieldProps) {
   const label = varName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  const isAddressField = category === 'project_identity' && varName === 'full_address';
+  const isAddressField = category === 'project_identity' && varName === 'address';
 
   const config: DynamicFieldConfig = {
     type: varInfo.type || 'text',

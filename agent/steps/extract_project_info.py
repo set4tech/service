@@ -33,7 +33,7 @@ def merge_project_info(results: list[dict]) -> dict:
     fields = [
         "project_name", "project_number", "address", "client_name",
         "architect_name", "building_area", "num_stories", "construction_type",
-        "occupancy_classification", "sprinklers", "project_description",
+        "occupancy_classification", "sprinklers", "work_type", "project_description",
         "drawing_date", "revision"
     ]
 

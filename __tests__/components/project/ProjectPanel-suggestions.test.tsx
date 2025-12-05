@@ -1,315 +1,271 @@
 /**
  * Tests for ProjectPanel AI suggestion extraction from pipeline output.
+ *
+ * Field names in project_info now match field names in variable_checklist.json directly.
+ * No mapping or transformation is needed.
  */
 import { describe, it, expect } from 'vitest';
 
-// Test the field mapping logic extracted from ProjectPanel
-// These mappings transform agent's project_info fields to form fields
-
-interface FieldMapping {
-  category: string;
-  variable: string;
-  transform?: (value: unknown) => unknown;
-}
-
-const FIELD_MAPPING: Record<string, FieldMapping> = {
-  address: { category: 'project_identity', variable: 'full_address' },
-  building_area: {
-    category: 'building_characteristics',
-    variable: 'building_size_sf',
-    transform: v => (typeof v === 'string' ? parseInt(v.replace(/,/g, ''), 10) || null : v),
+// Mock variable checklist matching public/variable_checklist.json structure
+const VARIABLE_CHECKLIST = {
+  project_identity: {
+    project_name: { description: 'Full project name/title', type: 'text' },
+    project_number: { description: 'Project/job number', type: 'text' },
+    address: { description: 'Project address', type: 'text' },
+    client_name: { description: 'Owner/client name', type: 'text' },
+    architect_name: { description: 'Architecture firm name', type: 'text' },
   },
-  num_stories: {
-    category: 'building_characteristics',
-    variable: 'number_of_stories',
-    transform: v => (typeof v === 'string' ? parseInt(v, 10) || null : v),
+  project_scope: {
+    work_type: { description: 'Type of work being performed', type: 'text' },
+    project_description: { description: 'Brief description of the project scope', type: 'text' },
+    drawing_date: { description: 'Date on the drawings', type: 'text' },
   },
-  occupancy_classification: {
-    category: 'building_characteristics',
-    variable: 'occupancy_classification',
-    transform: v => {
-      if (typeof v !== 'string') return v;
-      const letter = v.charAt(0).toUpperCase();
-      const occupancyMap: Record<string, string> = {
-        A: 'A - Assembly',
-        B: 'B - Business',
-        E: 'E - Educational',
-        F: 'F - Factory',
-        H: 'H - High Hazard',
-        I: 'I - Institutional',
-        M: 'M - Mercantile',
-        R: 'R - Residential',
-        S: 'S - Storage',
-        U: 'U - Utility',
-      };
-      return occupancyMap[letter] || v;
-    },
+  building_characteristics: {
+    building_area: { description: 'Total building area in sq ft', type: 'number' },
+    num_stories: { description: 'Number of stories', type: 'number' },
+    construction_type: { description: 'Building construction type', type: 'text' },
+    occupancy_classification: { description: 'IBC occupancy group', type: 'text' },
+    sprinklers: { description: 'Is the building fully sprinklered?', type: 'boolean' },
   },
 };
 
-// Helper to extract suggestions from pipeline output (mirrors ProjectPanel logic)
-function extractSuggestions(pipelineOutput: {
-  metadata?: { project_info?: Record<string, unknown> };
-}) {
+interface Suggestion {
+  category: string;
+  variable: string;
+  value: unknown;
+}
+
+// Helper to extract suggestions from pipeline output (mirrors simplified ProjectPanel logic)
+function extractSuggestions(
+  pipelineOutput: { metadata?: { project_info?: Record<string, unknown> } },
+  checklist: typeof VARIABLE_CHECKLIST
+): Suggestion[] {
   const projectInfo = pipelineOutput?.metadata?.project_info;
   if (!projectInfo) return [];
 
-  const suggestions: Array<{
-    category: string;
-    variable: string;
-    value: unknown;
-    rawValue: unknown;
-  }> = [];
+  const suggestions: Suggestion[] = [];
 
-  for (const [agentField, rawValue] of Object.entries(projectInfo)) {
-    if (rawValue === null || rawValue === undefined || agentField === 'confidence') continue;
-
-    const mapping = FIELD_MAPPING[agentField];
-    if (!mapping) continue;
-
-    const value = mapping.transform ? mapping.transform(rawValue) : rawValue;
+  for (const [field, value] of Object.entries(projectInfo)) {
+    // Skip metadata fields
+    if (field === 'confidence' || field === 'source_pages' || field === 'is_cover_sheet') continue;
     if (value === null || value === undefined) continue;
 
-    suggestions.push({
-      category: mapping.category,
-      variable: mapping.variable,
-      value,
-      rawValue,
-    });
+    // Find the category that contains this field
+    for (const [category, fields] of Object.entries(checklist)) {
+      if (field in fields) {
+        suggestions.push({ category, variable: field, value });
+        break;
+      }
+    }
   }
 
   return suggestions;
 }
 
 describe('ProjectPanel Suggestion Extraction', () => {
-  describe('Field Mapping', () => {
-    it('should map address to full_address', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            address: '123 Main St, San Francisco, CA 94102',
+  describe('Direct Field Matching', () => {
+    it('should match address field directly', () => {
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              address: '123 Main St, San Francisco, CA 94102',
+            },
           },
         },
-      });
+        VARIABLE_CHECKLIST
+      );
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
         category: 'project_identity',
-        variable: 'full_address',
+        variable: 'address',
         value: '123 Main St, San Francisco, CA 94102',
-        rawValue: '123 Main St, San Francisco, CA 94102',
       });
     });
 
-    it('should map building_area to building_size_sf', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            building_area: 5000,
+    it('should match building_area field directly', () => {
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              building_area: 5000,
+            },
           },
         },
-      });
+        VARIABLE_CHECKLIST
+      );
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
         category: 'building_characteristics',
-        variable: 'building_size_sf',
+        variable: 'building_area',
         value: 5000,
-        rawValue: 5000,
       });
     });
 
-    it('should transform building_area string with commas to number', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            building_area: '10,500',
+    it('should match num_stories field directly', () => {
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              num_stories: 3,
+            },
           },
         },
-      });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].value).toBe(10500);
-    });
-
-    it('should map num_stories to number_of_stories', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            num_stories: 3,
-          },
-        },
-      });
+        VARIABLE_CHECKLIST
+      );
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
         category: 'building_characteristics',
-        variable: 'number_of_stories',
+        variable: 'num_stories',
         value: 3,
-        rawValue: 3,
       });
     });
 
-    it('should transform num_stories string to number', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            num_stories: '2',
+    it('should match occupancy_classification directly without transformation', () => {
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              occupancy_classification: 'B',
+            },
           },
         },
-      });
+        VARIABLE_CHECKLIST
+      );
 
       expect(result).toHaveLength(1);
-      expect(result[0].value).toBe(2);
+      expect(result[0]).toEqual({
+        category: 'building_characteristics',
+        variable: 'occupancy_classification',
+        value: 'B', // No transformation - value passed through as-is
+      });
     });
-  });
 
-  describe('Occupancy Classification Transformation', () => {
-    it('should transform "B" to "B - Business"', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            occupancy_classification: 'B',
+    it('should match work_type directly without transformation', () => {
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              work_type: 'Tenant Improvement',
+            },
           },
         },
-      });
+        VARIABLE_CHECKLIST
+      );
 
       expect(result).toHaveLength(1);
-      expect(result[0].value).toBe('B - Business');
-      expect(result[0].rawValue).toBe('B');
-    });
-
-    it('should transform "R-2" to "R - Residential"', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            occupancy_classification: 'R-2',
-          },
-        },
-      });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].value).toBe('R - Residential');
-    });
-
-    it('should transform "A-2" to "A - Assembly"', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            occupancy_classification: 'A-2',
-          },
-        },
-      });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].value).toBe('A - Assembly');
-    });
-
-    it('should handle all occupancy types', () => {
-      const occupancies = ['A', 'B', 'E', 'F', 'H', 'I', 'M', 'R', 'S', 'U'];
-      const expectedNames = [
-        'A - Assembly',
-        'B - Business',
-        'E - Educational',
-        'F - Factory',
-        'H - High Hazard',
-        'I - Institutional',
-        'M - Mercantile',
-        'R - Residential',
-        'S - Storage',
-        'U - Utility',
-      ];
-
-      occupancies.forEach((occ, i) => {
-        const result = extractSuggestions({
-          metadata: { project_info: { occupancy_classification: occ } },
-        });
-        expect(result[0].value).toBe(expectedNames[i]);
+      expect(result[0]).toEqual({
+        category: 'project_scope',
+        variable: 'work_type',
+        value: 'Tenant Improvement', // No transformation
       });
     });
   });
 
   describe('Multiple Fields', () => {
     it('should extract multiple suggestions from complete project info', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            project_name: 'Test Building', // Not mapped, should be ignored
-            address: '456 Oak Ave, Oakland, CA',
-            building_area: 12000,
-            num_stories: 4,
-            occupancy_classification: 'B',
-            construction_type: 'Type V-B', // Not mapped, should be ignored
-            confidence: 'high', // Should be ignored
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              project_name: 'Test Building',
+              address: '456 Oak Ave, Oakland, CA',
+              building_area: 12000,
+              num_stories: 4,
+              occupancy_classification: 'B',
+              construction_type: 'Type V-B',
+              confidence: 'high', // Should be ignored
+            },
           },
         },
-      });
+        VARIABLE_CHECKLIST
+      );
 
-      expect(result).toHaveLength(4);
+      expect(result).toHaveLength(6);
 
-      const addressSuggestion = result.find(s => s.variable === 'full_address');
+      const addressSuggestion = result.find(s => s.variable === 'address');
       expect(addressSuggestion?.value).toBe('456 Oak Ave, Oakland, CA');
 
-      const sizeSuggestion = result.find(s => s.variable === 'building_size_sf');
-      expect(sizeSuggestion?.value).toBe(12000);
+      const areaSuggestion = result.find(s => s.variable === 'building_area');
+      expect(areaSuggestion?.value).toBe(12000);
 
-      const storiesSuggestion = result.find(s => s.variable === 'number_of_stories');
+      const storiesSuggestion = result.find(s => s.variable === 'num_stories');
       expect(storiesSuggestion?.value).toBe(4);
 
       const occupancySuggestion = result.find(s => s.variable === 'occupancy_classification');
-      expect(occupancySuggestion?.value).toBe('B - Business');
+      expect(occupancySuggestion?.value).toBe('B');
+
+      const constructionSuggestion = result.find(s => s.variable === 'construction_type');
+      expect(constructionSuggestion?.value).toBe('Type V-B');
+
+      const projectNameSuggestion = result.find(s => s.variable === 'project_name');
+      expect(projectNameSuggestion?.value).toBe('Test Building');
     });
   });
 
   describe('Edge Cases', () => {
     it('should return empty array for null pipeline output', () => {
-      const result = extractSuggestions({ metadata: undefined });
+      const result = extractSuggestions({ metadata: undefined }, VARIABLE_CHECKLIST);
       expect(result).toEqual([]);
     });
 
     it('should return empty array for empty project info', () => {
-      const result = extractSuggestions({ metadata: { project_info: {} } });
+      const result = extractSuggestions({ metadata: { project_info: {} } }, VARIABLE_CHECKLIST);
       expect(result).toEqual([]);
     });
 
     it('should skip null values', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            address: null,
-            building_area: 5000,
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              address: null,
+              building_area: 5000,
+            },
           },
         },
-      });
+        VARIABLE_CHECKLIST
+      );
 
       expect(result).toHaveLength(1);
-      expect(result[0].variable).toBe('building_size_sf');
+      expect(result[0].variable).toBe('building_area');
     });
 
-    it('should skip unmapped fields', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            project_name: 'Test Project', // Not in FIELD_MAPPING
-            architect_name: 'Test Architect', // Not in FIELD_MAPPING
-            sprinklers: true, // Not in FIELD_MAPPING
+    it('should skip metadata fields like confidence and source_pages', () => {
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              confidence: 'high',
+              source_pages: ['page_001.png'],
+              is_cover_sheet: true,
+              building_area: 5000,
+            },
           },
         },
-      });
+        VARIABLE_CHECKLIST
+      );
 
-      expect(result).toEqual([]);
+      expect(result).toHaveLength(1);
+      expect(result[0].variable).toBe('building_area');
     });
 
-    it('should handle invalid building_area string gracefully', () => {
-      const result = extractSuggestions({
-        metadata: {
-          project_info: {
-            building_area: 'not a number',
+    it('should skip fields not in checklist', () => {
+      const result = extractSuggestions(
+        {
+          metadata: {
+            project_info: {
+              unknown_field: 'some value',
+              revision: 'A', // Not in our mock checklist
+            },
           },
         },
-      });
+        VARIABLE_CHECKLIST
+      );
 
-      // parseInt returns NaN which becomes null via || null
       expect(result).toEqual([]);
     });
   });

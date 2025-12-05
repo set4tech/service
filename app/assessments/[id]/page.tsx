@@ -108,8 +108,8 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const normalizedVars = normalizeVariables(extractedVars);
   const buildingInfo = {
     occupancy: normalizedVars.occupancy_letter || 'Unknown',
-    size_sf: normalizedVars.building_size_sf,
-    stories: normalizedVars.number_of_stories,
+    size_sf: normalizedVars.building_area,
+    stories: normalizedVars.num_stories,
     work_type: normalizedVars.work_type || 'Unknown',
     has_parking: normalizedVars.has_parking,
     facility_category: normalizedVars.facility_category || 'Unknown',

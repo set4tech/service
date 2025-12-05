@@ -1,46 +1,68 @@
 {
   "project_identity": {
-    "full_address": {
-      "description": "Street address including city/town and county",
+    "project_name": {
+      "description": "Full project name/title",
+      "type": "text"
+    },
+    "project_number": {
+      "description": "Project/job number (e.g., 2024-001)",
+      "type": "text"
+    },
+    "address": {
+      "description": "Project address",
+      "type": "text"
+    },
+    "client_name": {
+      "description": "Owner/client name",
+      "type": "text"
+    },
+    "architect_name": {
+      "description": "Architecture firm name",
       "type": "text"
     },
     "authority_having_jurisdiction": {
-      "description": "The building department or code authority issuing permits/inspections",
+      "description": "Building department or code authority",
       "type": "text"
     }
   },
   "project_scope": {
     "work_type": {
       "description": "Type of work being performed",
-      "type": "select",
-      "options": ["New Construction", "Addition", "Alteration/Renovation", "Change of Occupancy", "Site/Civil Work", "Maintenance Only"]
+      "type": "text"
     },
-    "permit_date": {
-      "description": "Permit application or issuance date",
-      "type": "date"
+    "project_description": {
+      "description": "Brief description of the project scope",
+      "type": "text"
+    },
+    "drawing_date": {
+      "description": "Date on the drawings",
+      "type": "text"
     }
   },
   "building_characteristics": {
-    "building_size_sf": {
-      "description": "Gross floor area per story (square feet)",
+    "building_area": {
+      "description": "Total building area in sq ft",
       "type": "number"
     },
-    "number_of_stories": {
+    "num_stories": {
       "description": "Number of stories",
       "type": "number"
+    },
+    "construction_type": {
+      "description": "Building construction type (e.g., Type V-B)",
+      "type": "text"
+    },
+    "occupancy_classification": {
+      "description": "IBC occupancy group (e.g., B, R-2, A-2)",
+      "type": "text"
+    },
+    "sprinklers": {
+      "description": "Is the building fully sprinklered?",
+      "type": "boolean"
     },
     "has_mezzanine": {
       "description": "Does the building have a mezzanine?",
       "type": "boolean"
-    },
-    "elevator_exemption_applies": {
-      "description": "Does ADA elevator exemption apply? (≤3 stories or ≤3,000 sf per story)",
-      "type": "boolean"
-    },
-    "occupancy_classification": {
-      "description": "IBC occupancy group(s)",
-      "type": "select",
-      "options": ["A - Assembly", "B - Business", "E - Educational", "F - Factory", "H - High Hazard", "I - Institutional", "M - Mercantile", "R - Residential", "S - Storage", "U - Utility", "Mixed Use"]
     },
     "has_parking": {
       "description": "Does the site include parking?",
@@ -52,10 +74,9 @@
     }
   },
   "facility_type": {
-    "category": {
+    "facility_category": {
       "description": "Primary facility category",
-      "type": "select",
-      "options": ["Private Commercial (ADA Title III)", "State/Local Government (ADA Title II)", "Federal Facility (ABA)", "Multifamily Housing (FHA)", "Single Family/Townhome", "Transportation Facility"]
+      "type": "text"
     },
     "is_public_accommodation": {
       "description": "Is this a public accommodation or commercial facility?",
@@ -64,25 +85,14 @@
   },
   "funding_sources": {
     "has_federal_assistance": {
-      "description": "Any federal financial assistance (grants, loans, leases, subsidies)?",
+      "description": "Any federal financial assistance?",
       "type": "boolean"
-    },
-    "funding_type": {
-      "description": "Type of funding/assistance",
-      "type": "multiselect",
-      "options": ["Private", "HUD Assistance", "Other Federal Grant/Loan", "State Grant", "Local Public Funding", "Section 504"]
     }
   },
   "ownership": {
     "owner_type": {
       "description": "Facility owner type",
-      "type": "select",
-      "options": ["Private", "Nonprofit", "State/Local Government", "Federal", "Tribal", "Religious Organization", "Private Club"]
-    },
-    "government_level": {
-      "description": "If government-owned, which level?",
-      "type": "select",
-      "options": ["N/A", "City", "County", "State of California", "Federal"]
+      "type": "text"
     }
   }
 }
