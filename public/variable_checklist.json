@@ -28,7 +28,8 @@
   "project_scope": {
     "work_type": {
       "description": "Type of work being performed",
-      "type": "text"
+      "type": "select",
+      "options": ["New Construction", "Addition", "Alteration", "Tenant Improvement", "Change of Occupancy", "Repair"]
     },
     "project_description": {
       "description": "Brief description of the project scope",
@@ -49,12 +50,14 @@
       "type": "number"
     },
     "construction_type": {
-      "description": "Building construction type (e.g., Type V-B)",
-      "type": "text"
+      "description": "Building construction type",
+      "type": "select",
+      "options": ["Type I-A", "Type I-B", "Type II-A", "Type II-B", "Type III-A", "Type III-B", "Type IV", "Type V-A", "Type V-B"]
     },
     "occupancy_classification": {
-      "description": "IBC occupancy group (e.g., B, R-2, A-2)",
-      "type": "text"
+      "description": "IBC occupancy group",
+      "type": "select",
+      "options": ["A-1", "A-2", "A-3", "A-4", "A-5", "B", "E", "F-1", "F-2", "H-1", "H-2", "H-3", "H-4", "H-5", "I-1", "I-2", "I-3", "I-4", "M", "R-1", "R-2", "R-3", "R-4", "S-1", "S-2", "U"]
     },
     "sprinklers": {
       "description": "Is the building fully sprinklered?",
@@ -76,7 +79,8 @@
   "facility_type": {
     "facility_category": {
       "description": "Primary facility category",
-      "type": "text"
+      "type": "select",
+      "options": ["Title II - State/Local Government", "Title III - Public Accommodation", "Title III - Commercial Facility", "FHA - Multifamily Housing", "Other"]
     },
     "is_public_accommodation": {
       "description": "Is this a public accommodation or commercial facility?",
@@ -92,7 +96,8 @@
   "ownership": {
     "owner_type": {
       "description": "Facility owner type",
-      "type": "text"
+      "type": "select",
+      "options": ["Private", "State/Local Government", "Federal Government", "Non-Profit"]
     }
   }
 }

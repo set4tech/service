@@ -87,7 +87,12 @@ export function ProjectPanel({
   useEffect(() => {
     fetch('/variable_checklist.json')
       .then(res => res.json())
-      .then(data => setVariableChecklist(data))
+      .then(data => {
+        setVariableChecklist(data);
+        // Expand first 3 categories by default
+        const categories = Object.keys(data).slice(0, 3);
+        setExpandedCategories(new Set(categories));
+      })
       .catch(err => console.error('Error loading variable checklist:', err));
   }, []);
 
