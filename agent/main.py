@@ -686,43 +686,102 @@ class AssessCheckRequest(BaseModel):
 
 def fetch_correction_examples(section_number: str, limit: int = 3) -> list[dict]:
     """
-    Fetch past human corrections for a specific code section.
+    Fetch past human corrections for a code section with fallback to related sections.
+
+    Priority order:
+    1. Exact section match (e.g., 11B-404.2.6)
+    2. Parent section (e.g., 11B-404.2%)
+    3. Chapter (e.g., 11B-404%)
+    4. Major chapter (e.g., 11B-%)
 
     Returns list of dicts with:
     - ai_status: What AI originally assessed
     - human_status: What human corrected it to
     - human_note: Human's reasoning for the correction
     - ai_reasoning: AI's original reasoning (truncated)
+    - section_number: The section this correction was for (useful for fallback)
     """
     try:
         db = get_supabase()
 
-        # Query analysis_runs joined with checks where manual_override exists
-        result = db.table("analysis_runs").select(
-            "compliance_status, ai_reasoning, "
-            "checks!inner(code_section_number, manual_override, manual_override_note)"
-        ).eq(
-            "checks.code_section_number", section_number
-        ).not_(
-            "checks.manual_override", "is", "null"
-        ).order(
-            "executed_at", desc=True
-        ).limit(limit).execute()
+        # Build search patterns from most specific to least specific
+        # e.g., "11B-404.2.6" -> ["11B-404.2.6", "11B-404.2%", "11B-404%", "11B-%"]
+        patterns = [section_number]  # Exact match first
 
-        if not result.data:
-            return []
+        parts = section_number.split(".")
+        if len(parts) >= 2:
+            # Parent section: 11B-404.2.6 -> 11B-404.2%
+            patterns.append(".".join(parts[:-1]) + "%")
+        if len(parts) >= 1 and "-" in parts[0]:
+            # Chapter: 11B-404.2.6 -> 11B-404%
+            chapter = parts[0]
+            patterns.append(chapter + "%")
+            # Major chapter: 11B-404 -> 11B-%
+            major = chapter.split("-")[0]
+            patterns.append(major + "-%")
 
         examples = []
-        for row in result.data:
-            check = row.get("checks", {})
-            examples.append({
-                "ai_status": row.get("compliance_status"),
-                "human_status": check.get("manual_override"),
-                "human_note": check.get("manual_override_note"),
-                "ai_reasoning": row.get("ai_reasoning", "")[:500],
-            })
+        seen_check_ids = set()
 
-        logger.info(f"[AssessCheck] Found {len(examples)} correction examples for section {section_number}")
+        for pattern in patterns:
+            if len(examples) >= limit:
+                break
+
+            remaining = limit - len(examples)
+
+            # Use LIKE for patterns with %, exact match otherwise
+            if "%" in pattern:
+                result = db.table("analysis_runs").select(
+                    "compliance_status, ai_reasoning, "
+                    "checks!inner(id, code_section_number, manual_override, manual_override_note)"
+                ).like(
+                    "checks.code_section_number", pattern
+                ).not_(
+                    "checks.manual_override", "is", "null"
+                ).order(
+                    "executed_at", desc=True
+                ).limit(remaining + 10).execute()  # Fetch extra to filter dupes
+            else:
+                result = db.table("analysis_runs").select(
+                    "compliance_status, ai_reasoning, "
+                    "checks!inner(id, code_section_number, manual_override, manual_override_note)"
+                ).eq(
+                    "checks.code_section_number", pattern
+                ).not_(
+                    "checks.manual_override", "is", "null"
+                ).order(
+                    "executed_at", desc=True
+                ).limit(remaining).execute()
+
+            if result.data:
+                for row in result.data:
+                    check = row.get("checks", {})
+                    check_id = check.get("id")
+
+                    # Avoid duplicate checks
+                    if check_id in seen_check_ids:
+                        continue
+                    seen_check_ids.add(check_id)
+
+                    examples.append({
+                        "ai_status": row.get("compliance_status"),
+                        "human_status": check.get("manual_override"),
+                        "human_note": check.get("manual_override_note"),
+                        "ai_reasoning": row.get("ai_reasoning", "")[:500],
+                        "section_number": check.get("code_section_number"),
+                    })
+
+                    if len(examples) >= limit:
+                        break
+
+                if pattern == section_number:
+                    logger.info(f"[AssessCheck] Found {len(examples)} exact corrections for {section_number}")
+                else:
+                    logger.info(f"[AssessCheck] Found corrections using pattern '{pattern}' (total: {len(examples)})")
+
+        if not examples:
+            logger.info(f"[AssessCheck] No correction examples found for {section_number} or related sections")
+
         return examples
 
     except Exception as e:

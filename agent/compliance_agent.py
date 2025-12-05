@@ -204,11 +204,13 @@ class ComplianceAgent:
 
         # Add correction examples if available (few-shot learning)
         if correction_examples:
-            text_parts.append("## Past Human Corrections for This Section\n")
-            text_parts.append("These are cases where a human reviewer corrected the AI's assessment for this same code section. ")
+            text_parts.append("## Past Human Corrections\n")
+            text_parts.append("These are cases where a human reviewer corrected the AI's assessment. ")
+            text_parts.append("Some may be from related sections in the same chapter. ")
             text_parts.append("Learn from these corrections to avoid similar mistakes.\n\n")
             for i, ex in enumerate(correction_examples, 1):
-                text_parts.append(f"### Correction {i}\n")
+                ex_section = ex.get('section_number', 'unknown')
+                text_parts.append(f"### Correction {i} (Section {ex_section})\n")
                 text_parts.append(f"- **AI assessed**: {ex.get('ai_status', 'unknown')}\n")
                 text_parts.append(f"- **Human corrected to**: {ex.get('human_status', 'unknown')}\n")
                 if ex.get('human_note'):
