@@ -468,8 +468,17 @@ def flatten_variables(variables: dict) -> dict:
 
 
 def evaluate_check_batch(checks: list[dict], project_params: dict) -> list[dict]:
-    """Call GPT-4o-mini to evaluate which checks should be excluded."""
-    client = get_openai()
+    """Call Gemini Flash to evaluate which checks should be excluded."""
+    from google import genai
+    from pydantic import BaseModel
+
+    # Define Pydantic model for structured output
+    class CheckEvaluation(BaseModel):
+        id: str
+        exclude: bool
+
+    class EvaluationResponse(BaseModel):
+        evaluations: list[CheckEvaluation]
 
     # Format project parameters for the prompt
     param_lines = []
@@ -500,33 +509,30 @@ Evaluate each code section below. Mark "exclude": true if the section should be 
 Be conservative - if uncertain, do NOT exclude (exclude: false).
 
 CODE SECTIONS TO EVALUATE:
-{check_str}
-
-Respond ONLY with valid JSON array:
-[{{"id":"<check_id>","exclude":true/false}},...]"""
+{check_str}"""
 
     logger.info(f"[filter] Evaluating batch of {len(checks)} checks")
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            max_tokens=2000,
-            temperature=0.1,
+        # Use native Gemini SDK with structured outputs
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY required")
+
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite-preview-06-17",
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": EvaluationResponse,
+            },
         )
 
-        raw = response.choices[0].message.content or "[]"
-
-        # Parse the response - handle both array and object with "results" key
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict) and "results" in parsed:
-            parsed = parsed["results"]
-        if not isinstance(parsed, list):
-            logger.error(f"[filter] Unexpected response format: {raw}")
-            return [{"id": c["id"], "exclude": False} for c in checks]
-
-        return parsed
+        # Parse the structured response
+        parsed = json.loads(response.text)
+        return parsed.get("evaluations", [])
 
     except Exception as e:
         logger.error(f"[filter] Failed to evaluate batch: {e}")
@@ -534,7 +540,7 @@ Respond ONLY with valid JSON array:
 
 
 async def run_filter_checks(assessment_id: str, reset: bool):
-    """Background task: Filter checks using GPT-4o-mini."""
+    """Background task: Filter checks using Gemini 2.5 Flash-Lite."""
     db = get_supabase()
 
     try:

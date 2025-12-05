@@ -11,6 +11,7 @@ openai>=1.0.0
 Pillow>=10.0.0
 pytesseract>=0.3.10
 anthropic>=0.40.0
+google-genai>=1.0.0
 
 # Testing
 pytest>=8.0.0
