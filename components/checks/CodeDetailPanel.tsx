@@ -355,10 +355,10 @@ export function CodeDetailPanel({
   // Simple loading indicator instead of full skeleton
   if (panelLoading) {
     return (
-      <div className="h-full flex items-center justify-center bg-white border-r border-gray-200">
+      <div className="h-full flex items-center justify-center bg-paper border-r border-sage-200">
         <div className="text-center">
-          <div className="w-8 h-8 border-3 border-gray-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-          <div className="text-sm text-gray-500">Loading check...</div>
+          <div className="w-8 h-8 border-3 border-sage-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <div className="text-sm text-sage-500">Loading check...</div>
         </div>
       </div>
     );
@@ -366,10 +366,10 @@ export function CodeDetailPanel({
 
   if (panelError) {
     return (
-      <div className="h-full flex flex-col bg-white border-r border-gray-200">
-        <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">Error</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+      <div className="h-full flex flex-col bg-paper border-r border-sage-200">
+        <div className="px-4 py-3 border-b border-sage-200 bg-sage-50 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-ink-900">Error</h3>
+          <button onClick={onClose} className="text-sage-400 hover:text-sage-600">
             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -395,12 +395,12 @@ export function CodeDetailPanel({
   const isElementCheck = childChecks.length > 0;
 
   return (
-    <div className="h-full flex flex-col bg-white border-r border-gray-200">
+    <div className="h-full flex flex-col bg-paper border-r border-sage-200">
       {/* Rest of JSX remains identical to original - just with new loading logic */}
       {/* ... (continuing with the exact same JSX from original component) */}
-      <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
+      <div className="px-4 py-3 border-b border-sage-200 bg-sage-50 flex items-center justify-between flex-shrink-0">
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-semibold text-gray-900">
+          <h3 className="text-base font-semibold text-ink-900">
             {isElementCheck && activeCheckWithData?.element_instances?.element_groups?.name
               ? `${activeCheckWithData.element_instances.element_groups.name}: ${activeCheckWithData.element_instances.label}`
               : isElementCheck
@@ -410,7 +410,7 @@ export function CodeDetailPanel({
         </div>
         <button
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 transition-colors ml-2 flex-shrink-0"
+          className="text-sage-400 hover:text-sage-600 transition-colors ml-2 flex-shrink-0"
           aria-label="Close panel"
         >
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -426,17 +426,17 @@ export function CodeDetailPanel({
 
       {/* Section Tabs for Element Checks */}
       {childChecks.length > 0 && !showSingleSectionOnly && (
-        <div className="border-b bg-gray-50 flex-shrink-0">
+        <div className="border-b border-sage-200 bg-sage-50 flex-shrink-0">
           <button
             onClick={() => setShowSectionTabs(!showSectionTabs)}
-            className="w-full px-4 py-2 flex items-center justify-between hover:bg-gray-100 transition-colors"
+            className="w-full px-4 py-2 flex items-center justify-between hover:bg-sage-100 transition-colors"
           >
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-gray-700">Code Sections</span>
-              <span className="text-xs text-gray-500">({childChecks.length})</span>
+              <span className="text-xs font-medium text-sage-700">Code Sections</span>
+              <span className="text-xs text-sage-500">({childChecks.length})</span>
             </div>
             <svg
-              className={`w-4 h-4 text-gray-400 transition-transform ${showSectionTabs ? 'rotate-180' : ''}`}
+              className={`w-4 h-4 text-sage-400 transition-transform ${showSectionTabs ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -459,8 +459,8 @@ export function CodeDetailPanel({
                     onClick={() => setActiveChildCheckId(childCheck.id)}
                     className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors text-left ${
                       childCheck.id === activeChildCheckId
-                        ? 'bg-gray-800 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                        ? 'bg-sage-700 text-white'
+                        : 'bg-paper text-sage-700 hover:bg-sage-100 border border-sage-200'
                     }`}
                   >
                     {childCheck.code_section_number}
@@ -475,11 +475,11 @@ export function CodeDetailPanel({
       {/* Parameters Section for Door Elements */}
       {isElementCheck &&
         activeCheckWithData?.element_instances?.element_groups?.slug === 'doors' && (
-          <div className="border-b bg-gray-50 flex-shrink-0 px-4 py-3">
+          <div className="border-b border-sage-200 bg-sage-50 flex-shrink-0 px-4 py-3">
             {!showParametersForm ? (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">Door Parameters</span>
+                  <span className="text-sm font-medium text-sage-700">Door Parameters</span>
                   {elementParameters && (
                     <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
                       Configured ✓
@@ -488,7 +488,7 @@ export function CodeDetailPanel({
                 </div>
                 <button
                   onClick={() => setShowParametersForm(true)}
-                  className="text-xs px-3 py-1.5 bg-gray-800 text-white rounded hover:bg-gray-900 font-medium"
+                  className="text-xs px-3 py-1.5 bg-sage-700 text-white rounded hover:bg-sage-800 font-medium"
                 >
                   {elementParameters ? 'Edit Parameters' : 'Add Parameters'}
                 </button>
@@ -508,14 +508,14 @@ export function CodeDetailPanel({
 
       {/* Manual Override Section - preserving exact JSX from original lines 1185-1373 */}
       {(effectiveCheckId || (checkId && sectionKey)) && (
-        <div className="border-b bg-gray-50 p-4 flex-shrink-0">
+        <div className="border-b border-sage-200 bg-sage-50 p-4 flex-shrink-0">
           <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-3">
             Manual Compliance Judgment
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-medium text-sage-700 mb-2">
                 Set Compliance Status
               </label>
               <div className="flex gap-2">
@@ -560,8 +560,8 @@ export function CodeDetailPanel({
                       disabled={savingOverride}
                       className={`flex-1 px-2.5 py-2 text-xs font-medium rounded-sm border-l-2 transition-all disabled:opacity-50 ${colorClasses} ${
                         isSelected
-                          ? 'bg-white shadow-sm border border-gray-300 border-l-2'
-                          : 'bg-gray-50 hover:bg-white text-gray-600 border border-transparent hover:border-gray-200'
+                          ? 'bg-paper shadow-sm border border-sage-300 border-l-2'
+                          : 'bg-sage-100 hover:bg-paper text-sage-600 border border-transparent hover:border-sage-200'
                       }`}
                     >
                       {option.label}
@@ -584,7 +584,7 @@ export function CodeDetailPanel({
 
                 {showOverrideNote && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-sage-700 mb-1">
                       Reasoning (Optional)
                     </label>
                     <textarea
@@ -593,7 +593,7 @@ export function CodeDetailPanel({
                       disabled={savingOverride}
                       placeholder="Explain why this check is compliant or non-compliant..."
                       rows={3}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border border-sage-300 bg-paper text-ink-900 rounded focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-sage-100"
                     />
                   </div>
                 )}
@@ -601,7 +601,7 @@ export function CodeDetailPanel({
                 <button
                   onClick={handleSaveOverride}
                   disabled={savingOverride}
-                  className="w-full px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2 bg-sage-700 text-white text-sm font-medium rounded hover:bg-sage-800 focus:outline-none focus:ring-2 focus:ring-sage-500 disabled:bg-sage-400 disabled:cursor-not-allowed"
                 >
                   {savingOverride ? 'Saving...' : 'Save Manual Override'}
                 </button>
@@ -620,7 +620,7 @@ export function CodeDetailPanel({
       {/* Section Content - preserving exact structure from lines 1376-1544 */}
       <div className="overflow-y-auto p-4" style={{ height: `${sectionContentHeight}%` }}>
         {!section && !panelLoading && (
-          <div className="text-sm text-gray-500 text-center py-8">
+          <div className="text-sm text-sage-500 text-center py-8">
             No section data available. Check console for details.
           </div>
         )}
@@ -637,7 +637,7 @@ export function CodeDetailPanel({
                     href={section.source_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+                    className="text-xs font-medium text-accent-600 hover:text-accent-700 flex items-center gap-1 transition-colors"
                   >
                     See Original Code
                     <svg
@@ -657,7 +657,7 @@ export function CodeDetailPanel({
                   </a>
                 )}
               </div>
-              <div className="text-2xl font-mono font-semibold text-gray-900">{section.number}</div>
+              <div className="text-2xl font-mono font-semibold text-ink-900">{section.number}</div>
               <div className="text-lg font-normal text-ink-700 mt-1">{section.title}</div>
             </div>
 
@@ -667,7 +667,7 @@ export function CodeDetailPanel({
                 <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-2">
                   Section Summary
                 </div>
-                <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
+                <div className="text-sm text-ink-800 leading-relaxed whitespace-pre-wrap bg-sage-50 p-3 rounded border border-sage-200">
                   {/* First sentence emphasized */}
                   {(() => {
                     const firstSentenceMatch = section.text.match(/^[^.!?]+[.!?]/);
@@ -676,7 +676,7 @@ export function CodeDetailPanel({
                       const rest = section.text.slice(firstSentence.length);
                       return (
                         <>
-                          <span className="font-medium text-gray-900">{firstSentence}</span>
+                          <span className="font-medium text-ink-900">{firstSentence}</span>
                           {rest}
                         </>
                       );
@@ -697,11 +697,11 @@ export function CodeDetailPanel({
                   {section.requirements.map((req, idx) => {
                     const text = typeof req === 'string' ? req : req.text || '';
                     return (
-                      <div key={idx} className="text-sm text-gray-800 leading-relaxed">
-                        <div className="text-xs text-gray-500 font-mono mb-1">
+                      <div key={idx} className="text-sm text-ink-800 leading-relaxed">
+                        <div className="text-xs text-sage-500 font-mono mb-1">
                           Paragraph {idx + 1}
                         </div>
-                        <div className="pl-3 border-l-2 border-gray-300">{text}</div>
+                        <div className="pl-3 border-l-2 border-sage-300">{text}</div>
                       </div>
                     );
                   })}
@@ -781,24 +781,24 @@ export function CodeDetailPanel({
 
             {/* Parent Section Context */}
             {section.parent_section && (
-              <div className="bg-gray-50 border border-gray-200 border-l-4 border-l-sage-500 rounded p-3">
+              <div className="bg-sage-50 border border-sage-200 border-l-4 border-l-sage-500 rounded p-3">
                 <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-2">
                   Parent Section Context
                 </div>
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-sm font-mono font-medium text-gray-900">
+                  <span className="text-sm font-mono font-medium text-ink-900">
                     {section.parent_section.number}
                   </span>
-                  <span className="text-sm text-gray-700">{section.parent_section.title}</span>
+                  <span className="text-sm text-ink-700">{section.parent_section.title}</span>
                 </div>
                 {section.parent_section.text && (
-                  <div className="text-sm text-gray-700 leading-relaxed mt-2 pl-3 border-l-2 border-gray-300">
+                  <div className="text-sm text-ink-700 leading-relaxed mt-2 pl-3 border-l-2 border-sage-300">
                     {section.parent_section.text}
                   </div>
                 )}
                 {section.parent_section.paragraphs &&
                   section.parent_section.paragraphs.length > 0 && (
-                    <div className="text-sm text-gray-700 leading-relaxed mt-2 pl-3 border-l-2 border-gray-300">
+                    <div className="text-sm text-ink-700 leading-relaxed mt-2 pl-3 border-l-2 border-sage-300">
                       {typeof section.parent_section.paragraphs === 'string'
                         ? section.parent_section.paragraphs
                         : Array.isArray(section.parent_section.paragraphs)
@@ -815,30 +815,30 @@ export function CodeDetailPanel({
       {/* Resize Handle */}
       <div
         onMouseDown={handleSectionResizeStart}
-        className="h-1 bg-gray-200 hover:bg-gray-400 cursor-row-resize flex-shrink-0 transition-colors"
+        className="h-1 bg-sage-200 hover:bg-sage-400 cursor-row-resize flex-shrink-0 transition-colors"
         style={{ touchAction: 'none' }}
       />
 
       {/* Assessment Controls - preserving exact structure from lines 1553-1888 */}
       {checkId && (
         <div
-          className="border-t bg-gray-50 overflow-y-auto"
+          className="border-t border-sage-200 bg-sage-50 overflow-y-auto"
           style={{ height: `${100 - sectionContentHeight}%` }}
         >
           <div className="p-4 space-y-6">
             {/* Screenshots Section */}
             {activeCheckWithData && (
-              <div className="border-t pt-6">
+              <div className="border-t border-sage-200 pt-6">
                 <div className="mb-3">
                   <button
                     onClick={() => setShowScreenshots(!showScreenshots)}
-                    className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors px-2 py-1 rounded"
+                    className="w-full flex items-center justify-between hover:bg-sage-100 transition-colors px-2 py-1 rounded"
                   >
                     <div className="text-xs font-medium tracking-wide text-ink-500 uppercase">
                       Screenshots & Elevations
                     </div>
                     <svg
-                      className={`w-4 h-4 text-gray-400 transition-transform ${showScreenshots ? 'rotate-180' : ''}`}
+                      className={`w-4 h-4 text-sage-400 transition-transform ${showScreenshots ? 'rotate-180' : ''}`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -878,7 +878,7 @@ export function CodeDetailPanel({
             )}
 
             {/* AI Assessment Section */}
-            <div className="border-t pt-6">
+            <div className="border-t border-sage-200 pt-6">
               <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-3">
                 AI Assessment
               </div>
@@ -886,12 +886,12 @@ export function CodeDetailPanel({
               <div className="space-y-3">
                 {/* Model Selector */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">AI Model</label>
+                  <label className="block text-xs font-medium text-sage-700 mb-1">AI Model</label>
                   <select
                     value={selectedModel}
                     onChange={e => setSelectedModel(e.target.value)}
                     disabled={assessing}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                    className="w-full px-3 py-2 text-sm border border-sage-300 bg-paper text-ink-900 rounded focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-sage-100"
                   >
                     <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
@@ -904,7 +904,7 @@ export function CodeDetailPanel({
                 <div>
                   <button
                     onClick={handleViewPrompt}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-xs text-accent-600 hover:text-accent-700 font-medium"
                   >
                     {showPrompt ? '− Hide' : '+ View/Edit'} Prompt
                   </button>
@@ -914,11 +914,11 @@ export function CodeDetailPanel({
                 {showPrompt && (
                   <div className="space-y-2">
                     {loadingPrompt ? (
-                      <div className="text-xs text-gray-500">Loading prompt...</div>
+                      <div className="text-xs text-sage-500">Loading prompt...</div>
                     ) : (
                       <>
                         <div className="flex items-center justify-between">
-                          <label className="block text-xs font-medium text-gray-700">
+                          <label className="block text-xs font-medium text-sage-700">
                             AI Prompt {customPrompt && '(Custom)'}
                           </label>
                           <div className="flex gap-2">
@@ -929,9 +929,9 @@ export function CodeDetailPanel({
                                   setCustomPrompt(defaultPrompt);
                                 }}
                                 disabled={assessing}
-                                className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-400"
+                                className="text-xs text-accent-600 hover:text-accent-700 font-medium disabled:text-sage-400"
                               >
-                                ✏️ Edit
+                                Edit
                               </button>
                             ) : (
                               <button
@@ -940,9 +940,9 @@ export function CodeDetailPanel({
                                   setIsPromptEditing(false);
                                 }}
                                 disabled={assessing}
-                                className="text-xs text-gray-600 hover:text-gray-700 font-medium disabled:text-gray-400"
+                                className="text-xs text-sage-600 hover:text-sage-700 font-medium disabled:text-sage-400"
                               >
-                                ↺ Reset
+                                Reset
                               </button>
                             )}
                           </div>
@@ -953,8 +953,8 @@ export function CodeDetailPanel({
                           readOnly={!isPromptEditing}
                           disabled={assessing}
                           rows={12}
-                          className={`w-full px-3 py-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 font-mono ${
-                            isPromptEditing ? 'bg-yellow-50' : 'bg-gray-50'
+                          className={`w-full px-3 py-2 text-xs border border-sage-300 rounded focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-sage-100 font-mono ${
+                            isPromptEditing ? 'bg-yellow-50' : 'bg-sage-50'
                           }`}
                         />
                       </>
@@ -966,7 +966,7 @@ export function CodeDetailPanel({
                 <div>
                   <button
                     onClick={() => setShowExtraContext(!showExtraContext)}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-xs text-accent-600 hover:text-accent-700 font-medium"
                   >
                     {showExtraContext ? '− Hide' : '+ Add'} Extra Context
                   </button>
@@ -975,7 +975,7 @@ export function CodeDetailPanel({
                 {/* Extra Context Textarea */}
                 {showExtraContext && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-sage-700 mb-1">
                       Additional Context (Optional)
                     </label>
                     <textarea
@@ -984,7 +984,7 @@ export function CodeDetailPanel({
                       disabled={assessing}
                       placeholder="Add any additional context or specific questions..."
                       rows={3}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border border-sage-300 bg-paper text-ink-900 rounded focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-sage-100"
                     />
                   </div>
                 )}
@@ -993,14 +993,14 @@ export function CodeDetailPanel({
                 {assessing && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-600">{assessmentMessage}</span>
-                      <span className="text-gray-500 font-mono">
+                      <span className="text-sage-600">{assessmentMessage}</span>
+                      <span className="text-sage-500 font-mono">
                         {Math.round(assessmentProgress)}%
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div className="w-full bg-sage-200 rounded-full h-2 overflow-hidden">
                       <div
-                        className="bg-gray-700 h-full transition-all duration-300 ease-out"
+                        className="bg-sage-700 h-full transition-all duration-300 ease-out"
                         style={{ width: `${assessmentProgress}%` }}
                       />
                     </div>
@@ -1011,7 +1011,7 @@ export function CodeDetailPanel({
                 <button
                   onClick={handleAssess}
                   disabled={assessing || agentAssessing}
-                  className="w-full px-4 py-2.5 bg-gray-800 text-white text-sm font-medium rounded hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 bg-sage-700 text-white text-sm font-medium rounded hover:bg-sage-800 focus:outline-none focus:ring-2 focus:ring-sage-500 disabled:bg-sage-400 disabled:cursor-not-allowed"
                 >
                   {assessing
                     ? 'Analyzing...'
@@ -1024,7 +1024,7 @@ export function CodeDetailPanel({
                 <button
                   onClick={startAgentAssessment}
                   disabled={agentAssessing || assessing}
-                  className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 border border-gray-300 text-sm font-medium rounded hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 bg-sage-100 text-sage-700 border border-sage-300 text-sm font-medium rounded hover:bg-sage-200 focus:outline-none focus:ring-2 focus:ring-sage-400 disabled:bg-sage-50 disabled:text-sage-400 disabled:cursor-not-allowed"
                 >
                   {agentAssessing ? 'Agent Analyzing...' : 'Agent Analysis'}
                 </button>
@@ -1037,18 +1037,18 @@ export function CodeDetailPanel({
                     </div>
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {agentReasoning.map((text, i) => (
-                        <div key={i} className="text-xs text-gray-700 bg-white p-2 rounded">
+                        <div key={i} className="text-xs text-ink-700 bg-paper p-2 rounded">
                           {text.length > 200 ? text.substring(0, 200) + '...' : text}
                         </div>
                       ))}
                       {agentToolCalls.map((tc, i) => (
                         <div
                           key={i}
-                          className="text-xs bg-gray-100 p-2 rounded flex items-center gap-2"
+                          className="text-xs bg-sage-100 p-2 rounded flex items-center gap-2"
                         >
                           <span className="text-purple-600 font-mono">{tc.tool}</span>
                           {tc.status === 'running' && (
-                            <span className="animate-pulse text-gray-500">...</span>
+                            <span className="animate-pulse text-sage-500">...</span>
                           )}
                           {tc.status === 'complete' && <span className="text-green-600">done</span>}
                         </div>
@@ -1074,7 +1074,7 @@ export function CodeDetailPanel({
             </div>
 
             {/* Assessment History */}
-            <div className="border-t pt-6">
+            <div className="border-t border-sage-200 pt-6">
               <div className="text-xs font-medium tracking-wide text-ink-500 uppercase mb-3">
                 Assessment History
               </div>
