@@ -197,6 +197,7 @@ export default function AssessmentClient({
   const [isPdfSearchOpen, setIsPdfSearchOpen] = useState(false);
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
   const [existingAgentRun, setExistingAgentRun] = useState<AgentRun | null>(null);
+  const [pipelineOutput, setPipelineOutput] = useState(assessment.pipeline_output);
 
   // Check for running agent on mount
   useEffect(() => {
@@ -630,6 +631,23 @@ export default function AssessmentClient({
       }
     } finally {
       setRefreshingViolations(false);
+    }
+  }, [assessment.id]);
+
+  // Refetch pipeline_output after agent analysis completes
+  const refetchPipelineOutput = useCallback(async () => {
+    try {
+      console.log('[AssessmentClient] Refetching pipeline_output...');
+      const res = await fetch(`/api/assessments/${assessment.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.pipeline_output) {
+          console.log('[AssessmentClient] Got pipeline_output:', Object.keys(data.pipeline_output));
+          setPipelineOutput(data.pipeline_output);
+        }
+      }
+    } catch (err) {
+      console.error('[AssessmentClient] Failed to refetch pipeline_output:', err);
     }
   }, [assessment.id]);
 
@@ -1114,7 +1132,7 @@ export default function AssessmentClient({
               projectId={assessment.project_id}
               projectName={assessment.projects?.name || 'Project'}
               initialVariables={assessment.extracted_variables}
-              pipelineOutput={assessment.pipeline_output}
+              pipelineOutput={pipelineOutput}
               assessmentId={assessment.id}
               onChecksFiltered={refetchChecks}
             />
@@ -1270,6 +1288,7 @@ export default function AssessmentClient({
         onOpenChange={setIsAgentModalOpen}
         existingRun={existingAgentRun}
         onRunStatusChange={setExistingAgentRun}
+        onComplete={refetchPipelineOutput}
       />
     </div>
   );

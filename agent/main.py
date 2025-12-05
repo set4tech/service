@@ -375,10 +375,16 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
             })
 
             # Save pipeline output to assessments table (single source of truth)
-            db.table("assessments").update({
+            logger.info(f"Saving pipeline_output to assessment {assessment_id} ({len(str(pipeline_output))} bytes)")
+            save_result = db.table("assessments").update({
                 "pipeline_output": pipeline_output
             }).eq("id", assessment_id).execute()
-            logger.info(f"Saved pipeline_output to assessment {assessment_id}")
+
+            # Check if save was successful
+            if not save_result.data:
+                logger.error(f"Failed to save pipeline_output: no rows updated for assessment {assessment_id}")
+            else:
+                logger.info(f"Saved pipeline_output to assessment {assessment_id}")
 
             # Update agent run status
             db.table("agent_runs").update({

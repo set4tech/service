@@ -30,9 +30,13 @@ interface ProjectVariables {
 
 interface PipelineOutput {
   metadata?: {
-    project_info?: Record<string, unknown>;
+    assessment_id?: string;
+    summary?: Record<string, unknown>;
     [key: string]: unknown;
   };
+  // project_info is at the top level, not inside metadata
+  project_info?: Record<string, unknown>;
+  pages?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -119,7 +123,10 @@ export function ProjectPanel({
   // Extract suggestions from pipeline output (AI-extracted project info)
   // Field names in project_info match field names in variableChecklist directly
   useEffect(() => {
-    const projectInfo = pipelineOutput?.metadata?.project_info;
+    // project_info is at the top level of pipeline_output, not inside metadata
+    const projectInfo = pipelineOutput?.project_info;
+    console.log('[ProjectPanel] pipelineOutput:', pipelineOutput);
+    console.log('[ProjectPanel] projectInfo:', projectInfo);
     if (!projectInfo || !variableChecklist) {
       setSuggestions([]);
       return;

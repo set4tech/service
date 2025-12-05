@@ -100,6 +100,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   existingRun?: AgentRun | null;
   onRunStatusChange?: (run: AgentRun | null) => void;
+  onComplete?: () => void;
 }
 
 export function AgentAnalysisModal({
@@ -108,6 +109,7 @@ export function AgentAnalysisModal({
   onOpenChange,
   existingRun,
   onRunStatusChange,
+  onComplete,
 }: Props) {
   const [status, setStatus] = useState<'idle' | 'confirming' | 'running' | 'completed' | 'failed'>(
     'confirming'
@@ -163,6 +165,7 @@ export function AgentAnalysisModal({
         if (data.status === 'completed') {
           setStatus('completed');
           onRunStatusChange?.(null); // Clear running state in parent
+          onComplete?.(); // Notify parent to refetch pipeline_output
           clearInterval(pollInterval);
         } else if (data.status === 'failed') {
           setStatus('failed');
