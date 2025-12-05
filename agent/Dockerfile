@@ -5,6 +5,9 @@ WORKDIR /app
 # Copy application code (weights.pt already in base image)
 COPY . .
 
+# Install any new dependencies not in base image
+RUN pip install --no-cache-dir -r requirements.txt
+
 # Expose port (Railway sets $PORT)
 EXPOSE 8000
 
