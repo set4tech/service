@@ -403,14 +403,32 @@ class ChatToolExecutor:
     def _build_keyword_index(self):
         """Build a searchable index of text from all pages."""
         self.text_index = {}
+
+        # Get extracted text from metadata (primary source)
+        extracted_text = self.navigator.metadata.get("extracted_text", {})
+
         for page_num, page_data in self.navigator.pages.items():
             page_text = ""
-            # Get raw text
-            page_text_data = page_data.get("page_text")
-            if page_text_data:
-                page_text = page_text_data.get("raw", "")
 
-            # Also get text from sections
+            # Try to get text from metadata.extracted_text first
+            # Page keys are like "page_001.png", extracted_text keys are like "1"
+            page_number = _parse_page_number(page_num)
+            if page_number is not None:
+                page_num_str = str(page_number)
+                if page_num_str in extracted_text:
+                    text_data = extracted_text[page_num_str]
+                    if isinstance(text_data, dict):
+                        page_text = text_data.get("raw_text", "")
+                    elif isinstance(text_data, str):
+                        page_text = text_data
+
+            # Fallback: Get raw text from page_data (older format)
+            if not page_text:
+                page_text_data = page_data.get("page_text")
+                if page_text_data:
+                    page_text = page_text_data.get("raw", "")
+
+            # Also get text from sections (older format)
             for section in page_data.get("sections", []):
                 if section.get("text"):
                     page_text += " " + section.get("text", "")
@@ -418,6 +436,9 @@ class ChatToolExecutor:
                     page_text += " " + section.get("raw_text", "")
 
             self.text_index[page_num] = page_text.lower()
+
+        logger.info(f"[_build_keyword_index] Built text index for {len(self.text_index)} pages, "
+                    f"{sum(1 for v in self.text_index.values() if v.strip())} with text")
 
     def _build_page_index(self):
         """
