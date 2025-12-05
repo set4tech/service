@@ -532,7 +532,7 @@ CODE SECTIONS TO EVALUATE:
         client = genai.Client(api_key=api_key)
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite-preview-06-17",
+            model="gemini-2.5-flash-lite",
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
