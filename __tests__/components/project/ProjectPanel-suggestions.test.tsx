@@ -36,11 +36,12 @@ interface Suggestion {
 }
 
 // Helper to extract suggestions from pipeline output (mirrors simplified ProjectPanel logic)
+// Note: project_info is at top level of pipelineOutput, not inside metadata
 function extractSuggestions(
-  pipelineOutput: { metadata?: { project_info?: Record<string, unknown> } },
+  pipelineOutput: { project_info?: Record<string, unknown> },
   checklist: typeof VARIABLE_CHECKLIST
 ): Suggestion[] {
-  const projectInfo = pipelineOutput?.metadata?.project_info;
+  const projectInfo = pipelineOutput?.project_info;
   if (!projectInfo) return [];
 
   const suggestions: Suggestion[] = [];
@@ -67,10 +68,8 @@ describe('ProjectPanel Suggestion Extraction', () => {
     it('should match address field directly', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              address: '123 Main St, San Francisco, CA 94102',
-            },
+          project_info: {
+            address: '123 Main St, San Francisco, CA 94102',
           },
         },
         VARIABLE_CHECKLIST
@@ -87,10 +86,8 @@ describe('ProjectPanel Suggestion Extraction', () => {
     it('should match building_area field directly', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              building_area: 5000,
-            },
+          project_info: {
+            building_area: 5000,
           },
         },
         VARIABLE_CHECKLIST
@@ -107,10 +104,8 @@ describe('ProjectPanel Suggestion Extraction', () => {
     it('should match num_stories field directly', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              num_stories: 3,
-            },
+          project_info: {
+            num_stories: 3,
           },
         },
         VARIABLE_CHECKLIST
@@ -127,10 +122,8 @@ describe('ProjectPanel Suggestion Extraction', () => {
     it('should match occupancy_classification directly without transformation', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              occupancy_classification: 'B',
-            },
+          project_info: {
+            occupancy_classification: 'B',
           },
         },
         VARIABLE_CHECKLIST
@@ -147,10 +140,8 @@ describe('ProjectPanel Suggestion Extraction', () => {
     it('should match work_type directly without transformation', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              work_type: 'Tenant Improvement',
-            },
+          project_info: {
+            work_type: 'Tenant Improvement',
           },
         },
         VARIABLE_CHECKLIST
@@ -169,16 +160,14 @@ describe('ProjectPanel Suggestion Extraction', () => {
     it('should extract multiple suggestions from complete project info', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              project_name: 'Test Building',
-              address: '456 Oak Ave, Oakland, CA',
-              building_area: 12000,
-              num_stories: 4,
-              occupancy_classification: 'B',
-              construction_type: 'Type V-B',
-              confidence: 'high', // Should be ignored
-            },
+          project_info: {
+            project_name: 'Test Building',
+            address: '456 Oak Ave, Oakland, CA',
+            building_area: 12000,
+            num_stories: 4,
+            occupancy_classification: 'B',
+            construction_type: 'Type V-B',
+            confidence: 'high', // Should be ignored
           },
         },
         VARIABLE_CHECKLIST
@@ -208,23 +197,21 @@ describe('ProjectPanel Suggestion Extraction', () => {
 
   describe('Edge Cases', () => {
     it('should return empty array for null pipeline output', () => {
-      const result = extractSuggestions({ metadata: undefined }, VARIABLE_CHECKLIST);
+      const result = extractSuggestions({}, VARIABLE_CHECKLIST);
       expect(result).toEqual([]);
     });
 
     it('should return empty array for empty project info', () => {
-      const result = extractSuggestions({ metadata: { project_info: {} } }, VARIABLE_CHECKLIST);
+      const result = extractSuggestions({ project_info: {} }, VARIABLE_CHECKLIST);
       expect(result).toEqual([]);
     });
 
     it('should skip null values', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              address: null,
-              building_area: 5000,
-            },
+          project_info: {
+            address: null,
+            building_area: 5000,
           },
         },
         VARIABLE_CHECKLIST
@@ -237,13 +224,11 @@ describe('ProjectPanel Suggestion Extraction', () => {
     it('should skip metadata fields like confidence and source_pages', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              confidence: 'high',
-              source_pages: ['page_001.png'],
-              is_cover_sheet: true,
-              building_area: 5000,
-            },
+          project_info: {
+            confidence: 'high',
+            source_pages: ['page_001.png'],
+            is_cover_sheet: true,
+            building_area: 5000,
           },
         },
         VARIABLE_CHECKLIST
@@ -256,11 +241,9 @@ describe('ProjectPanel Suggestion Extraction', () => {
     it('should skip fields not in checklist', () => {
       const result = extractSuggestions(
         {
-          metadata: {
-            project_info: {
-              unknown_field: 'some value',
-              revision: 'A', // Not in our mock checklist
-            },
+          project_info: {
+            unknown_field: 'some value',
+            revision: 'A', // Not in our mock checklist
           },
         },
         VARIABLE_CHECKLIST
