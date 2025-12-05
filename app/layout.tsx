@@ -17,8 +17,8 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'set:4',
-    template: 'set:4 | %s',
+    default: 'set4',
+    template: 'set4 | %s',
   },
   description: 'End-to-end accessibility code review service',
 };
