@@ -505,18 +505,27 @@ def evaluate_check_batch(checks: list[dict], project_params: dict) -> list[dict]
         check_lines.append(f"{i}. [{c['id']}] {c['code_section_number']} - {c['code_section_title']}")
     check_str = "\n".join(check_lines)
 
-    prompt = f"""You evaluate building code sections for applicability to a specific project.
+    prompt = f"""You evaluate California Building Code sections for applicability to a specific project.
 
 PROJECT PARAMETERS:
 {param_str}
 
-Evaluate each code section below. Mark "exclude": true if the section should be EXCLUDED because:
-- It references building elements NOT present in this project (e.g., parking requirements when the project has no parking)
-- It applies to different building/occupancy types than this project
-- It requires conditions not met by this project (e.g., elevator sections when there's no elevator)
-- It's for work types not applicable (e.g., alteration-only sections for new construction)
+Your task: Mark "exclude": true for sections that CLEARLY do not apply to this project.
 
-Be conservative - if uncertain, do NOT exclude (exclude: false).
+EXCLUDE sections about:
+- Different occupancy types (e.g., R-1/R-2 dwelling units for a Group E school, I-2 hospitals, A-1 assembly)
+- Building elements not mentioned in scope (e.g., swimming pools, saunas, platform lifts if not in description)
+- Building types that don't match (e.g., high-rise sections for low-rise, detention facilities, covered mall)
+- Different work types (e.g., "alterations only" sections for new construction)
+- Specific facilities not present (e.g., jury boxes, holding cells, courtrooms, passenger loading zones)
+
+KEEP sections about:
+- General requirements that apply to most buildings (doors, paths, signage, restrooms)
+- Requirements that COULD apply based on the building type and scope
+- Sections where you're genuinely uncertain
+
+Be aggressive in excluding clearly inapplicable sections. A school doesn't need dwelling unit sections.
+An office doesn't need swimming pool sections. Filter out the noise.
 
 CODE SECTIONS TO EVALUATE:
 {check_str}"""
