@@ -86,7 +86,7 @@ PROJECT_INFO_PAGES_TO_SCAN = _env_int("PROJECT_INFO_PAGES_TO_SCAN", 3)  # First 
 # =============================================================================
 
 LLM_PROVIDER = _env_str("LLM_PROVIDER", "gemini")  # gemini, openai, anthropic
-LLM_MODEL = _env_str("LLM_MODEL", "gemini-2.0-flash")
+LLM_MODEL = _env_str("LLM_MODEL", "gemini-2.5-flash-lite")
 LLM_MAX_TOKENS = _env_int("LLM_MAX_TOKENS", 8000)
 LLM_MAX_TOKENS_TEXT = _env_int("LLM_MAX_TOKENS_TEXT", 4000)  # For text-only calls
 
