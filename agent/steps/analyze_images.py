@@ -12,6 +12,10 @@ from pathlib import Path
 import fitz  # pymupdf
 from PIL import Image
 
+# Suppress MuPDF warnings about malformed PDFs (object out of range, etc.)
+# These are recoverable errors that don't affect rendering
+fitz.TOOLS.mupdf_warnings(False)
+
 from pipeline import PipelineStep, PipelineContext
 from llm import call_vlm
 from prompts import IMAGE_ANALYSIS_PROMPT

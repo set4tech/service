@@ -202,6 +202,10 @@ def pdf_to_images(pdf_path: Path, output_dir: Path, dpi: int = None) -> list[Pat
     """Convert PDF pages to PNG images using per-page conversion for better performance."""
     import fitz  # pymupdf - much faster than pdf2image/poppler
 
+    # Suppress MuPDF warnings about malformed PDFs (object out of range, etc.)
+    # These are recoverable errors that don't affect rendering
+    fitz.TOOLS.mupdf_warnings(False)
+
     dpi = dpi or config.PDF_DPI
     logger.info(f"Converting PDF to images (dpi={dpi}) using pymupdf...")
     output_dir.mkdir(parents=True, exist_ok=True)
