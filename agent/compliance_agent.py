@@ -78,6 +78,9 @@ Element Data:
 Lookups:
 - lookup_cbc_table: Look up CBC table values (parking, accessible routes)
 
+Violation Marking:
+- mark_violation_areas: Locate violations in screenshots using a 3x3 grid (cells A1-C3). Call this AFTER identifying violations to get grid locations for visual highlighting.
+
 ## Output Format
 
 Your final response MUST be valid JSON in this format:
@@ -91,7 +94,9 @@ Your final response MUST be valid JSON in this format:
     {
       "description": "What the violation is",
       "severity": "critical|major|minor",
-      "location_in_evidence": "Where in the drawings/schedules this was found"
+      "location_in_evidence": "Where in the drawings/schedules this was found",
+      "grid_cells": ["B2", "C2"],
+      "grid_explanation": "The 42.02 inch dimension is shown in cell B2 near door D-13"
     }
   ],
   "compliant_aspects": ["Aspect 1 that complies", "Aspect 2 that complies"],
@@ -99,6 +104,8 @@ Your final response MUST be valid JSON in this format:
   "additional_evidence_needed": ["What additional info would help", "Missing data"]
 }
 ```
+
+Note: For violations found in screenshots, use `mark_violation_areas` to get grid cell locations (A1-C3), then include them in your violation output. Grid cells help users quickly locate the issue in the drawing.
 
 ## Guidelines
 
@@ -129,6 +136,7 @@ class ComplianceAgent:
         images_dir: Optional[Path] = None,
         model: str = "claude-opus-4-5-20251101",
         max_iterations: int = 15,
+        screenshot_urls: Optional[list[str]] = None,
     ):
         """
         Initialize the compliance agent.
@@ -138,15 +146,19 @@ class ComplianceAgent:
             images_dir: Path to directory containing page images
             model: Claude model to use
             max_iterations: Maximum agentic loop iterations
+            screenshot_urls: List of presigned URLs for evidence screenshots
         """
         self.client = Anthropic()
         self.navigator = DocumentNavigator(unified_json)
-        self.tool_executor = ComplianceToolExecutor(self.navigator, images_dir)
+        self.screenshot_urls = screenshot_urls or []
+        self.tool_executor = ComplianceToolExecutor(
+            self.navigator, images_dir, screenshot_urls=self.screenshot_urls
+        )
         self.model = model
         self.max_iterations = max_iterations
         self.reasoning_trace = []
 
-        logger.info(f"[ComplianceAgent] Initialized with model={model}, max_iterations={max_iterations}")
+        logger.info(f"[ComplianceAgent] Initialized with model={model}, max_iterations={max_iterations}, screenshots={len(self.screenshot_urls)}")
 
     def _build_user_message(
         self,

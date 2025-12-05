@@ -198,12 +198,14 @@ class UnifyAndUpload(PipelineStep):
         }
 
         # Add OCR text if available
-        page_ocr = bbox_ocr.get(page_num, bbox_ocr.get(filename, {}))
-        if isinstance(page_ocr, dict):
-            # Find matching bbox OCR (using some tolerance)
-            for bbox_key, ocr_text in page_ocr.items():
-                if self._bboxes_match(detection.get("bbox"), bbox_key):
-                    section["ocr_text"] = ocr_text
+        # bbox_ocr is {page_name: [list of {bbox, text, ocr_confidence, ...}]}
+        page_ocr = bbox_ocr.get(page_num, bbox_ocr.get(filename, []))
+        if isinstance(page_ocr, list):
+            # Find matching bbox OCR result
+            for ocr_result in page_ocr:
+                if self._bboxes_match(detection.get("bbox"), ocr_result.get("bbox")):
+                    section["ocr_text"] = ocr_result.get("text", "")
+                    section["ocr_confidence"] = ocr_result.get("ocr_confidence")
                     break
 
         # Add table data if this is a table

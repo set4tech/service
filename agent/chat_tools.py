@@ -428,12 +428,15 @@ class ChatToolExecutor:
                 if page_text_data:
                     page_text = page_text_data.get("raw", "")
 
-            # Also get text from sections (older format)
+            # Also get text from sections (older format and OCR text)
             for section in page_data.get("sections", []):
                 if section.get("text"):
                     page_text += " " + section.get("text", "")
                 if section.get("raw_text"):
                     page_text += " " + section.get("raw_text", "")
+                # Include OCR text from bounding box regions
+                if section.get("ocr_text"):
+                    page_text += " " + section.get("ocr_text", "")
 
             self.text_index[page_num] = page_text.lower()
 

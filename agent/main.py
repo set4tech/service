@@ -848,6 +848,7 @@ async def assess_check(request: AssessCheckRequest):
         images_dir=images_dir,
         model="claude-sonnet-4-20250514",
         max_iterations=15,
+        screenshot_urls=request.screenshots or [],
     )
 
     async def generate():
