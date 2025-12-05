@@ -28,10 +28,81 @@ interface ProjectVariables {
   };
 }
 
+interface PipelineOutput {
+  metadata?: {
+    project_info?: {
+      project_name?: string;
+      address?: string;
+      building_area?: number | string;
+      num_stories?: number | string;
+      occupancy_classification?: string;
+      construction_type?: string;
+      confidence?: string;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+// Mapping from agent's project_info fields to form fields
+// Format: { agent_field: { category, variable, transform? } }
+const FIELD_MAPPING: Record<
+  string,
+  {
+    category: string;
+    variable: string;
+    transform?: (value: unknown) => unknown;
+  }
+> = {
+  address: { category: 'project_identity', variable: 'full_address' },
+  building_area: {
+    category: 'building_characteristics',
+    variable: 'building_size_sf',
+    transform: v => (typeof v === 'string' ? parseInt(v.replace(/,/g, ''), 10) || null : v),
+  },
+  num_stories: {
+    category: 'building_characteristics',
+    variable: 'number_of_stories',
+    transform: v => (typeof v === 'string' ? parseInt(v, 10) || null : v),
+  },
+  occupancy_classification: {
+    category: 'building_characteristics',
+    variable: 'occupancy_classification',
+    transform: v => {
+      // Transform "B" → "B - Business", "R-2" → "R - Residential", etc.
+      if (typeof v !== 'string') return v;
+      const letter = v.charAt(0).toUpperCase();
+      const occupancyMap: Record<string, string> = {
+        A: 'A - Assembly',
+        B: 'B - Business',
+        E: 'E - Educational',
+        F: 'F - Factory',
+        H: 'H - High Hazard',
+        I: 'I - Institutional',
+        M: 'M - Mercantile',
+        R: 'R - Residential',
+        S: 'S - Storage',
+        U: 'U - Utility',
+      };
+      return occupancyMap[letter] || v;
+    },
+  },
+};
+
+interface Suggestion {
+  category: string;
+  variable: string;
+  value: unknown;
+  rawValue: unknown; // Original value from agent
+  confidence?: string;
+}
+
 interface ProjectPanelProps {
   projectId: string;
   projectName: string;
   initialVariables?: ProjectVariables | null;
+  pipelineOutput?: PipelineOutput | null;
   assessmentId?: string;
   onChecksFiltered?: () => void;
 }
@@ -40,6 +111,7 @@ export function ProjectPanel({
   projectId,
   projectName,
   initialVariables,
+  pipelineOutput,
   assessmentId,
   onChecksFiltered,
 }: ProjectPanelProps) {
@@ -47,6 +119,7 @@ export function ProjectPanel({
   const [projectVariables, setProjectVariables] = useState<Record<string, Record<string, unknown>>>(
     {}
   );
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -93,6 +166,40 @@ export function ProjectPanel({
       setProjectVariables(normalized);
     }
   }, [initialVariables]);
+
+  // Extract suggestions from pipeline output (AI-extracted project info)
+  useEffect(() => {
+    const projectInfo = pipelineOutput?.metadata?.project_info;
+    if (!projectInfo) {
+      setSuggestions([]);
+      return;
+    }
+
+    const newSuggestions: Suggestion[] = [];
+    const confidence = projectInfo.confidence as string | undefined;
+
+    for (const [agentField, rawValue] of Object.entries(projectInfo)) {
+      if (rawValue === null || rawValue === undefined || agentField === 'confidence') continue;
+
+      const mapping = FIELD_MAPPING[agentField];
+      if (!mapping) continue;
+
+      // Transform value if needed
+      const value = mapping.transform ? mapping.transform(rawValue) : rawValue;
+      if (value === null || value === undefined) continue;
+
+      newSuggestions.push({
+        category: mapping.category,
+        variable: mapping.variable,
+        value,
+        rawValue,
+        confidence,
+      });
+    }
+
+    setSuggestions(newSuggestions);
+    console.log('[ProjectPanel] Extracted suggestions from pipeline:', newSuggestions);
+  }, [pipelineOutput]);
 
   // Google Maps autocomplete
   useEffect(() => {
@@ -157,6 +264,65 @@ export function ProjectPanel({
       saveVariables();
     }, 1500);
   }, []);
+
+  // Get suggestion for a specific field (only if current value is empty)
+  const getSuggestion = useCallback(
+    (category: string, variable: string): Suggestion | undefined => {
+      const currentValue = projectVariables[category]?.[variable];
+      // Only show suggestion if field is empty
+      if (currentValue !== null && currentValue !== undefined && currentValue !== '') {
+        return undefined;
+      }
+      return suggestions.find(s => s.category === category && s.variable === variable);
+    },
+    [suggestions, projectVariables]
+  );
+
+  // Apply a single suggestion
+  const applySuggestion = useCallback(
+    (suggestion: Suggestion) => {
+      updateVariable(suggestion.category, suggestion.variable, suggestion.value);
+    },
+    [updateVariable]
+  );
+
+  // Apply all pending suggestions
+  const applyAllSuggestions = useCallback(() => {
+    const pending = suggestions.filter(s => {
+      const currentValue = projectVariables[s.category]?.[s.variable];
+      return currentValue === null || currentValue === undefined || currentValue === '';
+    });
+
+    if (pending.length === 0) return;
+
+    setProjectVariables(prev => {
+      const updated = { ...prev };
+      for (const s of pending) {
+        if (!updated[s.category]) {
+          updated[s.category] = {};
+        }
+        updated[s.category] = {
+          ...updated[s.category],
+          [s.variable]: s.value,
+        };
+      }
+      return updated;
+    });
+
+    // Trigger save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      saveVariables();
+    }, 500);
+  }, [suggestions, projectVariables]);
+
+  // Count pending suggestions
+  const pendingSuggestions = suggestions.filter(s => {
+    const currentValue = projectVariables[s.category]?.[s.variable];
+    return currentValue === null || currentValue === undefined || currentValue === '';
+  });
 
   const toggleCategory = useCallback((category: string) => {
     setExpandedCategories(prev => {
@@ -366,6 +532,37 @@ export function ProjectPanel({
           <p className="text-sm text-gray-500 mt-1">
             Project variables used for compliance analysis
           </p>
+
+          {/* AI Suggestions Banner */}
+          {pendingSuggestions.length > 0 && (
+            <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg
+                  className="w-4 h-4 text-blue-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span className="text-sm text-blue-800">
+                  {pendingSuggestions.length} AI-extracted value
+                  {pendingSuggestions.length === 1 ? '' : 's'} from drawings
+                </span>
+              </div>
+              <button
+                onClick={applyAllSuggestions}
+                className="px-2 py-1 text-xs font-medium text-blue-700 hover:text-blue-900 hover:bg-blue-100 rounded"
+              >
+                Apply All
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -380,6 +577,7 @@ export function ProjectPanel({
                 const label = formatLabel(varName);
                 const isAddressField =
                   category === 'project_identity' && varName === 'full_address';
+                const suggestion = getSuggestion(category, varName);
 
                 const config: DynamicFieldConfig = {
                   type: varInfo.type || 'text',
@@ -395,15 +593,40 @@ export function ProjectPanel({
                 };
 
                 return (
-                  <DynamicField
-                    key={varName}
-                    config={config}
-                    value={projectVariables[category]?.[varName]}
-                    onChange={newValue => updateVariable(category, varName, newValue)}
-                    onToggleOption={option => toggleMultiselect(category, varName, option)}
-                    inputRef={isAddressField ? addressInputRef : undefined}
-                    name={`${category}_${varName}`}
-                  />
+                  <div key={varName} className="relative">
+                    <DynamicField
+                      config={config}
+                      value={projectVariables[category]?.[varName]}
+                      onChange={newValue => updateVariable(category, varName, newValue)}
+                      onToggleOption={option => toggleMultiselect(category, varName, option)}
+                      inputRef={isAddressField ? addressInputRef : undefined}
+                      name={`${category}_${varName}`}
+                    />
+                    {/* AI Suggestion Indicator */}
+                    {suggestion && (
+                      <button
+                        type="button"
+                        onClick={() => applySuggestion(suggestion)}
+                        className="absolute right-0 top-0 mt-0.5 flex items-center gap-1 px-2 py-1 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors"
+                        title={`AI suggestion: ${String(suggestion.value)}`}
+                      >
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                        <span className="max-w-[120px] truncate">{String(suggestion.value)}</span>
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </Accordion>

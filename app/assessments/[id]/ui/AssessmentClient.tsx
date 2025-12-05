@@ -84,11 +84,20 @@ interface ExtractedVariables {
   };
 }
 
+interface PipelineOutput {
+  metadata?: {
+    project_info?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 interface AssessmentData {
   id: string;
   project_id: string;
   pdf_url?: string | null;
   extracted_variables?: ExtractedVariables | null;
+  pipeline_output?: PipelineOutput | null;
   projects?: {
     name?: string;
     [key: string]: unknown;
@@ -1105,6 +1114,7 @@ export default function AssessmentClient({
               projectId={assessment.project_id}
               projectName={assessment.projects?.name || 'Project'}
               initialVariables={assessment.extracted_variables}
+              pipelineOutput={assessment.pipeline_output}
               assessmentId={assessment.id}
               onChecksFiltered={refetchChecks}
             />

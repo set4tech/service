@@ -167,12 +167,8 @@ class TestBuildUnifiedDocument:
 class TestProcess:
     """Tests for the process method."""
 
-    @patch("steps.unify_and_upload.get_s3")
-    def test_uploads_unified_json_to_s3(self, mock_get_s3):
-        """Should upload unified JSON to S3."""
-        mock_s3 = Mock()
-        mock_get_s3.return_value = mock_s3
-
+    def test_stores_unified_in_metadata_no_images(self):
+        """Should store unified document in metadata even without images."""
         step = UnifyAndUpload()
 
         ctx = PipelineContext(
@@ -184,14 +180,9 @@ class TestProcess:
 
         result = step.process(ctx)
 
-        # Verify S3 upload was called
-        mock_s3.put_object.assert_called_once()
-        call_args = mock_s3.put_object.call_args
-        assert call_args.kwargs["Key"] == "preprocessed/test-123/unified_document_data.json"
-        assert call_args.kwargs["ContentType"] == "application/json"
-
-        # Verify unified_json_s3_key is set
-        assert result.metadata["unified_json_s3_key"] == "preprocessed/test-123/unified_document_data.json"
+        # Verify unified_document is set in metadata (for caller to save to DB)
+        assert "unified_document" in result.metadata
+        assert "pages" in result.metadata["unified_document"]
 
     @patch("steps.unify_and_upload.get_s3")
     def test_uploads_images_to_s3(self, mock_get_s3):
@@ -216,12 +207,14 @@ class TestProcess:
 
             step.process(ctx)
 
-            # Verify images were uploaded
+            # Verify images were uploaded (but NOT the unified JSON)
             assert mock_s3.upload_file.call_count == 2
+            # Verify put_object was NOT called (no JSON upload to S3)
+            mock_s3.put_object.assert_not_called()
 
     @patch("steps.unify_and_upload.get_s3")
     def test_stores_unified_in_metadata(self, mock_get_s3):
-        """Should store unified document in metadata."""
+        """Should store unified document in metadata for DB storage."""
         mock_s3 = Mock()
         mock_get_s3.return_value = mock_s3
 
@@ -231,10 +224,22 @@ class TestProcess:
             assessment_id="test-123",
             agent_run_id="run-456",
             data={"page_001.png": []},
-            metadata={}
+            metadata={
+                "project_info": {
+                    "project_name": "Test Project",
+                    "building_area": 5000,
+                    "occupancy_classification": "B"
+                }
+            }
         )
 
         result = step.process(ctx)
 
+        # Unified document should be in metadata (for caller to save to DB)
         assert "unified_document" in result.metadata
         assert "pages" in result.metadata["unified_document"]
+        assert "project_info" in result.metadata["unified_document"]
+        assert result.metadata["unified_document"]["project_info"]["project_name"] == "Test Project"
+
+        # No unified_json_s3_key should be set (we no longer upload to S3)
+        assert "unified_json_s3_key" not in result.metadata

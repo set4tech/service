@@ -359,42 +359,24 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
 
             result = await pipeline.run_async(ctx, progress_callback=pipeline_progress)
 
-            # Upload to S3 for chat endpoint
-            total_steps = base_steps + len(pipeline.steps) + 1  # +1 for S3 upload
-            update_progress(agent_run_id, base_steps + len(pipeline.steps), total_steps, "Uploading to S3...")
+            # Save results to DB (images already uploaded by UnifyAndUpload step)
+            total_steps = base_steps + len(pipeline.steps)
+            update_progress(agent_run_id, total_steps, total_steps, "Saving results...")
 
-            s3 = get_s3()
-            bucket = get_bucket_name()
-
-            # Build unified JSON from pipeline results
-            unified_json = {
+            # Get unified document from pipeline (built by UnifyAndUpload step)
+            pipeline_output = result.metadata.get("unified_document", {
                 "assessment_id": assessment_id,
                 "pages": result.data,
                 "metadata": result.metadata,
-            }
+            })
 
-            # Upload unified JSON
-            json_key = _get_unified_json_s3_key(assessment_id)
-            logger.info(f"Uploading unified JSON to s3://{bucket}/{json_key}")
-            s3.put_object(
-                Bucket=bucket,
-                Key=json_key,
-                Body=json.dumps(unified_json, default=str),
-                ContentType='application/json'
-            )
+            # Save pipeline output to assessments table (single source of truth)
+            db.table("assessments").update({
+                "pipeline_output": pipeline_output
+            }).eq("id", assessment_id).execute()
+            logger.info(f"Saved pipeline_output to assessment {assessment_id}")
 
-            # Upload page images
-            images_prefix = _get_images_s3_prefix(assessment_id)
-            for img_path in image_paths:
-                img_key = f"{images_prefix}{img_path.name}"
-                logger.info(f"Uploading {img_path.name} to s3://{bucket}/{img_key}")
-                s3.upload_file(str(img_path), bucket, img_key)
-
-            logger.info(f"Uploaded unified JSON and {len(image_paths)} images to S3")
-
-            # Save results to DB
-            update_progress(agent_run_id, total_steps, total_steps, "Saving results...")
-
+            # Update agent run status
             db.table("agent_runs").update({
                 "status": "completed",
                 "completed_at": datetime.utcnow().isoformat(),
@@ -402,8 +384,6 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
                 "results": {
                     "type": "preprocess",
                     "pages_processed": len(image_paths),
-                    "data": result.data,
-                    "metadata": result.metadata,
                 }
             }).eq("id", agent_run_id).execute()
 
@@ -783,11 +763,6 @@ _document_cache: dict[str, dict] = {}
 _images_cache: dict[str, Path] = {}
 
 
-def _get_unified_json_s3_key(assessment_id: str) -> str:
-    """Get S3 key for unified document JSON."""
-    return f"preprocessed/{assessment_id}/unified_document_data.json"
-
-
 def _get_images_s3_prefix(assessment_id: str) -> str:
     """Get S3 prefix for page images."""
     return f"preprocessed/{assessment_id}/pages/"
@@ -795,36 +770,35 @@ def _get_images_s3_prefix(assessment_id: str) -> str:
 
 def _load_document_data(assessment_id: str) -> tuple[dict, Path]:
     """
-    Load unified JSON and download images for an assessment.
+    Load pipeline output from DB and download images from S3 for an assessment.
 
     Returns:
-        Tuple of (unified_json dict, images_dir Path)
+        Tuple of (pipeline_output dict, images_dir Path)
     """
     # Check cache first
     if assessment_id in _document_cache:
         return _document_cache[assessment_id], _images_cache[assessment_id]
 
-    bucket = get_bucket_name()
-    s3 = get_s3()
+    # Load pipeline_output from database (single source of truth)
+    db = get_supabase()
+    result = db.table("assessments").select("pipeline_output").eq("id", assessment_id).single().execute()
 
-    # Download unified JSON
-    json_key = _get_unified_json_s3_key(assessment_id)
-    logger.info(f"[Chat] Downloading unified JSON from s3://{bucket}/{json_key}")
-
-    try:
-        response = s3.get_object(Bucket=bucket, Key=json_key)
-        unified_json = json.loads(response['Body'].read().decode('utf-8'))
-    except s3.exceptions.NoSuchKey:
+    if not result.data or not result.data.get("pipeline_output"):
         raise HTTPException(
             status_code=404,
-            detail=f"Unified JSON not found for assessment {assessment_id}. Has preprocessing completed?"
+            detail=f"Pipeline output not found for assessment {assessment_id}. Has preprocessing completed?"
         )
+
+    pipeline_output = result.data["pipeline_output"]
+    logger.info(f"[Chat] Loaded pipeline_output from DB for assessment {assessment_id}")
 
     # Create temp directory for images
     images_dir = Path(tempfile.mkdtemp(prefix=f"chat_images_{assessment_id}_"))
     logger.info(f"[Chat] Downloading page images to {images_dir}")
 
-    # Download page images
+    # Download page images from S3
+    bucket = get_bucket_name()
+    s3 = get_s3()
     images_prefix = _get_images_s3_prefix(assessment_id)
     try:
         paginator = s3.get_paginator('list_objects_v2')
@@ -840,10 +814,10 @@ def _load_document_data(assessment_id: str) -> tuple[dict, Path]:
         logger.warning(f"[Chat] Error downloading images: {e}")
 
     # Cache the data
-    _document_cache[assessment_id] = unified_json
+    _document_cache[assessment_id] = pipeline_output
     _images_cache[assessment_id] = images_dir
 
-    return unified_json, images_dir
+    return pipeline_output, images_dir
 
 
 @app.post("/chat")
