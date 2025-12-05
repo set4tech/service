@@ -684,6 +684,52 @@ class AssessCheckRequest(BaseModel):
     screenshots: Optional[list[str]] = None  # List of presigned URLs
 
 
+def fetch_correction_examples(section_number: str, limit: int = 3) -> list[dict]:
+    """
+    Fetch past human corrections for a specific code section.
+
+    Returns list of dicts with:
+    - ai_status: What AI originally assessed
+    - human_status: What human corrected it to
+    - human_note: Human's reasoning for the correction
+    - ai_reasoning: AI's original reasoning (truncated)
+    """
+    try:
+        db = get_supabase()
+
+        # Query analysis_runs joined with checks where manual_override exists
+        result = db.table("analysis_runs").select(
+            "compliance_status, ai_reasoning, "
+            "checks!inner(code_section_number, manual_override, manual_override_note)"
+        ).eq(
+            "checks.code_section_number", section_number
+        ).not_(
+            "checks.manual_override", "is", "null"
+        ).order(
+            "executed_at", desc=True
+        ).limit(limit).execute()
+
+        if not result.data:
+            return []
+
+        examples = []
+        for row in result.data:
+            check = row.get("checks", {})
+            examples.append({
+                "ai_status": row.get("compliance_status"),
+                "human_status": check.get("manual_override"),
+                "human_note": check.get("manual_override_note"),
+                "ai_reasoning": row.get("ai_reasoning", "")[:500],
+            })
+
+        logger.info(f"[AssessCheck] Found {len(examples)} correction examples for section {section_number}")
+        return examples
+
+    except Exception as e:
+        logger.warning(f"[AssessCheck] Failed to fetch correction examples: {e}")
+        return []
+
+
 @app.post("/assess-check")
 async def assess_check(request: AssessCheckRequest):
     """
@@ -701,6 +747,10 @@ async def assess_check(request: AssessCheckRequest):
     logger.info(f"[AssessCheck] Request: check={request.check_id}, assessment={request.assessment_id}")
     logger.info(f"[AssessCheck] Code section: {request.code_section.get('number')} - {request.code_section.get('title')}")
     logger.info(f"[AssessCheck] Screenshots: {len(request.screenshots or [])}")
+
+    # Fetch past correction examples for this code section (few-shot learning)
+    section_number = request.code_section.get("number", "")
+    correction_examples = fetch_correction_examples(section_number) if section_number else []
 
     # Try to load unified JSON for document tools (optional - may not be preprocessed)
     unified_json = None
@@ -732,6 +782,7 @@ async def assess_check(request: AssessCheckRequest):
                 code_section=request.code_section,
                 building_context=request.building_context or {},
                 screenshots=request.screenshots or [],
+                correction_examples=correction_examples,
             ):
                 yield f"data: {json.dumps(chunk, default=str)}\n\n"
         except Exception as e:

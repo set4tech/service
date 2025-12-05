@@ -153,6 +153,7 @@ class ComplianceAgent:
         code_section: dict,
         building_context: dict,
         screenshots: list[str],
+        correction_examples: list[dict] | None = None,
     ) -> list[dict]:
         """
         Build the user message content with code section and screenshots.
@@ -161,6 +162,7 @@ class ComplianceAgent:
             code_section: Dict with number, title, text, requirements, tables
             building_context: Project variables (building type, occupancy, etc.)
             screenshots: List of presigned URLs for screenshot images
+            correction_examples: Optional list of past human corrections for this section
         """
         content = []
 
@@ -199,6 +201,21 @@ class ComplianceAgent:
                     formatted_key = key.replace('_', ' ').title()
                     text_parts.append(f"- **{formatted_key}**: {value}\n")
             text_parts.append("\n")
+
+        # Add correction examples if available (few-shot learning)
+        if correction_examples:
+            text_parts.append("## Past Human Corrections for This Section\n")
+            text_parts.append("These are cases where a human reviewer corrected the AI's assessment for this same code section. ")
+            text_parts.append("Learn from these corrections to avoid similar mistakes.\n\n")
+            for i, ex in enumerate(correction_examples, 1):
+                text_parts.append(f"### Correction {i}\n")
+                text_parts.append(f"- **AI assessed**: {ex.get('ai_status', 'unknown')}\n")
+                text_parts.append(f"- **Human corrected to**: {ex.get('human_status', 'unknown')}\n")
+                if ex.get('human_note'):
+                    text_parts.append(f"- **Human's reasoning**: {ex.get('human_note')}\n")
+                if ex.get('ai_reasoning'):
+                    text_parts.append(f"- **AI's original reasoning**: {ex.get('ai_reasoning')[:300]}...\n")
+                text_parts.append("\n")
 
         text_parts.append("## Task\n")
         text_parts.append("Assess whether the building shown in the evidence complies with this code section. ")
@@ -260,6 +277,7 @@ class ComplianceAgent:
         code_section: dict,
         building_context: dict,
         screenshots: list[str],
+        correction_examples: list[dict] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Stream compliance assessment for a single check.
@@ -268,13 +286,16 @@ class ComplianceAgent:
             code_section: Dict with number, title, text, requirements, tables
             building_context: Project variables (building type, occupancy, etc.)
             screenshots: List of presigned URLs for screenshot images
+            correction_examples: Optional list of past human corrections for this section
 
         Yields:
             SSE chunks with types: thinking, tool_use, tool_result, done, error
         """
         self.reasoning_trace = []
 
-        user_content = self._build_user_message(code_section, building_context, screenshots)
+        user_content = self._build_user_message(
+            code_section, building_context, screenshots, correction_examples
+        )
         messages = [{"role": "user", "content": user_content}]
 
         section_number = code_section.get("number", "unknown")
