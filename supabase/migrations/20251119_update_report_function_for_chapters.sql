@@ -22,7 +22,7 @@ RETURNS TABLE (
   instance_label TEXT,
   element_group_name TEXT,
   element_group_id UUID,
-  compliance_status TEXT,
+  compli  ance_status TEXT,
   ai_reasoning TEXT,
   confidence TEXT,
   raw_ai_response TEXT,
@@ -43,7 +43,7 @@ WITH latest_analysis AS (
     SELECT DISTINCT ON (check_id)
     id,
     check_id,
-    run_number,
+    run_number,the 
     compliance_status,
     confidence,
     ai_provider,

@@ -9,6 +9,14 @@ interface ToolCall {
   result?: Record<string, unknown>;
 }
 
+interface ViolationBoundingBox {
+  x: number; // Left edge (0-1)
+  y: number; // Top edge (0-1)
+  width: number; // Width (0-1)
+  height: number; // Height (0-1)
+  label?: string;
+}
+
 interface AgentResult {
   compliance_status: string;
   confidence: string;
@@ -17,6 +25,7 @@ interface AgentResult {
     description: string;
     severity: string;
     location_in_evidence?: string;
+    bounding_boxes?: ViolationBoundingBox[];
   }>;
   recommendations?: string[];
   reasoning_trace?: Array<{

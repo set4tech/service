@@ -202,6 +202,10 @@ def pdf_to_images(pdf_path: Path, output_dir: Path, dpi: int = None) -> list[Pat
     """Convert PDF pages to PNG images using per-page conversion for better performance."""
     import fitz  # pymupdf - much faster than pdf2image/poppler
 
+    # Suppress MuPDF warnings about malformed PDFs (object out of range, etc.)
+    # These are recoverable errors that don't affect rendering
+    fitz.TOOLS.mupdf_warnings(False)
+
     dpi = dpi or config.PDF_DPI
     logger.info(f"Converting PDF to images (dpi={dpi}) using pymupdf...")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -359,42 +363,30 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
 
             result = await pipeline.run_async(ctx, progress_callback=pipeline_progress)
 
-            # Upload to S3 for chat endpoint
-            total_steps = base_steps + len(pipeline.steps) + 1  # +1 for S3 upload
-            update_progress(agent_run_id, base_steps + len(pipeline.steps), total_steps, "Uploading to S3...")
+            # Save results to DB (images already uploaded by UnifyAndUpload step)
+            total_steps = base_steps + len(pipeline.steps)
+            update_progress(agent_run_id, total_steps, total_steps, "Saving results...")
 
-            s3 = get_s3()
-            bucket = get_bucket_name()
-
-            # Build unified JSON from pipeline results
-            unified_json = {
+            # Get unified document from pipeline (built by UnifyAndUpload step)
+            pipeline_output = result.metadata.get("unified_document", {
                 "assessment_id": assessment_id,
                 "pages": result.data,
                 "metadata": result.metadata,
-            }
+            })
 
-            # Upload unified JSON
-            json_key = _get_unified_json_s3_key(assessment_id)
-            logger.info(f"Uploading unified JSON to s3://{bucket}/{json_key}")
-            s3.put_object(
-                Bucket=bucket,
-                Key=json_key,
-                Body=json.dumps(unified_json, default=str),
-                ContentType='application/json'
-            )
+            # Save pipeline output to assessments table (single source of truth)
+            logger.info(f"Saving pipeline_output to assessment {assessment_id} ({len(str(pipeline_output))} bytes)")
+            save_result = db.table("assessments").update({
+                "pipeline_output": pipeline_output
+            }).eq("id", assessment_id).execute()
 
-            # Upload page images
-            images_prefix = _get_images_s3_prefix(assessment_id)
-            for img_path in image_paths:
-                img_key = f"{images_prefix}{img_path.name}"
-                logger.info(f"Uploading {img_path.name} to s3://{bucket}/{img_key}")
-                s3.upload_file(str(img_path), bucket, img_key)
+            # Check if save was successful
+            if not save_result.data:
+                logger.error(f"Failed to save pipeline_output: no rows updated for assessment {assessment_id}")
+            else:
+                logger.info(f"Saved pipeline_output to assessment {assessment_id}")
 
-            logger.info(f"Uploaded unified JSON and {len(image_paths)} images to S3")
-
-            # Save results to DB
-            update_progress(agent_run_id, total_steps, total_steps, "Saving results...")
-
+            # Update agent run status
             db.table("agent_runs").update({
                 "status": "completed",
                 "completed_at": datetime.utcnow().isoformat(),
@@ -402,8 +394,6 @@ async def run_preprocess(assessment_id: str, agent_run_id: str, pdf_s3_key: str)
                 "results": {
                     "type": "preprocess",
                     "pages_processed": len(image_paths),
-                    "data": result.data,
-                    "metadata": result.metadata,
                 }
             }).eq("id", agent_run_id).execute()
 
@@ -488,8 +478,17 @@ def flatten_variables(variables: dict) -> dict:
 
 
 def evaluate_check_batch(checks: list[dict], project_params: dict) -> list[dict]:
-    """Call GPT-4o-mini to evaluate which checks should be excluded."""
-    client = get_openai()
+    """Call Gemini Flash to evaluate which checks should be excluded."""
+    from google import genai
+    from pydantic import BaseModel
+
+    # Define Pydantic model for structured output
+    class CheckEvaluation(BaseModel):
+        id: str
+        exclude: bool
+
+    class EvaluationResponse(BaseModel):
+        evaluations: list[CheckEvaluation]
 
     # Format project parameters for the prompt
     param_lines = []
@@ -506,47 +505,53 @@ def evaluate_check_batch(checks: list[dict], project_params: dict) -> list[dict]
         check_lines.append(f"{i}. [{c['id']}] {c['code_section_number']} - {c['code_section_title']}")
     check_str = "\n".join(check_lines)
 
-    prompt = f"""You evaluate building code sections for applicability to a specific project.
+    prompt = f"""You evaluate California Building Code sections for applicability to a specific project.
 
 PROJECT PARAMETERS:
 {param_str}
 
-Evaluate each code section below. Mark "exclude": true if the section should be EXCLUDED because:
-- It references building elements NOT present in this project (e.g., parking requirements when the project has no parking)
-- It applies to different building/occupancy types than this project
-- It requires conditions not met by this project (e.g., elevator sections when there's no elevator)
-- It's for work types not applicable (e.g., alteration-only sections for new construction)
+Your task: Mark "exclude": true for sections that CLEARLY do not apply to this project.
 
-Be conservative - if uncertain, do NOT exclude (exclude: false).
+EXCLUDE sections about:
+- Different occupancy types (e.g., R-1/R-2 dwelling units for a Group E school, I-2 hospitals, A-1 assembly)
+- Building elements not mentioned in scope (e.g., swimming pools, saunas, platform lifts if not in description)
+- Building types that don't match (e.g., high-rise sections for low-rise, detention facilities, covered mall)
+- Different work types (e.g., "alterations only" sections for new construction)
+- Specific facilities not present (e.g., jury boxes, holding cells, courtrooms, passenger loading zones)
+
+KEEP sections about:
+- General requirements that apply to most buildings (doors, paths, signage, restrooms)
+- Requirements that COULD apply based on the building type and scope
+- Sections where you're genuinely uncertain
+
+Be aggressive in excluding clearly inapplicable sections. A school doesn't need dwelling unit sections.
+An office doesn't need swimming pool sections. Filter out the noise.
 
 CODE SECTIONS TO EVALUATE:
-{check_str}
-
-Respond ONLY with valid JSON array:
-[{{"id":"<check_id>","exclude":true/false}},...]"""
+{check_str}"""
 
     logger.info(f"[filter] Evaluating batch of {len(checks)} checks")
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            max_tokens=2000,
-            temperature=0.1,
+        # Use native Gemini SDK with structured outputs
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY required")
+
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": EvaluationResponse,
+            },
         )
 
-        raw = response.choices[0].message.content or "[]"
-
-        # Parse the response - handle both array and object with "results" key
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict) and "results" in parsed:
-            parsed = parsed["results"]
-        if not isinstance(parsed, list):
-            logger.error(f"[filter] Unexpected response format: {raw}")
-            return [{"id": c["id"], "exclude": False} for c in checks]
-
-        return parsed
+        # Parse the structured response
+        parsed = json.loads(response.text)
+        return parsed.get("evaluations", [])
 
     except Exception as e:
         logger.error(f"[filter] Failed to evaluate batch: {e}")
@@ -554,7 +559,7 @@ Respond ONLY with valid JSON array:
 
 
 async def run_filter_checks(assessment_id: str, reset: bool):
-    """Background task: Filter checks using GPT-4o-mini."""
+    """Background task: Filter checks using Gemini 2.5 Flash-Lite."""
     db = get_supabase()
 
     try:
@@ -704,6 +709,111 @@ class AssessCheckRequest(BaseModel):
     screenshots: Optional[list[str]] = None  # List of presigned URLs
 
 
+def fetch_correction_examples(section_number: str, limit: int = 3) -> list[dict]:
+    """
+    Fetch past human corrections for a code section with fallback to related sections.
+
+    Priority order:
+    1. Exact section match (e.g., 11B-404.2.6)
+    2. Parent section (e.g., 11B-404.2%)
+    3. Chapter (e.g., 11B-404%)
+    4. Major chapter (e.g., 11B-%)
+
+    Returns list of dicts with:
+    - ai_status: What AI originally assessed
+    - human_status: What human corrected it to
+    - human_note: Human's reasoning for the correction
+    - ai_reasoning: AI's original reasoning (truncated)
+    - section_number: The section this correction was for (useful for fallback)
+    """
+    try:
+        db = get_supabase()
+
+        # Build search patterns from most specific to least specific
+        # e.g., "11B-404.2.6" -> ["11B-404.2.6", "11B-404.2%", "11B-404%", "11B-%"]
+        patterns = [section_number]  # Exact match first
+
+        parts = section_number.split(".")
+        if len(parts) >= 2:
+            # Parent section: 11B-404.2.6 -> 11B-404.2%
+            patterns.append(".".join(parts[:-1]) + "%")
+        if len(parts) >= 1 and "-" in parts[0]:
+            # Chapter: 11B-404.2.6 -> 11B-404%
+            chapter = parts[0]
+            patterns.append(chapter + "%")
+            # Major chapter: 11B-404 -> 11B-%
+            major = chapter.split("-")[0]
+            patterns.append(major + "-%")
+
+        examples = []
+        seen_check_ids = set()
+
+        for pattern in patterns:
+            if len(examples) >= limit:
+                break
+
+            remaining = limit - len(examples)
+
+            # Use LIKE for patterns with %, exact match otherwise
+            if "%" in pattern:
+                result = db.table("analysis_runs").select(
+                    "compliance_status, ai_reasoning, "
+                    "checks!inner(id, code_section_number, manual_override, manual_override_note)"
+                ).like(
+                    "checks.code_section_number", pattern
+                ).not_(
+                    "checks.manual_override", "is", "null"
+                ).order(
+                    "executed_at", desc=True
+                ).limit(remaining + 10).execute()  # Fetch extra to filter dupes
+            else:
+                result = db.table("analysis_runs").select(
+                    "compliance_status, ai_reasoning, "
+                    "checks!inner(id, code_section_number, manual_override, manual_override_note)"
+                ).eq(
+                    "checks.code_section_number", pattern
+                ).not_(
+                    "checks.manual_override", "is", "null"
+                ).order(
+                    "executed_at", desc=True
+                ).limit(remaining).execute()
+
+            if result.data:
+                for row in result.data:
+                    check = row.get("checks", {})
+                    check_id = check.get("id")
+
+                    # Avoid duplicate checks
+                    if check_id in seen_check_ids:
+                        continue
+                    seen_check_ids.add(check_id)
+
+                    examples.append({
+                        "ai_status": row.get("compliance_status"),
+                        "human_status": check.get("manual_override"),
+                        "human_note": check.get("manual_override_note"),
+                        "ai_reasoning": row.get("ai_reasoning", "")[:500],
+                        "section_number": check.get("code_section_number"),
+                    })
+
+                    if len(examples) >= limit:
+                        break
+
+                if pattern == section_number:
+                    logger.info(f"[AssessCheck] Found {len(examples)} exact corrections for {section_number}")
+                else:
+                    logger.info(f"[AssessCheck] Found corrections using pattern '{pattern}' (total: {len(examples)})")
+
+        if not examples:
+            logger.info(f"[AssessCheck] No correction examples found for {section_number} or related sections")
+
+        return examples
+
+    except Exception as e:
+        logger.warning(f"[AssessCheck] Failed to fetch correction examples: {e}")
+        return []
+
+
 @app.post("/assess-check")
 async def assess_check(request: AssessCheckRequest):
     """
@@ -721,6 +831,10 @@ async def assess_check(request: AssessCheckRequest):
     logger.info(f"[AssessCheck] Request: check={request.check_id}, assessment={request.assessment_id}")
     logger.info(f"[AssessCheck] Code section: {request.code_section.get('number')} - {request.code_section.get('title')}")
     logger.info(f"[AssessCheck] Screenshots: {len(request.screenshots or [])}")
+
+    # Fetch past correction examples for this code section (few-shot learning)
+    section_number = request.code_section.get("number", "")
+    correction_examples = fetch_correction_examples(section_number) if section_number else []
 
     # Try to load unified JSON for document tools (optional - may not be preprocessed)
     unified_json = None
@@ -743,6 +857,7 @@ async def assess_check(request: AssessCheckRequest):
         images_dir=images_dir,
         model="claude-sonnet-4-20250514",
         max_iterations=15,
+        screenshot_urls=request.screenshots or [],
     )
 
     async def generate():
@@ -752,6 +867,7 @@ async def assess_check(request: AssessCheckRequest):
                 code_section=request.code_section,
                 building_context=request.building_context or {},
                 screenshots=request.screenshots or [],
+                correction_examples=correction_examples,
             ):
                 yield f"data: {json.dumps(chunk, default=str)}\n\n"
         except Exception as e:
@@ -783,11 +899,6 @@ _document_cache: dict[str, dict] = {}
 _images_cache: dict[str, Path] = {}
 
 
-def _get_unified_json_s3_key(assessment_id: str) -> str:
-    """Get S3 key for unified document JSON."""
-    return f"preprocessed/{assessment_id}/unified_document_data.json"
-
-
 def _get_images_s3_prefix(assessment_id: str) -> str:
     """Get S3 prefix for page images."""
     return f"preprocessed/{assessment_id}/pages/"
@@ -795,36 +906,35 @@ def _get_images_s3_prefix(assessment_id: str) -> str:
 
 def _load_document_data(assessment_id: str) -> tuple[dict, Path]:
     """
-    Load unified JSON and download images for an assessment.
+    Load pipeline output from DB and download images from S3 for an assessment.
 
     Returns:
-        Tuple of (unified_json dict, images_dir Path)
+        Tuple of (pipeline_output dict, images_dir Path)
     """
     # Check cache first
     if assessment_id in _document_cache:
         return _document_cache[assessment_id], _images_cache[assessment_id]
 
-    bucket = get_bucket_name()
-    s3 = get_s3()
+    # Load pipeline_output from database (single source of truth)
+    db = get_supabase()
+    result = db.table("assessments").select("pipeline_output").eq("id", assessment_id).single().execute()
 
-    # Download unified JSON
-    json_key = _get_unified_json_s3_key(assessment_id)
-    logger.info(f"[Chat] Downloading unified JSON from s3://{bucket}/{json_key}")
-
-    try:
-        response = s3.get_object(Bucket=bucket, Key=json_key)
-        unified_json = json.loads(response['Body'].read().decode('utf-8'))
-    except s3.exceptions.NoSuchKey:
+    if not result.data or not result.data.get("pipeline_output"):
         raise HTTPException(
             status_code=404,
-            detail=f"Unified JSON not found for assessment {assessment_id}. Has preprocessing completed?"
+            detail=f"Pipeline output not found for assessment {assessment_id}. Has preprocessing completed?"
         )
+
+    pipeline_output = result.data["pipeline_output"]
+    logger.info(f"[Chat] Loaded pipeline_output from DB for assessment {assessment_id}")
 
     # Create temp directory for images
     images_dir = Path(tempfile.mkdtemp(prefix=f"chat_images_{assessment_id}_"))
     logger.info(f"[Chat] Downloading page images to {images_dir}")
 
-    # Download page images
+    # Download page images from S3
+    bucket = get_bucket_name()
+    s3 = get_s3()
     images_prefix = _get_images_s3_prefix(assessment_id)
     try:
         paginator = s3.get_paginator('list_objects_v2')
@@ -840,10 +950,10 @@ def _load_document_data(assessment_id: str) -> tuple[dict, Path]:
         logger.warning(f"[Chat] Error downloading images: {e}")
 
     # Cache the data
-    _document_cache[assessment_id] = unified_json
+    _document_cache[assessment_id] = pipeline_output
     _images_cache[assessment_id] = images_dir
 
-    return unified_json, images_dir
+    return pipeline_output, images_dir
 
 
 @app.post("/chat")

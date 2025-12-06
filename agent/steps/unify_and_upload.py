@@ -73,7 +73,11 @@ class UnifyAndUpload(PipelineStep):
 
     def process(self, ctx: PipelineContext) -> PipelineContext:
         """
-        Unify extracted data and upload to S3.
+        Unify extracted data and upload page images to S3.
+
+        Note: The unified document is stored in ctx.metadata for the caller
+        to save to the database. We no longer upload JSON to S3 - the DB
+        is the single source of truth for extracted data.
         """
         assessment_id = ctx.assessment_id
         images_dir = ctx.metadata.get("images_dir")
@@ -83,31 +87,16 @@ class UnifyAndUpload(PipelineStep):
         # Build unified document
         unified = self._build_unified_document(ctx)
 
-        # Upload to S3
-        s3 = get_s3()
-        bucket = config.S3_BUCKET_NAME
-
-        # Upload unified JSON
-        json_key = f"preprocessed/{assessment_id}/unified_document_data.json"
-        json_bytes = json.dumps(unified, indent=2, default=str).encode('utf-8')
-
-        logger.info(f"[UnifyAndUpload] Uploading unified JSON to s3://{bucket}/{json_key}")
-        s3.put_object(
-            Bucket=bucket,
-            Key=json_key,
-            Body=json_bytes,
-            ContentType='application/json'
-        )
-
-        # Upload page images
+        # Upload page images to S3
         if images_dir:
+            s3 = get_s3()
+            bucket = config.S3_BUCKET_NAME
             images_dir = Path(images_dir)
             if images_dir.exists():
                 self._upload_images(s3, bucket, assessment_id, images_dir)
 
-        # Store unified document in metadata for downstream use
+        # Store unified document in metadata for caller to save to DB
         ctx.metadata["unified_document"] = unified
-        ctx.metadata["unified_json_s3_key"] = json_key
 
         logger.info(f"[UnifyAndUpload] Complete - {len(unified.get('pages', {}))} pages processed")
 
@@ -209,12 +198,14 @@ class UnifyAndUpload(PipelineStep):
         }
 
         # Add OCR text if available
-        page_ocr = bbox_ocr.get(page_num, bbox_ocr.get(filename, {}))
-        if isinstance(page_ocr, dict):
-            # Find matching bbox OCR (using some tolerance)
-            for bbox_key, ocr_text in page_ocr.items():
-                if self._bboxes_match(detection.get("bbox"), bbox_key):
-                    section["ocr_text"] = ocr_text
+        # bbox_ocr is {page_name: [list of {bbox, text, ocr_confidence, ...}]}
+        page_ocr = bbox_ocr.get(page_num, bbox_ocr.get(filename, []))
+        if isinstance(page_ocr, list):
+            # Find matching bbox OCR result
+            for ocr_result in page_ocr:
+                if self._bboxes_match(detection.get("bbox"), ocr_result.get("bbox")):
+                    section["ocr_text"] = ocr_result.get("text", "")
+                    section["ocr_confidence"] = ocr_result.get("ocr_confidence")
                     break
 
         # Add table data if this is a table

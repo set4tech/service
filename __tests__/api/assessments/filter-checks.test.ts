@@ -14,8 +14,8 @@ const createMockCheck = (id: string, sectionNumber: string, title: string) => ({
 
 const createMockProjectVariables = () => ({
   building_characteristics: {
-    building_size_sf: { value: 2500, confidence: 'high' },
-    number_of_stories: { value: 1, confidence: 'high' },
+    building_area: { value: 2500, confidence: 'high' },
+    num_stories: { value: 1, confidence: 'high' },
     has_parking: { value: false, confidence: 'high' },
     has_elevator: { value: false, confidence: 'medium' },
     occupancy_classification: { value: 'B - Business', confidence: 'high' },
@@ -74,8 +74,8 @@ describe('Filter Checks Endpoint Logic', () => {
       const variables = createMockProjectVariables();
       const flat = flattenVariables(variables);
 
-      expect(flat.building_size_sf).toBe(2500);
-      expect(flat.number_of_stories).toBe(1);
+      expect(flat.building_area).toBe(2500);
+      expect(flat.num_stories).toBe(1);
       expect(flat.has_parking).toBe(false);
       expect(flat.occupancy_classification).toBe('B - Business');
     });

@@ -62,7 +62,9 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   // Get assessment info
   const { data: assessment } = await supabase
     .from('assessments')
-    .select('*, selected_chapter_ids, projects(id, name, pdf_url, extracted_variables)')
+    .select(
+      '*, selected_chapter_ids, pipeline_output, projects(id, name, pdf_url, extracted_variables)'
+    )
     .eq('id', id)
     .single();
 
@@ -106,8 +108,8 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const normalizedVars = normalizeVariables(extractedVars);
   const buildingInfo = {
     occupancy: normalizedVars.occupancy_letter || 'Unknown',
-    size_sf: normalizedVars.building_size_sf,
-    stories: normalizedVars.number_of_stories,
+    size_sf: normalizedVars.building_area,
+    stories: normalizedVars.num_stories,
     work_type: normalizedVars.work_type || 'Unknown',
     has_parking: normalizedVars.has_parking,
     facility_category: normalizedVars.facility_category || 'Unknown',
@@ -117,6 +119,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
     ...assessment,
     pdf_url: typedAssessment.projects?.pdf_url || null,
     extracted_variables: typedAssessment.projects?.extracted_variables || null,
+    pipeline_output: assessment.pipeline_output || null,
   };
 
   // Format progress data to match AssessmentClient's expected shape

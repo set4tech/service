@@ -13,8 +13,9 @@ from pipeline import PipelineStep, PipelineContext
 from llm import call_text_llm
 import config
 
-# Suppress MuPDF warnings
-fitz.TOOLS.mupdf_display_errors(False)
+# Suppress MuPDF warnings about malformed PDFs (object out of range, etc.)
+# These are recoverable errors that don't affect rendering
+fitz.TOOLS.mupdf_warnings(False)
 
 logger = logging.getLogger(__name__)
 

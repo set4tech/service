@@ -21,6 +21,7 @@ from typing import Any, Optional, List
 from fractions import Fraction
 
 from chat_tools import DocumentNavigator, ChatToolExecutor, CHAT_TOOLS
+from violation_bbox import detect_violation_bboxes_for_image
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,26 @@ COMPLIANCE_TOOLS = CHAT_TOOLS + [
                 }
             },
             "required": ["table_name"]
+        }
+    },
+    {
+        "name": "mark_violation_areas",
+        "description": "Locate violations in a screenshot using a 3x3 grid system. Returns which grid cells (A1-C3) contain each violation, plus an explanation. More reliable than pixel-precise coordinates for architectural drawings.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "violation_descriptions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of violation descriptions to locate. Be specific about what to find (e.g., 'dimension showing 42.02 inches', 'door D-13 clearance zone')."
+                },
+                "screenshot_index": {
+                    "type": "integer",
+                    "description": "Index of the screenshot to analyze (0-based). Default is 0.",
+                    "default": 0
+                }
+            },
+            "required": ["violation_descriptions"]
         }
     }
 ]
@@ -347,8 +368,10 @@ class ComplianceToolExecutor(ChatToolExecutor):
         self,
         navigator: DocumentNavigator,
         images_dir: Optional[Path] = None,
+        screenshot_urls: Optional[List[str]] = None,
     ):
         super().__init__(navigator, images_dir)
+        self.screenshot_urls = screenshot_urls or []
         self._build_element_index()
 
     def _build_element_index(self):
@@ -492,6 +515,13 @@ class ComplianceToolExecutor(ChatToolExecutor):
             if not table or (isinstance(table, str) and not table.strip()):
                 return {"error": f"Missing required parameter: table_name. Available: {list(CBC_TABLES.keys())}"}
 
+        elif tool_name == "mark_violation_areas":
+            descriptions = tool_input.get("violation_descriptions")
+            if not descriptions or not isinstance(descriptions, list) or len(descriptions) == 0:
+                return {"error": "Missing required parameter: violation_descriptions (must be non-empty array)"}
+            if not self.screenshot_urls:
+                return {"error": "No screenshots available to analyze"}
+
         else:
             # Fall back to parent validation for chat tools
             return super()._validate_tool_input(tool_name, tool_input)
@@ -549,6 +579,12 @@ class ComplianceToolExecutor(ChatToolExecutor):
                 result = self._lookup_cbc_table(
                     tool_input.get("table_name", ""),
                     tool_input.get("lookup_key")
+                )
+                return {"result": result}
+            elif tool_name == "mark_violation_areas":
+                result = self._mark_violation_areas(
+                    tool_input.get("violation_descriptions", []),
+                    tool_input.get("screenshot_index", 0)
                 )
                 return {"result": result}
             else:
@@ -750,4 +786,52 @@ class ComplianceToolExecutor(ChatToolExecutor):
             "lookup_key": lookup_key,
             "error": f"Key '{lookup_key}' not found in table",
             "available_keys": list(data.keys())
+        }
+
+    def _mark_violation_areas(self, descriptions: List[str], screenshot_index: int = 0) -> dict:
+        """
+        Locate violations in a screenshot using a 3x3 grid system.
+
+        Args:
+            descriptions: List of violation descriptions to locate
+            screenshot_index: Which screenshot to analyze (0-based)
+
+        Returns:
+            Dict with grid cells for each violation
+        """
+        import httpx
+        from PIL import Image
+        from io import BytesIO
+        from violation_grid import locate_violations_with_bounds_sync
+
+        if screenshot_index >= len(self.screenshot_urls):
+            return {"error": f"Screenshot index {screenshot_index} out of range (have {len(self.screenshot_urls)} screenshots)"}
+
+        url = self.screenshot_urls[screenshot_index]
+
+        # Fetch image synchronously
+        try:
+            response = httpx.get(url, timeout=30.0)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content))
+        except Exception as e:
+            logger.error(f"[mark_violation_areas] Failed to fetch screenshot: {e}")
+            return {"error": f"Failed to fetch screenshot: {str(e)}"}
+
+        # Call grid-based location (sync wrapper)
+        try:
+            results = locate_violations_with_bounds_sync(image, descriptions)
+        except Exception as e:
+            logger.error(f"[mark_violation_areas] Grid location failed: {e}")
+            return {"error": f"Grid location failed: {str(e)}"}
+
+        found_count = sum(1 for r in results if r.get("found"))
+        logger.info(f"[mark_violation_areas] Located {found_count}/{len(descriptions)} violations in grid")
+
+        return {
+            "screenshot_index": screenshot_index,
+            "grid_size": "3x3",
+            "violation_locations": results,
+            "found_count": found_count,
+            "note": "Grid cells are A1-C3 (columns A-C left to right, rows 1-3 top to bottom). Include cell locations in your violation output."
         }

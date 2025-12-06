@@ -28,10 +28,29 @@ interface ProjectVariables {
   };
 }
 
+interface PipelineOutput {
+  metadata?: {
+    assessment_id?: string;
+    summary?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  // project_info is at the top level, not inside metadata
+  project_info?: Record<string, unknown>;
+  pages?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+interface Suggestion {
+  category: string;
+  variable: string;
+  value: unknown;
+}
+
 interface ProjectPanelProps {
   projectId: string;
   projectName: string;
   initialVariables?: ProjectVariables | null;
+  pipelineOutput?: PipelineOutput | null;
   assessmentId?: string;
   onChecksFiltered?: () => void;
 }
@@ -40,6 +59,7 @@ export function ProjectPanel({
   projectId,
   projectName,
   initialVariables,
+  pipelineOutput,
   assessmentId,
   onChecksFiltered,
 }: ProjectPanelProps) {
@@ -47,6 +67,7 @@ export function ProjectPanel({
   const [projectVariables, setProjectVariables] = useState<Record<string, Record<string, unknown>>>(
     {}
   );
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -70,7 +91,12 @@ export function ProjectPanel({
   useEffect(() => {
     fetch('/variable_checklist.json')
       .then(res => res.json())
-      .then(data => setVariableChecklist(data))
+      .then(data => {
+        setVariableChecklist(data);
+        // Expand first 3 categories by default
+        const categories = Object.keys(data).slice(0, 3);
+        setExpandedCategories(new Set(categories));
+      })
       .catch(err => console.error('Error loading variable checklist:', err));
   }, []);
 
@@ -94,6 +120,40 @@ export function ProjectPanel({
     }
   }, [initialVariables]);
 
+  // Extract suggestions from pipeline output (AI-extracted project info)
+  // Field names in project_info match field names in variableChecklist directly
+  useEffect(() => {
+    // project_info is at the top level of pipeline_output, not inside metadata
+    const projectInfo = pipelineOutput?.project_info;
+    console.log('[ProjectPanel] pipelineOutput:', pipelineOutput);
+    console.log('[ProjectPanel] projectInfo:', projectInfo);
+    if (!projectInfo || !variableChecklist) {
+      setSuggestions([]);
+      return;
+    }
+
+    const newSuggestions: Suggestion[] = [];
+
+    // Find which category each project_info field belongs to
+    for (const [field, value] of Object.entries(projectInfo)) {
+      // Skip metadata fields
+      if (field === 'confidence' || field === 'source_pages' || field === 'is_cover_sheet')
+        continue;
+      if (value === null || value === undefined) continue;
+
+      // Find the category that contains this field
+      for (const [category, fields] of Object.entries(variableChecklist)) {
+        if (field in fields) {
+          newSuggestions.push({ category, variable: field, value });
+          break;
+        }
+      }
+    }
+
+    setSuggestions(newSuggestions);
+    console.log('[ProjectPanel] Extracted suggestions from pipeline:', newSuggestions);
+  }, [pipelineOutput, variableChecklist]);
+
   // Google Maps autocomplete
   useEffect(() => {
     if (!googleLoaded || !addressInputRef.current || !(window as any).google?.maps?.places) {
@@ -111,7 +171,7 @@ export function ProjectPanel({
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       if (place.formatted_address) {
-        updateVariable('project_identity', 'full_address', place.formatted_address);
+        updateVariable('project_identity', 'address', place.formatted_address);
       }
     });
   }, [googleLoaded, expandedCategories]);
@@ -157,6 +217,65 @@ export function ProjectPanel({
       saveVariables();
     }, 1500);
   }, []);
+
+  // Get suggestion for a specific field (only if current value is empty)
+  const getSuggestion = useCallback(
+    (category: string, variable: string): Suggestion | undefined => {
+      const currentValue = projectVariables[category]?.[variable];
+      // Only show suggestion if field is empty
+      if (currentValue !== null && currentValue !== undefined && currentValue !== '') {
+        return undefined;
+      }
+      return suggestions.find(s => s.category === category && s.variable === variable);
+    },
+    [suggestions, projectVariables]
+  );
+
+  // Apply a single suggestion
+  const applySuggestion = useCallback(
+    (suggestion: Suggestion) => {
+      updateVariable(suggestion.category, suggestion.variable, suggestion.value);
+    },
+    [updateVariable]
+  );
+
+  // Apply all pending suggestions
+  const applyAllSuggestions = useCallback(() => {
+    const pending = suggestions.filter(s => {
+      const currentValue = projectVariables[s.category]?.[s.variable];
+      return currentValue === null || currentValue === undefined || currentValue === '';
+    });
+
+    if (pending.length === 0) return;
+
+    setProjectVariables(prev => {
+      const updated = { ...prev };
+      for (const s of pending) {
+        if (!updated[s.category]) {
+          updated[s.category] = {};
+        }
+        updated[s.category] = {
+          ...updated[s.category],
+          [s.variable]: s.value,
+        };
+      }
+      return updated;
+    });
+
+    // Trigger save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      saveVariables();
+    }, 500);
+  }, [suggestions, projectVariables]);
+
+  // Count pending suggestions
+  const pendingSuggestions = suggestions.filter(s => {
+    const currentValue = projectVariables[s.category]?.[s.variable];
+    return currentValue === null || currentValue === undefined || currentValue === '';
+  });
 
   const toggleCategory = useCallback((category: string) => {
     setExpandedCategories(prev => {
@@ -366,6 +485,37 @@ export function ProjectPanel({
           <p className="text-sm text-gray-500 mt-1">
             Project variables used for compliance analysis
           </p>
+
+          {/* AI Suggestions Banner */}
+          {pendingSuggestions.length > 0 && (
+            <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg
+                  className="w-4 h-4 text-blue-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span className="text-sm text-blue-800">
+                  {pendingSuggestions.length} AI-extracted value
+                  {pendingSuggestions.length === 1 ? '' : 's'} from drawings
+                </span>
+              </div>
+              <button
+                onClick={applyAllSuggestions}
+                className="px-2 py-1 text-xs font-medium text-blue-700 hover:text-blue-900 hover:bg-blue-100 rounded"
+              >
+                Apply All
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -378,8 +528,8 @@ export function ProjectPanel({
             >
               {Object.entries(items).map(([varName, varInfo]) => {
                 const label = formatLabel(varName);
-                const isAddressField =
-                  category === 'project_identity' && varName === 'full_address';
+                const isAddressField = category === 'project_identity' && varName === 'address';
+                const suggestion = getSuggestion(category, varName);
 
                 const config: DynamicFieldConfig = {
                   type: varInfo.type || 'text',
@@ -395,15 +545,40 @@ export function ProjectPanel({
                 };
 
                 return (
-                  <DynamicField
-                    key={varName}
-                    config={config}
-                    value={projectVariables[category]?.[varName]}
-                    onChange={newValue => updateVariable(category, varName, newValue)}
-                    onToggleOption={option => toggleMultiselect(category, varName, option)}
-                    inputRef={isAddressField ? addressInputRef : undefined}
-                    name={`${category}_${varName}`}
-                  />
+                  <div key={varName} className="relative">
+                    <DynamicField
+                      config={config}
+                      value={projectVariables[category]?.[varName]}
+                      onChange={newValue => updateVariable(category, varName, newValue)}
+                      onToggleOption={option => toggleMultiselect(category, varName, option)}
+                      inputRef={isAddressField ? addressInputRef : undefined}
+                      name={`${category}_${varName}`}
+                    />
+                    {/* AI Suggestion Indicator */}
+                    {suggestion && (
+                      <button
+                        type="button"
+                        onClick={() => applySuggestion(suggestion)}
+                        className="absolute right-0 top-0 mt-0.5 flex items-center gap-1 px-2 py-1 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors"
+                        title={`AI suggestion: ${String(suggestion.value)}`}
+                      >
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                        <span className="max-w-[120px] truncate">{String(suggestion.value)}</span>
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </Accordion>

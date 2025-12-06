@@ -9,3 +9,7 @@ ALTER TABLE sections DROP COLUMN IF EXISTS drawing_assessable;
 
 
 
+
+
+
+

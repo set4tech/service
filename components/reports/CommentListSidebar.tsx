@@ -189,7 +189,7 @@ export function CommentListSidebar({
           {resolvedComments.length > 0 && (
             <div>
               <h3 className="text-xs font-semibold text-ink-700 uppercase tracking-wide mb-3">
-                Resolved ({resolvedComments.length})
+                ✅ Resolved ({resolvedComments.length})
               </h3>
               {resolvedComments.map(renderComment)}
             </div>

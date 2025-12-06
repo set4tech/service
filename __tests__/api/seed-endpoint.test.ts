@@ -15,7 +15,7 @@ const createMockAssessment = (overrides: Record<string, unknown> = {}) => ({
     id: 'project-456',
     extracted_variables: {
       occupancy_letter: 'B',
-      building_size_sf: 50000,
+      building_area: 50000,
     },
   },
   ...overrides,

@@ -615,16 +615,16 @@ export function CheckList({
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
-      <div className="p-3 border-b border-gray-200">
+      <div className="p-3 border-b border-sage-200 bg-sage-50">
         <div className="relative">
           <input
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 text-sm border border-sage-300 bg-paper text-ink-900 placeholder-sage-400 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent"
             placeholder="Search checks and section content..."
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
           {searching && (
-            <div className="absolute right-3 top-2.5 text-gray-400">
+            <div className="absolute right-3 top-2.5 text-sage-400">
               <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                 <circle
                   className="opacity-25"
@@ -647,15 +647,15 @@ export function CheckList({
         {/* Chapter Filter (only in section mode) */}
         {checkMode === 'section' && availableChapters.length > 0 && (
           <div className="mt-3">
-            <div className="text-xs font-medium text-gray-700 mb-2">Filter by Chapter</div>
+            <div className="text-xs font-medium text-sage-700 mb-2">Filter by Chapter</div>
             <div className="flex flex-wrap gap-1">
               <button
                 onClick={() => setSelectedChapter(null)}
                 className={clsx(
-                  'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                  'px-3 py-1 text-xs font-medium transition-colors border',
                   !selectedChapter
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'bg-sage-700 text-white border-sage-700'
+                    : 'bg-paper text-sage-700 border-sage-300 hover:bg-sage-100'
                 )}
               >
                 All
@@ -663,7 +663,7 @@ export function CheckList({
               {availableChapters.map(({ codeTitle, chapters }) => (
                 <div key={codeTitle} className="flex flex-wrap gap-1 items-center">
                   {/* Code label */}
-                  <span className="text-xs font-semibold text-gray-600 px-2">
+                  <span className="text-xs font-semibold text-sage-600 px-2">
                     {codeTitle.replace(/California|Code|Building|Plumbing|20\d{2}/g, '').trim() ||
                       codeTitle}
                   </span>
@@ -673,10 +673,10 @@ export function CheckList({
                       key={`${codeTitle}-${chapter}`}
                       onClick={() => setSelectedChapter(chapter)}
                       className={clsx(
-                        'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                        'px-3 py-1 text-xs font-medium transition-colors border',
                         selectedChapter === chapter
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          ? 'bg-sage-700 text-white border-sage-700'
+                          : 'bg-paper text-sage-700 border-sage-300 hover:bg-sage-100'
                       )}
                     >
                       {chapter.match(/^\d+$/) ? `Ch ${chapter}` : chapter}
@@ -690,21 +690,21 @@ export function CheckList({
 
         {/* Filters */}
         <div className="mt-2 space-y-1">
-          <label className="flex items-center text-sm text-gray-700 cursor-pointer hover:text-gray-900">
+          <label className="flex items-center text-sm text-sage-700 cursor-pointer hover:text-sage-900">
             <input
               type="checkbox"
               checked={showUnassessedOnly}
               onChange={e => setShowUnassessedOnly(e.target.checked)}
-              className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="mr-2 border-sage-300 text-sage-600 focus:ring-sage-500"
             />
             <span>Show unassessed only</span>
           </label>
-          <label className="flex items-center text-sm text-gray-700 cursor-pointer hover:text-gray-900">
+          <label className="flex items-center text-sm text-sage-700 cursor-pointer hover:text-sage-900">
             <input
               type="checkbox"
               checked={showExcluded}
               onChange={e => setShowExcluded(e.target.checked)}
-              className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="mr-2 border-sage-300 text-sage-600 focus:ring-sage-500"
             />
             <span>Show excluded checks</span>
           </label>
@@ -737,10 +737,10 @@ export function CheckList({
           const displayChecks = groupChecks;
 
           return (
-            <div key={mainPrefix} className="border-b border-gray-200">
+            <div key={mainPrefix} className="border-b border-sage-200">
               {/* Main Section/Element Header - only show in element mode */}
               {checkMode === 'element' && (
-                <div className="w-full flex items-center hover:bg-gray-50 transition-colors">
+                <div className="w-full flex items-center hover:bg-sage-100 transition-colors bg-sage-50">
                   <button
                     onClick={() => toggleSection(mainPrefix)}
                     className="flex-1 px-3 py-2 flex items-center text-left"
@@ -749,7 +749,7 @@ export function CheckList({
                       width="10"
                       height="10"
                       className={clsx(
-                        'mr-2 transition-transform text-gray-500',
+                        'mr-2 transition-transform text-sage-500',
                         isExpanded && 'rotate-90'
                       )}
                       fill="currentColor"
@@ -757,8 +757,8 @@ export function CheckList({
                     >
                       <path d="M2 2l5 3-5 3z" />
                     </svg>
-                    <span className="text-sm font-semibold text-gray-900">{mainPrefix}</span>
-                    <span className="ml-auto text-xs text-gray-500">({displayChecks.length})</span>
+                    <span className="text-sm font-semibold text-ink-900">{mainPrefix}</span>
+                    <span className="ml-auto text-xs text-sage-500">({displayChecks.length})</span>
                   </button>
 
                   {/* Add Element Button */}
@@ -806,7 +806,7 @@ export function CheckList({
                           alert('Failed to create element instance');
                         }
                       }}
-                      className="px-3 py-2 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
+                      className="px-3 py-2 flex items-center hover:bg-accent-500/10 transition-colors text-accent-600 hover:text-accent-500"
                       title={`Add ${mainPrefix.toLowerCase().replace(/s$/, '')}`}
                     >
                       <svg
@@ -830,13 +830,13 @@ export function CheckList({
 
               {/* Individual Checks */}
               {(checkMode === 'section' || isExpanded) && (
-                <div className="bg-gray-50">
+                <div className="bg-paper">
                   {displayChecks.map(check => {
                     const hasInstances = check.instances && check.instances.length > 0;
                     const isInstancesExpanded = expandedInstances.has(check.id);
 
                     return (
-                      <div key={check.id} className="border-b border-gray-100 last:border-b-0">
+                      <div key={check.id} className="border-b border-sage-100 last:border-b-0">
                         {/* Parent Check */}
                         <div className="flex items-stretch">
                           {/* Expand/Collapse button (only if has instances) */}
@@ -846,13 +846,13 @@ export function CheckList({
                                 e.stopPropagation();
                                 toggleInstances(check.id);
                               }}
-                              className="px-2 flex items-center hover:bg-gray-200 transition-colors"
+                              className="px-2 flex items-center hover:bg-sage-100 transition-colors"
                             >
                               <svg
                                 width="8"
                                 height="8"
                                 className={clsx(
-                                  'transition-transform text-gray-500',
+                                  'transition-transform text-sage-500',
                                   isInstancesExpanded && 'rotate-90'
                                 )}
                                 fill="currentColor"
@@ -901,7 +901,7 @@ export function CheckList({
                               'flex-1 py-2 flex items-start text-left cursor-pointer transition-colors group/check',
                               activeCheckId === check.id
                                 ? 'bg-sage-200 border-l-4 border-sage-600'
-                                : 'hover:bg-gray-100 pl-1',
+                                : 'hover:bg-sage-50 pl-1',
                               !hasInstances && !activeCheckId !== check.id && 'pl-5'
                             )}
                           >
@@ -935,12 +935,12 @@ export function CheckList({
                                             }
                                           }}
                                           autoFocus
-                                          className="font-medium text-sm text-gray-900 border border-blue-500 rounded px-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                          className="font-medium text-sm text-ink-900 border border-accent-500 px-1 focus:outline-none focus:ring-1 focus:ring-accent-500"
                                         />
                                       </div>
                                     ) : (
                                       <span
-                                        className="font-medium text-sm text-gray-900 cursor-pointer hover:text-blue-600"
+                                        className="font-medium text-sm text-ink-900 cursor-pointer hover:text-accent-600"
                                         onClick={e => {
                                           e.stopPropagation();
                                           handleStartEdit(
@@ -965,15 +965,15 @@ export function CheckList({
                                         0
                                       );
                                       return totalScreenshots > 0 ? (
-                                        <span className="text-xs text-gray-500 ml-2">
-                                          📷 {totalScreenshots}
+                                        <span className="text-xs text-sage-500 ml-2">
+                                          {totalScreenshots}
                                         </span>
                                       ) : null;
                                     })()}
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
                                     {check.manual_status && (
-                                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                      <span className="text-xs px-1.5 py-0.5 bg-sage-200 text-sage-700 font-medium">
                                         Manual
                                       </span>
                                     )}
@@ -986,18 +986,18 @@ export function CheckList({
                                     <span className="font-mono font-semibold text-sm text-ink-900">
                                       {check.code_section_number}
                                     </span>
-                                    <span className="text-sm font-normal text-ink-600 line-clamp-2">
+                                    <span className="text-sm font-normal text-sage-600 line-clamp-2">
                                       {check.code_section_title}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 mt-1">
                                     {check.manual_status && (
-                                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                      <span className="text-xs px-1.5 py-0.5 bg-sage-200 text-sage-700 font-medium">
                                         Manual
                                       </span>
                                     )}
                                     {hasInstances && (
-                                      <span className="text-xs text-blue-600 font-medium">
+                                      <span className="text-xs text-accent-600 font-medium">
                                         {check.instances.length}{' '}
                                         {check.instances.length === 1 ? 'instance' : 'instances'}
                                       </span>
@@ -1024,7 +1024,7 @@ export function CheckList({
                                   const isShiftClick = (e.nativeEvent as MouseEvent).shiftKey;
                                   toggleSelection(check.id, isShiftClick);
                                 }}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                className="w-4 h-4 border-sage-300 text-sage-600 focus:ring-sage-500 cursor-pointer"
                               />
                             </div>
                           </button>
@@ -1036,7 +1036,7 @@ export function CheckList({
                                 e.stopPropagation();
                                 setCloneModalCheck(check);
                               }}
-                              className="px-3 flex items-center hover:bg-blue-50 transition-colors text-blue-600 hover:text-blue-700"
+                              className="px-3 flex items-center hover:bg-accent-500/10 transition-colors text-accent-600 hover:text-accent-500"
                               title="Add instance"
                             >
                               <svg
@@ -1114,14 +1114,14 @@ export function CheckList({
 
                         {/* Instance List */}
                         {hasInstances && isInstancesExpanded && (
-                          <div className="bg-gray-100 border-t border-gray-200">
+                          <div className="bg-sage-50 border-t border-sage-200">
                             {check.instances.map((instance: any) => (
                               <div
                                 key={instance.id}
                                 className={clsx(
-                                  'flex items-start hover:bg-gray-200 transition-colors border-b border-gray-200 last:border-b-0 group',
+                                  'flex items-start hover:bg-sage-100 transition-colors border-b border-sage-200 last:border-b-0 group',
                                   activeCheckId === instance.id &&
-                                    'bg-blue-50 border-l-4 border-blue-400'
+                                    'bg-sage-200 border-l-4 border-sage-500'
                                 )}
                               >
                                 <button
@@ -1162,7 +1162,7 @@ export function CheckList({
                                   }}
                                   className={clsx(
                                     'flex-1 pl-12 pr-4 py-2 flex items-start text-left cursor-pointer',
-                                    activeCheckId === instance.id && 'hover:bg-blue-100'
+                                    activeCheckId === instance.id && 'hover:bg-sage-200'
                                   )}
                                 >
                                   <span
@@ -1175,17 +1175,17 @@ export function CheckList({
                                   </span>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <div className="text-sm text-gray-700 font-medium">
+                                      <div className="text-sm text-ink-700 font-medium">
                                         {instance.element_instance_label ||
                                           `Instance ${instance.instance_number}`}
                                       </div>
                                       {instance.manual_status && (
-                                        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                        <span className="text-xs px-1.5 py-0.5 bg-sage-200 text-sage-700 font-medium">
                                           Manual
                                         </span>
                                       )}
                                     </div>
-                                    <div className="text-xs text-gray-500 mt-0.5">
+                                    <div className="text-xs text-sage-500 mt-0.5">
                                       {instance.code_section_number}
                                     </div>
                                   </div>
@@ -1258,8 +1258,8 @@ export function CheckList({
       </div>
 
       {/* Summary */}
-      <div className="p-3 border-t border-gray-200 bg-gray-50">
-        <div className="text-xs text-gray-600">
+      <div className="p-3 border-t border-sage-200 bg-sage-50">
+        <div className="text-xs text-sage-600">
           {filtered.length} of {checks.length} checks
         </div>
       </div>
